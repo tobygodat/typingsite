@@ -18,12 +18,13 @@ export const TIMING_POLICY = 'learner-timing@1';
 export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const BASELINE_POLICY = 'counting@1';
 
-// The policy that picks targets, by ADR 0013's rule v2 on thirty test seeds of simulated typists
-// (`npm run evaluate:learner`): counts-gain with decay and the timing term. Timing is in because it was really
-// worse on nothing it must not lose (it was also really better on captured time lost). Decay is in because it
-// really let go of fixed pairs and picked up slipping ones sooner, and was really worse on nothing it must not
-// lose. It replaced counting@1 because it was not really worse on captured time lost. It is provisional until
-// a learning study can run, and says nothing about learning.
+// The policy that picks targets (ADR 0013): counts-gain with decay and the timing term. Timing is in by product
+// call, not by evidence: it passed rule v2's guards only because the simulator types its missed pairs slowly too,
+// and with them at the typist's pace it pushes missed pairs out of the top four and fails them. Decay is in by
+// rule v2 on thirty test seeds of simulated typists (`npm run evaluate:learner`): it let go of fixed pairs and
+// picked up slipping ones sooner, and was really worse on nothing it must not lose. It replaced counting@1
+// because it was not really worse on captured time lost. It is provisional until a learning study can run, and
+// says nothing about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
@@ -217,9 +218,9 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
     }
   });
 
-  // A key's own evidence: its tries and misses outside the pairs ending in it that can be named themselves
-  // (stated). A miss inside "th" is th's, so "h" ranks only on misses elsewhere. `worst` is the most misses in
-  // any one other pair ending in the key, which naming also leaves out (see stated).
+  // A key's own evidence: its tries and misses outside the pairs ending in it that hold the evidence to be named
+  // themselves (owned). A miss inside "th" is th's, so "h" ranks only on misses elsewhere. `worst` is the most
+  // misses in any one other pair ending in the key, which naming also leaves out (see stated).
   for (const [unit, t] of tally) {
     if (unit.length === 1) t.own = { seen: t.seen, errors: t.errors, n: t.n, e: t.e, worst: 0 };
   }
@@ -229,7 +230,7 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
 
     if (unit.length !== 2 || !key) continue;
 
-    if (!stated({ observed: t })) {
+    if (!owned(t)) {
       key.own.worst = Math.max(key.own.worst, t.errors);
       continue;
     }
@@ -293,32 +294,51 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   return { policy, runs: records.length, errorRate, units: estimates };
 }
 
-// The one rule for naming a unit (ADR 0013): its own observations must say so. That is at least the floor
-// of first tries, and either a first-try error or the floor of clean intervals with the pair slower than that
-// run's median in most of the runs that timed it. A key's own observations (`own`) are its tries outside the
-// pairs ending in it that pass this rule themselves, and its misses outside those and outside its most-missed
-// other pair. So a key is named only when it is missed beyond any one pair: misses that all sit in "th" are
-// th's, whether "th" has the tries to be named yet or not. Keys have no timing.
-export function stated({ observed, own = observed }) {
-  return own.seen >= MIN_PATTERN_SAMPLES && (own.errors > 0 || slowStated(own));
+// Whether a pair's tally holds the evidence to be named, leaving out the slowness floor: the floor of first tries,
+// and a miss or the floor of clean intervals slower than the run's median in most runs that timed it. Only the
+// ranking reads it, to give a key its own evidence, so the floor below never moves the ranking.
+const owned = (t) => t.seen >= MIN_PATTERN_SAMPLES && (t.errors > 0 || (t.timed >= MIN_PATTERN_SAMPLES && t.slowRuns * 2 > t.timedRuns));
+
+// A pair is named for its slowness only when the figure the page prints, its mean clean interval over the
+// person's pace in ms, rounded, is more than this. 20 ms is a tenth of a key at 60 wpm (200 ms a key), about
+// the smallest change in a gap of 100 to 300 ms that people reliably tell apart (5 to 10% of the gap), and
+// twenty of the clock's millisecond steps. Below it a pair may still rank, and lean the drill, unnamed.
+export const SLOW_FLOOR_MS = 20;
+
+// The one rule for naming a unit (ADR 0013): its own observations must say what it is ranked on. A unit ranked
+// on its misses needs at least the floor of first tries and a first-try error. A pair ranked on its slowness
+// needs the floor of clean intervals pooled across runs, slower than the run's median in most of the runs that
+// timed it, and a printed slowdown past SLOW_FLOOR_MS. A key's own observations (`own`) are its tries outside
+// the pairs ending in it that hold the evidence to be named (owned), and its misses outside those and outside
+// its most-missed other pair. So a key is named only when it is missed beyond any one pair: misses that all sit
+// in "th" are th's, whether "th" has the tries to be named yet or not. Keys have no timing.
+export function stated({ basis, observed, own = observed }) {
+  if (basis === 'slow') return observed.timed >= MIN_PATTERN_SAMPLES && observed.slowRuns * 2 > observed.timedRuns && Math.round(observed.slowMs) > SLOW_FLOOR_MS;
+
+  return own.seen >= MIN_PATTERN_SAMPLES && own.errors > 0;
 }
-
-// A pair ranked on its slowness is named only on its observed timing: the floor of clean intervals, pooled
-// across runs, and slower than the run's median in most of the runs that timed it.
-const slowStated = ({ timed = 0, slowRuns = 0, timedRuns = 0 }) => timed >= MIN_PATTERN_SAMPLES && slowRuns * 2 > timedRuns;
-
-const nameable = (e) => (e.basis === 'slow' ? slowStated(e.observed) : stated(e));
 
 const errorCount = ({ errors, seen }) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${seen} ${seen === 1 ? 'try' : 'tries'}`;
 
-// "45 ms slower than your pace, in 4 of 5 runs that timed it (31 clean intervals)": observed timing only.
-export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }) => `${Math.round(slowMs)} ms slower than your pace, in ${slowRuns} of ${timedRuns} ${timedRuns === 1 ? 'run' : 'runs'} that timed it (${timed} clean ${timed === 1 ? 'interval' : 'intervals'})`;
+// "38 ms slower", "12 ms faster", "at your pace": a pair's clean intervals against the person's pace, rounded
+// as the page prints them.
+export function paceShift(ms) {
+  const rounded = Math.round(ms);
 
-// What Train, the results card and adaptive text act on. The top unit is named only when its observations
-// can be stated; otherwise it is a general drill that says so, whose text still leans toward the units the
-// model ranks highest (`lean`). `was` carries the observed counts the comparison later reads back, and for a
-// pair ranked on slowness its observed timing. `queue` is every unit that can be named, best first, each with
-// its counts; `runs` is the evidence runs behind it.
+  return rounded > 0 ? `${rounded} ms slower` : rounded < 0 ? `${-rounded} ms faster` : 'at your pace';
+}
+
+export const paceAgainst = (ms) => (Math.round(ms) ? `${paceShift(ms)} than your pace` : 'at your pace');
+
+// "45 ms slower than your pace, in 4 of 5 runs that timed it (31 clean intervals)": observed timing only.
+export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }) => `${paceAgainst(slowMs)}, in ${slowRuns} of ${timedRuns} ${timedRuns === 1 ? 'run' : 'runs'} that timed it (${timed} clean ${timed === 1 ? 'interval' : 'intervals'})`;
+
+// What Train, the results card and adaptive text act on. The target is the highest-ranked unit whose
+// observations can be stated, the head of `queue`; with none it is a general drill that says so. Either way
+// the drill and adaptive text lean toward the units the model ranks highest (`lean`), named or not. `was`
+// carries the observed counts the comparison later reads back, and for a pair ranked on slowness its observed
+// timing. `queue` is every unit that can be named, best first, each with its counts; `runs` is the evidence
+// runs behind it.
 //   { kind: 'targeted' | 'general', target, title, reason, was, lean: [{ unit, weight }],
 //     queue: [{ unit, was }], runs, policy }
 function wasOf({ observed, basis }) {
@@ -332,11 +352,12 @@ function wasOf({ observed, basis }) {
 export function learnerRecommendation(model) {
   const ranked = model.units.filter((e) => e.gain > 0);
   const lean = ranked.slice(0, LEAN_UNITS).map((e) => ({ unit: e.unit, weight: e.gain }));
-  const queue = ranked.filter(nameable).map((e) => ({ unit: e.unit, was: wasOf(e) }));
-  const top = ranked[0];
+  const named = ranked.filter(stated);
+  const queue = named.map((e) => ({ unit: e.unit, was: wasOf(e) }));
+  const top = named[0];
   const common = { lean, queue, runs: model.runs, policy: model.policy };
 
-  if (top && nameable(top)) {
+  if (top) {
     const { observed } = top;
 
     const reason = top.basis === 'slow' ? `“${top.unit}”: ${paceCopy(observed)}.`
@@ -390,13 +411,3 @@ export function recommendFor(policy, { runs, loops, traces, source, now }) {
   return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboardOf(source)), now, LEARNER_VARIANTS[policy]));
 }
 
-
-export const SLOW_FLOOR_MS = 20;
-
-export function paceShift(ms) {
-  const rounded = Math.round(ms);
-
-  return rounded > 0 ? `${rounded} ms slower` : rounded < 0 ? `${-rounded} ms faster` : 'at your pace';
-}
-
-export const paceAgainst = (ms) => (Math.round(ms) ? `${paceShift(ms)} than your pace` : 'at your pace');
