@@ -14,7 +14,8 @@ export const LEARNER_POLICY = 'learner@1';
 export const BASELINE_POLICY = 'counting@1';
 
 // The policy that picks targets. The counting rule stays in the code as the labelled baseline; the learner
-// is the default because it beat that baseline on every measure of `npm run evaluate:learner` (ADR 0013).
+// is the default because, on simulated typists (`npm run evaluate:learner`), it beat that baseline on next-run
+// log loss, calibration and how soon it found the true top pairs (ADR 0013).
 export const DEFAULT_POLICY = LEARNER_POLICY;
 
 // Evidence fades by run and by day. 30 runs: the profile keeps pattern counts on its newest 120 runs, so the
