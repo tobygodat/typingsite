@@ -15,7 +15,9 @@ to keep friends, the daily passage and One keyboard.
 - `people-empty`: a signed-in list with nobody on it has one row, "A friend · anyone with the link joins", with Copy a race link.
 - `people-guest`: a guest has no rows, "Sign in to be matched." under Quick match, and "Sign in to keep friends" at the foot.
 - `people-views`: Add a friend, Race setup, Daily passage and One keyboard each replace the list, focus their heading, and Back returns to the list and to the link.
-- `people-race`: Race on a friend opens the room and invites them with the race setup in one press.
+- `people-race`: Race on a friend opens the room and invites them with the race setup in one press; the room's `#online-room-conditions` names that setup.
+- `people-setup-shown`: `#people-setup-conditions` names what a one-press Race uses, and a changed setup holds for the tab across a reload (`sessionStorage`); a new tab starts from practice.
+- `people-same-name`: two rows with one name show the typed email after it, in the row and in the action's name.
 
 ## How to get to it (user POV)
 
