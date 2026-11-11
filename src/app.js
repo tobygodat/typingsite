@@ -4520,6 +4520,8 @@ function openProgressDetail(name, { opener = null, focus = true } = {}) {
   progressState.detail = name;
   detailOpener = opener;
   showProgressDetail({ focus });
+  // A view opens at its top, as a new page would, whatever the overview was scrolled to.
+  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function closeProgressDetail() {
@@ -4550,7 +4552,7 @@ function showProgressDetail({ focus = false } = {}) {
   setText($('progress-detail-heading'), PROGRESS_DETAILS[name] || '');
   drawProgressView();
 
-  if (focus && name) $('progress-detail-heading').focus();
+  if (focus && name) $('progress-detail-heading').focus({ preventScroll: true });
 }
 
 // Only what is on screen is drawn: a hidden chart has no width to draw to.

@@ -3066,11 +3066,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
    one step away. Rules and space, no boxes. */
 .progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
 .progress-overview > [hidden], .progress-detail > [hidden] { display: none; }
-/* The view that opens fades up 8px; nothing moves under reduced motion (the durations are zero). */
-.progress-overview, .progress-detail {
-  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
-  @starting-style { opacity: 0; transform: translateY(var(--space-2)); }
-}
 
 .week-lead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: var(--space-3) var(--space-8); padding-top: var(--space-6); }
 /* The run card's numeral: the same size, weight, leading and tracking. */
