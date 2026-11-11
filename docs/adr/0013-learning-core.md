@@ -22,18 +22,27 @@ Train, the results card's Drill action and adaptive mode took their target from 
 
 ## Evaluation
 
-`npm run evaluate:learner` simulates typists from a seed, types passages from the app's own generator, and scores the runs with the app's own code. Each typist has hidden per-pair error probabilities and timings, plus three planted weak pairs. Half are "mechanics" typists, whose errors and timing follow finger mechanics with weights of their own. The other half are "unrelated" typists, whose don't, which guards against a simulator that flatters a model built on those features. Each policy predicts the next whole run from the runs before it. At seed 419, with 24 typists per group and 40 runs each:
+### Decision rule
 
-| group | policy | next-run log loss | calibration error | runs to find 2 of the true top 3 | found by run 10 | named by run 10 | planted pairs by run 10 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| mechanics | counting | 0.2716 | 0.0573 | not within 40 | 0% | 38% | 4% |
-| mechanics | learner | 0.2393 | 0.0097 | 4 | 71% | 50% | 25% |
-| unrelated | counting | 0.2150 | 0.0586 | not within 40 | 8% | 29% | 4% |
-| unrelated | learner | 0.1801 | 0.0108 | 4 | 67% | 54% | 33% |
+Written on 11 November 2026, before the evaluation below was rerun, and not changed after seeing its results.
 
-Seeds 1–3 show the same picture, except "named by run 10" on seed 3's mechanics group: 42% against the counting rule's 46%. The true top pairs are those with the highest true expected gain, the quantity the learner is built to find, so that column favours it by definition. The planted pairs are a check that doesn't depend on that definition. `tests/learner.test.js` pins the comparison at seed 419, so a regression fails CI. `--profile <file>` replays a stored profile's runs the same way.
+`npm run evaluate:learner` simulates typists, types passages from the app's own generator, and scores the runs with the app's own code.
 
-This shows only that, on simulated typists, the learner predicts first-try errors better and finds the hidden weak pairs sooner. It is no evidence that anyone learns faster; that needs the study in `docs/ml-data-evaluation.md`.
+- **Typists.** Three groups of 24 (8 per skill level), each typing 40 runs of 25 words. "Mechanics" typists' errors and timing follow finger mechanics with weights of their own. "Unrelated" typists' don't, which guards against a simulator that flatters a model built on those features. Each typist in these two groups has three planted weak pairs, one from each frequency stratum of the pairs the app's passages hold: common (ranks 1–30), middle (31–90) and rare (91 on). "Drifting" typists have one common weak pair that is fixed after run 20, and another common pair that starts slipping then.
+- **Split.** Every constant chosen below is chosen on validation seeds 9001 and 9002 and judged on test seeds 1 to 5, so no typist is in both.
+- **Policies.**
+  - `counting@1`, as the app runs it: the recurring pairs at these conditions, else the newest 20 traces' target (`countingRecommendation`). It ranks and predicts nothing.
+  - The counts-only rate: a pair's `(errors + K × pooled) / (tries + K)`, where pooled is the person's rate over all pairs. No decay, no features. K comes from {2, 5, 10, 20, 40, 80}, by log loss on the validation typists. Its expected-gain ranking, counts-gain, is the simplest ranking baseline.
+  - The learner with any of its three components turned off: the feature regression (off: the prior is the person's pooled rate, worth K tries), decay (off: every run weighs 1) and the hesitation term (off: the gain counts errors only). With all three off it is counts-gain. `HALF_LIFE_RUNS` comes from {10, 15, 20, 30, 60}, by the full model's log loss on the validation typists.
+- **Measures.** Prediction is the log loss of each next run's first tries, as a mean over the typists of all three groups. Calibration error is reported beside it. Ranking reads the policy's top four units, which adaptive text and a leaning drill draw on. Planted@10 is the share of planted pairs in the top four after 10 runs (also reported per stratum, and after 40 runs). Pick-up is how many runs after the change the slipping pair needs to enter the top four and stay there. Let-go is how many runs the fixed pair needs to leave it and stay out (both as a median over drifting typists; 21 means not within 20).
+- **Spread.** Each measure is computed per test seed. The tables show the mean and the lowest and highest seed. A beats B on a measure when the two ranges don't overlap and A's is the better one. Otherwise they match.
+- **The rule.** A beats B on ranking when it beats B on planted@10 or on pick-up, and B beats A on neither. A learner variant is eligible when its log loss is not worse than the counts-only rate's beyond the spread. `counting@1` is eligible. The default is the simplest eligible policy that no eligible policy beats on ranking. Simplest means `counting@1`, then counts-gain, then fewer learner components; between equally simple policies, the higher mean planted@10. So if no learner variant beats `counting@1` on ranking, `counting@1` stays the default. A component outside the default has not earned its place. It stays as a named policy variant if that costs little code, and is deleted otherwise, and the result is recorded here.
+- **Before there are users** (`PRODUCT.md` principle 4). Until the learning study in `docs/ml-data-evaluation.md` can run, a policy becomes the default only by this rule. The promotion is provisional, and the study stays the bar for any claim about learning.
+- **No learning-speed result.** A simulated typist improves after a drill only as the simulator says it does, so a simulated learning result would restate that assumption. The evaluation reports none.
+
+### Results
+
+Filled in from the rerun.
 
 ## Consequences
 

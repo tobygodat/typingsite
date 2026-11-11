@@ -61,7 +61,7 @@ First compare the baseline with generic practice. Later compare the model with t
 
 Primary proposed outcome: change in corrected WPM on novel passages, with input accuracy as a guardrail. Also report first-attempt target error rate, valid target timing, drill uptake/completion, and return usage. Report effect sizes, uncertainty, missing follow-ups, and attrition by group. Track both assigned and completed practice; do not analyze only successful finishers and claim a general benefit.
 
-Promote the model only if it improves learning relative to the baseline without an unacceptable accuracy loss, using thresholds specified before the study. Small samples support a pilot conclusion, not a causal marketing claim. Improvement on memorized quotes, leaderboard position, or prediction accuracy alone is insufficient. Transfer to everyday writing needs a separate assessment.
+Promote the model only if it improves learning relative to the baseline without an unacceptable accuracy loss, using thresholds specified before the study. Until this study can run, a policy becomes the default only by the rule in [ADR 0013](adr/0013-learning-core.md), on simulated typists. That promotion is provisional and supports no claim about learning. Small samples support a pilot conclusion, not a causal marketing claim. Improvement on memorized quotes, leaderboard position, or prediction accuracy alone is insufficient. Transfer to everyday writing needs a separate assessment.
 
 ## Product hypothesis checks
 

@@ -100,7 +100,7 @@ This is stated in the research as a hypothesis about usability and learning, not
 1. **Show the evidence or say nothing.** Every recommendation carries its observed counts and timing; every comparison carries its sample size and conditions. Insufficient data produces a general drill and a plain statement, never a confident guess.
 2. **Never compare what is not comparable.** Same mode, length, corpus and metric version — or say so instead of claiming a result. A retest never reuses text the profile has seen.
 3. **The typing surface is sacred.** It does not shift as errors, progress or results update; analytics wait until the run is over; nothing blocks practice behind an unlock.
-4. **Depth is the proof.** Honest versioned measurement and a real evaluation against a transparent baseline matter more than feature count. If a model does not beat the simple baseline on learning, the baseline stays.
+4. **Depth is the proof.** Honest versioned measurement and a real evaluation against a transparent baseline matter more than feature count. If a model does not beat the simple baseline on learning, the baseline stays. Until the learning study in `docs/ml-data-evaluation.md` can run, a policy becomes the default only by the rule in [ADR 0013](docs/adr/0013-learning-core.md), on simulated typists. That promotion is provisional, and the study stays the bar for any claim about learning.
 5. **Build nothing the beginner audience would force us to tear out.**
 
 ## Accessibility & Inclusion
