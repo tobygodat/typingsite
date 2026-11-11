@@ -15,10 +15,10 @@ import { SLOW_FLOOR_MS, keyboardOf, learnerEvidence, paceAgainst, paceCopy, pace
 
 export const AHEAD_STEPS = 3;
 
-// A target drilled behind you is "fixed" only when the learner no longer queues it and the runs since its drill,
-// at least two (the retest and one more), hold twice the naming floor of observations of the kind it was drilled
-// for that on their own could not name it: no first-try miss in 20 tries, or a mean slowdown at or under the
-// 20 ms naming floor over 20 clean intervals. Anything short of that is "drilled".
+// The rule for "fixed", as the UI contract and DESIGN.md state it. A target behind you is fixed when the learner no
+// longer queues it and at least two runs since its drill hold observations of the kind it was drilled for (first
+// tries for a target drilled for its misses, clean intervals for a pair drilled for its pace), at least 20 of them
+// between those runs, with no first-try miss among them, or a mean slowdown of 20 ms or less. Otherwise it is drilled.
 export const FIXED_RUNS = 2;
 export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
 
@@ -28,34 +28,27 @@ const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a
 // What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
 export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
-// The target's observed evidence on measured runs on the keyboard, before its drill and from its retest on, of the
-// kind it was drilled for: tries and misses, or clean intervals and their mean slowdown over the person's pace.
-// A side with no observations is null.
-export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions))) {
+// The target's observed evidence on measured runs on the keyboard, before its drill and from its retest on, of one
+// kind (by default the kind it was drilled for): tries and misses, or clean intervals and their mean slowdown over the
+// person's pace. `runs` counts only the runs that hold an observation of that kind, so a run that typed the pair but
+// timed none of it is no run of pace evidence. A side with no observations is null.
+export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
   const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
-  const basis = basisOf(loop);
 
   const tally = (side) => {
-    let held = 0;
-    let tries = 0;
-    let errors = 0;
-    let intervals = 0;
-    let ms = 0;
+    const held = side.map((record) => record.units.find((item) => item.unit === loop.target))
+      .filter((unit) => unit && (basis === 'slow' ? unit.timed > 0 : unit.seen > 0));
 
-    for (const record of side) {
-      const unit = record.units.find((item) => item.unit === loop.target);
+    if (!held.length) return null;
+    const sum = (count) => held.reduce((total, unit) => total + count(unit), 0);
 
-      if (!unit) continue;
-      held += 1;
-      tries += unit.seen;
-      errors += unit.errors;
+    if (basis === 'slow') {
+      const intervals = sum((unit) => unit.timed);
 
-      if (unit.slowMs !== null && unit.timed) { intervals += unit.timed; ms += unit.timed * unit.slowMs; }
+      return { runs: held.length, intervals, ms: sum((unit) => unit.timed * unit.slowMs) / intervals };
     }
 
-    if (basis === 'slow') return intervals ? { runs: held, intervals, ms: ms / intervals } : null;
-
-    return tries ? { runs: held, tries, errors } : null;
+    return { runs: held.length, tries: sum((unit) => unit.seen), errors: sum((unit) => unit.errors) };
   };
 
   const dated = records.filter((record) => record.at !== null);
@@ -63,7 +56,7 @@ export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboar
   return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)) };
 }
 
-// The one rule for "fixed" (see FIXED_RUNS).
+// The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for.
 export function isFixed(since, queued) {
   const after = since?.after;
 
@@ -103,7 +96,8 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
 
-  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records);
+  // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
+  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records, current.was.basis === 'slow' ? 'slow' : 'errors');
 
   const behind = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target)).map((loop) => {
     const basis = basisOf(loop);
@@ -150,7 +144,7 @@ export function sinceCopy(since) {
 export function behindCopy(step) {
   const { basis, retest, since: { before, after } } = step;
   const rate = (side) => `${Math.round((side.errors / side.tries) * 100)}%`;
-  const sinceLine = () => (basis === 'slow' ? `${paceShift(after.ms)} since, over ${plural(after.intervals, 'interval')}` : `${after.errors} of ${after.tries} missed since`);
+  const sinceLine = () => (basis === 'slow' ? `${paceShift(after.ms)} since the drill, over ${plural(after.intervals, 'interval')}` : `${after.errors} of ${after.tries} missed since the drill`);
 
   if (retest) {
     const line = basis === 'slow' ? `${paceShift(retest.was)} → ${paceShift(retest.now)}` : `${missedCopy(retest.was)} → ${missedCopy(retest.now)} missed`;
@@ -158,7 +152,7 @@ export function behindCopy(step) {
     return after?.runs > 1 ? [line, sinceLine()] : [line];
   }
 
-  if (before && after) return [basis === 'slow' ? `${paceShift(before.ms)} → ${paceShift(after.ms)} since` : `${rate(before)} → ${rate(after)} missed since`];
+  if (before && after) return [basis === 'slow' ? `${paceShift(before.ms)} → ${paceShift(after.ms)} since the drill` : `${rate(before)} → ${rate(after)} missed since the drill`];
 
   return after ? [sinceLine()] : [];
 }

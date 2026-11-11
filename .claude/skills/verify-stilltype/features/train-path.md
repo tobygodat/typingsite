@@ -14,6 +14,8 @@ the comparison is the newest step behind them and the next target is open. There
 - `path-after`: after the retest, `#comparison-panel` is the newest step behind, `#comparison-status` has focus, and the open step's button is `#comparison-next` ("Next: “…”").
 - `path-scroll`: from 901px, a path wider than six steps scrolls along its line and takes keyboard focus; up to 900px the line runs down the page with the two newest steps behind shown.
 - `path-general`: after one short run, the open step is the general drill with nothing ahead.
+- `path-read`: each step behind says "drilled" or "fixed" (`.path-status`), a before → after figure wraps only between its halves (`.path-figure`), columns keep a gutter, and an edge of a scrolling line fades (`data-more-behind`, `data-more-ahead`). Under forced colours the four states and both halves of the line are drawn in system colours.
+- `path-follows`: a clear, its undo or a run in another tab of the same account redraws Train here (`followHistory`), keeping focus and the line's scroll.
 
 ## How to get to it (user POV)
 
@@ -35,6 +37,14 @@ Preconditions:
   a pace-named target with no word list), `ahead-hover`, `mid-drill` (the step chosen ahead, drilling), `comparison`
   (`path-after`). `run.json` notes each path's step classes and checks the fixed count, the three steps ahead, the
   drill's title and the comparison's unit.
+- **Reading it.** Run `$V drive .claude/skills/verify-stilltype/flows/train-path-readability.mjs --delay 40` at the same
+  sizes and schemes. Shots: `status` (status words, "ck" wrapping as "70 ms slower →" over "20 ms faster", gutters
+  checked from 901px), `forced` (the same path under forced colours), `long` and `long-middle` (ten steps behind, the
+  fades), `wh` (a pair drilled for its pace whose only run since that timed it is its retest: "drilled").
+- **Another tab.** Run `$V drive .claude/skills/verify-stilltype/flows/train-path-tabs.mjs --delay 40`. A second tab of
+  the same account clears the history, undoes it and types a run; after each, `run.json` checks that this tab's path,
+  figures included, is what `trainPath` gives for the stored history. Shots: `before`, `cleared-there`,
+  `undone-there`, `run-there`.
 - **Themes.** Run `$V drive .claude/skills/verify-stilltype/flows/train-path-themes.mjs --delay 40`. One shot of the
   path with history per built-in theme, each picked in settings → appearance; contrast is guarded by
   `tests/contrast.test.js`.
