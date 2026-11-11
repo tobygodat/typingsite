@@ -1,8 +1,9 @@
 // The learning core (ADR 0013): a per-person estimate of how often each letter pair and key is missed on the
-// first try, from the run summaries the profile already keeps, ranked by the misses practice could save. It is
-// a pure fold over evidence records: no DOM, no storage, no clock (callers pass `now`), no randomness. The same
-// set of records gives the same model in any order, so two devices that merge their history agree (ADR 0005),
-// and nothing in it needs a keystroke recording (ADR 0006).
+// first try and how much slower than the person's pace each pair is typed, from the run summaries the profile
+// already keeps, ranked by the time practice could save. It is a pure fold over evidence records: no DOM, no
+// storage, no clock (callers pass `now`), no randomness. The same set of records gives the same model in any
+// order, so two devices that merge their history agree (ADR 0005), and nothing in it needs a keystroke
+// recording (ADR 0006).
 //
 // The model ranks. What a person reads is observed evidence: real counts and real run counts.
 
@@ -17,11 +18,13 @@ export const TIMING_POLICY = 'learner-timing@1';
 export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const BASELINE_POLICY = 'counting@1';
 
-// The policy that picks targets, by ADR 0013's rule on simulated typists (`npm run evaluate:learner`): the
-// learner without decay, which the evaluation calls counts-gain. It predicts next-run first-try errors as well
-// as a plain counts-only rate (it is one) and no other policy found planted or slipping weak pairs faster
-// beyond the spread. It is provisional until a learning study can run, and says nothing about learning.
-export const DEFAULT_POLICY = LEARNER_POLICY;
+// The policy that picks targets, by ADR 0013's rule v2 on thirty test seeds of simulated typists
+// (`npm run evaluate:learner`): counts-gain with decay and the timing term. Timing is in because it was really
+// worse on nothing it must not lose (it was also really better on captured time lost). Decay is in because it
+// really let go of fixed pairs and picked up slipping ones sooner, and was really worse on nothing it must not
+// lose. It replaced counting@1 because it was not really worse on captured time lost. It is provisional until
+// a learning study can run, and says nothing about learning.
+export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
 // {2, 5, 10, 20, 40, 80} by next-run log loss on validation typists (ADR 0013).
@@ -41,9 +44,8 @@ export const TIMING_TRIES = 5;
 // many intervals each. Not fitted (ADR 0013).
 const MISS_INTERVALS = 2;
 
-// The learner's policies: learner@1 weighs every run alike; learner-decay@1 fades old runs. ADR 0013 kept the
-// decay variant by name because it costs a line: on drifting simulated typists it let go of a fixed pair sooner,
-// though not beyond the spread.
+// The learner's policies, one line each: with or without decay (old runs fade) and the timing term (slow pairs
+// rank on the time they lose). ADR 0013 keeps the three the default does not use as named variants.
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES };
 
 export const LEARNER_VARIANTS = {

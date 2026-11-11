@@ -69,7 +69,7 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DEFAULT_POLICY, countingEvidence, keyboardOf, learnerEvidence, recommendFor } from './learner.js';
+import { DEFAULT_POLICY, countingEvidence, keyboardOf, learnerEvidence, paceCopy, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
@@ -3033,6 +3033,9 @@ function showComparison(heading, outcome) {
 
 const missedCopy = (count) => `${count.errors} of ${count.observations}`;
 
+// "38 ms slower", "12 ms faster": a pair's clean intervals against the person's pace, as observed.
+const paceShift = (ms) => `${Math.abs(Math.round(ms))} ms ${ms < 0 ? 'faster' : 'slower'}`;
+
 function renderComparison(before, after, saved) {
   const comparison = compareAttempts(before, after);
   const trainedTarget = trainingContext?.target || selectedTarget;
@@ -3055,12 +3058,22 @@ function renderComparison(before, after, saved) {
   const beforePattern = summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget);
   const afterPattern = summarizePatterns([after]).pairs.find((item) => item.pair === trainedTarget);
   // The target's misses on the retest, a pair's or a key's, beside the evidence the drill was chosen on (or,
-  // for a target picked by hand, the baseline run's).
+  // for a target picked by hand, the baseline run's). A pair chosen for its slowness reads back its pace: the
+  // retest's clean intervals against the runs it was chosen on.
   const now = firstTriesAt(after, trainedTarget);
   const was = trainingContext?.was || firstTriesAt(before, trainedTarget);
-  $('comparison-target-row').hidden = !now || !was;
 
-  if (now && was) {
+  const pace = was?.basis === 'slow' && afterPattern?.timings.length && afterPattern.slowdownMs !== null
+    ? { target: trainedTarget, was: { slowMs: was.slowMs, timed: was.timed, timedRuns: was.timedRuns, slowRuns: was.slowRuns },
+      now: { slowMs: afterPattern.slowdownMs, timed: afterPattern.timings.length } } : null;
+
+  $('comparison-target-row').hidden = was?.basis === 'slow' ? !pace : !now || !was;
+
+  if (pace) {
+    $('comparison-target-label').textContent = `${trainedTarget} pace`;
+    $('comparison-target').textContent = paceShift(pace.now.slowMs);
+    $('comparison-target-was').textContent = `over ${plural(pace.now.timed, 'interval')}, was ${paceShift(pace.was.slowMs)} over ${pace.was.timed}`;
+  } else if (now && was) {
     $('comparison-target-label').textContent = `${trainedTarget} missed`;
     $('comparison-target').textContent = missedCopy(now);
     $('comparison-target-was').textContent = `was ${missedCopy(was)}`;
@@ -3095,6 +3108,7 @@ function renderComparison(before, after, saved) {
       comparison,
       targetTiming: timingSummary,
       targetMisses: now && was ? { target: trainedTarget, was: { errors: was.errors, observations: was.observations }, now } : null,
+      targetPace: pace,
       drill: trainingContext?.drill || null,
     });
     comparisonSaved = saveProfile();
@@ -3166,8 +3180,9 @@ function renderTrain() {
   }));
   const was = recommendation.was;
 
-  const evidence = !target ? '' : was?.errors ? `${missedCopy(was)} missed${was.runs ? ` in ${plural(was.runs, 'run')}` : ''}`
-    : was?.slowRuns ? `slower than your median in ${plural(was.slowRuns, 'run')}` : '';
+  const evidence = !target ? '' : was?.basis === 'slow' ? paceCopy(was)
+    : was?.errors ? `${missedCopy(was)} missed${was.runs ? ` in ${plural(was.runs, 'run')}` : ''}`
+      : was?.slowRuns ? `slower than your median in ${plural(was.slowRuns, 'run')}` : '';
 
   setText($('train-evidence'), evidence);
   $('train-evidence').hidden = !evidence;
@@ -3219,11 +3234,29 @@ function lastLoopCopy(source) {
     return observations ? Math.round((errors / observations) * 100) : null;
   };
 
-  const records = learnerEvidence(profile.runs, keyboard).filter((record) => record.at !== null);
-  const before = rate(records.filter((record) => record.at < split));
-  const after = rate(records.filter((record) => record.at >= split));
+  // A pair drilled for its slowness: its clean intervals' mean slowdown over the person's pace.
+  const slowdown = (records) => {
+    let timed = 0;
+    let ms = 0;
 
-  return before === null || after === null ? '' : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
+    for (const record of records) {
+      const unit = record.units.find((item) => item.unit === loop.target);
+
+      if (unit?.slowMs !== null && unit?.timed) { timed += unit.timed; ms += unit.timed * unit.slowMs; }
+    }
+
+    return timed ? Math.round(ms / timed) : null;
+  };
+
+  const records = learnerEvidence(profile.runs, keyboard).filter((record) => record.at !== null);
+  const measure = loop.targetPace ? slowdown : rate;
+  const before = measure(records.filter((record) => record.at < split));
+  const after = measure(records.filter((record) => record.at >= split));
+
+  if (before === null || after === null) return '';
+
+  return loop.targetPace ? `${loop.target} · ${before} → ${after} ms slower than your pace since you drilled it`
+    : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
 }
 
 // Train's one button: the drill, then the retest, then the comparison.
@@ -4089,11 +4122,15 @@ function renderHistory() {
       : 'Fresh-text check';
     row.querySelector('.history-conditions').textContent = describeConditions(loop.conditions);
 
-    // A pair's clean intervals in the baseline and the retest, else the target's misses as the comparison read them.
+    // A pair drilled for its slowness reads back its pace as the comparison did; else a pair's clean intervals
+    // in the baseline and the retest, else the target's misses as the comparison read them.
+    const pace = loop.targetPace;
     const timing = loop.targetTiming?.target && loop.targetTiming.beforeCount + loop.targetTiming.afterCount > 0 ? loop.targetTiming : null;
     const misses = loop.targetMisses;
 
-    if (timing) row.querySelector('.history-conditions').textContent += ` · ${timing.target} · ${timing.beforeCount} before · ${timing.afterCount} after`;
+    if (pace) {
+      row.querySelector('.history-conditions').textContent += ` · ${pace.target} ${paceShift(pace.now.slowMs)} over ${plural(pace.now.timed, 'interval')}, was ${paceShift(pace.was.slowMs)} over ${pace.was.timed}`;
+    } else if (timing) row.querySelector('.history-conditions').textContent += ` · ${timing.target} · ${timing.beforeCount} before · ${timing.afterCount} after`;
     else if (misses) row.querySelector('.history-conditions').textContent += ` · ${misses.target} missed ${missedCopy(misses.now)}, was ${missedCopy(misses.was)}`;
 
     row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
