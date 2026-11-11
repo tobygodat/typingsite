@@ -149,7 +149,7 @@ test('the daily, the standard test, a lesson and the one-keyboard challenge foll
   await pickHighlight(page, 'next');
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   expect(await tinted(page)).toEqual([1]);
@@ -171,7 +171,7 @@ test('the daily, the standard test, a lesson and the one-keyboard challenge foll
   expect(await tinted(page)).toEqual([2]);
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#start-local-race').click();
   await expect(page.locator('#race-stage')).toBeVisible();
   expect(await tinted(page, '#race-text-display')).toEqual([1]);

@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, setRaceName, openRaceLink } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -13,7 +13,7 @@ async function signedIn(browser, supabase, email, name) {
   await signInWithEmail(page, email);
   await openView(page, 'Challenge');
 
-  if (name) await page.locator('#online-name').fill(name);
+  if (name) await setRaceName(page, name);
 
   return { context, page };
 }
@@ -27,7 +27,7 @@ test('two strangers press quick match, race the standard setup, see the rating m
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1500 · 0 rated races · provisional');
   await quick(page).click();
   // The first press says, once, what the other racer sees.
@@ -59,8 +59,8 @@ test('two strangers press quick match, race the standard setup, see the rating m
     await page.locator('#online-befriend').click();
     await expect(page.locator('#online-befriend')).toBeHidden();
     await page.locator('#online-leave').click();
-    await expect(page.locator('#online-friend-list')).toContainText('Lin');
-    await expect(page.locator('#online-friend-list')).toContainText('raced before');
+    await expect(page.getByRole('button', { name: 'Race Lin', exact: true })).toBeVisible();
+    await expect(page.locator('.people-row', { hasText: 'Lin' }).locator('.people-tally .sr-only')).toHaveText('1 win, 0 losses');
     await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1520 · 1 rated race · provisional');
     expect(supabase.errors).toEqual([]);
   } finally {
@@ -76,7 +76,7 @@ test('a racer who closes the page mid-race loses, rated; the other racer wins on
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   await quick(page).click();
   const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin');
 
@@ -161,8 +161,8 @@ test('before the migration is applied, quick match says it is being set up and h
   await expect(page.locator('#quick-match [data-quick-part="rating"]')).toBeHidden();
   await quick(page).click();
   await expect(status(page)).toHaveText('Quick match is being set up. Please try again shortly.');
-  await expect(quick(page)).toHaveText('Quick match');
-  await page.locator('#create-online-race').click();
+  await expect(quick(page)).toHaveText('Find a race');
+  await openRaceLink(page);
   await expect(page.locator('#online-room')).toBeVisible();
 });
 
@@ -183,11 +183,11 @@ test('a pairing that lands after Stop never opens the race, and the other racer 
     await expect(quick(lin)).toHaveText('Stop looking');
     await expect(page.locator('#online-room-status')).toHaveText('Matched with Lin.', { timeout: 5000 });
     await quick(lin).click();
-    await expect(quick(lin)).toHaveText('Quick match');
+    await expect(quick(lin)).toHaveText('Find a race');
     release();
     await expect(page.locator('#online-room-status')).toHaveText('The race was called off before the start.', { timeout: 8000 });
     await expect(lin.locator('#online-room')).toBeHidden();
-    await expect(lin.locator('#online-host')).toBeVisible();
+    await expect(lin.locator('#challenge-people')).toBeVisible();
   } finally {
     await context.close();
   }

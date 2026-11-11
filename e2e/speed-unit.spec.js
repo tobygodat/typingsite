@@ -1,6 +1,6 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
 import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings, phone, setRaceName, inviteByEmail } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -327,18 +327,18 @@ test('the daily challenge and a one-keyboard race read in cpm', async ({ page })
   await openApp(page);
   await command(page, 'speed unit · cpm');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await completePassage(page);
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
   await expect(page.locator('.run-card-unit')).toHaveText('cpm');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toHaveText(/^Today’s best: \d+ cpm · \d+% accuracy\.$/);
   await page.locator('#daily-history-panel summary').click();
   await expect(page.locator('.daily-result strong')).toHaveText(/^\d+ cpm · \d+%$/);
 
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');
   await page.locator('#start-local-race').click();
@@ -402,15 +402,13 @@ test('an online race’s results and its inbox entry read in the chosen unit', a
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#online-invite-email').fill('lin@stilltype.test');
-  await page.locator('#online-save-friend').uncheck();
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await inviteByEmail(page, 'lin@stilltype.test');
   const { context, page: lin } = await member(browser, supabase, 'lin@stilltype.test');
 
   try {
     await openView(lin, 'Challenge');
-    await lin.locator('#online-name').fill('Lin');
+    await setRaceName(lin, 'Lin');
     await lin.locator('[data-accept-invite]').click();
     await expect(lin.locator('#online-room')).toBeVisible();
     await page.locator('#online-ready').click();
@@ -795,7 +793,7 @@ test('a unit synced mid-race applies at its end without holding back the race re
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
 
   // Both players type the passage; the second stops one letter short when asked, leaving the race running.
   const race = async ({ lastHeld = false } = {}) => {

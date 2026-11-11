@@ -188,3 +188,22 @@ export async function chooseQuoteFilter(page, filter, value) {
   await expect(trigger).toContainText(value);
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 }
+
+// Challenge's people list. The race name lives in Race setup, one of the list's foot links.
+export async function setRaceName(page, name) {
+  await page.locator('#people-setup').click();
+  await page.locator('#online-name').fill(name);
+  await page.locator('#online-setup-done').click();
+}
+
+// Invites an account by email without keeping it on the friend list: Add a friend, then Race once.
+export async function inviteByEmail(page, email) {
+  await page.locator('#people-add').click();
+  await page.locator('#online-invite-email').fill(email);
+  await page.locator('#create-online-race').click();
+}
+
+// Opens a race anyone with its link can join: the foot link, or the list's own row while nobody is on it.
+export async function openRaceLink(page) {
+  await page.locator('#people-race-link:visible, [data-people-action="link"]').first().click();
+}

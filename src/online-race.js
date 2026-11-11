@@ -1169,8 +1169,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
       if (!live()) show('daily');
     },
-    onViewChange(screen) {
+    // Challenge opens from another screen on the people list; a race in it shows where the list would.
+    onViewChange(screen, from) {
       if (screen === 'compete') {
+        if (from !== 'compete' && view !== 'people') { view = 'people'; onModeChange?.(); board?.hide(); }
+
         renderHome();
 
         if (view === 'people') { refreshInvites(); loadFriends(); refreshLinks(); fx.relayout(); quick.refresh(); }

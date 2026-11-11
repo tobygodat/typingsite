@@ -3480,6 +3480,7 @@ function restoreConditions(source) {
 // "results" is the practice screen showing a finished run in place of the passage.
 function switchView(view) {
   quoteFilters.dismiss();
+  const previous = document.body.dataset.view;
   document.body.dataset.view = view;
   const shown = view === 'results' ? 'practice' : view;
   document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== shown; });
@@ -3496,7 +3497,7 @@ function switchView(view) {
   updateGlides();
 
   if (view === 'progress') renderHistory();
-  onlineRace?.onViewChange(view);
+  onlineRace?.onViewChange(view, previous);
 
   // Opened from anywhere, Train draws the path afresh; a retest's comparison draws it once more as it opens.
   if (view === 'train') {

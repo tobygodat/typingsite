@@ -332,7 +332,7 @@ test('clearing history relabels an exhausted-pool repeat, and undo puts the labe
 test('a daily repeat attempt is repeated text too, so it is never a retest baseline', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await completePassage(page);
   await page.locator('#run-again').click();

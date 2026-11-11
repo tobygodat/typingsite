@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseWords, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseWords, chooseMore, setRaceName, openRaceLink } from './fixtures.js';
 
 test.setTimeout(90000);
 
@@ -11,8 +11,8 @@ async function host(page, supabase) {
 // Creates a guest-link race from the Challenge page and seats a guest in a second browser context.
 async function challengeWithGuest(page, browser, supabase) {
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await openRaceLink(page);
   const field = page.locator('#online-guest-link');
   await expect(field).toHaveValue(/#race=/);
   const room = [...supabase.races.rooms.values()].at(-1);

@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressView, openSettings, chooseWords, passageText, typeInto, completePassage, freshTextCheck, signInWithEmail, chooseMore, chooseSetting, closeSettings, phone, setRaceName, openRaceLink } from './fixtures.js';
 
 const MIN = 44;
 
@@ -278,9 +278,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
 
       await openView(page, 'Challenge');
       small.push(...await sweep(page, 'challenge, online'));
-      await page.locator('#challenge-daily').click();
+      await page.locator('#open-daily').click();
       small.push(...await sweep(page, 'challenge, daily'));
-      await page.locator('#challenge-local').click();
+      await page.locator('#open-local').click();
       small.push(...await sweep(page, 'challenge, one keyboard'));
       await page.locator('#player-one-name').fill('Ada');
       await page.locator('#player-two-name').fill('Lin');
@@ -349,16 +349,16 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await openView(page, 'Challenge');
       await expect(page.locator('#online-friend-list')).toContainText('lin@stilltype.test');
       small.push(...await sweep(page, 'challenge, signed in'));
-      await page.locator('#online-name').fill('Ada');
-      await page.locator('#create-online-race').click();
+      await setRaceName(page, 'Ada');
+      await openRaceLink(page);
       await expect(page.locator('#online-share')).toBeVisible();
       small.push(...await sweep(page, 'online race room'));
       await page.locator('#online-leave').click();
-      await page.locator('#challenge-daily').click();
+      await page.locator('#open-daily').click();
       await page.locator('#start-daily').click();
       await completePassage(page);
       await openView(page, 'Challenge');
-      await page.locator('#challenge-daily').click();
+      await page.locator('#open-daily').click();
       await page.locator('#daily-history-panel summary').click();
       small.push(...await sweep(page, 'challenge, daily results'));
 

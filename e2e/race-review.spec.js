@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, setRaceName, inviteByEmail } from './fixtures.js';
 
 test.setTimeout(90000);
 
@@ -11,9 +11,8 @@ async function racePair(page, browser, supabase) {
   await signInWithEmail(page, 'ada@stilltype.test');
   await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#online-invite-email').fill('lin@stilltype.test');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await inviteByEmail(page, 'lin@stilltype.test');
   await expect(page.locator('#online-room')).toBeVisible();
   const context = await browser.newContext();
   const lin = await context.newPage();
@@ -21,7 +20,7 @@ async function racePair(page, browser, supabase) {
   await openApp(lin);
   await signInWithEmail(lin, 'lin@stilltype.test');
   await openView(lin, 'Challenge');
-  await lin.locator('#online-name').fill('Lin');
+  await setRaceName(lin, 'Lin');
   await lin.locator('[data-accept-invite]').click();
   await expect(lin.locator('#online-room')).toBeVisible();
   await page.locator('#online-ready').click();

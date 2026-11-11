@@ -384,7 +384,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await page.route(/\/rest\/v1\/profiles/, (route) => route.abort());
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#start-local-race').click();
   const text = await page.locator('#race-accessible-passage').textContent();
   await typeInto(page, text.slice(0, 5), '#race-input');
@@ -979,7 +979,7 @@ for (const kind of ['daily', 'interrupted']) {
 
       if (kind === 'daily') {
         await openView(phone, 'Challenge');
-        await phone.locator('#challenge-daily').click();
+        await phone.locator('#open-daily').click();
         await phone.locator('#start-daily').click();
         await expect(phone.locator('#session-description')).toContainText('first attempt');
       } else {

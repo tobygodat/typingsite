@@ -125,7 +125,7 @@ test('account reload retains numbers while daily text and scores stay unchanged'
   await openSettings(page, 'appearance');
   await expect(page.locator('#settings-practice')).toBeHidden();
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   expect(await passageText(page)).toBe(dailyPassage(day).text);
   await expect(page.locator('#condition-line')).not.toContainText('numbers');

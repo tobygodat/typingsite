@@ -11,7 +11,7 @@ const borderedTabs = (page) => page.locator('.challenge-modes button').evaluateA
   .map((button) => button.id));
 
 async function startLocalRace(page) {
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Bo');
   await page.locator('#start-local-race').click();

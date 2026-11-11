@@ -477,13 +477,13 @@ test('the daily challenge keeps its own conditions while standard is selected', 
   await openApp(page);
   await chooseMore(page, 'mode-standard');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#condition-line')).not.toContainText('standard');
   await expect(page.locator('#condition-line')).toContainText('continue on error');
   await completePassage(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('Today’s best');
   await expect(page.locator('.daily-result')).toHaveCount(1);
 });

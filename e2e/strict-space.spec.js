@@ -240,7 +240,7 @@ test('the daily challenge keeps its fixed rules whatever these settings say', as
   await setSwitch(page, 'strict-space-toggle', true);
   await setSwitch(page, 'quick-end-toggle', false);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await expect(page.locator('#condition-line')).toContainText('first attempt');
@@ -459,7 +459,7 @@ test('strict space applies to a local challenge turn, and a refused space in an 
   await openApp(page);
   await setSwitch(page, 'strict-space-toggle', true);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#start-local-race').click();
   const text = await page.locator('#race-accessible-passage').textContent();
   const first = midWord(text);
@@ -483,7 +483,7 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await openApp(page);
   // Practice is still the default timed run, but a race is an untimed quote, where quick end applies.
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await openSettings(page, 'practice');
   await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
   await expect(page.locator('#quick-end-note')).toBeHidden();

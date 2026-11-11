@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore, chooseSetting, insertPlainText, phone } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, chooseWords, passageText, typeInto, openSettings, chooseMore, chooseSetting, insertPlainText, phone, setRaceName, openRaceLink } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -751,8 +751,8 @@ test('a Race reply that lands after an online room opened, or while one is being
   supabase.challenges.held = null;
   // While the reply is on its way, Lin opens an online race.
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Lin');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Lin');
+  await openRaceLink(page);
   await expect(page.locator('#online-room')).toBeVisible();
   const room = [...supabase.races.rooms.values()][0];
   await letGo(page, reply, 'get', ada.id);
@@ -782,8 +782,8 @@ test('a Race reply that lands after an online room opened, or while one is being
   const again = await holdInboxRace(page, supabase);
   supabase.races.held = [];
   supabase.races.holding = new Set(['create']);
-  await page.locator('#online-name').fill('Lin');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Lin');
+  await openRaceLink(page);
   await expect.poll(() => supabase.races.held.length).toBe(1);
   const [roomReply] = supabase.races.held;
   supabase.races.held = null;
@@ -976,7 +976,7 @@ test('a Race reply that lands after Lin opened the custom editor, or while Lin w
   await expect(page.locator('body')).toHaveAttribute('data-session', 'practice');
   await expectOffer(page, 'Ada');
   // A Race from the inbox, then a local race set up while it loads.
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   reply = await holdInboxRace(page, supabase);
   await page.locator('#start-local-race').click();
   await expect(page.locator('#race-stage')).toBeVisible();
