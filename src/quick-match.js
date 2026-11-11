@@ -80,7 +80,7 @@ const RUN_FAULTS = Object.freeze({
 const LATE = 'your finish didn’t arrive before the race closed';
 const OUTCOME_WORDS = Object.freeze({ won: 'win', lost: 'loss', tied: 'tie' });
 
-const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
+export const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
 
 // The 100-point step a ranked rating sits in, as the result card's bar draws it: its label, its span and the
 // line above it. Whisper has no steps, so its bar runs from WHISPER_BAR up to the floor; Hurricane has no line
