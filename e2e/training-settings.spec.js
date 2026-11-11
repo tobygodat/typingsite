@@ -239,6 +239,61 @@ test('the comparison’s Next follows a focus change made while it shows, and it
   await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ target: 'th', focus: 'speed', policy: DEFAULT_POLICY, recommendationKind: 'manual' });
 });
 
+test('a retest’s own card, reached with Back to practice, follows a focus change made on the comparison', async ({ page, supabase }) => {
+  const user = await signInWithHistory(page, supabase, 'back-focus@stilltype.test');
+  await chooseSetting(page, 'train-focus', 'accuracy');
+  await closeSettings(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect(page.locator('#result-drill')).toHaveText('Drill “an”');
+  await page.clock.install();
+  await page.locator('#result-drill').click();
+  await drillAndRetest(page);
+
+  await runPalette(page, 'train focus · speed');
+  await page.locator('#comparison-back').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-drill')).toHaveText('Drill “th”');
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#session-title')).toHaveText('Practice “th”');
+  await drillAndRetest(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ target: 'th', focus: 'speed', policy: DEFAULT_POLICY });
+});
+
+test('an adaptive run’s loop records the focus that chose its words, not one picked afterwards', async ({ page, supabase }) => {
+  const user = await signInWithHistory(page, supabase, 'adaptive-focus@stilltype.test');
+  await chooseSetting(page, 'train-focus', 'speed');
+  await closeSettings(page);
+  // A normal run at these settings is the baseline the adaptive run's retest is compared with.
+  await completePassage(page);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await page.locator('#adaptive-switch').click();
+  await expect(page.locator('#adaptive-toggle')).toBeChecked();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await completePassage(page);
+  await expect(page.locator('#result-drill')).toHaveText('Retest on fresh text');
+
+  await runPalette(page, 'train focus · accuracy');
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ recommendationKind: 'adaptive', focus: 'speed', policy: DEFAULT_POLICY });
+});
+
+for (const focus of ['balanced', 'accuracy', 'speed']) {
+  test(`typing "train focus · ${focus}" in full and pressing Enter sets ${focus}`, async ({ page }) => {
+    await openApp(page);
+    // Start from another focus, so the command has something to change.
+    await runPalette(page, `train focus · ${focus === 'speed' ? 'accuracy' : 'speed'}`);
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill(`train focus · ${focus}`);
+    await page.keyboard.press('Enter');
+    await openSettings(page, 'practice');
+    await expect(checked(page, 'train-focus')).toHaveValue(focus);
+  });
+}
+
 test('a focus chosen on another device updates the results card, Train and the comparison open here', async ({ page, browser, supabase }) => {
   const user = await signInWithHistory(page, supabase, 'focus-sync@stilltype.test');
   const context = await browser.newContext();

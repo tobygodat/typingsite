@@ -394,6 +394,9 @@ function saveChoice(...keys) {
 // How Train trains: what it ranks on, the drill's length and whether a retest follows.
 const TRAINING_PREFERENCES = ['trainFocus', 'drillSeconds', 'retest'];
 
+// Palette words for each focus command. A command never carries another focus's name, so a typed label matches only its own.
+const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
+
 // Settings that never enter a run's conditions: how things look, and how Train trains. Everything else is a test
 // condition.
 const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
@@ -1528,8 +1531,8 @@ function adaptivePassage() {
   if (!prefs.adaptive || !['time', 'words'].includes(prefs.mode)) return null;
   const { lean, runs } = trainingRecommendation(conditions());
 
-  return runs && lean.length ? makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
-    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }) : null;
+  return runs && lean.length ? { ...makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
+    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }), trainFocus: prefs.trainFocus } : null;
 }
 
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
@@ -1799,7 +1802,10 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     attempt.drillSeconds = drillLength();
   }
 
-  if (passage.adaptive) attempt.adaptive = true;
+  if (passage.adaptive) {
+    attempt.adaptive = true;
+    attempt.trainFocus = passage.trainFocus;
+  }
 
   if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
 
@@ -3181,7 +3187,7 @@ function startAdaptiveRetest() {
 
   baselineAttempt = baseline;
   selectedTarget = null;
-  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
+  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: shownResult.trainFocus || prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
   startRetest();
 }
 
@@ -6578,6 +6584,8 @@ function bindEvents() {
 
     switchView('results');
     renderCard(shownResult);
+    // Its Drill action is drawn again too: a training setting may have changed while the comparison showed.
+    renderResultDrill(shownResult);
     focusResult($('run-again'));
   });
   $('mode-drill').addEventListener('click', toggleManualTarget);
@@ -7191,7 +7199,7 @@ function paletteCommands(query) {
     { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
     ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
     ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...FOCUSES.map((focus) => ({ group: 'train', label: `train focus · ${focus}`, keywords: 'training drill target weak pairs mistakes errors slow speed accuracy balanced', hint: prefs.trainFocus === focus ? 'current' : '', on: prefs.trainFocus === focus, run: () => setTraining('trainFocus', focus) })),
+    ...FOCUSES.map((focus) => ({ group: 'train', label: `train focus · ${focus}`, keywords: `training drill target weak pairs ${FOCUS_KEYWORDS[focus]}`, hint: prefs.trainFocus === focus ? 'current' : '', on: prefs.trainFocus === focus, run: () => setTraining('trainFocus', focus) })),
     ...DRILL_LENGTHS.map((seconds) => ({ group: 'train', label: `drill length · ${seconds} seconds`, keywords: 'training drill time duration session long short', hint: prefs.drillSeconds === seconds ? 'current' : '', on: prefs.drillSeconds === seconds, run: () => setTraining('drillSeconds', seconds) })),
     { group: 'train', label: 'retest after drill', keywords: 'training drill retest fresh text compare comparison', hint: onOff(prefs.retest), on: prefs.retest, run: () => setTraining('retest', !prefs.retest) },
     ...['system', 'dark', 'light'].map((mode) => ({ group: 'display', label: `theme · ${mode}`, keywords: 'colour color mode appearance', hint: themeMode() === mode ? 'current' : '', on: themeMode() === mode, run: () => setThemeMode(mode) })),
