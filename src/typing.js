@@ -926,10 +926,49 @@ const drillVocabulary = (bank) => [...new Set([
 
 export const DRILL_SECONDS = 30;
 
-export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
+// Words from the vocabulary holding each unit, weighted: [{ words, weight }], empty groups left out. A unit
+// given as a bare string weighs 1.
+const leanOf = (lean) => lean.map((item) => (typeof item === 'string' ? { unit: item, weight: 1 } : item));
+
+function weightedGroups(lean, vocabulary) {
+  return leanOf(lean).flatMap(({ unit, weight }) => {
+    const words = vocabulary.filter((word) => /^[a-z]+$/.test(word) && word.includes(unit));
+
+    return words.length && weight > 0 ? [{ words, weight }] : [];
+  });
+}
+
+function weightedWord(groups, random) {
+  let draw = random() * groups.reduce((sum, group) => sum + group.weight, 0);
+  const group = groups.find((item) => (draw -= item.weight) < 0) || groups.at(-1);
+
+  return group.words[Math.floor(random() * group.words.length)];
+}
+
+// Same weights, same seed: a leaning drill's text depends only on what it leans on.
+function leanSeed(lean) {
+  let seed = 2166136261;
+
+  for (const char of lean.map(({ unit, weight }) => `${unit}:${weight.toFixed(6)}`).join(' ')) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+
+  return seed;
+}
+
+// A drill on one target, or a general drill. A general drill given `lean` ([{ unit, weight }], the units the
+// learner ranks highest) draws half its words from words holding them, by weight, and the rest from the list.
+export function makeDrill(target = null, list = DEFAULT_WORD_LIST, lean = []) {
   const safeTarget = normalizeManualTarget(target);
   const bank = wordList(list);
   const corpusWords = drillVocabulary(bank);
+  const groups = safeTarget ? [] : weightedGroups(lean, corpusWords);
+
+  if (groups.length) {
+    const random = seededRandom(leanSeed(lean));
+    const text = Array.from({ length: 1600 }, () => (random() < 0.5 ? weightedWord(groups, random) : bank[Math.floor(random() * bank.length)])).join(' ');
+
+    return { id: `drill-general-${textId(text)}`, textVersion: 'drill-general-lean@1', text, target: '', lean: lean.map(({ unit }) => unit), corpus: CORPUS_VERSION };
+  }
+
   const candidates = safeTarget ? corpusWords.filter((word) => word.includes(safeTarget)) : bank;
   // A manual target may itself be a valid word that the small local corpus does
   // not contain. Repeat that exact user choice; never fabricate word forms.
@@ -941,27 +980,19 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST) {
   return { id: `drill-${label}-${textId(text)}`, textVersion: `drill-${label}@2`, text, target: safeTarget, corpus: CORPUS_VERSION };
 }
 
-// Adaptive practice: a word or timed passage of real words in which about half are words holding one
-// of the person's recurring pairs, taken in turn. Nothing in the text is marked, and it is drill-kind
-// text: never a best, a trend point or a retest baseline. Null when no word holds any of the pairs.
-export function makeAdaptive(pairs, { mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, wordList: list = DEFAULT_WORD_LIST, random = Math.random } = {}) {
+// Adaptive practice: a word or timed passage of real words in which about half are words holding one of the
+// units it leans on ([{ unit, weight }]), each drawn in proportion to its weight (the learner's expected gain).
+// Nothing in the text is marked, and it is drill-kind text: never a best, a trend point or a retest baseline.
+// Null when no word holds any of the units.
+export function makeAdaptive(lean, { mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, wordList: list = DEFAULT_WORD_LIST, random = Math.random } = {}) {
   const bank = wordList(list);
-  const vocabulary = drillVocabulary(bank);
-  const groups = pairs.map((pair) => vocabulary.filter((word) => /^[a-z]+$/.test(word) && word.includes(pair))).filter((group) => group.length);
+  const groups = weightedGroups(lean, drillVocabulary(bank));
 
   if (!groups.length) return null;
-  let turn = 0;
-
-  const draw = () => {
-    if (random() >= 0.5) return bank[Math.floor(random() * bank.length)];
-    const group = groups[turn++ % groups.length];
-
-    return group[Math.floor(random() * group.length)];
-  };
-
+  const draw = () => (random() >= 0.5 ? bank[Math.floor(random() * bank.length)] : weightedWord(groups, random));
   const text = drawnPassage(draw, mode, count, punctuation, random, numbers, duration);
 
-  return { id: `adaptive-${textId(text)}`, textVersion: 'adaptive@1', text, pairs, adaptive: true, corpus: CORPUS_VERSION };
+  return { id: `adaptive-${textId(text)}`, textVersion: 'adaptive@2', text, pairs: leanOf(lean).map(({ unit }) => unit), adaptive: true, corpus: CORPUS_VERSION };
 }
 
 // The test conditions this build offers, and so the only ones it writes: the timed lengths (seconds) and
