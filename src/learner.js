@@ -30,7 +30,10 @@ export const BASELINE_POLICY = 'counting@1';
 // worse on captured gain at 10 runs, by 0.3 points, and rule v2 would leave it out. It replaced counting@1
 // because it was not really worse on captured time lost. ADR 0015 kept it on typists whose miss costs 1 to 8
 // intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
-// worse on a guard. It is provisional until a learning study can run, and says nothing about learning.
+// worse on a guard. ADR 0017 kept it again: letting a drilled target go on the evidence since its drill
+// (LET_GO_POLICY) harmed nothing, but on simulated seasons took a median of 100 runs at 25 words to let a fixed target
+// go, and let one in 40 still-weak targets go. It is provisional until a learning study can run, and says nothing
+// about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
@@ -69,7 +72,8 @@ export const WEAK_RATIO = 3;
 export const SLOW_SHARE = 0.75;
 export const RETURN_ODDS = 100_000;
 
-// A let-go claim needs at least this much evidence since the drill, of the kind drilled: Train's floors for "fixed".
+// A let-go claim needs at least this much evidence since the drill, of the kind drilled: the floors of Train's "fixed"
+// (FIXED_RUNS and FIXED_OBSERVATIONS in train-path.js, which a test holds equal).
 export const FIXED_RUNS = 2;
 export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
 
@@ -225,13 +229,14 @@ export function orderedEvidence(evidence) {
   return [...byId.values()].sort((a, b) => compare(a.at ?? -Infinity, b.at ?? -Infinity) || compare(a.id, b.id));
 }
 
-// What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
+// What a loop's target was drilled for, as Train reads it (basisOf in train-path.js). Loops saved before `targetBasis`
+// read a saved pace as slowness.
 export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
 const loopOrder = (a, b) => compare(Date.parse(a.at) || 0, Date.parse(b.at) || 0) || compare(a.id, b.id) || compare(JSON.stringify(a), JSON.stringify(b));
 
-// Each drilled target on a keyboard and its newest loop, by date, then id: so duplicated loops and the order loops
-// arrive in change nothing.
+// Each drilled target on a keyboard and its newest loop, by date, then id, as Train's path picks it: so duplicated loops
+// and the order loops arrive in change nothing.
 export function drilledTargets(loops, keyboard) {
   const newest = new Map();
 
@@ -269,8 +274,9 @@ export function letGoIndex(evidence) {
 // Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
 export const drillSplit = (loop, index) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
 
-// The one rule for letting go of a drilled target (ADR 0017), of one kind, at one split: the learner drops that part of
-// the target's gain, and Train reads the target fixed when it is let go and not queued. Every run since the split that
+// The one rule for letting go of a drilled target (ADR 0017), of one kind, at one split: the let-go variants drop that
+// part of the target's gain. It failed ADR 0017's rule, so no default reads it and Train keeps its own "fixed"; a
+// variant that passes would have Train read it too, as "let go and not queued". Every run since the split that
 // holds an observation of the kind steps the walk; see LET_GO_ODDS. True when it is let go after the newest run.
 export function letGo(index, unit, basis, split, k = LET_GO) {
   if (!Number.isFinite(split)) return false;

@@ -59,7 +59,7 @@ const candidate = (name, k, policy = LET_GO_POLICY) => ({ name, policy, constant
 
 // One typist's season in one world: 160 runs, the drill of its planted error pair and planted slow pair after run 19,
 // and what each policy queues, and Train reads as fixed, after every run from the retest on.
-function season(seed, cell, i, world, policies) {
+function season(seed, cell, i, world, policies, detail = false) {
   const key = (seed * CELLS.length + cell.index) * RULE_0017.typists + i;
   const random = seeded(SEASON_STREAM + key);
   const skill = SKILLS.find((s) => s.name === cell.skill);
@@ -109,7 +109,7 @@ function season(seed, cell, i, world, policies) {
   const loops = targets.map((target) => ({ id: `drill-${key}-${target.unit}`, at: new Date(Date.parse(retest.at) + 1000).toISOString(), afterAttemptId: retest.id,
     target: target.unit, targetBasis: target.kind, conditions: retest.conditions }));
 
-  const series = targets.map(() => Object.fromEntries(policies.map((p) => [p.name, { queued: [], fixed: [] }])));
+  const series = targets.map(() => Object.fromEntries(policies.map((p) => [p.name, { queued: [], fixed: [], letGo: [] }])));
 
   const drills = [...drilledTargets(loops, KEYBOARD).values()];
 
@@ -123,13 +123,16 @@ function season(seed, cell, i, world, policies) {
 
       targets.forEach((target, n) => {
         const out = !queued.has(target.unit);
+        const released = letGo(index, target.unit, target.kind, drillSplit(loops[n], index), k);
         series[n][policy.name].queued.push(!out);
-        series[n][policy.name].fixed.push(out && letGo(index, target.unit, target.kind, drillSplit(loops[n], index), k));
+        series[n][policy.name].fixed.push(out && released);
+        series[n][policy.name].letGo.push(released);
       });
     }
   }
 
-  return { counted: targets.length, uncounted: 2 - targets.length, targets: targets.map((target, n) => ({ ...target, world, results: Object.fromEntries(policies.map((p) => [p.name, measures(series[n][p.name], world)])) })) };
+  return { counted: targets.length, uncounted: 2 - targets.length, targets: targets.map((target, n) => ({ ...target, world, results: Object.fromEntries(policies.map((p) => [p.name,
+    detail ? { ...measures(series[n][p.name], world), letGo: series[n][p.name].letGo } : measures(series[n][p.name], world)])) })) };
 }
 
 // A target's measures from its series, entry 0 being the fit after the retest.
@@ -154,11 +157,12 @@ function measures({ queued, fixed: read }, world) {
 }
 
 // The work for one seed and one cell: both typists in each world asked for.
-export function seasonTask({ seed, cell, worlds, policies }) {
+// `detail` adds each target's let-go of the kind drilled after every run, which the record leaves out.
+export function seasonTask({ seed, cell, worlds, policies, detail = false }) {
   const at = CELLS[cell];
 
   return worlds.flatMap((world) => Array.from({ length: RULE_0017.typists }, (_, i) => {
-    const { counted, uncounted, targets } = season(seed, at, i, world, policies);
+    const { counted, uncounted, targets } = season(seed, at, i, world, policies, detail);
 
     return { seed, cell, i, world, counted, uncounted, targets };
   }));
@@ -342,7 +346,7 @@ export function decide0017(guard, seasonSummary) {
 }
 
 // Train's open step on the TOB-419 history: a pair missed in some runs, drilled, then typed cleanly; how many clean
-// runs until each policy stops naming it and Train reads it fixed. Each missed run holds 9 tries of "th" with 2 misses
+// runs until each policy stops naming it and it reads fixed by ADR 0017's measure (let go and not queued). Each missed run holds 9 tries of "th" with 2 misses
 // and each clean run 9 clean tries, beside a background of 60 frequent pairs, 3 tries each, one try in 30 missed. That
 // background gives the measured table within a few runs under learner-decay-timing@1.
 export function heldScenario() {
@@ -376,9 +380,9 @@ export function heldScenario() {
           const queued = recommendation.queue.some((item) => item.unit === 'th');
 
           if (!queued && named === null) named = clean;
-          const path = trainPath({ recommendation, loops, runs: runs.slice(-RULE_0017.kept), keyboard: KEYBOARD });
+          const index = letGoIndex(learnerEvidence(runs.slice(-RULE_0017.kept), KEYBOARD));
 
-          if (fixedAt === null && path.behind.some((step) => step.unit === 'th' && step.state === 'fixed')) fixedAt = clean;
+          if (fixedAt === null && !queued && letGo(index, 'th', 'errors', drillSplit(loops[0], index))) fixedAt = clean;
         }
 
         row[policy] = { cleanRunsUntilNotNamed: named, cleanRunsUntilFixed: fixedAt };
@@ -481,7 +485,7 @@ export function report0017(record) {
     `H: ${validation.returnOdds.rows.map((r) => `${r.returnOdds}: false return misses ${percent(r.falseReturn.errors ?? 0)}, pace ${percent(r.falseReturn.slow ?? 0)}, named again ${r.namedAgain}`).join('; ')}. Chosen ${validation.returnOdds.chosen}.`,
     '',
     `Season, test seeds ${record.seeds[0]} to ${record.seeds.at(-1)}: ${record.targets.counted} drilled targets counted, ${record.targets.uncounted} not queued before the drill.`,
-    table(header, [...seasonRows('all', (p) => p.all), ...seasonRows('25 words', (p) => p.at25),
+    table(header, [...seasonRows('all', (p) => p.all),
       ...RULE_0017.words.flatMap((w) => seasonRows(`${w} words`, (p) => p.byWords[w])), ...RULE_0017.perDay.flatMap((d) => seasonRows(`${d} a day`, (p) => p.byPerDay[d])),
       ...SKILLS.flatMap((sk) => seasonRows(sk.name, (p) => p.bySkill[sk.name])), ...['no bad days', 'bad days'].flatMap((b) => seasonRows(b, (p) => p.byBadDays[b]))]),
     '',
@@ -489,7 +493,7 @@ export function report0017(record) {
     table(['variant', 'A', ...[...RULE_0015.guards, 'slowPickUp', 'slowLetGo']], Object.entries(guard.differences).flatMap(([variant, byName]) => Object.entries(byName)
       .map(([name, d]) => [variant, name, ...[...RULE_0015.guards, 'slowPickUp', 'slowLetGo'].map((m) => diff(d[m]))]))),
     '',
-    'TOB-419 history: clean runs until "th" is no longer named, and until Train reads it fixed.',
+    'TOB-419 history: clean runs until "th" is no longer named, and until it reads fixed (let go and not queued).',
     table(['missed in', 'a day', 'shipped: not named', 'shipped: fixed', 'let-go: not named', 'let-go: fixed'], held.map((row) => [String(row.missedRuns), String(row.perDay),
       ...[DECAY_TIMING_POLICY, LET_GO_POLICY].flatMap((p) => [String(row[p].cleanRunsUntilNotNamed ?? '>200'), String(row[p].cleanRunsUntilFixed ?? '>200')])])),
     '',
