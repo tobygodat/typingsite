@@ -65,56 +65,82 @@ export const weekStart = (date) => new Date(date.getFullYear(), date.getMonth(),
 const enough = (side, basis) => Boolean(side) && (basis === 'slow' ? side.intervals : side.tries) >= FIXED_OBSERVATIONS;
 
 // A slip is a claim, so it has to be more than noise, however much someone types. It is made of misses only: pace
-// has no spread recorded to test against, so the list says nothing of a pair that only got slower.
+// has no spread recorded to test against, so the list says nothing of a pair for getting slower.
 //
-// The test: were the miss rate the same before `began` and since, how often would this many of the misses fall
-// since? (Fisher's exact test, one side.) Every unit read on both sides is such a question, and the more someone
-// types the more of them there are, so each is held to SLIP_CHANCE divided by how many there are (Bonferroni).
-// However many pairs are read, a typist whose miss rates have not changed then sees a slip in fewer than
-// SLIP_CHANCE of their weeks; simulated, in 1 week in 100 or fewer, for light and heavy practice alike
-// (tests/week-change.test.js). Being named by the learner only narrows the list further; it never makes a slip.
+// The test: had this unit's odds of a miss changed since `began` only as the rest of the week's typing did, how
+// often would this many of its misses fall since? (Fisher's exact test, one side, against the week's own odds
+// ratio.) A bad week raises every pair together, and that is no slip of any one of them, so a unit has to be worse
+// than its week.
+// Every unit read on both sides is such a question, and the more someone types the more of them there are, so each
+// is held to SLIP_CHANCE divided by how many there are (Bonferroni). Being named by the learner only narrows the
+// list further; it never makes a slip. What it does to people is measured in tests/week-change.test.js.
 export const SLIP_CHANCE = 0.02;
 
-const logChoose = (n, k) => Array.from({ length: k }, (_, i) => Math.log((n - k + i + 1) / (i + 1))).reduce((sum, term) => sum + term, 0);
+// The chance that `after.errors` or more of a unit's misses land since the split, were its odds of a miss to have
+// changed by `odds` and no more: the upper tail of Fisher's noncentral hypergeometric distribution (at odds 1, his
+// exact test). Each count's weight comes from its neighbour's, in logs, so long histories neither overflow nor
+// take long.
+export function chanceOfRise(before, after, odds = 1) {
+  const [misses, clean] = [before.errors + after.errors, before.tries + after.tries - before.errors - after.errors];
+  const [low, high] = [Math.max(0, after.tries - clean), Math.min(misses, after.tries)];
+  const logs = [0];
 
-// The chance that `after.errors` or more of the misses land in the after sample by luck alone: the upper tail of
-// the hypergeometric distribution, summed in logs so long histories don't overflow.
-export function chanceOfRise(before, after) {
-  const [misses, total] = [before.errors + after.errors, before.tries + after.tries];
-  const all = logChoose(total, after.tries);
-  let chance = 0;
+  for (let k = low; k < high; k += 1) logs.push(logs.at(-1) + Math.log(((misses - k) * (after.tries - k) * odds) / ((k + 1) * (clean - after.tries + k + 1))));
+  const top = logs.reduce((most, log) => Math.max(most, log), -Infinity);
+  const weights = logs.map((log) => Math.exp(log - top));
+  const sum = (list) => list.reduce((total, weight) => total + weight, 0);
 
-  for (let k = after.errors; k <= Math.min(misses, after.tries); k += 1) {
-    chance += Math.exp(logChoose(misses, k) + logChoose(total - misses, after.tries - k) - all);
-  }
-
-  return Math.min(1, chance);
+  return Math.min(1, sum(weights.slice(Math.max(0, after.errors - low))) / sum(weights));
 }
 
 // The evidence a slip is read on, the bar fixed is held to: FIXED_OBSERVATIONS tries on each side of `began`, the
 // ones since over FIXED_RUNS runs or more.
 const readable = (before, after) => enough(before, 'errors') && enough(after, 'errors') && after.runs >= FIXED_RUNS;
 
-// How many units can be asked whether they slipped: the ones with that evidence, whatever their misses. Counted
-// from tries alone, so the count never depends on how the week went.
-export function slipFamily(records, began) {
+// What a week's slips are judged against. `family` is how many units can be asked whether they slipped: the ones
+// with that evidence, whatever their misses, so the count never depends on how the week went. `pairs` is every try
+// and miss of every pair on each side of `began`, from which the week's own change is read. Keys are left out of
+// it: they hold their pairs' misses a second time.
+export function slipWeek(records, began) {
   const tallies = new Map();
+  const pairs = { before: { tries: 0, errors: 0 }, after: { tries: 0, errors: 0 } };
 
   for (const record of records.filter((item) => item.at !== null)) {
-    for (const { unit, seen } of record.units.filter((item) => item.seen > 0)) {
+    for (const { unit, seen, errors } of record.units.filter((item) => item.seen > 0)) {
       const tally = tallies.get(unit) || { before: { tries: 0, runs: 0 }, after: { tries: 0, runs: 0 } };
-      const side = record.at < began ? tally.before : tally.after;
-      side.tries += seen;
-      side.runs += 1;
+      const side = record.at < began ? 'before' : 'after';
+      tally[side].tries += seen;
+      tally[side].runs += 1;
       tallies.set(unit, tally);
+
+      if (unit.length === 2) {
+        pairs[side].tries += seen;
+        pairs[side].errors += errors;
+      }
     }
   }
 
-  return [...tallies.values()].filter(({ before, after }) => readable(before, after)).length;
+  return { family: [...tallies.values()].filter(({ before, after }) => readable(before, after)).length, pairs };
 }
 
-const slipped = ({ basis, before, after }, family) => basis === 'errors' && readable(before, after)
-  && after.errors / after.tries > before.errors / before.tries && chanceOfRise(before, after) < SLIP_CHANCE / family;
+export const slipFamily = (records, began) => slipWeek(records, began).family;
+
+// How the odds of a miss changed since `began` for the rest of the week's typing: every pair but this one. Each
+// side's rate leans on the two sides' pooled rate with the weight of FIXED_OBSERVATIONS tries, so thin evidence
+// reads as no change. It is never read as an improvement: a good week does not make a slip easier to call.
+export function weekOdds({ pairs }, unit, before, after) {
+  const own = unit.length === 2 ? { before, after } : { before: { tries: 0, errors: 0 }, after: { tries: 0, errors: 0 } };
+  const rest = (side) => ({ tries: pairs[side].tries - own[side].tries, errors: pairs[side].errors - own[side].errors });
+  const [was, now] = [rest('before'), rest('after')];
+  const pooled = (was.errors + now.errors) / Math.max(1, was.tries + now.tries);
+  const rate = (side) => (side.errors + FIXED_OBSERVATIONS * pooled) / (side.tries + FIXED_OBSERVATIONS);
+  const odds = (side) => rate(side) / (1 - rate(side));
+
+  return pooled > 0 ? Math.max(1, odds(now) / odds(was)) : 1;
+}
+
+const slipped = (unit, { before, after }, week) => readable(before, after) && after.errors / after.tries > before.errors / before.tries
+  && chanceOfRise(before, after, weekOdds(week, unit, before, after)) < SLIP_CHANCE / week.family;
 
 const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
@@ -124,7 +150,8 @@ const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
 // set of rules.
 //  - fixed: Train's isFixed now and not then. A drilled unit is judged as Train judges it, since its drill; a unit
 //    never drilled, named then and not now, is judged since `began`.
-//  - slipping: named now for its misses, and missed more since `began` than before by more than noise (`slipped`).
+//  - slipping: named now, whatever for, and missed more since `began` than before, by more than noise and by more
+//    than the week as a whole (`slipped`). Its row is always of misses.
 // Ranked by what each cost or saved in the learner's terms: the change in its gain, the time it loses per letter
 // typed, between the two fits. Largest first, then by unit.
 export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
@@ -139,7 +166,7 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
   const [gainNow, gainThen] = [gains(modelNow), gains(modelThen)];
   const drilledNow = new Map();
   const drilledThen = new Map();
-  const family = slipFamily(records, began);
+  const week = slipWeek(records, began);
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) {
     drilledNow.set(loop.target, loop);
@@ -172,9 +199,9 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
     }
 
     if (!queuedNow.has(unit)) continue;
-    const since = evidenceSince(unit, basisNamed(queuedNow.get(unit)), began, records);
+    const since = evidenceSince(unit, 'errors', began, records);
 
-    if (slipped(since, family)) add(unit, 'slipping', since, 'week');
+    if (slipped(unit, since, week)) add(unit, 'slipping', since, 'week');
   }
 
   movers.sort((a, b) => b.weight - a.weight || (a.unit < b.unit ? -1 : 1));

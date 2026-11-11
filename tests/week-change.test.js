@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, learnerEvidence, recommendFor } from '../src/learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
-import { SHOWN_MOVERS, SLIP_CHANCE, WEEK_MIN_RUNS, chanceOfRise, slipFamily, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
+import { SHOWN_MOVERS, SLIP_CHANCE, WEEK_MIN_RUNS, chanceOfRise, slipFamily, slipWeek, weekOdds, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
@@ -153,6 +153,40 @@ function exactChance(before, after) {
   return Number(ways * 10n ** 12n / choose(total, after.tries)) / 1e12;
 }
 
+// The same tail against other odds, counted another way: every count's weight from log factorials, not from its
+// neighbour's.
+function chanceRaw(before, after, odds) {
+  const logFactorial = [0];
+  const [misses, total] = [before.errors + after.errors, before.tries + after.tries];
+
+  for (let i = 1; i <= total; i += 1) logFactorial.push(logFactorial[i - 1] + Math.log(i));
+  const logChoose = (n, k) => logFactorial[n] - logFactorial[k] - logFactorial[n - k];
+  const counts = [];
+
+  for (let k = Math.max(0, after.tries - (total - misses)); k <= Math.min(misses, after.tries); k += 1) counts.push([k, logChoose(misses, k) + logChoose(total - misses, after.tries - k) + k * Math.log(odds)]);
+  const top = Math.max(...counts.map(([, log]) => log));
+  const weight = (list) => list.reduce((sum, [, log]) => sum + Math.exp(log - top), 0);
+
+  return weight(counts.filter(([k]) => k >= after.errors)) / weight(counts);
+}
+
+test('against the week’s odds, the chance of a rise is Fisher’s noncentral tail', () => {
+  const cases = [[[0, 36], [8, 24]], [[1, 36], [4, 24]], [[4, 61], [3, 34]], [[0, 36], [0, 24]], [[5, 5], [5, 5]], [[0, 20], [3, 400]], [[2, 400], [9, 20]], [[525, 3853], [178, 952]]];
+
+  for (const odds of [1, 1.2, 1.5, 3]) {
+    for (const [[e1, n1], [e2, n2]] of cases) {
+      const [before, after] = [{ errors: e1, tries: n1 }, { errors: e2, tries: n2 }];
+      const [ours, theirs] = [chanceOfRise(before, after, odds), chanceRaw(before, after, odds)];
+      assert.ok(Math.abs(ours - theirs) <= 1e-9 * Math.max(1, theirs) + 1e-12, `${e1}/${n1} → ${e2}/${n2} at ${odds}: ${ours} against ${theirs}`);
+    }
+  }
+
+  // A bad week explains a rise that an even week would not: 525 of 3,853 then 178 of 952 is 1 chance in 15,000 if
+  // nothing else moved, and more likely than not if every pair's odds of a miss rose by half.
+  assert.ok(chanceOfRise({ errors: 525, tries: 3853 }, { errors: 178, tries: 952 }) < 1e-4);
+  assert.ok(chanceOfRise({ errors: 525, tries: 3853 }, { errors: 178, tries: 952 }, 1.5) > 0.5);
+});
+
 test('the chance of a rise is Fisher’s exact tail, at every edge', () => {
   const cases = [[[0, 36], [3, 24]], [[0, 20], [3, 20]], [[0, 36], [6, 24]], [[0, 36], [9, 24]], [[1, 36], [4, 24]], [[4, 61], [3, 34]], [[0, 36], [0, 24]], [[5, 5], [5, 5]],
     [[0, 20], [3, 400]], [[2, 400], [9, 20]], [[30, 900], [41, 700]]];
@@ -265,6 +299,38 @@ test('a slip is more than noise: a few misses in a week or a like miss rate are 
   assert.deepEqual(week(() => ['re', 10, 0, 10, 200, 0], () => ['re', 10, 0, 10, 300, 100]).filter(([status]) => status === 'slipping'), []);
 });
 
+// A week in which everything is missed more is no slip of any one pair. A unit has to be worse than the rest of its
+// week's typing.
+test('a bad week is not a slip of every pair in it', () => {
+  const rows = (re, every) => [...BACKGROUND.filter((pair) => pair !== 're').map((pair, i) => [pair, 10, i % every ? 0 : 1, 10, 200, 0]), ['re', 6, re, 6, 200, 0]];
+
+  const slips = (every, misses) => overview([
+    ...Array.from({ length: 6 }, (_, i) => run(`b${i}`, daysAgo(13 - i), { patterns: rows(0, 12) })),
+    ...Array.from({ length: 4 }, (_, i) => run(`a${i}`, daysAgo(4 - i), { patterns: rows(misses, every) })),
+  ]).movers.filter((mover) => mover.status === 'slipping').map((mover) => `${mover.unit} ${moverCopy(mover).before} → ${moverCopy(mover).after}`);
+
+  // An even week: "re" goes from none in 36 to 8 in 24 and nothing else moves.
+  assert.deepEqual(slips(12, 2), ['re 0 of 36 → 8 of 24']);
+  // The same counts in a week when half the pairs are missed six times as often: the week's, not its own.
+  assert.deepEqual(slips(2, 2), []);
+  // Missed on every try, it is worse than even that week.
+  assert.deepEqual(slips(2, 6), ['re 0 of 36 → 24 of 24']);
+});
+
+// The learner names a slow pair for its pace. If its misses jump as well, that is a slip, shown in misses.
+test('a pair named for its pace whose misses jump is a slip, in misses', () => {
+  const careful = (rows) => [...BACKGROUND.filter((pair) => !rows.some((row) => row[0] === pair)).map((pair, i) => [pair, 10, i === 7 ? 1 : 0, 10, 200, 0]), ...rows];
+
+  const runs = [
+    ...Array.from({ length: 6 }, (_, i) => run(`b${i}`, daysAgo(13 - i), { patterns: careful([['re', 10, 0, 10, 290, 90]]) })),
+    ...Array.from({ length: 4 }, (_, i) => run(`a${i}`, daysAgo(4 - i), { patterns: careful([['re', 10, 4, 6, 290, 90]]) })),
+  ];
+
+  assert.equal(recommend(runs, [], 'balanced').queue.find((item) => item.unit === 're')?.was?.basis, 'slow', 'named for its pace');
+  const [mover] = overview(runs).movers.filter((item) => item.unit === 're');
+  assert.deepEqual([mover?.status, mover?.basis, moverCopy(mover).before, moverCopy(mover).after], ['slipping', 'errors', '0 of 60', '16 of 40']);
+});
+
 test('a pair drilled for its pace and now at it is fixed by pace, read since its drill, as Train reads it', () => {
   const slow = Array.from({ length: 5 }, (_, i) => run(`s${i}`, daysAgo(12 - i), { patterns: withBackground([['ol', 12, 0, 12, 300, 100]]) }));
   const retest = run('t', daysAgo(5), { patterns: withBackground([['ol', 12, 0, 12, 200, 0]]) });
@@ -365,7 +431,28 @@ function familyRaw(runs) {
   }).length;
 }
 
-const slippedRaw = (before, after, family) => after.errors / after.tries > before.errors / before.tries && exactChance(before, after) < SLIP_CHANCE / family;
+// How the week went for every pair but this one, from the run summaries: the odds ratio of a miss, each side's rate
+// leaning on the pooled rate with the weight of 20 tries, never read as an improvement.
+function weekOddsRaw(runs, unit) {
+  const side = (from, to) => runs.filter((r) => Date.parse(r.at) >= from && Date.parse(r.at) < to).flatMap((r) => r.patterns)
+    .filter((row) => row[0].length === 2 && row[0] !== unit && row[1] > 0)
+    .reduce((sum, row) => ({ tries: sum.tries + row[1], errors: sum.errors + Math.min(row[1], row[2]) }), { tries: 0, errors: 0 });
+
+  const [before, after] = [side(-Infinity, THEN), side(THEN, Infinity)];
+  const pooled = (before.errors + after.errors) / Math.max(1, before.tries + after.tries);
+
+  if (!(pooled > 0)) return 1;
+
+  const odds = (part) => {
+    const rate = (part.errors + 20 * pooled) / (part.tries + 20);
+
+    return rate / (1 - rate);
+  };
+
+  return Math.max(1, odds(after) / odds(before));
+}
+
+const slippedRaw = (before, after, family, odds) => after.errors / after.tries > before.errors / before.tries && chanceRaw(before, after, odds) < SLIP_CHANCE / family;
 
 const newestLoop = (loops, unit, before = Infinity) => loops.filter((l) => l.target === unit && Date.parse(l.at) < before)
   .sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || (a.id < b.id ? -1 : 1)).at(-1);
@@ -393,7 +480,8 @@ test('across random histories in every focus, every mover follows the stated rul
       const { movers } = weekMovers({ runs, loops, keyboard: KEYBOARD, focus, now: NOW, began: THEN });
       const queuedNow = new Set(recommend(runs, loops, focus).queue.map((item) => item.unit));
       const family = familyRaw(runs);
-      assert.equal(slipFamily(learnerEvidence(runs, KEYBOARD), THEN), family, `${where}: the units read on both sides`);
+      const week = slipWeek(learnerEvidence(runs, KEYBOARD), THEN);
+      assert.equal(week.family, family, `${where}: the units read on both sides`);
       const earlier = runs.filter((r) => Date.parse(r.at) < THEN);
       const queuedThen = new Set(recommend(earlier, loops, focus, THEN).queue.map((item) => item.unit));
       const path = trainPath({ recommendation: recommend(runs, loops, focus), loops, runs, keyboard: KEYBOARD });
@@ -442,14 +530,16 @@ test('across random histories in every focus, every mover follows the stated rul
           assert.equal(mover.basis, 'errors', `${at}: a slip read from pace`);
           assert.ok(mover.after.runs >= FIXED_RUNS, `${at}: slipping on one run`);
           assert.ok(mover.after.tries >= FIXED_OBSERVATIONS && mover.before.tries >= FIXED_OBSERVATIONS, `${at}: slipping on too few tries`);
-          assert.ok(slippedRaw(mover.before, mover.after, family), `${at}: slipping within noise among ${family}: ${JSON.stringify([mover.before, mover.after])}`);
+          const odds = weekOddsRaw(runs, mover.unit);
+          assert.ok(Math.abs(weekOdds(week, mover.unit, mover.before, mover.after) - odds) < 1e-9, `${at}: the week’s odds against ${odds}`);
+          assert.ok(slippedRaw(mover.before, mover.after, family, odds), `${at}: slipping within noise among ${family} at odds ${odds}: ${JSON.stringify([mover.before, mover.after])}`);
         }
       }
 
-      // The other way round: every unit named now for its misses that the rule calls a slip is on the list.
-      for (const item of recommend(runs, loops, focus).queue.filter((entry) => entry.was?.basis !== 'slow')) {
+      // The other way round: every unit named now, whatever for, that the rule calls a slip is on the list.
+      for (const item of recommend(runs, loops, focus).queue) {
         const [before, after] = [tallyRaw(runs, item.unit, 'errors', -Infinity, THEN), tallyRaw(runs, item.unit, 'errors', THEN, Infinity)];
-        const due = before && after && before.tries >= FIXED_OBSERVATIONS && after.tries >= FIXED_OBSERVATIONS && after.runs >= FIXED_RUNS && slippedRaw(before, after, family);
+        const due = before && after && before.tries >= FIXED_OBSERVATIONS && after.tries >= FIXED_OBSERVATIONS && after.runs >= FIXED_RUNS && slippedRaw(before, after, family, weekOddsRaw(runs, item.unit));
         const listed = movers.find((mover) => mover.unit === item.unit);
 
         // A unit Train calls fixed since its drill is listed as fixed, never as both.

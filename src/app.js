@@ -4310,7 +4310,20 @@ function renderTrendFigures(runs) {
 // A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
 // kept where it was. A detail view of rows keeps them until it is left, so a row someone has open stays open.
 function renderWeek() {
+  const open = progressState.detail;
   renderOverview(new Date());
+
+  // The full charts keep no rows, so when a clear from another tab leaves them nothing to draw they close whole,
+  // back to the overview, and take focus with them if they held it. A view of rows stays as it is until it is left.
+  if (open === 'trends' && !progressState.detail) {
+    const inside = $('progress-detail').contains(document.activeElement);
+    showProgressDetail();
+
+    if (inside) $('progress-heading').focus({ preventScroll: true });
+
+    return;
+  }
+
   // The full charts follow at once too, unless focus is on one of their points, which a redraw would drop: then
   // they wait, whole, for the view's next drawing.
   const held = ['progress-trend', 'accuracy-trend', 'progress-spread'].some((id) => $(id).contains(document.activeElement));

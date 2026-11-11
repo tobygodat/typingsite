@@ -39,7 +39,7 @@ const SLIPPING = ['ex', 'ox', 'ux', 'ix'];
 
 const weekRuns = (before = [70, 72, 74, 73, 75, 71, 74], after = [76, 78, 77, 79, 78, 80]) => [
   ...before.map((wpm, i) => run(13 - i, wpm, 95, {}, [['qu', 8, 1, 8, 200, 0], ...SLIPPING.map((pair) => [pair, 8, 0, 8, 200, 0])])),
-  ...after.map((wpm, i) => run(5 - i, wpm, 96, {}, [['qu', 15, 0, 15, 200, 0], ...SLIPPING.map((pair, k) => [pair, 8, 2 + (k % 2), 8, 200, 0])])),
+  ...after.map((wpm, i) => run(5 - i, wpm, 96, {}, [['qu', 15, 0, 15, 200, 0], ...SLIPPING.map((pair, k) => [pair, 8, 3 + (k % 2), 8, 200, 0])])),
 ];
 
 const profileOf = (list, extra = {}) => ({ version: 2, preferences: {}, attempts: [], runs: list, loops: [], seenTextIds: list.map((r) => r.textId), bests: {},
@@ -172,7 +172,7 @@ test('what moved it: fixed and slipping pairs with their evidence, three at a ti
   // Ranked by the time each loses or saved; three show, then practice.
   await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'practice']);
   const unit = (name) => rows.filter({ has: page.locator('.mover-unit', { hasText: new RegExp(`^${name}$`) }) });
-  await expect(unit('ex').locator('.mover-change')).toHaveText('0 of 56 → to 12 of 48 missed');
+  await expect(unit('ex').locator('.mover-change')).toHaveText('0 of 56 → to 18 of 48 missed');
   await expect(unit('ex').locator('.status')).toHaveText('slipping');
   await expect(unit('ex').locator('.mover-after')).toHaveCSS('color', await resolved(page, '--danger'));
   await expect(unit('ex').locator('.mover-change')).toHaveAttribute('title', '56 tries in 7 runs before this week, 48 tries in 6 runs this week');
@@ -564,6 +564,39 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
   await other.locator('#undo-clear').click();
   await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
   await expect(page.locator('#week-movers .mover-unit').first()).toHaveText('ex');
+});
+
+// The full charts keep no rows. A clear from another tab closes them whole, and never leaves blank charts under
+// figures of runs that are gone.
+test('a clear in another tab closes the full charts onto the empty overview, and its undo brings the week back', async ({ page, context, supabase }) => {
+  await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+  const other = await context.newPage();
+  await other.clock.install({ time: NOW });
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  const screen = page.locator('#progress-screen');
+  await page.locator('#week-speed button').click();
+  await expect(page.locator('#trend-figures')).toHaveText(/^median .* · 13 runs$/);
+  const pill = page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '30 days' });
+  await pill.focus();
+
+  await openView(other, 'Progress');
+  await other.locator('#clear-history').click();
+  await other.locator('#confirm-clear-input').fill('clear');
+  await other.locator('#confirm-clear').click();
+  await expect(screen).toHaveAttribute('data-detail', '');
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#progress-detail')).toBeHidden();
+  await expect(page.locator('#progress-heading')).toBeFocused();
+
+  await other.locator('#undo-clear').click();
+  await expect(lead(page).sample).toHaveText('medians of 6 and 7 runs');
+  await expect(page.locator('#week-speed svg')).toBeVisible();
+  await page.locator('#week-speed button').click();
+  await expect(screen).toHaveAttribute('data-detail', 'trends');
+  await expect(page.locator('#progress-trend .trend-dot').first()).toBeVisible();
+  await expect(page.locator('#trend-figures')).toHaveText(/^median .* · 13 runs$/);
 });
 
 test('quote sets that differ only by the punctuation setting say so on the conditions line, as their options do', async ({ page, supabase }) => {
