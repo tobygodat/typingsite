@@ -1,7 +1,8 @@
-// Finding 1 of TOB-419's check: a focus change made while the results card shows. Signed in at words 50, three
-// passages typed with a 150 ms pause before the "h" of every "th" and the "n" of every "an" and "in" missed once;
-// then the palette's train focus · accuracy and · speed with the card on screen, the card's Drill pressed, and
-// the loop it records. Run with --signed-in --delay 40.
+// The training focus followed where a drill is offered (TOB-419). Signed in at words 50, three passages typed with
+// a 150 ms pause before the "h" of every "th" and the "n" of every "an" and "in" missed once. Then the palette's
+// train focus with the results card on screen, the card's Drill and the loop it records, the comparison's Next as
+// the focus changes, and Train's word list for a pair named for its pace and one named for its misses, whose marks
+// must not be coral. Run with --signed-in --delay 40.
 export default async ({ page, h, shot, note, check, fake }) => {
   const palette = async (label) => {
     await page.keyboard.press('Control+k');
@@ -72,7 +73,10 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.type(await h.passage());
   await h.attr('body', 'data-view', 'train');
   await h.settle();
-  const loop = fake.profileFor('verify@stilltype.test')?.loops?.at(-1);
+  const savedLoop = () => fake.profileFor('verify@stilltype.test')?.loops?.at(-1);
+
+  for (let tries = 0; tries < 50 && !savedLoop(); tries += 1) await page.waitForTimeout(100);
+  const loop = savedLoop();
   note('loop', JSON.stringify({ target: loop?.target, focus: loop?.focus, kind: loop?.recommendationKind }));
   check(loop?.target === named.slice(10, -1) && loop?.focus === 'accuracy', 'the loop records the target and the focus that chose it');
 
@@ -92,4 +96,26 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await page.locator('#comparison-next').click();
   await h.attr('#typing-screen', 'data-session', 'drill');
   check((await h.text('#session-title')) === next.balanced.replace('Next:', 'Practice'), 'Next drills what it named');
+  await shot('drill-from-next');
+
+  const colour = (css) => page.evaluate((value) => {
+    const probe = document.body.appendChild(document.createElement('span'));
+    probe.style.color = value;
+    const computed = getComputedStyle(probe).color;
+    probe.remove();
+
+    return computed;
+  }, css);
+
+  const danger = await colour('var(--danger)');
+
+  for (const focus of ['speed', 'accuracy']) {
+    await palette(`train focus · ${focus}`);
+    await h.openView('Train');
+    await h.settle();
+    const marks = await page.locator('#train-words b').evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).color));
+    note(`train words, ${focus}`, `${await h.text('#train-heading')} · ${await page.locator('#train-words').isVisible() ? await h.text('#train-words') : '(none)'} · marks ${JSON.stringify(marks)}`);
+    check(marks.every((value) => value !== danger), `${focus}: no mark in Train's words is coral`);
+    await shot(`train-words-${focus}`);
+  }
 };
