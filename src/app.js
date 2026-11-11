@@ -3197,7 +3197,10 @@ function renderTrain() {
     startDrill(recommendation);
   };
 
-  const words = target ? evidenceWords(target, source) : [];
+  // Words with the target that were missed, for a target named for its misses. Where in a word the miss fell isn't
+  // kept, so the target is marked in the text colour, never coral. A pair named for its pace lists none: the words
+  // it turns up in were missed elsewhere, if at all.
+  const words = target && recommendation.was?.basis !== 'slow' ? evidenceWords(target, source) : [];
   $('train-words').hidden = !words.length;
   $('train-words').replaceChildren(...words.map((word) => {
     const span = document.createElement('span');

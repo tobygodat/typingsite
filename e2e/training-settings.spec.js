@@ -282,3 +282,44 @@ test('a focus chosen on another device updates the results card, Train and the c
   }
 });
 
+// The same history, its runs having missed "another", "think", "than" and "and" on the first try. Where in each
+// word the miss fell isn't kept, so no letter of them is coral: "an" in the text colour, the rest muted, and for
+// "th", named for its pace, no words at all.
+for (const scheme of ['dark', 'light']) {
+  test(`Train marks no unmistyped letter in coral, for a target named for its pace or its misses (${scheme})`, async ({ page, supabase }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    const runs = focusRuns().map((run) => ({ ...run, missedWords: ['another', 'think', 'than', 'and'] }));
+    await signInWithHistory(page, supabase, `marks-${scheme}@stilltype.test`, runs);
+
+    const colour = (value) => page.evaluate((css) => {
+      const probe = document.body.appendChild(document.createElement('span'));
+      probe.style.color = css;
+      const computed = getComputedStyle(probe).color;
+      probe.remove();
+
+      return computed;
+    }, value);
+
+    const [danger, text, muted] = [await colour('var(--danger)'), await colour('var(--text)'), await colour('var(--muted)')];
+
+    await openView(page, 'Train');
+    await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
+    await expect(page.locator('#train-evidence')).toHaveText(SLOW_TH);
+    await expect(page.locator('#train-words')).toBeHidden();
+    await expect(page.locator('#train-words b')).toHaveCount(0);
+
+    await chooseSetting(page, 'train-focus', 'accuracy');
+    await closeSettings(page);
+    await expect(page.locator('#train-heading')).toHaveText('Practice “an”');
+    await expect(page.locator('#train-words span')).toHaveText(['another', 'than', 'and']);
+    const marks = page.locator('#train-words b');
+    await expect(marks).toHaveText(['an', 'an', 'an']);
+
+    for (const mark of await marks.all()) {
+      await expect(mark).not.toHaveCSS('color', danger);
+      await expect(mark).toHaveCSS('color', text);
+    }
+
+    await expect(page.locator('#train-words span').first()).toHaveCSS('color', muted);
+  });
+}
