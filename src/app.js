@@ -4260,7 +4260,6 @@ function renderOverview(date) {
   renderMovers(week, source);
   progressRuns = week.charts.runs;
   progressWindow = week.charts.window;
-  renderTrendFigures(progressRuns);
   $('week-charts').hidden = !progressRuns.length;
 
   // What the charts can't show: an empty period, or runs listed that aren't drawn.
@@ -4602,6 +4601,9 @@ function drawProgressView() {
     if (shown[id]) render();
     else $(id).replaceChildren();
   }
+
+  // The figures under the full charts are drawn with them, so the two never tell of different runs.
+  if (detail === 'trends') renderTrendFigures(progressRuns);
 }
 
 // A small chart opens its fuller chart, on its own tab, with the chart's own button to return to.

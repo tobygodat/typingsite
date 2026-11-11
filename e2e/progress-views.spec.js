@@ -300,11 +300,38 @@ test('under the full charts, the period in figures: median speed and accuracy, t
 
   // Another length, with its one run, and the way back still leads to the overview.
   await variants.selectOption({ label: 'plain' });
-  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '15 seconds' }).click();
+  const seconds = page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '15 seconds' });
+  await seconds.click();
   await expect(screen).toHaveAttribute('data-detail', 'trends');
+  await expect(seconds).toBeFocused();
+  await expect(figures).toBeVisible();
   await expect(figures).toHaveText('median 100 wpm · 97% accuracy · best run 100 wpm on Oct 16 · 1 run');
   await page.locator('#progress-back').click();
   await expect(screen).toHaveAttribute('data-detail', '');
+});
+
+// The figures are drawn with the charts above them. A run from another device waits for the view's next drawing
+// and then reaches both, so the line never counts a run the chart doesn't show.
+test('a run from another device reaches the full chart and its figures together', async ({ page, supabase }) => {
+  await openProgress(page, supabase);
+  const figures = page.locator('#trend-figures');
+  const points = page.locator('#progress-trend .trend-dot');
+  await page.locator('#week-speed button').click();
+  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best run 80 wpm on Oct 17 · 4 runs');
+  const before = await points.count();
+
+  const user = [...supabase.profiles.keys()][0];
+  const row = supabase.profiles.get(user);
+  supabase.profiles.set(user, { ...row, data: { ...row.data, runs: [...row.data.runs, run(5, 120, 99)], updatedAt: new Date(NOW.getTime() + 1000).toISOString() } });
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  // The overview behind the view has the run (its sample line is the tell), and the view has not been drawn again.
+  await expect(page.locator('#lead-sample')).toHaveText('median of 4 runs');
+  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best run 80 wpm on Oct 17 · 4 runs');
+  expect(await points.count()).toBe(before);
+
+  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: 'All' }).click();
+  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best run 120 wpm on Oct 12 · 6 runs');
+  expect(await points.count()).toBeGreaterThan(before);
 });
 
 test('the best run is the newest of a tie', async ({ page, supabase }) => {
@@ -324,6 +351,7 @@ test('a period with no runs keeps the full charts open without figures, and a be
   await expect(figures).toBeHidden();
   await expect(page.locator('#progress-trend-note')).toHaveText('No runs in this period.');
   await period('All').click();
+  await expect(figures).toBeVisible();
   await expect(figures).toHaveText('median 80 wpm · 96% accuracy · best run 99 wpm, date unavailable · 2 runs');
 });
 

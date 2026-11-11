@@ -64,23 +64,34 @@ export const weekStart = (date) => new Date(date.getFullYear(), date.getMonth(),
 
 const enough = (side, basis) => Boolean(side) && (basis === 'slow' ? side.intervals : side.tries) >= FIXED_OBSERVATIONS;
 
-// A slip is more than noise. For misses: SLIP_MISSES first tries missed since, and a miss rate above the one before
-// by more than chance gives two samples of these sizes (the two-proportion z statistic, pooled, at SLIP_Z or more:
-// one side, 95%). For pace: a printed slowdown past SLOW_FLOOR_MS, the floor fixed reads, and SLOW_FLOOR_MS or more
-// slower than before.
-export const SLIP_MISSES = 3;
-export const SLIP_Z = 1.645;
+// A slip is more than noise. For misses: so many of the misses fall after `began` that, were the miss rate the same
+// on both sides, a split this lopsided or more would come up less than SLIP_CHANCE of the time (Fisher's exact
+// test, one side). The bar is that strict because some sixty pairs are read each week and only the ones that look
+// worse are candidates. At 1 in 200, simulated typists who had not changed saw a slip in 6 of 1,200 weeks, and a
+// pair that really went from 2% missed to 40% was listed in 317 weeks of 400 (tests/week-change.test.js holds
+// both). For pace, which has no spread recorded: a printed slowdown past
+// SLOW_FLOOR_MS, the floor fixed reads, and SLOW_FLOOR_MS or more slower than before.
+export const SLIP_CHANCE = 0.005;
 
-function risen(before, after) {
-  const pooled = (before.errors + after.errors) / (before.tries + after.tries);
-  const rise = after.errors / after.tries - before.errors / before.tries;
+// The chance that `after.errors` or more of the misses land in the after sample by luck alone: the upper tail of
+// the hypergeometric distribution, summed in logs so long histories don't overflow.
+const logChoose = (n, k) => Array.from({ length: k }, (_, i) => Math.log((n - k + i + 1) / (i + 1))).reduce((sum, term) => sum + term, 0);
 
-  return rise > 0 && rise >= SLIP_Z * Math.sqrt(pooled * (1 - pooled) * (1 / before.tries + 1 / after.tries));
+export function chanceOfRise(before, after) {
+  const [misses, total] = [before.errors + after.errors, before.tries + after.tries];
+  const all = logChoose(total, after.tries);
+  let chance = 0;
+
+  for (let k = after.errors; k <= Math.min(misses, after.tries); k += 1) {
+    chance += Math.exp(logChoose(misses, k) + logChoose(total - misses, after.tries - k) - all);
+  }
+
+  return Math.min(1, chance);
 }
 
 const worse = ({ basis, before, after }) => (basis === 'slow'
   ? Math.round(after.ms) > SLOW_FLOOR_MS && after.ms - before.ms >= SLOW_FLOOR_MS
-  : after.errors >= SLIP_MISSES && risen(before, after));
+  : after.errors / after.tries > before.errors / before.tries && chanceOfRise(before, after) < SLIP_CHANCE);
 
 // Slipping is held to the bar fixed is: FIXED_OBSERVATIONS of its kind since, over FIXED_RUNS runs or more, and
 // worse than before by more than noise. One typo this week, a 2 ms change, or a unit that only moved up the

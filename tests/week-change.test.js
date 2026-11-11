@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
-import { SHOWN_MOVERS, SLIP_MISSES, SLIP_Z, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
+import { SHOWN_MOVERS, SLIP_CHANCE, WEEK_MIN_RUNS, chanceOfRise, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
@@ -142,13 +142,74 @@ test('one typo this week is not slipping, nor are misses in a single run, howeve
   assert.deepEqual(moverCopy(mover), { before: '0 of 36', after: '9 of 24', tail: 'missed' });
 });
 
-// The two-proportion z statistic, pooled, counted here apart from the module's own.
-function zOf(before, after) {
-  const [p1, p2] = [before.errors / before.tries, after.errors / after.tries];
-  const pooled = (before.errors + after.errors) / (before.tries + after.tries);
+// Fisher's exact test, one side, counted here apart from the module's own: whole-number binomials, no logs.
+function exactChance(before, after) {
+  const choose = (n, k) => Array.from({ length: k }, (_, i) => BigInt(i + 1)).reduce((c, i) => c * (BigInt(n - k) + i) / i, 1n);
+  const [misses, total] = [before.errors + after.errors, before.tries + after.tries];
+  let ways = 0n;
 
-  return (p2 - p1) / Math.sqrt(pooled * (1 - pooled) * (1 / before.tries + 1 / after.tries));
+  for (let k = after.errors; k <= Math.min(misses, after.tries); k += 1) ways += choose(misses, k) * choose(total - misses, after.tries - k);
+
+  return Number(ways * 10n ** 12n / choose(total, after.tries)) / 1e12;
 }
+
+test('the chance of a rise is Fisher’s exact tail, at every edge', () => {
+  const cases = [[[0, 36], [3, 24]], [[0, 20], [3, 20]], [[0, 36], [6, 24]], [[0, 36], [9, 24]], [[1, 36], [4, 24]], [[4, 61], [3, 34]], [[0, 36], [0, 24]], [[5, 5], [5, 5]],
+    [[0, 20], [3, 400]], [[2, 400], [9, 20]], [[30, 900], [41, 700]]];
+
+  for (const [[e1, n1], [e2, n2]] of cases) {
+    const [before, after] = [{ errors: e1, tries: n1 }, { errors: e2, tries: n2 }];
+    assert.ok(Math.abs(chanceOfRise(before, after) - exactChance(before, after)) < 1e-9, `${e1}/${n1} → ${e2}/${n2}: ${chanceOfRise(before, after)} against ${exactChance(before, after)}`);
+  }
+
+  // The values the rule turns on: three misses after a clean 36 could be luck, six could not.
+  assert.equal(chanceOfRise({ errors: 0, tries: 36 }, { errors: 3, tries: 24 }).toFixed(3), '0.059');
+  assert.equal(chanceOfRise({ errors: 0, tries: 36 }, { errors: 6, tries: 24 }).toFixed(4), '0.0027');
+});
+
+// The rule is judged by what it does to people, not by its formula: simulated typists whose every pair keeps a fixed
+// miss rate and pace, read over two weeks as the page reads them. Seeded, so the counts are the same every run:
+// a false slip in 0, 0 and 6 of 400 weeks for the three mixes below, and the real one listed in 317 of 400.
+function simulatedWeeks(seed, weeks, { low, high, slip = null }) {
+  const random = seeded(seed);
+  const binomial = (n, p) => Array.from({ length: n }, () => random() < p).filter(Boolean).length;
+  const counts = { any: 0, target: 0 };
+
+  for (let week = 0; week < weeks; week += 1) {
+    const rate = new Map(BACKGROUND.map((pair) => [pair, low + random() * (high - low)]));
+    const slow = new Map(BACKGROUND.map((pair) => [pair, Math.round(random() * 30 - 10)]));
+
+    const typed = (id, when, late) => run(id, when, { patterns: BACKGROUND.map((pair) => {
+      const drift = Math.round((random() - 0.5) * 20);
+
+      return [pair, 6, binomial(6, late && pair === slip?.pair ? slip.rate : rate.get(pair)), 6, 200 + slow.get(pair) + drift, slow.get(pair) + drift];
+    }) });
+
+    const slips = overview([
+      ...Array.from({ length: 6 }, (_, i) => typed(`b${week}-${i}`, daysAgo(13 - i, 12, i), false)),
+      ...Array.from({ length: 4 }, (_, i) => typed(`a${week}-${i}`, daysAgo(4 - i, 12, i), true)),
+    ]).movers.filter((mover) => mover.status === 'slipping');
+
+    if (slips.some((mover) => mover.unit !== slip?.pair)) counts.any += 1;
+
+    if (slips.some((mover) => mover.unit === slip?.pair)) counts.target += 1;
+  }
+
+  return counts;
+}
+
+test('a typist who has not changed almost never sees a slip, and one whose pair got much worse usually does', () => {
+  // Sixty pairs a week, six runs before and four since, six tries of each pair a run.
+  for (const [seed, low, high] of [[12, 0.02, 0.02], [13, 0, 0.06], [14, 0, 0.12]]) {
+    const { any } = simulatedWeeks(seed, 400, { low, high });
+    assert.ok(any <= 8, `miss rates from ${low} to ${high}: a false slip in ${any} of 400 weeks`);
+  }
+
+  // One pair goes from 2 in 100 missed to 40 in 100 this week.
+  const { target, any } = simulatedWeeks(23, 400, { low: 0.02, high: 0.02, slip: { pair: BACKGROUND[3], rate: 0.4 } });
+  assert.ok(target >= 200, `the real slip is listed in ${target} of 400 weeks`);
+  assert.ok(any <= 8, `another pair is listed in ${any} of 400 weeks`);
+});
 
 // Enough tries over enough runs is not enough: the change has to be more than noise.
 test('a slip is more than noise: one or two misses in a week, a like miss rate, or a couple of milliseconds, are not', () => {
@@ -159,11 +220,11 @@ test('a slip is more than noise: one or two misses in a week, a like miss rate, 
     ...Array.from({ length: 4 }, (_, i) => run(`a${i}`, daysAgo(4 - i), { patterns: careful([after(i)]) })),
   ]).movers.filter((mover) => mover.unit === 're').map((mover) => [mover.status, moverCopy(mover).before, moverCopy(mover).after]);
 
-  // One miss in 24 tries, after none in 36; then two.
-  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i === 0 ? 1 : 0, 6, 200, 0]), []);
-  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i < 2 ? 1 : 0, 6, 200, 0]), []);
-  // Three is a slip.
-  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i < 3 ? 1 : 0, 6, 200, 0]), [['slipping', '0 of 36', '3 of 24']]);
+  // One miss in 24 tries, after none in 36; then two, three and five: each could be luck among sixty pairs.
+  for (const misses of [1, 2, 3, 5]) assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, Math.floor((misses + 3 - i) / 4), 6, 200, 0]), [], `${misses} of 24`);
+
+  // Six could not: fewer than 1 chance in 200.
+  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i < 2 ? 2 : 1, 6, 200, 0]), [['slipping', '0 of 36', '6 of 24']]);
   // Missed as often as before, near enough: 4 of 60, then 3 of 32. And twice as often, on too few to tell: 1 of 36,
   // then 3 of 40.
   assert.deepEqual(week((i) => ['re', 10, i < 4 ? 1 : 0, 10, 200, 0], (i) => ['re', 8, i < 3 ? 1 : 0, 8, 200, 0]), []);
@@ -335,7 +396,7 @@ test('across random histories in every focus, every mover follows the stated rul
           assert.ok((mover.basis === 'slow' ? mover.after.intervals : mover.after.tries) >= FIXED_OBSERVATIONS, `${at}: slipping on too few observations`);
           assert.ok(mover.basis === 'slow'
             ? Math.round(mover.after.ms) > SLOW_FLOOR_MS && mover.after.ms - mover.before.ms >= SLOW_FLOOR_MS
-            : mover.after.errors >= SLIP_MISSES && zOf(mover.before, mover.after) >= SLIP_Z,
+            : mover.after.errors / mover.after.tries > mover.before.errors / mover.before.tries && exactChance(mover.before, mover.after) < SLIP_CHANCE,
           `${at}: slipping within noise: ${JSON.stringify([mover.before, mover.after])}`);
           const wasFixed = newestLoop(loops, mover.unit, THEN);
 
