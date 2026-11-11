@@ -15,10 +15,10 @@ import { SLOW_FLOOR_MS, keyboardOf, learnerEvidence, paceAgainst, paceCopy, pace
 
 export const AHEAD_STEPS = 3;
 
-// A target drilled behind you is "fixed" only when the learner no longer queues it and the runs since its drill,
-// at least two (the retest and one more), hold twice the naming floor of observations of the kind it was drilled
-// for that on their own could not name it: no first-try miss in 20 tries, or a mean slowdown at or under the
-// 20 ms naming floor over 20 clean intervals. Anything short of that is "drilled".
+// The rule for "fixed", as the UI contract and DESIGN.md state it. A target behind you is fixed when the learner no
+// longer queues it and at least two runs since its drill hold observations of the kind it was drilled for (first
+// tries for a target drilled for its misses, clean intervals for a pair drilled for its pace), at least 20 of them
+// between those runs, with no first-try miss among them, or a mean slowdown of 20 ms or less. Otherwise it is drilled.
 export const FIXED_RUNS = 2;
 export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
 
@@ -29,30 +29,24 @@ const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a
 export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
 // A unit's observed evidence on measured runs on the keyboard, before `split` (ms) and from it on, of one kind: tries
-// and misses, or clean intervals and their mean slowdown over the person's pace. A side with no observations is null.
-// Undated records belong to neither side.
+// and misses, or clean intervals and their mean slowdown over the person's pace. `runs` counts only the runs that
+// hold an observation of that kind, so a run that typed the pair but timed none of it is no run of pace evidence. A
+// side with no observations is null. Undated records belong to neither side.
 export function evidenceSince(unit, basis, split, records) {
   const tally = (side) => {
-    let held = 0;
-    let tries = 0;
-    let errors = 0;
-    let intervals = 0;
-    let ms = 0;
+    const held = side.map((record) => record.units.find((item) => item.unit === unit))
+      .filter((item) => item && (basis === 'slow' ? item.timed > 0 : item.seen > 0));
 
-    for (const record of side) {
-      const item = record.units.find((entry) => entry.unit === unit);
+    if (!held.length) return null;
+    const sum = (count) => held.reduce((total, item) => total + count(item), 0);
 
-      if (!item) continue;
-      held += 1;
-      tries += item.seen;
-      errors += item.errors;
+    if (basis === 'slow') {
+      const intervals = sum((item) => item.timed);
 
-      if (item.slowMs !== null && item.timed) { intervals += item.timed; ms += item.timed * item.slowMs; }
+      return { runs: held.length, intervals, ms: sum((item) => item.timed * item.slowMs) / intervals };
     }
 
-    if (basis === 'slow') return intervals ? { runs: held, intervals, ms: ms / intervals } : null;
-
-    return tries ? { runs: held, tries, errors } : null;
+    return { runs: held.length, tries: sum((item) => item.seen), errors: sum((item) => item.errors) };
   };
 
   const dated = records.filter((record) => record.at !== null);
@@ -60,16 +54,17 @@ export function evidenceSince(unit, basis, split, records) {
   return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)) };
 }
 
-// A drilled target's evidence, split at its retest: before its drill and from its retest on, of the kind it was
-// drilled for.
-export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions))) {
+// A drilled target's evidence, split at its retest: before its drill and from its retest on, of one kind (by default
+// the kind it was drilled for).
+export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
   const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
 
-  return evidenceSince(loop.target, basisOf(loop), split, records);
+  return evidenceSince(loop.target, basis, split, records);
 }
 
-// The one rule for "fixed" (see FIXED_RUNS). Train asks it of a drilled target, split at its retest; Progress also
-// asks it of a unit never drilled, split where its week began (week-change.js), so the two pages share one rule.
+// The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for. Train
+// asks it of a drilled target, split at its retest; Progress also asks it of a unit never drilled, split where its week
+// began (week-change.js), so the two pages share one rule.
 export function isFixed(since, queued) {
   const after = since?.after;
 
@@ -109,7 +104,8 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
 
-  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records);
+  // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
+  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records, current.was.basis === 'slow' ? 'slow' : 'errors');
 
   const behind = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target)).map((loop) => {
     const basis = basisOf(loop);
@@ -156,7 +152,7 @@ export function sinceCopy(since) {
 export function behindCopy(step) {
   const { basis, retest, since: { before, after } } = step;
   const rate = (side) => `${Math.round((side.errors / side.tries) * 100)}%`;
-  const sinceLine = () => (basis === 'slow' ? `${paceShift(after.ms)} since, over ${plural(after.intervals, 'interval')}` : `${after.errors} of ${after.tries} missed since`);
+  const sinceLine = () => (basis === 'slow' ? `${paceShift(after.ms)} since the drill, over ${plural(after.intervals, 'interval')}` : `${after.errors} of ${after.tries} missed since the drill`);
 
   if (retest) {
     const line = basis === 'slow' ? `${paceShift(retest.was)} → ${paceShift(retest.now)}` : `${missedCopy(retest.was)} → ${missedCopy(retest.now)} missed`;
@@ -164,7 +160,7 @@ export function behindCopy(step) {
     return after?.runs > 1 ? [line, sinceLine()] : [line];
   }
 
-  if (before && after) return [basis === 'slow' ? `${paceShift(before.ms)} → ${paceShift(after.ms)} since` : `${rate(before)} → ${rate(after)} missed since`];
+  if (before && after) return [basis === 'slow' ? `${paceShift(before.ms)} → ${paceShift(after.ms)} since the drill` : `${rate(before)} → ${rate(after)} missed since the drill`];
 
   return after ? [sinceLine()] : [];
 }

@@ -2,9 +2,9 @@
 // speed trace, the words typed, then Run again and the drill under a hairline. Train is a path (TOB-420): the
 // targets drilled behind you, the open one, and the next three the learner queues; a retest's comparison is the
 // newest step behind you.
-import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { DEFAULT_POLICY, englishFrequency } from '../src/learner.js';
-import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, signInWithEmail, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { DEFAULT_POLICY } from '../src/learner.js';
+import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { withHistory, units, behindUnits } from './train-fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
 
@@ -188,55 +188,6 @@ test('the conditions show at once; no metric notes, and the counts behind accura
 
 // ── Train's path ──────────────────────────────────────────────────────────────────────────────────────────────
 
-const conditions = { mode: 'words', count: 10, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
-  corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
-
-// Every other pair clean at the run's pace; the named ones typed only where a run names them.
-const BACKGROUND = [...englishFrequency().pairs].sort((a, b) => b[1] - a[1]).slice(0, 60).map(([pair]) => pair);
-const NAMED = ['th', 'an', 'er', 'in', 'ou'];
-const at = (day) => `2026-11-${String(day).padStart(2, '0')}T12:00:00.000Z`;
-
-const run = (id, day, rows, missedWords = []) => ({ id, at: at(day), day: at(day).slice(0, 10), kind: 'test', status: 'complete', interrupted: false, fresh: true,
-  conditions, textId: id, score: { wpm: 62, accuracy: 96 }, elapsedMs: 25_000, errors: 3, target: null, keys: [], keysVersion: 0, missedWords,
-  patterns: [...BACKGROUND.filter((pair) => !NAMED.includes(pair) && !rows.some((row) => row[0] === pair)).map((pair) => [pair, 3, 0, 3, 200, 0]), ...rows] });
-
-const loop = (id, target, after, extra) => ({ id, at: after.at, beforeAttemptId: null, afterAttemptId: after.id, target, recommendationKind: 'targeted',
-  policy: DEFAULT_POLICY, focus: 'balanced', drillCompleted: true, conditions, comparison: { comparable: true, state: 'improved', wpmDelta: 3, accuracyDelta: 1.5 },
-  targetTiming: null, targetMisses: null, targetPace: null, drill: { target, duration: 30, wordList: '200' }, ...extra });
-
-// Six runs that miss "an" and "er" and slow "th" by 90 ms, and `drills` earlier drills behind you, oldest first. "qu" and
-// "ck" are clean in two runs since their retests (fixed); the rest are drilled. The learner queues th, an, er, in, ou.
-function history(drills = 4) {
-  const units = ['qu', 'ck', 'ol', 'wh', 'sp', 'ly', 'ge', 'bo'].slice(0, drills);
-  const retests = units.map((unit, i) => run(`retest-${unit}`, 1 + (i % 4), [[unit, 12, unit === 'ol' ? 1 : 0, 12, 200, 0]]));
-  const after = [5, 6].map((day) => run(`after-${day}`, day, [['qu', 12, 0, 12, 200, 0], ['ck', 12, 0, 12, 200, 0]]));
-
-  const runs = Array.from({ length: 6 }, (_, i) => run(`run-${i}`, 5 + i, [['th', 8, 0, 8, 290, 90], ['an', 8, 3, 8, 200, 0], ['er', 8, 2, 8, 200, 0],
-    ['in', 10, i % 2, 10, 200, 0], ['ou', 10, i % 3 ? 0 : 1, 10, 200, 0]], ['another', 'than', 'and', 'other', 'every', 'there']));
-
-  const loops = units.map((unit, i) => loop(`loop-${unit}`, unit, retests[i], { targetBasis: 'errors',
-    targetMisses: { target: unit, was: { errors: 6, observations: 22 }, now: { errors: unit === 'ol' ? 1 : 0, observations: 12 } } }));
-
-  return { version: 2, preferences: { mode: 'words', count: 10 }, attempts: [], runs: [...retests, ...after, ...runs], loops, seenTextIds: [], bests: {},
-    updatedAt: '2026-11-10T12:00:00Z' };
-}
-
-// Signed in with that history synced from another device, and one 10-word run here as the retest's baseline.
-async function withHistory(page, supabase, email, drills = 4) {
-  const user = supabase.addUser(email);
-  supabase.profiles.set(user.id, { data: history(drills) });
-  await openApp(page);
-  await signInWithEmail(page, email);
-  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  await chooseWords(page, 10);
-  await completePassage(page);
-
-  return user;
-}
-
-const units = (page, kind) => page.locator(`#train-path > .is-${kind} .path-unit`).evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => node.firstChild.textContent));
-const behindUnits = (page) => page.locator('#train-path > .is-behind:not(#comparison-panel) .path-unit').evaluateAll((nodes) => nodes.map((node) => node.firstChild.textContent));
-
 async function jumpToTrain(page) {
   await page.keyboard.press('Control+k');
   await page.locator('#palette-input').fill('train');
@@ -301,10 +252,22 @@ test('with history the path shows each drill behind you, the learner’s target 
   await expect(page.locator('#train-path > .is-ahead .path-line').first()).toHaveText(/^\d+ of \d+ missed$/);
 
   // Drilled after one retest; fixed only for the two whose runs since hold 20 clean tries, which the learner no longer queues.
+  // Each says so in a status word beside its target.
   await expect(page.locator('#train-path > .is-fixed .path-unit')).toHaveText(['qu, fixed', 'ck, fixed']);
   await expect(page.locator('#train-path > .is-drilled .path-unit')).toHaveText(['ol, drilled', 'wh, drilled']);
-  await expect(page.locator('#train-path > .is-fixed').first().locator('.path-line')).toHaveText(['6 of 22 → 0 of 12 missed', '0 of 36 missed since']);
-  await expect(page.locator('#train-path > .is-drilled').first().locator('.path-line')).toHaveText(['6 of 22 → 1 of 12 missed']);
+  await expect(page.locator('#train-path > .is-fixed .path-status')).toHaveText(['fixed', 'fixed']);
+  await expect(page.locator('#train-path > .is-drilled .path-status')).toHaveText(['drilled', 'drilled']);
+  // The read-back, then what the runs since the drill hold. The run typed here is one of those runs, and its passage
+  // may hold the pair, so the counts since are whatever that run adds: "qu" has 36 clean tries before it, and "ol",
+  // whose read-back is from its retest alone, gains a since-line only when the passage holds "ol".
+  const qu = await page.locator('#train-path > .is-fixed').first().locator('.path-line').allTextContents();
+  expect(qu[0]).toBe('6 of 22 → 0 of 12 missed');
+  expect(qu.slice(1)).toHaveLength(1);
+  expect(Number(qu[1].match(/^0 of (\d+) missed since the drill$/)?.[1])).toBeGreaterThanOrEqual(36);
+  const ol = await page.locator('#train-path > .is-drilled').first().locator('.path-line').allTextContents();
+  expect(ol[0]).toBe('6 of 22 → 1 of 12 missed');
+  expect(ol.length).toBeLessThanOrEqual(2);
+  expect(ol.slice(1).every((line) => /^1 of \d+ missed since the drill$/.test(line)), ol.join(' / ')).toBe(true);
 
   // The shapes say it without colour: a disc when fixed, a ring when drilled, a larger ring for the open step, a smaller one ahead.
   const node = (selector) => page.locator(`#train-path ${selector} .path-node`).first().evaluate((el) => ({ size: el.getBoundingClientRect().width,
@@ -322,6 +285,52 @@ test('with history the path shows each drill behind you, the learner’s target 
   expect(rows.slice(0, 4)).toEqual(['th', ...ahead].map((unit) => `Practice “${unit}”`));
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
+
+for (const [width, height] of [[1440, 900], [390, 844]]) {
+  test(`under forced colours at ${width}px the four steps and the two halves of the line still differ`, async ({ page, supabase }) => {
+    await page.setViewportSize({ width, height });
+    await page.emulateMedia({ forcedColors: 'active' });
+    await withHistory(page, supabase, `path-forced-${width}@stilltype.test`);
+    await openView(page, 'Train');
+    expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
+
+    const node = (selector) => page.locator(`#train-path ${selector} .path-node`).first().evaluate((el) => {
+      const style = getComputedStyle(el);
+
+      return { size: Math.round(el.getBoundingClientRect().width), fill: style.backgroundColor, ring: style.borderTopColor, dot: style.boxShadow };
+    });
+
+    const [drilled, fixed, open, ahead] = [await node('> .is-drilled'), await node('> .is-fixed'), await node('#train-current'), await node('> .is-ahead')];
+    // Drilled is a ring, fixed a disc of the ring's colour, the open step a larger ring of another colour holding a dot,
+    // and ahead a smaller ring of a third.
+    expect(drilled.fill).not.toBe(drilled.ring);
+    expect(fixed.fill).toBe(fixed.ring);
+    expect(open.size).toBeGreaterThan(drilled.size);
+    expect(open.ring).not.toBe(drilled.ring);
+    expect(open.dot).toContain(open.ring);
+    expect(ahead.size).toBeLessThan(drilled.size);
+    expect(ahead.ring).not.toBe(drilled.ring);
+    expect(ahead.ring).not.toBe(open.ring);
+
+    // The line: solid behind you, dashed from the open step on, drawn with a column's ::before from 901px and a step's
+    // ::before below.
+    const line = (selector) => page.locator(selector).first().evaluate((el) => {
+      const style = getComputedStyle(el, '::before');
+
+      return { color: style.backgroundColor, image: style.backgroundImage };
+    });
+
+    const [done, todo] = width > 900
+      ? [await line('#train-path > .is-behind .path-head'), await line('#train-current > .path-head')]
+      : [await line('#train-path > .is-behind:not([data-early])'), await line('#train-current')];
+
+    expect(done.image).toBe('none');
+    expect(done.color).not.toBe('rgba(0, 0, 0, 0)');
+    expect(todo.image).toContain('repeating-linear-gradient');
+    // And each step behind you says its state in words.
+    await expect(page.locator('#train-path > .is-behind:not([data-early]) .path-status').first()).toBeVisible();
+  });
+}
 
 test('each focus opens its own target and queues its own steps ahead, each with evidence of its kind', async ({ page, supabase }) => {
   await withHistory(page, supabase, 'path-focus@stilltype.test');
@@ -350,7 +359,7 @@ test('choosing a step ahead drills it, and its loop records the policy and focus
   await openView(page, 'Train');
   const choice = page.locator('#train-path > .is-ahead .path-choose').first();
   const unit = (await choice.locator('.path-unit').textContent());
-  await expect(choice).toHaveAccessibleName(new RegExp(`^Drill ${unit} `));
+  await expect(choice).toHaveAccessibleName(new RegExp(`^Drill ${unit}, \\d+ (of \\d+ missed|ms slower)$`));
   await choice.click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText(`Practice “${unit}”`);
@@ -380,6 +389,7 @@ test('after a retest the path moves on: the step just drilled is behind you with
   await expect(page.locator('#typing-input')).toBeFocused();
   await finishDrill(page);
   await expect(page.locator('#typing-input')).toBeFocused();
+  await page.evaluate(() => document.addEventListener('animationstart', (event) => { window.pathMoved ||= event.animationName === 'path-advance'; }));
   await completePassage(page);
 
   const panel = page.locator('#comparison-panel');
@@ -401,7 +411,7 @@ test('after a retest the path moves on: the step just drilled is behind you with
   expect(order.indexOf('train-current')).toBe(order.indexOf('comparison-panel') + 1);
   expect([...await behindUnits(page), ...await units(page, 'ahead')]).not.toContain('th');
   // The path moved on one step as the comparison opened, and the motion has finished.
-  await expect(page.locator('#train-path')).toHaveClass(/is-advancing/);
+  await expect.poll(() => page.evaluate(() => window.pathMoved)).toBe(true);
   await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.animationName?.startsWith('path-') && a.playState === 'running').length)).toBe(0);
 
   // Opened again from the dock, the path is drawn afresh at your settings.

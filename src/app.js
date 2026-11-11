@@ -123,6 +123,9 @@ let cacheText = null;
 let lastPull = 0;
 let cacheWaiting = false;
 
+// A change to the history that arrived mid-run, which the training surfaces show once the run ends (followHistory).
+let historyWaiting = false;
+
 // Another tab signed this account out, or the device is now signed in as someone else
 // (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
 // now is once no run is in progress.
@@ -715,7 +718,8 @@ function flushDeferredSync() {
   if (cacheWaiting && absorbCache()) setTimeout(showMerged);
 
   if (preferencesWaiting) followStoredPreferences();
-  forgetClearedTraining();
+
+  if (forgetClearedTraining() || historyWaiting) followHistory();
 }
 
 // A one-keyboard race never sets runActive; its turns start, end and restart here.
@@ -3185,8 +3189,9 @@ let trainAfter = null;
 // Train: the path (src/train-path.js) at the current conditions, or after a retest at the retest's. Behind you, the
 // targets you have drilled; open, the drill the learner names (the results card's Drill and Patterns across runs
 // name the same), or after a retest the next one it queues; ahead, the next three. `advance` moves the path on by
-// one step, once, as a retest's comparison opens.
-function renderTrain({ advance = false } = {}) {
+// one step, once, as a retest's comparison opens. `fresh` draws it as Train opens, scrolled to its end; otherwise a
+// redraw keeps the reader's place (drawPath).
+function renderTrain({ advance = false, fresh = false } = {}) {
   const after = trainAfter;
   const source = after?.source || conditions();
   const recommendation = trainingRecommendation(source);
@@ -3239,49 +3244,80 @@ function renderTrain({ advance = false } = {}) {
   // A target drilled before reads its figure over every run, so it and the before → since line tell one story.
   const since = sinceCopy(current.since);
   const evidence = named ? evidenceCopy(current.was, { all: Boolean(since) }) : '';
-  setText($('train-evidence'), evidence);
+  showFigures($('train-evidence'), evidence);
   $('train-evidence').hidden = !evidence;
-  setText($('train-last'), since);
+  showFigures($('train-last'), since);
   $('train-last').hidden = !since;
 
-  drawPath(path, { advance, source, recommendation });
+  drawPath(path, { advance, fresh, source, recommendation });
+}
+
+// A figure keeps its number with its unit, and the first half of a before → after pair keeps its arrow, so the pair
+// breaks only between its halves: "70 ms slower → 20 ms faster" never leaves "ms faster" on a line of its own. The
+// text itself is the copy, unchanged.
+const FIGURE = /(?:\d+(?:%| of \d+)(?: missed)?|\d+ ms (?:slower|faster)|\d+ (?:clean )?intervals?|at your pace)(?: →)?/g;
+
+function showFigures(line, text) {
+  if (line.dataset.text === text) return line;
+  line.dataset.text = text;
+  let at = 0;
+  const parts = [];
+
+  for (const match of text.matchAll(FIGURE)) {
+    parts.push(text.slice(at, match.index), element('span', match[0], 'path-figure'));
+    at = match.index + match[0].length;
+  }
+
+  line.replaceChildren(...parts, text.slice(at));
+
+  return line;
 }
 
 // The steps around the comparison and the open step. Phones show the two newest steps behind you; wider screens
 // scroll the line back through all of them. Progress keeps every drill either way.
 const PHONE_BEHIND = 2;
 
-function drawPath(path, { advance, source, recommendation }) {
+function drawPath(path, { advance, fresh, source, recommendation }) {
   const list = $('train-path');
+  // A redraw (history or settings changed under the page) gives keyboard focus back to the step that had it, found by
+  // its unit, or to the open step's button when that step is gone, and keeps the line as far from its end as it was.
+  const had = list.contains(document.activeElement) ? document.activeElement : null;
+  const hadUnit = had?.closest('[data-unit]')?.dataset.unit;
+  const fromEnd = list.scrollWidth - list.scrollLeft;
 
   const step = (unit, kind, lines = []) => {
     const item = element('li', '', `path-step is-${kind}`);
+    item.dataset.unit = unit;
     const head = element('div', '', 'path-head');
     head.append(element('span', '', 'path-node'), element('span', unit, 'path-unit'));
     head.firstChild.setAttribute('aria-hidden', 'true');
-    item.append(head, ...lines.map((line) => element('p', line, 'path-line')));
+    item.append(head, ...lines.map((line) => showFigures(element('p', '', 'path-line'), line)));
 
     return item;
   };
 
+  // A step behind you says "drilled" or "fixed" in a status word beside its target, as its ring or disc shows it.
   const behind = path.behind.map((item, index) => {
     const node = step(item.unit, `behind is-${item.state}`, behindCopy(item));
-    node.querySelector('.path-unit').append(element('span', `, ${item.state}`, 'sr-only'));
+    node.querySelector('.path-unit').append(element('span', ', ', 'sr-only'), element('span', item.state, `path-status status badge-${item.state === 'fixed' ? 'success' : 'neutral'}`));
 
     if (path.behind.length - index > PHONE_BEHIND - (path.just ? 1 : 0)) node.dataset.early = '';
 
     return node;
   });
 
-  // A step ahead drills its unit when chosen, through the same path as the comparison's Next.
+  // A step ahead drills its unit when chosen, through the same path as the comparison's Next. Its name reads
+  // "Drill an, 5 of 40 missed".
   const ahead = path.ahead.map(({ unit, was }) => {
     const item = element('li', '', 'path-step is-ahead');
+    item.dataset.unit = unit;
     const button = element('button', '', 'path-choose');
     button.type = 'button';
+    button.setAttribute('aria-label', `Drill ${unit}, ${aheadCopy(was)}`);
     const head = element('span', '', 'path-head');
-    head.append(element('span', '', 'path-node'), element('span', 'Drill ', 'sr-only'), element('span', unit, 'path-unit'));
+    head.append(element('span', '', 'path-node'), element('span', unit, 'path-unit'));
     head.firstChild.setAttribute('aria-hidden', 'true');
-    button.append(head, element('span', aheadCopy(was), 'path-line'));
+    button.append(head, showFigures(element('span', '', 'path-line'), aheadCopy(was)));
     button.addEventListener('click', () => practiceTarget(unit, source, recommendation));
     item.append(button);
 
@@ -3300,28 +3336,45 @@ function drawPath(path, { advance, source, recommendation }) {
 
   list.replaceChildren(...behind, $('comparison-panel'), $('train-current'), ...ahead, ...places);
 
-  // From 901px the steps sit in columns, six to a screen; the comparison takes two. The open step's details run from
-  // its column to the end, and the line opens scrolled to its end, so the open step and those ahead are in view.
+  // From 901px the steps sit in columns, six to a screen and the tail of the step before them; the comparison takes
+  // two. The open step's details run from its column to the end, and the line opens scrolled to its end, so the open
+  // step and those ahead are in view.
   const before = behind.length + (path.just ? 2 : 0);
   list.style.setProperty('--open', String(before + 1));
   list.style.setProperty('--columns', String(Math.max(6, before + 1 + ahead.length + places.length)));
-  list.scrollLeft = list.scrollWidth;
+  list.scrollLeft = fresh || advance ? list.scrollWidth : list.scrollWidth - fromEnd;
   scrollablePath();
 
-  if (advance) {
-    list.style.setProperty('--advance', `${list.clientWidth / 6}px`);
+  if (had) {
+    const open = $(path.just && path.current.kind === 'targeted' ? 'comparison-next' : 'start-drill');
+    const same = hadUnit ? list.querySelector(`[data-unit="${CSS.escape(hadUnit)}"] .path-choose`) : had;
+    const back = same?.isConnected && same.getClientRects().length && (same !== list || list.tabIndex === 0) ? same : open;
+    back.focus({ preventScroll: true });
+  }
+
+  if (!advance) list.classList.remove('is-advancing');
+  else {
+    list.style.setProperty('--advance', `${parseFloat(getComputedStyle(list).gridTemplateColumns)}px`);
     list.classList.remove('is-advancing');
     void list.offsetWidth;
     list.classList.add('is-advancing');
   }
 }
 
-// The line takes keyboard focus only while it scrolls, so its arrow keys reach the steps that don't fit.
+// The line takes keyboard focus only while it scrolls, so its arrow keys reach the steps that don't fit. An edge fades
+// while more of the line lies past it, so steps behind you scrolled off the start show there are more.
 function scrollablePath() {
   const list = $('train-path');
 
   if (list.scrollWidth > list.clientWidth + 1) list.tabIndex = 0;
   else list.removeAttribute('tabindex');
+  pathEdges();
+}
+
+function pathEdges() {
+  const list = $('train-path');
+  list.toggleAttribute('data-more-behind', list.scrollLeft > 1);
+  list.toggleAttribute('data-more-ahead', list.scrollLeft < list.scrollWidth - list.clientWidth - 1);
 }
 
 // Words this person missed on the first try that hold the target, newest first, from the runs the
@@ -3454,7 +3507,7 @@ function switchView(view) {
   // Opened from anywhere, Train draws the path afresh; a retest's comparison draws it once more as it opens.
   if (view === 'train') {
     trainAfter = null;
-    renderTrain();
+    renderTrain({ fresh: true });
   }
 
   if (view === 'compete') renderDaily();
@@ -3713,16 +3766,21 @@ function drillPassage() {
 }
 
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
-// its observed evidence and its last drill.
+// its observed evidence and its last drill. Redrawn under someone using it, focus stays on the row for the same unit,
+// or the first row when that one is gone.
 function renderTraining() {
+  const list = $('training-targets');
+  const hadUnit = list.contains(document.activeElement) ? document.activeElement.closest('[data-unit]')?.dataset.unit : undefined;
+
   const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
     && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
 
   const recommendation = trainingRecommendation(source);
   const { queue } = recommendation;
   $('training-memory-note').textContent = queue.length ? '' : 'Not enough evidence yet.';
-  $('training-targets').replaceChildren(...queue.slice(0, 8).map(({ unit, was }) => {
+  list.replaceChildren(...queue.slice(0, 8).map(({ unit, was }) => {
     const row = element('article', '', 'training-target');
+    row.dataset.unit = unit;
     const copy = document.createElement('div');
     copy.append(element('h3', `Practice “${unit}”`), element('p', evidenceCopy(was)));
     const loop = [...profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
@@ -3732,6 +3790,8 @@ function renderTraining() {
 
     return row;
   }));
+
+  if (hadUnit !== undefined) (list.querySelector(`[data-unit="${CSS.escape(hadUnit)}"] button`) || list.querySelector('button') || $('training-conditions')).focus({ preventScroll: true });
 }
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
@@ -4213,6 +4273,16 @@ function renderHistory() {
   renderLoops(loops);
   renderComposeHistory();
   showProgressDetail();
+}
+
+// The week's lead and what moved it, built again where only the learner's inputs changed (the train focus, or history
+// that followHistory brings), so open run rows and the charts stay as they are.
+function renderWeek() {
+  const source = variantConditions();
+  progressWeek = weekChange({ runs: profile.runs, loops: profile.loops, practiceDays: profile.practiceDays, key: source ? progressState.key : '', conditions: source,
+    focus: prefs.trainFocus, goal: prefs.dailyGoal, period: progressState.period, now: Date.now() });
+  renderLead(progressWeek.lead);
+  renderMovers(progressWeek, source);
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -5472,7 +5542,7 @@ function wipeHistory() {
 // Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
 // retest makes no comparison with the cleared run.
 function forgetClearedTraining() {
-  if (runInProgress()) return;
+  if (runInProgress()) return false;
   const marker = profile.historyClearedAt || null;
   const arrived = marker && !trainingClears.has(marker) ? marker : null;
   trainingClears = account.clearsApplied(profile);
@@ -5480,7 +5550,7 @@ function forgetClearedTraining() {
   const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
   trainingLegacyAt = legacyStart;
 
-  if (!baselineAttempt && !shownResult) return;
+  if (!baselineAttempt && !shownResult) return false;
   const named = account.clearedIds(profile);
 
   const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
@@ -5489,9 +5559,26 @@ function forgetClearedTraining() {
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
     || takenByLegacy(record));
 
-  if (!cleared(baselineAttempt) && !cleared(shownResult)) return;
+  if (!cleared(baselineAttempt) && !cleared(shownResult)) return false;
   forgetTraining();
-  renderTraining();
+
+  return true;
+}
+
+// The one way a change to the history this tab holds reaches the screen: a merge from another tab or device, a clear
+// or its undo, made here or elsewhere. A clear that took the baseline or the run on show is forgotten first (so a
+// comparison of cleared runs goes, and with it its Next), then every training surface asks the recommender again
+// (showTraining), as after a settings change. Mid-run nothing changes: the run's end brings it (flushDeferredSync).
+function followHistory() {
+  if (runInProgress()) {
+    historyWaiting = true;
+
+    return;
+  }
+
+  historyWaiting = false;
+  forgetClearedTraining();
+  showTraining();
 }
 
 function clearHistory() {
@@ -5521,7 +5608,7 @@ function clearHistory() {
   clearTimeout(clearTimer);
   clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; clearedPassage = null; }, 5000);
   renderHistory();
-  renderTraining();
+  followHistory();
   renderDaily();
   followLessonProgress();
   showBest();
@@ -5553,7 +5640,7 @@ function undoClear() {
   showBest();
   armPace();
   renderHistory();
-  renderTraining();
+  followHistory();
   renderDaily();
   followLessonProgress();
   clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
@@ -5619,16 +5706,16 @@ function absorb(data) {
   return changed;
 }
 
-// After a merge: preferences follow where they can't disturb a run, and only the visible history view
-// re-renders, and not while someone is using it. Nothing takes focus or announces anything, and
-// nothing changes mid-run; Progress, Train and Challenge re-render whenever they are next shown.
+// After a merge: preferences follow where they can't disturb a run, the training surfaces follow the merged history
+// (followHistory), and the visible history view re-renders, but not while someone is using it. Nothing takes focus or
+// announces anything, and nothing changes mid-run; Progress and Challenge re-render whenever they are next shown.
 function showMerged() {
   followStoredPreferences();
   // Lesson progress follows at once: the learn screen is hidden while a run is typed.
   followLessonProgress();
+  followHistory();
 
   if (runInProgress()) return;
-  forgetClearedTraining();
 
   // Newer test conditions wait while a passage is prepared; one nobody has started is prepared again
   // with them, as a page load did before merging (the practice screen only; navigate does it on the
@@ -5848,6 +5935,12 @@ function followLessonProgress() {
   if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
 
   if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  redrawLessons();
+}
+
+// The learn screen drawn again under someone using it: focus on a lesson row comes back to that row (or to the lesson
+// button, if the row has no button now).
+function redrawLessons() {
   const list = $('lesson-list');
   const row = list.contains(document.activeElement) ? [...list.children].indexOf(document.activeElement.closest('.lesson-row')) : -1;
   renderLessons();
@@ -6796,6 +6889,7 @@ function bindEvents() {
   $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
   $('training-conditions').addEventListener('change', renderTraining);
+  $('train-path').addEventListener('scroll', pathEdges, { passive: true });
   $('start-daily').addEventListener('click', startDaily);
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   $('comparison-back').addEventListener('click', () => {
@@ -7238,13 +7332,15 @@ function setTraining(key, value) {
 function showTraining() {
   const view = document.body.dataset.view;
 
-  if (view === 'learn') renderLessons();
+  if (view === 'learn') redrawLessons();
 
   if (view === 'results' && shownResult) renderResultDrill(shownResult);
 
   if (view === 'train') renderTrain();
 
   renderTraining();
+
+  if (view === 'progress') renderWeek();
 
   if (view === 'practice' && staleAdaptive()) resetSession('practice');
 }

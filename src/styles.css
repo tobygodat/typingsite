@@ -2460,32 +2460,44 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 /* ── Train: the path ───────────────────────────────────────────────────── */
 
-/* One line of steps: behind you (accent, a ring, or a disc once fixed), the open step (a larger ring holding a dot,
-   its target at display size) and the steps ahead (a smaller outline ring on a dashed line). Position, node shape
-   and the line's dash tell them apart without colour. From 901px the steps sit in columns, six to a screen, and the
-   line scrolls back through every step behind you; app.js sets --columns, and --open, the open step's column. */
+/* One line of steps: behind you (accent, a ring, or a disc once fixed, with its status word), the open step (a larger
+   ring holding a dot, its target at display size) and the steps ahead (a smaller outline ring on a dashed line).
+   Position, node shape, the status word and the line's dash tell them apart without colour. From 901px the steps sit
+   in columns, six to a screen, with a gutter between them, and the line scrolls back through every step behind you.
+   The six leave room at the start for the tail of the step before them, so a line that holds more shows a part of
+   the next step behind you there, faded, while the first whole step stays clear; the end fades the same way while
+   more lies past it. app.js sets --columns, --open (the open step's column) and data-more-behind and data-more-ahead. */
 .train-path {
   --columns: 6;
   --open: 1;
+  --fade-behind: 0px;
+  --fade-ahead: 0px;
   margin: 0 calc(var(--space-2) * -1);
   padding: var(--space-10) var(--space-2) var(--space-2);
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(var(--columns), calc(100% / 6));
+  grid-template-columns: repeat(var(--columns), calc((100% - var(--space-8)) / 6));
   align-items: start;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
   scrollbar-color: var(--hairline-strong) transparent;
 }
+.train-path[data-more-behind] { --fade-behind: var(--space-8); }
+.train-path[data-more-ahead] { --fade-ahead: var(--space-8); }
+/* Focused for its arrow keys, the line drops the fade so its focus ring shows whole. */
+.train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
+}
 
-.path-step { grid-row: 1; min-width: 0; padding-bottom: var(--space-2); display: grid; align-content: start; gap: var(--space-1); }
+.path-step { grid-row: 1; min-width: 0; padding: 0 var(--space-4) var(--space-2) 0; display: grid; align-content: start; gap: var(--space-1); }
 .path-step.is-just { grid-column: span 2; }
 /* The open step lays its head on the line and its details under it, from its column to the end. */
 #train-current { display: contents; }
-#train-current > .path-head { grid-row: 1; grid-column: var(--open); }
+#train-current > .path-head { grid-row: 1; grid-column: var(--open); margin-right: var(--space-4); }
 
-.path-head { position: relative; margin-right: var(--space-4); display: grid; justify-items: start; row-gap: var(--space-6); }
+.path-head { position: relative; display: grid; justify-items: start; row-gap: var(--space-6); }
 /* Each step draws the line to the next one: travelled behind you, dashed from the open step on. */
 .path-head::before {
   content: "";
@@ -2526,6 +2538,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 
 .path-unit { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+/* "drilled" or "fixed" beside the target, a status word whose dot is the step's own node. */
+.path-status { margin-left: var(--space-2); }
+/* A number stays with its unit, and each half of a before → after pair stays whole. */
+.path-figure { white-space: nowrap; }
 #train-unit { font-size: var(--text-display); line-height: 1; letter-spacing: -0.025em; white-space: nowrap; }
 .path-line { margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
 .is-behind .path-line:first-of-type { color: var(--text); }
@@ -2620,7 +2636,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
    from above when there are more), then the open step with its details under its target, then the steps ahead. */
 @media (max-width: 900px) {
   .train-path { margin: 0; padding: var(--space-4) 0 0; grid-template-columns: minmax(0, 1fr); overflow: visible; }
-  .path-step, .path-step.is-just, #train-current { grid-row: auto; grid-column: 1; position: relative; display: grid; padding-bottom: var(--space-6); }
+  .train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
+  .path-step, .path-step.is-just, #train-current { grid-row: auto; grid-column: 1; position: relative; display: grid; padding: 0 0 var(--space-6); }
   #train-current > .path-head, .train-open { grid-row: auto; grid-column: auto; }
   .path-step:is([data-early], .is-place) { display: none; }
   .path-head { margin-right: 0; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-4); }
@@ -2667,6 +2684,21 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
   .train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head, .train-path.is-advancing .train-open { animation: none; }
   .train-path.is-advancing > #train-current { animation: path-open var(--dur-fast) var(--ease-out); }
+}
+
+/* Forced colours would draw every node as the same ring and drop the open step's dot and the line: draw them in system
+   colours. Behind you a CanvasText ring, or a CanvasText disc once fixed, on a solid CanvasText line; the open step a
+   Highlight ring holding a Highlight dot; ahead a smaller GrayText ring on a dashed GrayText line. */
+@media (forced-colors: active) {
+  .path-node, .path-head::before, .path-step::before, .path-step[data-early] + .path-step::after { forced-color-adjust: none; }
+  .path-node { border-color: CanvasText; background: Canvas; }
+  .is-fixed .path-node { background: CanvasText; }
+  #train-current .path-node { border-color: Highlight; box-shadow: inset 0 0 0 var(--space-1) Canvas, inset 0 0 0 var(--space-6) Highlight; }
+  .is-ahead .path-node { border-color: GrayText; }
+  .path-head::before, .path-step::before { background: CanvasText; }
+  :is(#train-current, .is-ahead) .path-head::before { background: repeating-linear-gradient(90deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
+  :is(#train-current, .is-ahead)::before { background: repeating-linear-gradient(180deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
+  .path-step[data-early] + .path-step::after { background: linear-gradient(transparent, CanvasText); }
 }
 
 .run-card-graph { margin: 0; }
