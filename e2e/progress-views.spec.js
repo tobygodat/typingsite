@@ -273,18 +273,58 @@ test('two small charts, each with its value at the line’s end, open their full
 test('under the full charts, the period in figures: median speed and accuracy, the best run and its day, and the runs counted', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   const figures = page.locator('#trend-figures');
+  const screen = page.locator('#progress-screen');
   await page.locator('#week-speed button').click();
-  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best 80 wpm on Oct 17 · 4 runs');
+  await expect(figures).toBeVisible();
+  await expect(figures).toHaveText('median 65 wpm · 93% accuracy · best run 80 wpm on Oct 17 · 4 runs');
   await expect(figures.locator('data')).toHaveCount(2);
   await expect(figures.locator('data').first()).toHaveAttribute('value', '65');
-  await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).click();
-  await expect(figures).toHaveText('median 70 wpm · 94% accuracy · best 80 wpm on Oct 17 · 3 runs');
+
+  // The view's own filters keep it open: a period, then a condition set, each with focus kept on its control.
+  const week = page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' });
+  await week.click();
+  await expect(screen).toHaveAttribute('data-detail', 'trends');
+  await expect(week).toBeFocused();
+  await expect(figures).toBeVisible();
+  await expect(figures).toHaveText('median 70 wpm · 94% accuracy · best run 80 wpm on Oct 17 · 3 runs');
+  await expect(page.locator('#progress-trend svg')).toBeVisible();
   expect(await overflow(page)).toBe(0);
 
   // Another set, another sample: the figures never mix conditions.
   await page.locator('.conditions-disclosure > summary').click();
-  await page.getByRole('combobox', { name: 'Conditions', exact: true }).selectOption({ label: 'punctuation' });
-  await expect(figures).toHaveText('median 32 wpm · 99% accuracy · best 32 wpm on Oct 16 · 2 runs');
+  const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
+  await variants.selectOption({ label: 'punctuation' });
+  await expect(screen).toHaveAttribute('data-detail', 'trends');
+  await expect(figures).toBeVisible();
+  await expect(figures).toHaveText('median 32 wpm · 99% accuracy · best run 32 wpm on Oct 16 · 2 runs');
+
+  // Another length, with its one run, and the way back still leads to the overview.
+  await variants.selectOption({ label: 'plain' });
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '15 seconds' }).click();
+  await expect(screen).toHaveAttribute('data-detail', 'trends');
+  await expect(figures).toHaveText('median 100 wpm · 97% accuracy · best run 100 wpm on Oct 16 · 1 run');
+  await page.locator('#progress-back').click();
+  await expect(screen).toHaveAttribute('data-detail', '');
+});
+
+test('the best run is the newest of a tie', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(6, 80, 95), run(2, 80, 96), run(1, 70, 94)]);
+  await page.locator('#week-speed button').click();
+  await expect(page.locator('#trend-figures')).toHaveText('median 80 wpm · 95% accuracy · best run 80 wpm on Oct 15 · 3 runs');
+});
+
+test('a period with no runs keeps the full charts open without figures, and a best run with no date says so', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(20, 60, 95), { ...run(0, 99, 97), at: null }]);
+  const figures = page.locator('#trend-figures');
+  const period = (name) => page.getByRole('group', { name: 'Period' }).getByRole('button', { name });
+  await page.locator('#week-speed button').click();
+  await expect(figures).toHaveText('median 60 wpm · 95% accuracy · best run 60 wpm on Sep 27 · 1 run');
+  await period('7 days').click();
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'trends');
+  await expect(figures).toBeHidden();
+  await expect(page.locator('#progress-trend-note')).toHaveText('No runs in this period.');
+  await period('All').click();
+  await expect(figures).toHaveText('median 80 wpm · 96% accuracy · best run 99 wpm, date unavailable · 2 runs');
 });
 
 test('a guest with no runs sees no tagline, and a thin week states its counts and predicts nothing', async ({ page, supabase }) => {

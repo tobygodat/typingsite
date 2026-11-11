@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
-import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
+import { SHOWN_MOVERS, SLIP_MISSES, SLIP_Z, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { dayKey } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
@@ -140,6 +140,37 @@ test('one typo this week is not slipping, nor are misses in a single run, howeve
   const [mover] = overview([...before, ...twoRuns]).movers.filter((item) => item.unit === 're');
   assert.equal(mover?.status, 'slipping');
   assert.deepEqual(moverCopy(mover), { before: '0 of 36', after: '9 of 24', tail: 'missed' });
+});
+
+// The two-proportion z statistic, pooled, counted here apart from the module's own.
+function zOf(before, after) {
+  const [p1, p2] = [before.errors / before.tries, after.errors / after.tries];
+  const pooled = (before.errors + after.errors) / (before.tries + after.tries);
+
+  return (p2 - p1) / Math.sqrt(pooled * (1 - pooled) * (1 / before.tries + 1 / after.tries));
+}
+
+// Enough tries over enough runs is not enough: the change has to be more than noise.
+test('a slip is more than noise: one or two misses in a week, a like miss rate, or a couple of milliseconds, are not', () => {
+  const careful = (rows) => [...BACKGROUND.filter((pair) => !rows.some((row) => row[0] === pair)).map((pair, i) => [pair, 10, i === 7 ? 1 : 0, 10, 200, 0]), ...rows];
+
+  const week = (before, after) => overview([
+    ...Array.from({ length: 6 }, (_, i) => run(`b${i}`, daysAgo(13 - i), { patterns: careful([before(i)]) })),
+    ...Array.from({ length: 4 }, (_, i) => run(`a${i}`, daysAgo(4 - i), { patterns: careful([after(i)]) })),
+  ]).movers.filter((mover) => mover.unit === 're').map((mover) => [mover.status, moverCopy(mover).before, moverCopy(mover).after]);
+
+  // One miss in 24 tries, after none in 36; then two.
+  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i === 0 ? 1 : 0, 6, 200, 0]), []);
+  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i < 2 ? 1 : 0, 6, 200, 0]), []);
+  // Three is a slip.
+  assert.deepEqual(week(() => ['re', 6, 0, 6, 200, 0], (i) => ['re', 6, i < 3 ? 1 : 0, 6, 200, 0]), [['slipping', '0 of 36', '3 of 24']]);
+  // Missed as often as before, near enough: 4 of 60, then 3 of 32. And twice as often, on too few to tell: 1 of 36,
+  // then 3 of 40.
+  assert.deepEqual(week((i) => ['re', 10, i < 4 ? 1 : 0, 10, 200, 0], (i) => ['re', 8, i < 3 ? 1 : 0, 8, 200, 0]), []);
+  assert.deepEqual(week((i) => ['re', 6, i < 1 ? 1 : 0, 6, 200, 0], (i) => ['re', 10, i < 3 ? 1 : 0, 10, 200, 0]), []);
+  // A pace 2 ms slower than it was, and one 5 ms slower that stays inside the floor.
+  assert.deepEqual(week(() => ['re', 10, 0, 10, 240, 40], () => ['re', 10, 0, 10, 242, 42]).filter(([status]) => status === 'slipping'), []);
+  assert.deepEqual(week(() => ['re', 10, 0, 10, 205, 5], () => ['re', 10, 0, 10, 215, 15]).filter(([status]) => status === 'slipping'), []);
 });
 
 test('a pair drilled for its pace and now at it is fixed by pace, read since its drill, as Train reads it', () => {
@@ -302,8 +333,10 @@ test('across random histories in every focus, every mover follows the stated rul
           assert.notEqual(trainStep?.state, 'fixed', `${at}: Train calls it fixed`);
           assert.ok(mover.after.runs >= FIXED_RUNS, `${at}: slipping on one run`);
           assert.ok((mover.basis === 'slow' ? mover.after.intervals : mover.after.tries) >= FIXED_OBSERVATIONS, `${at}: slipping on too few observations`);
-          assert.ok(mover.basis === 'slow' ? mover.after.ms > mover.before.ms : mover.after.errors / mover.after.tries > mover.before.errors / mover.before.tries,
-            `${at}: slipping, yet no worse than before`);
+          assert.ok(mover.basis === 'slow'
+            ? Math.round(mover.after.ms) > SLOW_FLOOR_MS && mover.after.ms - mover.before.ms >= SLOW_FLOOR_MS
+            : mover.after.errors >= SLIP_MISSES && zOf(mover.before, mover.after) >= SLIP_Z,
+          `${at}: slipping within noise: ${JSON.stringify([mover.before, mover.after])}`);
           const wasFixed = newestLoop(loops, mover.unit, THEN);
 
           const reason = (!queuedThen.has(mover.unit) && (mover.basis === 'slow' ? mover.before?.intervals : mover.before?.tries) >= FIXED_OBSERVATIONS)

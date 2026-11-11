@@ -19,7 +19,7 @@
 // read every measured run on that key's keyboard, as Train does, in the train focus.
 
 import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, weeklyChange } from './insights.js';
-import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, SLOW_FLOOR_MS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, evidenceSince, isFixed, sinceDrilled } from './train-path.js';
 
 // A week holds a median from this many runs, the floor the standard score's median uses: below it one or two runs
@@ -64,13 +64,28 @@ export const weekStart = (date) => new Date(date.getFullYear(), date.getMonth(),
 
 const enough = (side, basis) => Boolean(side) && (basis === 'slow' ? side.intervals : side.tries) >= FIXED_OBSERVATIONS;
 
-// The measure a side is judged by: its share of first tries missed, or its mean slowdown.
-const rate = (side, basis) => (basis === 'slow' ? side.ms : side.errors / side.tries);
+// A slip is more than noise. For misses: SLIP_MISSES first tries missed since, and a miss rate above the one before
+// by more than chance gives two samples of these sizes (the two-proportion z statistic, pooled, at SLIP_Z or more:
+// one side, 95%). For pace: a printed slowdown past SLOW_FLOOR_MS, the floor fixed reads, and SLOW_FLOOR_MS or more
+// slower than before.
+export const SLIP_MISSES = 3;
+export const SLIP_Z = 1.645;
+
+function risen(before, after) {
+  const pooled = (before.errors + after.errors) / (before.tries + after.tries);
+  const rise = after.errors / after.tries - before.errors / before.tries;
+
+  return rise > 0 && rise >= SLIP_Z * Math.sqrt(pooled * (1 - pooled) * (1 / before.tries + 1 / after.tries));
+}
+
+const worse = ({ basis, before, after }) => (basis === 'slow'
+  ? Math.round(after.ms) > SLOW_FLOOR_MS && after.ms - before.ms >= SLOW_FLOOR_MS
+  : after.errors >= SLIP_MISSES && risen(before, after));
 
 // Slipping is held to the bar fixed is: FIXED_OBSERVATIONS of its kind since, over FIXED_RUNS runs or more, and
-// worse than before. One typo this week, or a unit that only moved up the queue, is not a slip.
-const slipped = (since) => enough(since.after, since.basis) && since.after.runs >= FIXED_RUNS && Boolean(since.before)
-  && rate(since.after, since.basis) > rate(since.before, since.basis);
+// worse than before by more than noise. One typo this week, a 2 ms change, or a unit that only moved up the
+// queue, is not a slip.
+const slipped = (since) => enough(since.after, since.basis) && since.after.runs >= FIXED_RUNS && Boolean(since.before) && worse(since);
 
 const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
@@ -82,7 +97,7 @@ const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
 //    never drilled, named then and not now, is judged since `began`.
 //  - slipping: named now, after it could not be named then on FIXED_OBSERVATIONS of its kind; or Train called it
 //    fixed then and it is named again. Either way only on FIXED_OBSERVATIONS of its kind since `began`, over
-//    FIXED_RUNS runs or more, that are worse than the evidence before.
+//    FIXED_RUNS runs or more, that are worse than the evidence before by more than noise (see `worse`).
 // Ranked by what each cost or saved in the learner's terms: the change in its gain, the time it loses per letter
 // typed, between the two fits. Largest first, then by unit.
 export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {

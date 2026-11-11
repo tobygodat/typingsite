@@ -4282,22 +4282,24 @@ function renderOverview(date) {
   $('clear-history').hidden = !hasHistory;
   $('clear-history').disabled = !hasHistory;
 
-  if (progressState.detail && !links[progressState.detail]) progressState.detail = '';
+  // The full charts are opened from a small chart, not a link, and stay open through their own filters.
+  if (progressState.detail && !{ ...links, trends: hasProgress }[progressState.detail]) progressState.detail = '';
 
   return { source, key, span, runRows, loops };
 }
 
-// Under the fuller charts, the period in figures: the median speed and accuracy of the runs charted, the fastest of
-// them with its day, and how many runs that is. Speeds are speed figures, so a unit change rewords them.
+// Under the fuller charts, the period in figures: the median speed and accuracy of the runs charted, the fastest
+// single run with its day (the chart names the best day's median, which can be another day), and how many runs.
+// Speeds are speed figures, so a unit change rewords them.
 function renderTrendFigures(runs) {
   const stats = periodStats(runs);
   const speed = (wpm) => [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()];
-  const day = stats.best?.at ? new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const day = stats.best?.at ? ` on ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ', date unavailable';
 
   const parts = stats.count ? [
     ['median ', ...speed(stats.wpm)],
     [`${Number(stats.accuracy.toFixed(1))}% accuracy`],
-    ['best ', ...speed(stats.best.score.wpm), day ? ` on ${day}` : ''],
+    ['best run ', ...speed(stats.best.score.wpm), day],
     [plural(stats.count, 'run')],
   ] : [];
 
