@@ -514,13 +514,13 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await page.keyboard.press('Space');
   await expect(page.locator('#race-leaderboard')).toBeVisible();
 
-  // Once it's over the switches act on the next race, and the other tabs follow practice again.
+  // Once it's over the switches act on the next race, and the people list follows practice again.
   await openSettings(page, 'practice');
   await expect(page.locator('#rules-note')).toBeHidden();
   await expect(page.locator('#quick-end-toggle input').first()).toBeEnabled();
   await expect(page.locator('#quick-end-toggle input[value="true"]')).toBeChecked();
   await closeSettings(page);
-  await page.locator('#challenge-online').click();
+  await page.locator('#challenge-local-view [data-challenge-back]').click();
   await openSettings(page, 'practice');
   await expect(page.locator('#quick-end-toggle input').first()).toBeDisabled();
   await expect(page.locator('#quick-end-note')).toHaveText(TIMED_NOTE);

@@ -21,7 +21,9 @@ async function racer(browser, url, fake, email, name, viewport, colorScheme) {
   await Promise.all([page.waitForEvent('load'), page.locator('#account-submit').click()]);
   await page.locator('#account[data-state="member"]').waitFor();
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+  await page.locator('#people-setup').click();
   await page.locator('#online-name').fill(name);
+  await page.locator('#online-setup-done').click();
 
   return { context, page };
 }

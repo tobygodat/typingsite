@@ -36,7 +36,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
 
   const quickMatch = async (name) => {
     await h.openView('Challenge');
+    await page.locator('#people-setup').click();
     await page.locator('#online-name').fill('Toby');
+    await page.locator('#online-setup-done').click();
     await page.locator('#quick-match [data-quick="toggle"]').click();
     await mara.locator('#quick-match [data-quick="toggle"]').click();
     await page.locator('#online-room-status', { hasText: 'Matched with Mara.' }).waitFor({ timeout: 10000 });
@@ -66,7 +68,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await Promise.all([mara.waitForEvent('load'), mara.locator('#account-submit').click()]);
     await mara.locator('#account[data-state="member"]').waitFor();
     await mara.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+    await mara.locator('#people-setup').click();
     await mara.locator('#online-name').fill('Mara');
+    await mara.locator('#online-setup-done').click();
 
     await h.openView('Practice');
     await h.type((await h.passage()).slice(0, 260));

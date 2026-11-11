@@ -2,13 +2,8 @@
 // accessible names at every width, and key hints stay off touch-only devices.
 import { test, expect, openApp, openView, openSettings, phone } from './fixtures.js';
 
-const MODES = ['challenge-online', 'challenge-daily', 'challenge-friends', 'challenge-local'];
-
-// A tab "looks selected" when it draws a border: the pressed tab gets the accent outline, the rest
-// are ghost buttons with a transparent one.
-const borderedTabs = (page) => page.locator('.challenge-modes button').evaluateAll((buttons) => buttons
-  .filter((button) => getComputedStyle(button).borderTopColor !== 'rgba(0, 0, 0, 0)')
-  .map((button) => button.id));
+// The foot links of Challenge's people list each open one view, with Back to the list and focus back on the link.
+const VIEWS = [['open-daily', 'challenge-daily-view', 'daily-heading'], ['open-local', 'challenge-local-view', 'local-heading']];
 
 async function startLocalRace(page) {
   await page.locator('#open-local').click();
@@ -18,32 +13,31 @@ async function startLocalRace(page) {
   await expect(page.locator('#race-stage')).toBeVisible();
 }
 
-test.describe('challenge tabs', () => {
+test.describe('challenge views', () => {
   for (const scheme of ['dark', 'light']) {
-    test(`only the pressed tab looks selected, ${scheme}`, async ({ page }) => {
+    test(`each foot link opens its view, and Back returns to the list, ${scheme}`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       await openApp(page);
       await openView(page, 'Challenge');
 
-      for (const id of MODES) {
-        await page.locator(`#${id}`).click();
-        await expect(page.locator('.challenge-modes [aria-pressed="true"]')).toHaveCount(1);
-        await expect(page.locator(`#${id}`)).toHaveAttribute('aria-pressed', 'true');
-        // The outline fades over --dur-quick, so poll until the last tab's has gone.
-        await expect.poll(() => borderedTabs(page), { message: `${id} pressed` }).toEqual([id]);
+      for (const [link, view, heading] of VIEWS) {
+        await page.locator(`#${link}`).click();
+        await expect(page.locator(`#${view}`)).toBeVisible();
+        await expect(page.locator(`#${heading}`)).toBeFocused();
+        await expect(page.locator('#challenge-people')).toBeHidden();
+        // One filled button per view.
+        await expect(page.locator('#compete-screen .btn-primary:visible')).toHaveCount(1);
+        await page.locator(`#${view} [data-challenge-back]`).click();
+        await expect(page.locator('#challenge-people')).toBeVisible();
+        await expect(page.locator(`#${link}`)).toBeFocused();
       }
 
-      // The one-keyboard results screen keeps a single selected tab.
+      // Leaving Challenge and coming back opens the list again, wherever it was left.
       await startLocalRace(page);
-      const text = await page.locator('#race-accessible-passage').textContent();
-      await page.locator('#race-input').focus();
-      await page.keyboard.type(text);
-      await page.locator('#start-next-player').click();
-      await expect(page.locator('#race-player')).toHaveText('Bo');
-      await page.locator('#race-input').focus();
-      await page.keyboard.type(text);
-      await expect(page.locator('#race-leaderboard')).toBeVisible();
-      await expect.poll(() => borderedTabs(page)).toEqual(['challenge-local']);
+      await openView(page, 'Progress');
+      await openView(page, 'Challenge');
+      await expect(page.locator('#challenge-people')).toBeVisible();
+      await expect(page.locator('#challenge-local-view')).toBeHidden();
     });
   }
 });

@@ -967,6 +967,7 @@ test('a Race reply that lands after Lin opened the custom editor, or while Lin w
   await expect(page.locator('#custom-text')).toHaveValue(/a passage of my own more$/);
   // On Challenge, the same with the name for an online race.
   await openView(page, 'Challenge');
+  await page.locator('#people-setup').click();
   reply = await holdInboxRace(page, supabase);
   await page.locator('#online-name').click();
   await page.keyboard.type('Lin', { delay: 60 });
@@ -1148,8 +1149,8 @@ test('ghost races and their results still reach the inbox while invitations canâ
   await signInWithEmail(page, 'lin@stilltype.test');
   await expect(page.locator('#challenge-toast-text')).toContainText('Ada challenged you', { timeout: 12000 });
   expect(invites).toBeGreaterThan(0);
-  // The invitation list still says why it is empty.
-  await expect(page.locator('#online-invites-empty')).toHaveText('Request failed (503).');
+  // Challenge's people list still says why it has no invitations.
+  await expect(page.locator('#people-status')).toHaveText('Request failed (503).');
   // A race Lin sent is answered; the next poll brings its result the same way.
   const passage = 'still water over light time still water over';
   supabase.challenges.seed(lin.id, supabase.addUser('bo@stilltype.test').id, { name: 'Lin', label: 'Bo', passage,
@@ -1307,5 +1308,6 @@ test('guests are never offered a challenge; the offer fits a narrow phone and an
   await page.locator('#ghost-offer summary').click();
   await page.locator('#ghost-offer-friends').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'compete');
-  await expect(page.locator('#online-friends')).toBeVisible();
+  await expect(page.locator('#people-add-view')).toBeVisible();
+  await expect(page.locator('#online-invite-email')).toBeFocused();
 });

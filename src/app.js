@@ -6765,7 +6765,7 @@ function bindEvents() {
 
   $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); });
   $('ghost-offer-form').addEventListener('submit', sendGhost);
-  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.open());
+  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd());
   $('ghost-result-action').addEventListener('click', () => {
     if (ghostRace?.state === 'failed') submitGhostRun();
     else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
