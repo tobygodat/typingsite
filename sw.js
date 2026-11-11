@@ -34,6 +34,7 @@ const SHELL = [
   '/src/insights.js',
   '/src/keybindings.js',
   '/src/layouts.js',
+  '/src/learner.js',
   '/src/lengths.js',
   '/src/lessons.js',
   '/src/monkeytype.js',
