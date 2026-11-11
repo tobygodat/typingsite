@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Progress · What changed</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item" type="button" data-nav="train">train</button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Progress</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="p3">
+  <div class="p3-lead">
+    <p class="p3-delta num"><span class="up">+3</span><span class="unit">wpm</span></p>
+    <div class="p3-context">
+      <p class="p3-sentence"><span class="num">78</span> this week, <span class="num">75</span> the week before</p>
+      <p class="lbl ">medians of 33 and 35 runs · english 1k · 25 words · physical keyboard</p>
+    </div>
+  </div>
+  <ul class="p3-moved">
+    <li class=""><span class="p3-name">qu</span><span class="p3-change num"><s>6 of 22</s> → <span class="up">1 of 25</span> missed</span><span class="status badge-success"><span class="status-dot" aria-hidden="true"></span>fixed</span><span class="p3-act"></span></li>
+    <li class=""><span class="p3-name">ol</span><span class="p3-change num"><s>180 ms</s> → <span class="up">60 ms</span> over your pace</span><span class="status badge-success"><span class="status-dot" aria-hidden="true"></span>fixed</span><span class="p3-act"></span></li>
+    <li class=""><span class="p3-name">ex</span><span class="p3-change num">1 of 20 → <span class="down">4 of 18</span> missed</span><span class="status badge-danger"><span class="status-dot" aria-hidden="true"></span>slipping</span><span class="p3-act"><button class="btn btn-secondary btn-sm" type="button">Drill ex</button></span></li>
+    <li class="is-small"><span class="p3-name">practice</span><span class="p3-change num">93 → 81 min · 6 days in a row</span><span class="status badge-neutral"><span class="status-dot" aria-hidden="true"></span>less</span><span class="p3-act"></span></li>
+  </ul>
+  <div class="p3-charts">
+    <div><div class="chart chart-mid has-gutter" role="img" aria-label="Speed by day, Oct 14 to today. This week's median 78 wpm over 33 runs; best 91 on Nov 6.">
+  <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="chart-grid" d="M0,400.0 H1000" vector-effect="non-scaling-stroke"/><path class="chart-grid" d="M0,285.7 H1000" vector-effect="non-scaling-stroke"/><path class="chart-grid" d="M0,171.4 H1000" vector-effect="non-scaling-stroke"/><path class="chart-grid" d="M0,57.1 H1000" vector-effect="non-scaling-stroke"/><path class="chart-line" d="M0.0,297.1 C6.2,297.1 24.7,297.1 37.0,297.1 C49.4,297.1 61.7,300.0 74.1,297.1 C86.4,294.3 98.8,281.0 111.1,280.0 C123.5,279.0 129.6,288.6 148.1,291.4 C166.7,294.3 203.7,296.2 222.2,297.1 C240.7,298.1 246.9,304.8 259.3,297.1 C271.6,289.5 284.0,255.2 296.3,251.4 C308.6,247.6 321.0,270.5 333.3,274.3 C345.7,278.1 345.7,278.1 370.4,274.3 C395.1,270.5 456.8,255.2 481.5,251.4 C506.2,247.6 506.2,254.3 518.5,251.4 C530.9,248.6 543.2,240.0 555.6,234.3 C567.9,228.6 580.2,216.2 592.6,217.1 C604.9,218.1 611.1,238.1 629.6,240.0 C648.1,241.9 685.2,230.5 703.7,228.6 C722.2,226.7 722.2,229.5 740.7,228.6 C759.3,227.6 796.3,227.6 814.8,222.9 C833.3,218.1 839.5,211.4 851.9,200.0 C864.2,188.6 876.5,155.2 888.9,154.3 C901.2,153.3 913.6,187.6 925.9,194.3 C938.3,201.0 950.6,194.3 963.0,194.3 C975.3,194.3 993.8,194.3 1000.0,194.3" vector-effect="non-scaling-stroke"/></svg>
+  <span class="chart-y num" style="top:100.00%">60</span><span class="chart-y num" style="top:71.43%">70</span><span class="chart-y num" style="top:42.86%">80</span><span class="chart-y num" style="top:14.29%">90</span><span class="chart-x" style="left:0%">Oct 14</span><span class="chart-x" style="left:51.85185185185185%">Oct 28</span><span class="chart-x" style="left:100%">today</span><span class="chart-mark" style="left:100%;top:48.57142857142858%"></span><span class="chart-note is-start is-gutter" style="left:100%;top:48.57142857142858%"><span class="note-fig num">78<span class="unit">wpm</span></span></span>
+</div></div>
+    <div><div class="chart chart-mid has-gutter" role="img" aria-label="Accuracy by day. This week's median 96.3% over 33 runs.">
+  <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="chart-grid" d="M0,400.0 H1000" vector-effect="non-scaling-stroke"/><path class="chart-grid" d="M0,200.0 H1000" vector-effect="non-scaling-stroke"/><path class="chart-grid" d="M0,0.0 H1000" vector-effect="non-scaling-stroke"/><path class="chart-line" d="M0.0,270.0 C6.2,263.0 24.7,236.3 37.0,228.0 C49.4,219.7 61.7,218.3 74.1,220.0 C86.4,221.7 98.8,235.0 111.1,238.0 C123.5,241.0 129.6,237.7 148.1,238.0 C166.7,238.3 203.7,247.0 222.2,240.0 C240.7,233.0 246.9,198.0 259.3,196.0 C271.6,194.0 284.0,219.0 296.3,228.0 C308.6,237.0 321.0,258.0 333.3,250.0 C345.7,242.0 345.7,191.7 370.4,180.0 C395.1,168.3 456.8,177.0 481.5,180.0 C506.2,183.0 506.2,198.0 518.5,198.0 C530.9,198.0 543.2,182.3 555.6,180.0 C567.9,177.7 580.2,177.3 592.6,184.0 C604.9,190.7 611.1,224.7 629.6,220.0 C648.1,215.3 685.2,167.7 703.7,156.0 C722.2,144.3 722.2,153.3 740.7,150.0 C759.3,146.7 796.3,133.3 814.8,136.0 C833.3,138.7 839.5,168.7 851.9,166.0 C864.2,163.3 876.5,125.0 888.9,120.0 C901.2,115.0 913.6,130.7 925.9,136.0 C938.3,141.3 950.6,149.7 963.0,152.0 C975.3,154.3 993.8,150.3 1000.0,150.0" vector-effect="non-scaling-stroke"/></svg>
+  <span class="chart-y num" style="top:100.00%">90</span><span class="chart-y num" style="top:50.00%">95</span><span class="chart-y num" style="top:0.00%">100</span><span class="chart-x" style="left:0%">Oct 14</span><span class="chart-x" style="left:51.85185185185185%">Oct 28</span><span class="chart-x" style="left:100%">today</span><span class="chart-mark" style="left:100%;top:37.5%"></span><span class="chart-note is-start is-gutter" style="left:100%;top:37.5%"><span class="note-fig num">96.3<span class="unit pct">%</span></span></span>
+</div></div>
+  </div>
+  <div class="actions"><button class="btn btn-ghost" type="button">All 133 runs</button><button class="btn btn-ghost" type="button">Keys</button><button class="btn btn-ghost" type="button">Practice calendar</button></div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="p3">
+  <div class="p3-lead">
+    <p class="p3-delta num is-empty">—</p>
+    <div class="p3-context">
+      <p class="p3-sentence">Nothing to compare yet</p>
+      <p class="lbl ">a week of tests shows what moved</p>
+    </div>
+  </div>
+  <div class="actions"><button class="btn btn-primary" type="button">Take a test</button><button class="btn btn-ghost" type="button">Take the standard test</button></div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

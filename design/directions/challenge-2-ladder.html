@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Challenge · Ladder</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Challenge</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="c2">
+  <div class="c2-strip">
+    <div class="actions"><button class="btn btn-primary" type="button">Quick match</button><button class="btn btn-secondary" type="button">Race a friend</button><button class="btn btn-ghost" type="button">One keyboard</button></div>
+    <p class="c2-rating"><span class="num c2-rating-fig">1,412</span><span class="sub">rating · <span class="up num">+14</span> over 31 matches</span></p>
+  </div>
+  <div class="c2-boards">
+    <section class="c2-board" aria-label="Daily passage, Nov 10">
+      <div class="c2-head"><p class="c2-title">Nov 10</p><p class="lbl ">214 typists · resets 00:00 utc</p><button class="btn btn-secondary btn-sm" type="button">Type it again</button></div>
+      <table><tbody>
+<tr class=""><td class="num c2-rank">1</td><td class="c2-name">kestrel</td><td class="num">128<span class="unit">wpm</span></td><td class="num c2-acc">98.9<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">2</td><td class="c2-name">amaru</td><td class="num">121<span class="unit">wpm</span></td><td class="num c2-acc">97.6<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">3</td><td class="c2-name">nadia.k</td><td class="num">117<span class="unit">wpm</span></td><td class="num c2-acc">99.1<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">4</td><td class="c2-name">fjord</td><td class="num">112<span class="unit">wpm</span></td><td class="num c2-acc">96.2<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">5</td><td class="c2-name">quillon</td><td class="num">106<span class="unit">wpm</span></td><td class="num c2-acc">98<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">6</td><td class="c2-name">tomasz</td><td class="num">101<span class="unit">wpm</span></td><td class="num c2-acc">97.3<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">7</td><td class="c2-name">ivy_r</td><td class="num">97<span class="unit">wpm</span></td><td class="num c2-acc">95.8<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">8</td><td class="c2-name">Priya Raman</td><td class="num">88<span class="unit">wpm</span></td><td class="num c2-acc">98.4<span class="unit pct">%</span></td></tr>
+<tr class="is-you"><td class="num c2-rank">9</td><td class="c2-name">you</td><td class="num">82<span class="unit">wpm</span></td><td class="num c2-acc">96.8<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">10</td><td class="c2-name">hollis</td><td class="num">81<span class="unit">wpm</span></td><td class="num c2-acc">97<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">11</td><td class="c2-name">Maya Okafor</td><td class="num">80<span class="unit">wpm</span></td><td class="num c2-acc">96.1<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">12</td><td class="c2-name">ren</td><td class="num">78<span class="unit">wpm</span></td><td class="num c2-acc">94.9<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">13</td><td class="c2-name">oduya</td><td class="num">77<span class="unit">wpm</span></td><td class="num c2-acc">97.7<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">14</td><td class="c2-name">marguerite</td><td class="num">75<span class="unit">wpm</span></td><td class="num c2-acc">96.6<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">15</td><td class="c2-name">b.salo</td><td class="num">74<span class="unit">wpm</span></td><td class="num c2-acc">95.2<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">16</td><td class="c2-name">wren</td><td class="num">72<span class="unit">wpm</span></td><td class="num c2-acc">98.2<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">17</td><td class="c2-name">Sam Achebe</td><td class="num">71<span class="unit">wpm</span></td><td class="num c2-acc">96.4<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">18</td><td class="c2-name">pell</td><td class="num">69<span class="unit">wpm</span></td><td class="num c2-acc">93.8<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">19</td><td class="c2-name">kaito</td><td class="num">68<span class="unit">wpm</span></td><td class="num c2-acc">97.1<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">20</td><td class="c2-name">dunmore</td><td class="num">66<span class="unit">wpm</span></td><td class="num c2-acc">95.5<span class="unit pct">%</span></td></tr>
+      </tbody></table>
+    </section>
+    <section class="c2-board" aria-label="Friends, best this week">
+      <div class="c2-head"><p class="c2-title">Friends</p><p class="lbl ">best this week</p></div>
+      <table><tbody>
+<tr class=""><td class="num c2-rank">1</td><td class="c2-name">Priya Raman</td><td class="num">94<span class="unit">wpm</span></td><td class="num c2-r">1,530</td></tr>
+<tr class="is-you"><td class="num c2-rank">2</td><td class="c2-name">you</td><td class="num">91<span class="unit">wpm</span></td><td class="num c2-r">1,412</td></tr>
+<tr class=""><td class="num c2-rank">3</td><td class="c2-name">Lena Ortiz</td><td class="num">88<span class="unit">wpm</span></td><td class="num c2-r">1,470</td></tr>
+<tr class=""><td class="num c2-rank">4</td><td class="c2-name">Maya Okafor</td><td class="num">86<span class="unit">wpm</span></td><td class="num c2-r">1,455</td></tr>
+<tr class=""><td class="num c2-rank">5</td><td class="c2-name">Sam Achebe</td><td class="num">80<span class="unit">wpm</span></td><td class="num c2-r">1,398</td></tr>
+<tr class=""><td class="num c2-rank">6</td><td class="c2-name">Theo Lindqvist</td><td class="num">72<span class="unit">wpm</span></td><td class="num c2-r">1,301</td></tr>
+<tr class=""><td class="num c2-rank">7</td><td class="c2-name">Jonas Weber</td><td class="num">67<span class="unit">wpm</span></td><td class="num c2-r">1,262</td></tr>
+      </tbody></table>
+    </section>
+  </div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="c2">
+  <div class="c2-strip">
+    <div class="actions"><button class="btn btn-primary" type="button">Quick match</button><button class="btn btn-secondary" type="button">Race a friend</button><button class="btn btn-ghost" type="button">One keyboard</button></div>
+    <p class="c2-rating"><span class="c2-rating-fig is-empty">unrated</span><span class="sub">sign in and play a quick match</span></p>
+  </div>
+  <div class="c2-boards">
+    <section class="c2-board" aria-label="Daily passage, Nov 10">
+      <div class="c2-head"><p class="c2-title">Nov 10</p><p class="lbl ">214 typists · resets 00:00 utc</p><button class="btn btn-secondary btn-sm" type="button">Type it</button></div>
+      <table><tbody>
+<tr class=""><td class="num c2-rank">1</td><td class="c2-name">kestrel</td><td class="num">128<span class="unit">wpm</span></td><td class="num c2-acc">98.9<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">2</td><td class="c2-name">amaru</td><td class="num">121<span class="unit">wpm</span></td><td class="num c2-acc">97.6<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">3</td><td class="c2-name">nadia.k</td><td class="num">117<span class="unit">wpm</span></td><td class="num c2-acc">99.1<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">4</td><td class="c2-name">fjord</td><td class="num">112<span class="unit">wpm</span></td><td class="num c2-acc">96.2<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">5</td><td class="c2-name">quillon</td><td class="num">106<span class="unit">wpm</span></td><td class="num c2-acc">98<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">6</td><td class="c2-name">tomasz</td><td class="num">101<span class="unit">wpm</span></td><td class="num c2-acc">97.3<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">7</td><td class="c2-name">ivy_r</td><td class="num">97<span class="unit">wpm</span></td><td class="num c2-acc">95.8<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">8</td><td class="c2-name">Priya Raman</td><td class="num">88<span class="unit">wpm</span></td><td class="num c2-acc">98.4<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">9</td><td class="c2-name">hollis</td><td class="num">81<span class="unit">wpm</span></td><td class="num c2-acc">97<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">10</td><td class="c2-name">Maya Okafor</td><td class="num">80<span class="unit">wpm</span></td><td class="num c2-acc">96.1<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">11</td><td class="c2-name">ren</td><td class="num">78<span class="unit">wpm</span></td><td class="num c2-acc">94.9<span class="unit pct">%</span></td></tr>
+<tr class=""><td class="num c2-rank">12</td><td class="c2-name">oduya</td><td class="num">77<span class="unit">wpm</span></td><td class="num c2-acc">97.7<span class="unit pct">%</span></td></tr>
+        <tr class="is-you"><td class="num c2-rank">·</td><td class="c2-name">you</td><td class="lbl" colspan="2">not yet today</td></tr>
+      </tbody></table>
+    </section>
+    <section class="c2-board" aria-label="Friends">
+      <div class="c2-head"><p class="c2-title">Friends</p></div>
+      <div class="c2-signin"><button class="btn btn-secondary" type="button">Sign in</button><p class="lbl ">friends see your best when you share it</p></div>
+    </section>
+  </div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

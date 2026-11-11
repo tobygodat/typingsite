@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · Next up</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t1">
+  <div class="t1-main">
+    <p class="t1-pair" aria-label="Next target: the pair br">br</p>
+    <p class="t1-words" aria-hidden="true"><b>br</b>ight li<b>br</b>ary <b>br</b>own number <b>br</b>ing</p>
+    <p class="t1-evidence"><span class="ev num">7 of 31</span> first tries missed · <span class="ev num">140 ms</span> slower than your pace</p>
+    <div class="actions"><button class="btn btn-primary" type="button">Drill br</button><button class="btn btn-ghost" type="button">Choose another</button></div>
+    <p class="lbl ">30 s drill, then a retest on fresh text · english 1k · 25 words</p>
+  </div>
+  <aside class="t1-side" aria-label="Next targets and recent fixes">
+    <ol class="t1-queue">
+      <li><button type="button" class="t1-q"><span class="t1-q-pair">ce</span><span class="t1-q-ev num">5 of 40 · +95 ms</span></button></li>
+      <li><button type="button" class="t1-q"><span class="t1-q-pair">ex</span><span class="t1-q-ev num">4 of 18 · +120 ms</span></button></li>
+      <li><button type="button" class="t1-q"><span class="t1-q-pair">un</span><span class="t1-q-ev num">2 of 52 · +80 ms</span></button></li>
+      <li><button type="button" class="t1-q is-unsure"><span class="t1-q-pair">my</span><span class="t1-q-ev num">3 of 12 · too few to tell</span></button></li>
+    </ol>
+    <ul class="t1-fixed">
+      <li><span class="t1-q-pair">qu</span><span class="t1-q-ev num"><s>6 of 22</s> → <span class="up">1 of 25</span> missed</span></li>
+      <li><span class="t1-q-pair">ol</span><span class="t1-q-ev num"><s>180 ms</s> → <span class="up">60 ms</span> over your pace</span></li>
+    </ul>
+  </aside>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t1">
+  <div class="t1-main">
+    <p class="t1-general">General drill</p>
+    <p class="t1-words" aria-hidden="true">there other about would which</p>
+    <p class="t1-evidence">No pair stands out yet. Two more tests and one will.</p>
+    <div class="actions"><button class="btn btn-primary" type="button">Start general drill</button><button class="btn btn-ghost" type="button">Take a test</button></div>
+    <p class="lbl ">30 s drill, then a retest on fresh text</p>
+  </div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

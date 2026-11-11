@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page directions</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body class="ix">
+  <div class="ix-shell">
+    <nav class="ix-side" aria-label="Directions">
+      <h1>Page directions · TOB-420</h1>
+      <div class="seg" role="group" aria-label="Theme">
+        <button type="button" class="seg-option" data-theme-pick="dark">dark</button>
+        <button type="button" class="seg-option" data-theme-pick="light">light</button>
+      </div>
+      <div class="seg" role="group" aria-label="Profile">
+        <button type="button" class="seg-option" data-state-pick="full">a month in</button>
+        <button type="button" class="seg-option" data-state-pick="empty">new guest</button>
+      </div>
+      <div class="ix-group">
+        <p class="lbl">train</p>
+        <a class="ix-link" href="train-1-next-up.html">1 · Next up</a>
+        <a class="ix-link" href="train-2-skill-map.html">2 · Skill map</a>
+        <a class="ix-link" href="train-3-session.html">3 · Session</a>
+      </div>
+      <div class="ix-group">
+        <p class="lbl">progress</p>
+        <a class="ix-link" href="progress-1-one-chart.html">1 · One chart</a>
+        <a class="ix-link" href="progress-2-at-a-glance.html">2 · At a glance</a>
+        <a class="ix-link" href="progress-3-what-changed.html">3 · What changed</a>
+      </div>
+      <div class="ix-group">
+        <p class="lbl">challenge</p>
+        <a class="ix-link" href="challenge-1-people.html">1 · People</a>
+        <a class="ix-link" href="challenge-2-ladder.html">2 · Ladder</a>
+        <a class="ix-link" href="challenge-3-one-button.html">3 · One button</a>
+      </div>
+    </nav>
+    <iframe class="ix-frame" title="Direction preview"></iframe>
+  </div>
+  <script>
+    const frame = document.querySelector('.ix-frame');
+    const links = [...document.querySelectorAll('.ix-link')];
+    const state = { theme: document.documentElement.dataset.theme, profile: 'full', page: links[0].getAttribute('href') };
+    const render = () => {
+      document.documentElement.dataset.theme = state.theme;
+      const query = new URLSearchParams({ theme: state.theme });
+      if (state.profile === 'empty') query.set('state', 'empty');
+      frame.src = `${state.page}?${query}`;
+      for (const link of links) link.toggleAttribute('aria-current', link.getAttribute('href') === state.page);
+      for (const b of document.querySelectorAll('[data-theme-pick]')) { const on = b.dataset.themePick === state.theme; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); }
+      for (const b of document.querySelectorAll('[data-state-pick]')) { const on = b.dataset.statePick === state.profile; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', on); }
+    };
+    document.addEventListener('click', (event) => {
+      const link = event.target.closest('.ix-link');
+      const theme = event.target.closest('[data-theme-pick]');
+      const profile = event.target.closest('[data-state-pick]');
+      if (link) { event.preventDefault(); state.page = link.getAttribute('href'); }
+      if (theme) state.theme = theme.dataset.themePick;
+      if (profile) state.profile = profile.dataset.statePick;
+      if (link || theme || profile) render();
+    });
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Progress · At a glance</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item" type="button" data-nav="train">train</button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Progress</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="p2">
+  <div class="p-filters">
+    <div class="seg" role="group" aria-label="Period"><button type="button" class="seg-option" aria-pressed="false" data-set="p2-period" data-show="p2-7">7 days</button><button type="button" class="seg-option is-on" aria-pressed="true" data-set="p2-period" data-show="p2-30">30 days</button><button type="button" class="seg-option" aria-pressed="false" data-set="p2-period" data-show="p2-all">all</button></div>
+    <button class="p-cond" type="button" aria-label="Conditions: english 1k · 25 words · physical keyboard">english 1k · 25 words <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button>
+  </div>
+  <div class="p2-row p2-metrics">
+  <div class="p2-metric">
+    <p class="p2-fig num">78<span class="unit">wpm</span></p>
+    <p class="p2-delta"><span class="up num">+3</span> on last week · 33 and 35 runs</p>
+    <div class="chart chart-spark" role="img" aria-label="wpm by day">
+  <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="chart-line" d="M0.0,297.1 C6.2,297.1 24.7,297.1 37.0,297.1 C49.4,297.1 61.7,300.0 74.1,297.1 C86.4,294.3 98.8,281.0 111.1,280.0 C123.5,279.0 129.6,288.6 148.1,291.4 C166.7,294.3 203.7,296.2 222.2,297.1 C240.7,298.1 246.9,304.8 259.3,297.1 C271.6,289.5 284.0,255.2 296.3,251.4 C308.6,247.6 321.0,270.5 333.3,274.3 C345.7,278.1 345.7,278.1 370.4,274.3 C395.1,270.5 456.8,255.2 481.5,251.4 C506.2,247.6 506.2,254.3 518.5,251.4 C530.9,248.6 543.2,240.0 555.6,234.3 C567.9,228.6 580.2,216.2 592.6,217.1 C604.9,218.1 611.1,238.1 629.6,240.0 C648.1,241.9 685.2,230.5 703.7,228.6 C722.2,226.7 722.2,229.5 740.7,228.6 C759.3,227.6 796.3,227.6 814.8,222.9 C833.3,218.1 839.5,211.4 851.9,200.0 C864.2,188.6 876.5,155.2 888.9,154.3 C901.2,153.3 913.6,187.6 925.9,194.3 C938.3,201.0 950.6,194.3 963.0,194.3 C975.3,194.3 993.8,194.3 1000.0,194.3" vector-effect="non-scaling-stroke"/></svg>
+  
+</div>
+  </div>
+  <div class="p2-metric">
+    <p class="p2-fig num">96.3<span class="unit">%</span><span class="p2-word">accuracy</span></p>
+    <p class="p2-delta"><span class="up num">+0.8</span> on last week · 33 and 35 runs</p>
+    <div class="chart chart-spark" role="img" aria-label="acc by day">
+  <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="chart-line" d="M0.0,270.0 C6.2,263.0 24.7,236.3 37.0,228.0 C49.4,219.7 61.7,218.3 74.1,220.0 C86.4,221.7 98.8,235.0 111.1,238.0 C123.5,241.0 129.6,237.7 148.1,238.0 C166.7,238.3 203.7,247.0 222.2,240.0 C240.7,233.0 246.9,198.0 259.3,196.0 C271.6,194.0 284.0,219.0 296.3,228.0 C308.6,237.0 321.0,258.0 333.3,250.0 C345.7,242.0 345.7,191.7 370.4,180.0 C395.1,168.3 456.8,177.0 481.5,180.0 C506.2,183.0 506.2,198.0 518.5,198.0 C530.9,198.0 543.2,182.3 555.6,180.0 C567.9,177.7 580.2,177.3 592.6,184.0 C604.9,190.7 611.1,224.7 629.6,220.0 C648.1,215.3 685.2,167.7 703.7,156.0 C722.2,144.3 722.2,153.3 740.7,150.0 C759.3,146.7 796.3,133.3 814.8,136.0 C833.3,138.7 839.5,168.7 851.9,166.0 C864.2,163.3 876.5,125.0 888.9,120.0 C901.2,115.0 913.6,130.7 925.9,136.0 C938.3,141.3 950.6,149.7 963.0,152.0 C975.3,154.3 993.8,150.3 1000.0,150.0" vector-effect="non-scaling-stroke"/></svg>
+  
+</div>
+  </div>
+  <div class="p2-metric">
+    <p class="p2-fig num">76<span class="unit">%</span><span class="p2-word">consistency</span></p>
+    <p class="p2-delta"><span class="up num">+2</span> on last week · 33 and 35 runs</p>
+    <div class="chart chart-spark" role="img" aria-label="cons by day">
+  <svg viewBox="0 0 1000 400" preserveAspectRatio="none" aria-hidden="true"><path class="chart-line" d="M0.0,286.7 C6.2,282.2 24.7,263.3 37.0,260.0 C49.4,256.7 61.7,266.7 74.1,266.7 C86.4,266.7 98.8,264.4 111.1,260.0 C123.5,255.6 129.6,238.9 148.1,240.0 C166.7,241.1 203.7,266.7 222.2,266.7 C240.7,266.7 246.9,247.8 259.3,240.0 C271.6,232.2 284.0,218.9 296.3,220.0 C308.6,221.1 321.0,247.8 333.3,246.7 C345.7,245.6 345.7,214.4 370.4,213.3 C395.1,212.2 456.8,237.8 481.5,240.0 C506.2,242.2 506.2,227.8 518.5,226.7 C530.9,225.6 543.2,236.7 555.6,233.3 C567.9,230.0 580.2,210.0 592.6,206.7 C604.9,203.3 611.1,216.7 629.6,213.3 C648.1,210.0 685.2,184.4 703.7,186.7 C722.2,188.9 722.2,223.3 740.7,226.7 C759.3,230.0 796.3,210.0 814.8,206.7 C833.3,203.3 839.5,213.3 851.9,206.7 C864.2,200.0 876.5,170.0 888.9,166.7 C901.2,163.3 913.6,187.8 925.9,186.7 C938.3,185.6 950.6,164.4 963.0,160.0 C975.3,155.6 993.8,160.0 1000.0,160.0" vector-effect="non-scaling-stroke"/></svg>
+  
+</div>
+  </div>
+  </div>
+  <div class="p2-row p2-habits">
+    <div class="p2-practice">
+      <p class="p2-fig num">6<span class="unit">days in a row</span></p>
+      <p class="p2-delta"><span class="num">9 of 15</span> min today · <span class="num">81</span> this week</p>
+      <ol class="p2-strip" aria-label="Practice by day"><li data-level="3" title="Oct 14: 12 min"><span class="sr-only">Oct 14: 12 min</span></li><li data-level="4" data-met title="Oct 15: 23 min"><span class="sr-only">Oct 15: 23 min</span></li><li data-level="4" data-met title="Oct 16: 20 min"><span class="sr-only">Oct 16: 20 min</span></li><li data-level="4" data-met title="Oct 17: 17 min"><span class="sr-only">Oct 17: 17 min</span></li><li data-level="4" data-met title="Oct 18: 21 min"><span class="sr-only">Oct 18: 21 min</span></li><li data-level="0" title="Oct 19: 0 min"><span class="sr-only">Oct 19: 0 min</span></li><li data-level="4" data-met title="Oct 20: 17 min"><span class="sr-only">Oct 20: 17 min</span></li><li data-level="4" data-met title="Oct 21: 20 min"><span class="sr-only">Oct 21: 20 min</span></li><li data-level="4" data-met title="Oct 22: 18 min"><span class="sr-only">Oct 22: 18 min</span></li><li data-level="3" title="Oct 23: 11 min"><span class="sr-only">Oct 23: 11 min</span></li><li data-level="4" data-met title="Oct 24: 15 min"><span class="sr-only">Oct 24: 15 min</span></li><li data-level="0" title="Oct 25: 0 min"><span class="sr-only">Oct 25: 0 min</span></li><li data-level="0" title="Oct 26: 0 min"><span class="sr-only">Oct 26: 0 min</span></li><li data-level="3" title="Oct 27: 13 min"><span class="sr-only">Oct 27: 13 min</span></li><li data-level="3" title="Oct 28: 11 min"><span class="sr-only">Oct 28: 11 min</span></li><li data-level="3" title="Oct 29: 13 min"><span class="sr-only">Oct 29: 13 min</span></li><li data-level="4" data-met title="Oct 30: 16 min"><span class="sr-only">Oct 30: 16 min</span></li><li data-level="3" title="Oct 31: 11 min"><span class="sr-only">Oct 31: 11 min</span></li><li data-level="0" title="Nov 1: 0 min"><span class="sr-only">Nov 1: 0 min</span></li><li data-level="4" data-met title="Nov 2: 24 min"><span class="sr-only">Nov 2: 24 min</span></li><li data-level="4" data-met title="Nov 3: 18 min"><span class="sr-only">Nov 3: 18 min</span></li><li data-level="0" title="Nov 4: 0 min"><span class="sr-only">Nov 4: 0 min</span></li><li data-level="3" title="Nov 5: 12 min"><span class="sr-only">Nov 5: 12 min</span></li><li data-level="4" data-met title="Nov 6: 16 min"><span class="sr-only">Nov 6: 16 min</span></li><li data-level="3" title="Nov 7: 13 min"><span class="sr-only">Nov 7: 13 min</span></li><li data-level="3" title="Nov 8: 13 min"><span class="sr-only">Nov 8: 13 min</span></li><li data-level="4" data-met title="Nov 9: 18 min"><span class="sr-only">Nov 9: 18 min</span></li><li data-level="2" title="Nov 10: 9 min"><span class="sr-only">Nov 10: 9 min</span></li></ol>
+      <p class="lbl p2-strip-ends"><span>oct 14</span><span>today</span></p>
+    </div>
+    <div class="p2-keys">
+      <div class="kb kb-small" role="group" aria-label="Keys shaded by first tries missed">
+  <div class="kb-row"><span class="kb-key" data-heat="0" aria-label="q, 1.2% of 40 first tries missed"><span class="kb-letter">q</span></span><span class="kb-key" data-heat="0" aria-label="w, 1.4% of 310 first tries missed"><span class="kb-letter">w</span></span><span class="kb-key" data-heat="0" aria-label="e, 2.1% of 1210 first tries missed"><span class="kb-letter">e</span></span><span class="kb-key" data-heat="2" aria-label="r, 6.2% of 640 first tries missed"><span class="kb-letter">r</span></span><span class="kb-key" data-heat="0" aria-label="t, 1.1% of 980 first tries missed"><span class="kb-letter">t</span></span><span class="kb-key" data-heat="0" aria-label="y, 2.6% of 260 first tries missed"><span class="kb-letter">y</span></span><span class="kb-key" data-heat="1" aria-label="u, 3.4% of 420 first tries missed"><span class="kb-letter">u</span></span><span class="kb-key" data-heat="0" aria-label="i, 1.3% of 760 first tries missed"><span class="kb-letter">i</span></span><span class="kb-key" data-heat="0" aria-label="o, 1.9% of 820 first tries missed"><span class="kb-letter">o</span></span><span class="kb-key" data-heat="0" aria-label="p, 2.2% of 220 first tries missed"><span class="kb-letter">p</span></span></div>
+  <div class="kb-row"><span class="kb-key" data-heat="0" aria-label="a, 1% of 900 first tries missed"><span class="kb-letter">a</span></span><span class="kb-key" data-heat="0" aria-label="s, 1.5% of 720 first tries missed"><span class="kb-letter">s</span></span><span class="kb-key" data-heat="0" aria-label="d, 1.2% of 480 first tries missed"><span class="kb-letter">d</span></span><span class="kb-key" data-heat="0" aria-label="f, 0.9% of 260 first tries missed"><span class="kb-letter">f</span></span><span class="kb-key" data-heat="0" aria-label="g, 2% of 230 first tries missed"><span class="kb-letter">g</span></span><span class="kb-key" data-heat="0" aria-label="h, 1.1% of 610 first tries missed"><span class="kb-letter">h</span></span><span class="kb-key" data-heat="1" aria-label="j, 3.1% of 30 first tries missed"><span class="kb-letter">j</span></span><span class="kb-key" data-heat="0" aria-label="k, 2.4% of 110 first tries missed"><span class="kb-letter">k</span></span><span class="kb-key" data-heat="0" aria-label="l, 1.7% of 460 first tries missed"><span class="kb-letter">l</span></span></div>
+  <div class="kb-row"><span class="kb-key" data-heat="1" aria-label="z, 3% of 20 first tries missed"><span class="kb-letter">z</span></span><span class="kb-key" data-heat="2" aria-label="x, 7.4% of 34 first tries missed"><span class="kb-letter">x</span></span><span class="kb-key" data-heat="2" aria-label="c, 5.3% of 330 first tries missed"><span class="kb-letter">c</span></span><span class="kb-key" data-heat="0" aria-label="v, 2.8% of 140 first tries missed"><span class="kb-letter">v</span></span><span class="kb-key" data-heat="3" aria-label="b, 9.1% of 212 first tries missed"><span class="kb-letter">b</span></span><span class="kb-key" data-heat="0" aria-label="n, 2.2% of 760 first tries missed"><span class="kb-letter">n</span></span><span class="kb-key" data-heat="1" aria-label="m, 4.2% of 300 first tries missed"><span class="kb-letter">m</span></span></div>
+</div>
+      <p class="p2-delta"><span class="num">b 9%</span> · <span class="num">x 7%</span> · <span class="num">r 6%</span> of first tries missed</p>
+    </div>
+  </div>
+  <div class="p2-row p2-lists">
+    <ol class="p2-sessions" aria-label="Drills and retests">
+      <li><span class="t3-past-pair">ce</span><span class="num">76 → <span class="up">79</span> <span class="unit">wpm</span></span><span class="lbl">nov 9</span></li>
+      <li><span class="t3-past-pair">qu</span><span class="num">74 → <span class="up">77</span> <span class="unit">wpm</span></span><span class="lbl">nov 7</span></li>
+      <li><span class="t3-past-pair">ol</span><span class="num">75 → <span class="">75</span> <span class="unit">wpm</span></span><span class="lbl">nov 5</span></li>
+      <li><span class="t3-past-pair">ex</span><span class="num">73 → <span class="mixed">71</span> <span class="unit">wpm</span></span><span class="lbl">nov 2</span></li>
+    </ol>
+    <div class="p2-standard">
+      <p class="p2-fig num">76<span class="unit">wpm</span><span class="p2-word">standard</span></p>
+      <p class="p2-delta">median of 3 standard tests</p>
+      <div class="actions"><button class="btn btn-secondary" type="button">Take the standard test</button><button class="btn btn-ghost" type="button">All 133 runs</button></div>
+    </div>
+  </div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="p2">
+  <div class="actions p2-empty-call"><button class="btn btn-primary" type="button">Take a test</button><p class="lbl ">every panel fills from your runs</p></div>
+  <div class="p2-row p2-metrics">
+  <div class="p2-metric">
+    <p class="p2-fig num">—<span class="unit">wpm</span></p>
+    
+    <div class="chart chart-spark is-empty"></div>
+  </div>
+  <div class="p2-metric">
+    <p class="p2-fig num">—<span class="unit">%</span><span class="p2-word">accuracy</span></p>
+    
+    <div class="chart chart-spark is-empty"></div>
+  </div>
+  <div class="p2-metric">
+    <p class="p2-fig num">—<span class="unit">%</span><span class="p2-word">consistency</span></p>
+    
+    <div class="chart chart-spark is-empty"></div>
+  </div>
+  </div>
+  <div class="p2-row p2-habits">
+    <div class="p2-practice">
+      <p class="p2-fig num">0<span class="unit">days in a row</span></p>
+      <ol class="p2-strip" aria-label="Practice by day"><li data-level="0" title="Oct 14: 0 min"><span class="sr-only">Oct 14: 0 min</span></li><li data-level="0" title="Oct 15: 0 min"><span class="sr-only">Oct 15: 0 min</span></li><li data-level="0" title="Oct 16: 0 min"><span class="sr-only">Oct 16: 0 min</span></li><li data-level="0" title="Oct 17: 0 min"><span class="sr-only">Oct 17: 0 min</span></li><li data-level="0" title="Oct 18: 0 min"><span class="sr-only">Oct 18: 0 min</span></li><li data-level="0" title="Oct 19: 0 min"><span class="sr-only">Oct 19: 0 min</span></li><li data-level="0" title="Oct 20: 0 min"><span class="sr-only">Oct 20: 0 min</span></li><li data-level="0" title="Oct 21: 0 min"><span class="sr-only">Oct 21: 0 min</span></li><li data-level="0" title="Oct 22: 0 min"><span class="sr-only">Oct 22: 0 min</span></li><li data-level="0" title="Oct 23: 0 min"><span class="sr-only">Oct 23: 0 min</span></li><li data-level="0" title="Oct 24: 0 min"><span class="sr-only">Oct 24: 0 min</span></li><li data-level="0" title="Oct 25: 0 min"><span class="sr-only">Oct 25: 0 min</span></li><li data-level="0" title="Oct 26: 0 min"><span class="sr-only">Oct 26: 0 min</span></li><li data-level="0" title="Oct 27: 0 min"><span class="sr-only">Oct 27: 0 min</span></li><li data-level="0" title="Oct 28: 0 min"><span class="sr-only">Oct 28: 0 min</span></li><li data-level="0" title="Oct 29: 0 min"><span class="sr-only">Oct 29: 0 min</span></li><li data-level="0" title="Oct 30: 0 min"><span class="sr-only">Oct 30: 0 min</span></li><li data-level="0" title="Oct 31: 0 min"><span class="sr-only">Oct 31: 0 min</span></li><li data-level="0" title="Nov 1: 0 min"><span class="sr-only">Nov 1: 0 min</span></li><li data-level="0" title="Nov 2: 0 min"><span class="sr-only">Nov 2: 0 min</span></li><li data-level="0" title="Nov 3: 0 min"><span class="sr-only">Nov 3: 0 min</span></li><li data-level="0" title="Nov 4: 0 min"><span class="sr-only">Nov 4: 0 min</span></li><li data-level="0" title="Nov 5: 0 min"><span class="sr-only">Nov 5: 0 min</span></li><li data-level="0" title="Nov 6: 0 min"><span class="sr-only">Nov 6: 0 min</span></li><li data-level="0" title="Nov 7: 0 min"><span class="sr-only">Nov 7: 0 min</span></li><li data-level="0" title="Nov 8: 0 min"><span class="sr-only">Nov 8: 0 min</span></li><li data-level="0" title="Nov 9: 0 min"><span class="sr-only">Nov 9: 0 min</span></li><li data-level="0" title="Nov 10: 0 min"><span class="sr-only">Nov 10: 0 min</span></li></ol>
+    </div>
+    <div class="p2-keys"><div class="kb kb-small" role="group" aria-label="Keys shaded by first tries missed">
+  <div class="kb-row"><span class="kb-key" data-heat="none" aria-label="q, no tries yet"><span class="kb-letter">q</span></span><span class="kb-key" data-heat="none" aria-label="w, no tries yet"><span class="kb-letter">w</span></span><span class="kb-key" data-heat="none" aria-label="e, no tries yet"><span class="kb-letter">e</span></span><span class="kb-key" data-heat="none" aria-label="r, no tries yet"><span class="kb-letter">r</span></span><span class="kb-key" data-heat="none" aria-label="t, no tries yet"><span class="kb-letter">t</span></span><span class="kb-key" data-heat="none" aria-label="y, no tries yet"><span class="kb-letter">y</span></span><span class="kb-key" data-heat="none" aria-label="u, no tries yet"><span class="kb-letter">u</span></span><span class="kb-key" data-heat="none" aria-label="i, no tries yet"><span class="kb-letter">i</span></span><span class="kb-key" data-heat="none" aria-label="o, no tries yet"><span class="kb-letter">o</span></span><span class="kb-key" data-heat="none" aria-label="p, no tries yet"><span class="kb-letter">p</span></span></div>
+  <div class="kb-row"><span class="kb-key" data-heat="none" aria-label="a, no tries yet"><span class="kb-letter">a</span></span><span class="kb-key" data-heat="none" aria-label="s, no tries yet"><span class="kb-letter">s</span></span><span class="kb-key" data-heat="none" aria-label="d, no tries yet"><span class="kb-letter">d</span></span><span class="kb-key" data-heat="none" aria-label="f, no tries yet"><span class="kb-letter">f</span></span><span class="kb-key" data-heat="none" aria-label="g, no tries yet"><span class="kb-letter">g</span></span><span class="kb-key" data-heat="none" aria-label="h, no tries yet"><span class="kb-letter">h</span></span><span class="kb-key" data-heat="none" aria-label="j, no tries yet"><span class="kb-letter">j</span></span><span class="kb-key" data-heat="none" aria-label="k, no tries yet"><span class="kb-letter">k</span></span><span class="kb-key" data-heat="none" aria-label="l, no tries yet"><span class="kb-letter">l</span></span></div>
+  <div class="kb-row"><span class="kb-key" data-heat="none" aria-label="z, no tries yet"><span class="kb-letter">z</span></span><span class="kb-key" data-heat="none" aria-label="x, no tries yet"><span class="kb-letter">x</span></span><span class="kb-key" data-heat="none" aria-label="c, no tries yet"><span class="kb-letter">c</span></span><span class="kb-key" data-heat="none" aria-label="v, no tries yet"><span class="kb-letter">v</span></span><span class="kb-key" data-heat="none" aria-label="b, no tries yet"><span class="kb-letter">b</span></span><span class="kb-key" data-heat="none" aria-label="n, no tries yet"><span class="kb-letter">n</span></span><span class="kb-key" data-heat="none" aria-label="m, no tries yet"><span class="kb-letter">m</span></span></div>
+</div></div>
+  </div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

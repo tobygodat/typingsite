@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Challenge · People</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Challenge</h1>
+      <section class="screen d-screen" data-state="full">
+<ul class="c1">
+  <li class="c1-row is-match">
+    <span class="c1-who"><span class="c1-name">Quick match</span><span class="c1-last">near 78 wpm · rating 1,412</span></span>
+    <span class="c1-acts"><button class="btn btn-primary" type="button">Find a race</button></span>
+  </li>
+  <li class="c1-row is-ask">
+    <span class="c1-who"><span class="c1-name">Maya Okafor <span class="c1-on" aria-label="online"></span></span><span class="c1-last">sent a ghost at 84 wpm · 6 days left</span></span>
+    <span class="c1-tally" aria-label="You 3, Maya 4"><span class="num">3–4</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Race the ghost</button></span>
+  </li>
+  <li class="c1-row is-ask">
+    <span class="c1-who"><span class="c1-name">Priya Raman</span><span class="c1-last">invited you · 2 min ago</span></span>
+    <span class="c1-tally" aria-label="You 1, Priya 6"><span class="num">1–6</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Join</button><button class="btn btn-ghost" type="button">Decline</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">Sam Achebe <span class="c1-on" aria-label="online"></span></span><span class="c1-last">won <span class="num">81–77</span> · nov 6</span></span>
+    <span class="c1-tally" aria-label="You 2, Sam 2"><span class="num">2–2</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Race</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">Lena Ortiz</span><span class="c1-last">lost <span class="num">79–87</span> · oct 31</span></span>
+    <span class="c1-tally" aria-label="You 0, Lena 2"><span class="num">0–2</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Race</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">Theo Lindqvist</span><span class="c1-last">won <span class="num">78–70</span> · oct 29</span></span>
+    <span class="c1-tally" aria-label="You 5, Theo 1"><span class="num">5–1</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Race</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">Jonas Weber</span><span class="c1-last">won <span class="num">76–64</span> · oct 22</span></span>
+    <span class="c1-tally" aria-label="You 3, Jonas 0"><span class="num">3–0</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Race</button></span>
+  </li>
+  <li class="c1-row is-foot">
+    <span class="c1-acts"><button class="btn btn-ghost" type="button">Add a friend</button><button class="btn btn-ghost" type="button">Copy a race link</button></span>
+    <span class="c1-acts"><button class="btn btn-ghost" type="button">Daily passage · #9</button><button class="btn btn-ghost" type="button">One keyboard</button></span>
+  </li>
+</ul>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<ul class="c1">
+  <li class="c1-row is-match">
+    <span class="c1-who"><span class="c1-name">Quick match</span><span class="c1-last">unranked as a guest</span></span>
+    <span class="c1-acts"><button class="btn btn-primary" type="button">Find a race</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">A friend</span><span class="c1-last">anyone with the link joins</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Copy a race link</button></span>
+  </li>
+  <li class="c1-row">
+    <span class="c1-who"><span class="c1-name">Daily passage</span><span class="c1-last">214 typed it today</span></span>
+    <span class="c1-acts"><button class="btn btn-secondary" type="button">Type it</button></span>
+  </li>
+  <li class="c1-row is-foot">
+    <span class="c1-acts"><button class="btn btn-ghost" type="button">Sign in to keep friends</button><button class="btn btn-ghost" type="button">One keyboard</button></span>
+  </li>
+</ul>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

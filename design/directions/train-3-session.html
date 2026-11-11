@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · Session</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t3">
+  <div class="t3-bar">
+    <div class="actions"><button class="btn btn-primary" type="button">Start session</button><span class="lbl">about 3 min</span></div>
+    <div class="t3-knobs"><div class="seg" role="group" aria-label="Drill length"><button type="button" class="seg-option is-on" aria-pressed="true" data-set="t3-len" data-show="l30">30 s</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3-len" data-show="l60">60 s</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3-len" data-show="l90">90 s</button></div><div class="seg" role="group" aria-label="Focus"><button type="button" class="seg-option is-on" aria-pressed="true" data-set="t3-focus" data-show="fs">speed</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3-focus" data-show="fa">accuracy</button></div></div>
+  </div>
+  <ol class="t3-steps">
+  <li class="t3-step is-current"><span class="t3-node" aria-hidden="true"></span><span class="lbl">30 s</span><span class="t3-name">Drill br</span><span class="t3-ev">7 of 31 missed</span></li>
+  <li class="t3-step"><span class="t3-node" aria-hidden="true"></span><span class="lbl">25 words</span><span class="t3-name">Retest</span><span class="t3-ev">fresh text</span></li>
+  <li class="t3-step"><span class="t3-node" aria-hidden="true"></span><span class="lbl">30 s</span><span class="t3-name">Drill ce</span><span class="t3-ev">5 of 40 missed</span></li>
+  <li class="t3-step"><span class="t3-node" aria-hidden="true"></span><span class="lbl">25 words</span><span class="t3-name">Retest</span><span class="t3-ev">fresh text</span></li>
+</ol>
+  <ol class="t3-history" aria-label="Past sessions">
+<li class="t3-past is-lead">
+  <span class="lbl">nov 9</span>
+  <span class="t3-past-pair">ce</span>
+  <span class="t3-past-fig num">76 → <span class="up">79</span> <span class="unit">wpm</span></span>
+  <span class="t3-past-fig num">95 → <span class="up">97</span><span class="unit pct">%</span></span>
+  <span class="status badge-success"><span class="status-dot" aria-hidden="true"></span>improved</span>
+</li>
+<li class="t3-past">
+  <span class="lbl">nov 7</span>
+  <span class="t3-past-pair">qu</span>
+  <span class="t3-past-fig num">74 → <span class="up">77</span> <span class="unit">wpm</span></span>
+  <span class="t3-past-fig num">94 → <span class="up">97</span><span class="unit pct">%</span></span>
+  <span class="status badge-success"><span class="status-dot" aria-hidden="true"></span>improved</span>
+</li>
+<li class="t3-past">
+  <span class="lbl">nov 5</span>
+  <span class="t3-past-pair">ol</span>
+  <span class="t3-past-fig num">75 → <span class="">75</span> <span class="unit">wpm</span></span>
+  <span class="t3-past-fig num">96 → <span class="">96</span><span class="unit pct">%</span></span>
+  <span class="status badge-neutral"><span class="status-dot" aria-hidden="true"></span>steady</span>
+</li>
+<li class="t3-past">
+  <span class="lbl">nov 2</span>
+  <span class="t3-past-pair">ex</span>
+  <span class="t3-past-fig num">73 → <span class="mixed">71</span> <span class="unit">wpm</span></span>
+  <span class="t3-past-fig num">95 → <span class="up">96</span><span class="unit pct">%</span></span>
+  <span class="status badge-warning"><span class="status-dot" aria-hidden="true"></span>mixed</span>
+</li>
+  </ol>
+  <p class="lbl ">retests on fresh text · english 1k · 25 words · physical keyboard</p>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t3">
+  <div class="t3-bar">
+    <div class="actions"><button class="btn btn-primary" type="button">Start session</button><span class="lbl">about 1 min</span></div>
+    <div class="t3-knobs"><div class="seg" role="group" aria-label="Drill length"><button type="button" class="seg-option is-on" aria-pressed="true" data-set="t3e-len" data-show="e30">30 s</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3e-len" data-show="e60">60 s</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3e-len" data-show="e90">90 s</button></div><div class="seg" role="group" aria-label="Focus"><button type="button" class="seg-option is-on" aria-pressed="true" data-set="t3e-focus" data-show="es">speed</button><button type="button" class="seg-option" aria-pressed="false" data-set="t3e-focus" data-show="ea">accuracy</button></div></div>
+  </div>
+  <ol class="t3-steps">
+  <li class="t3-step is-current"><span class="t3-node" aria-hidden="true"></span><span class="lbl">30 s</span><span class="t3-name">General drill</span><span class="t3-ev">common pairs</span></li>
+  <li class="t3-step"><span class="t3-node" aria-hidden="true"></span><span class="lbl">25 words</span><span class="t3-name">Retest</span><span class="t3-ev">fresh text</span></li>
+</ol>
+  <p class="lbl t3-first">your first session sets the baseline</p>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>

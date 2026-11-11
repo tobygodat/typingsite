@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Train · Skill map</title>
+  <script src="proto.js"></script>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/src/styles.css">
+  <link rel="stylesheet" href="directions.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="dock-zone">
+      <nav class="dock" aria-label="Main navigation">
+        <a class="brand" href="#practice" aria-label="Stilltype practice"><span class="brand-word">stilltype</span><span class="brand-dot" aria-hidden="true">.</span></a>
+        <div class="dock-nav glide" data-glide="current">
+          <span class="glide-pill" aria-hidden="true"></span>
+          <button class="nav-item" type="button" data-nav="practice"><span class="nav-label-short">type</span> <span class="nav-label-full">practice</span></button>
+          <button class="nav-item is-active" aria-current="page" type="button" data-nav="train">train</button>
+          <button class="nav-item" type="button" data-nav="progress"><span class="nav-label-short">track</span> <span class="nav-label-full">progress</span></button>
+          <button class="nav-item" type="button" data-nav="compete"><span class="nav-label-short">race</span> <span class="nav-label-full">challenge</span></button>
+        </div>
+        <span class="dock-sep" aria-hidden="true"></span>
+        <button class="dock-command dock-settings" type="button" aria-label="Settings">
+          <svg class="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg>
+          <span class="dock-label" aria-hidden="true">settings</span>
+        </button>
+        <button class="dock-command" type="button" aria-label="Commands">
+          <svg class="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        </button>
+      </nav>
+    </header>
+    <div class="corner">
+      <details class="inbox proto-member-only">
+        <summary class="corner-trigger" aria-label="Inbox, 2 new">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4.5 7 7.5 6 7.5-6"/></svg>
+          <span class="inbox-count num">2</span>
+        </summary>
+      </details>
+      <details class="account" data-state="member">
+        <summary class="corner-trigger account-trigger" aria-label="Account">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5"/></svg>
+        </summary>
+      </details>
+    </div>
+    <main id="main-content">
+      <h1 class="sr-only">Train</h1>
+      <section class="screen d-screen" data-state="full">
+<div class="t2">
+  <div class="kb kb-big" role="group" aria-label="Keys shaded by first tries missed">
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-q" aria-label="q, 1.2% of 40 first tries missed"><span class="kb-letter">q</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-w" aria-label="w, 1.4% of 310 first tries missed"><span class="kb-letter">w</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-e" aria-label="e, 2.1% of 1210 first tries missed"><span class="kb-letter">e</span></button><button type="button" class="kb-key" data-heat="2" aria-pressed="false" data-set="t2" data-show="t2-r" aria-label="r, 6.2% of 640 first tries missed"><span class="kb-letter">r</span><span class="kb-rate num">6%</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-t" aria-label="t, 1.1% of 980 first tries missed"><span class="kb-letter">t</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-y" aria-label="y, 2.6% of 260 first tries missed"><span class="kb-letter">y</span></button><button type="button" class="kb-key" data-heat="1" aria-pressed="false" data-set="t2" data-show="t2-u" aria-label="u, 3.4% of 420 first tries missed"><span class="kb-letter">u</span><span class="kb-rate num">3%</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-i" aria-label="i, 1.3% of 760 first tries missed"><span class="kb-letter">i</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-o" aria-label="o, 1.9% of 820 first tries missed"><span class="kb-letter">o</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-p" aria-label="p, 2.2% of 220 first tries missed"><span class="kb-letter">p</span></button></div>
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-a" aria-label="a, 1% of 900 first tries missed"><span class="kb-letter">a</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-s" aria-label="s, 1.5% of 720 first tries missed"><span class="kb-letter">s</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-d" aria-label="d, 1.2% of 480 first tries missed"><span class="kb-letter">d</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-f" aria-label="f, 0.9% of 260 first tries missed"><span class="kb-letter">f</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-g" aria-label="g, 2% of 230 first tries missed"><span class="kb-letter">g</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-h" aria-label="h, 1.1% of 610 first tries missed"><span class="kb-letter">h</span></button><button type="button" class="kb-key" data-heat="1" aria-pressed="false" data-set="t2" data-show="t2-j" aria-label="j, 3.1% of 30 first tries missed"><span class="kb-letter">j</span><span class="kb-rate num">3%</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-k" aria-label="k, 2.4% of 110 first tries missed"><span class="kb-letter">k</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-l" aria-label="l, 1.7% of 460 first tries missed"><span class="kb-letter">l</span></button></div>
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="1" aria-pressed="false" data-set="t2" data-show="t2-z" aria-label="z, 3% of 20 first tries missed"><span class="kb-letter">z</span><span class="kb-rate num">3%</span></button><button type="button" class="kb-key" data-heat="2" aria-pressed="false" data-set="t2" data-show="t2-x" aria-label="x, 7.4% of 34 first tries missed"><span class="kb-letter">x</span><span class="kb-rate num">7%</span></button><button type="button" class="kb-key" data-heat="2" aria-pressed="false" data-set="t2" data-show="t2-c" aria-label="c, 5.3% of 330 first tries missed"><span class="kb-letter">c</span><span class="kb-rate num">5%</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-v" aria-label="v, 2.8% of 140 first tries missed"><span class="kb-letter">v</span></button><button type="button" class="kb-key" data-heat="3" aria-pressed="true" data-set="t2" data-show="t2-b" aria-label="b, 9.1% of 212 first tries missed"><span class="kb-letter">b</span><span class="kb-rate num">9%</span></button><button type="button" class="kb-key" data-heat="0" aria-pressed="false" data-set="t2" data-show="t2-n" aria-label="n, 2.2% of 760 first tries missed"><span class="kb-letter">n</span></button><button type="button" class="kb-key" data-heat="1" aria-pressed="false" data-set="t2" data-show="t2-m" aria-label="m, 4.2% of 300 first tries missed"><span class="kb-letter">m</span><span class="kb-rate num">4%</span></button></div>
+</div>
+  <div class="t2-detail">
+    <div class="t2-panel" id="t2-q" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">q</span> <span class="num">1.2%</span> of 40 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-w" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">w</span> <span class="num">1.4%</span> of 310 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-e" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">e</span> <span class="num">2.1%</span> of 1210 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-r" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">r</span> <span class="num">6.2%</span> of 640 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="3"><span class="t2-pair">br</span><span class="num">7 of 31</span></li><li data-heat="2"><span class="t2-pair">ur</span><span class="num">3 of 37</span></li><li data-heat="0"><span class="t2-pair">re</span><span class="num">2 of 88</span></li><li data-heat="0"><span class="t2-pair">ro</span><span class="num">1 of 54</span></li></ul>
+  </div>
+    <div class="t2-panel" id="t2-t" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">t</span> <span class="num">1.1%</span> of 980 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-y" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">y</span> <span class="num">2.6%</span> of 260 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-u" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">u</span> <span class="num">3.4%</span> of 420 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="0"><span class="t2-pair">un</span><span class="num">2 of 52</span></li><li data-heat="1"><span class="t2-pair">qu</span><span class="num">1 of 25</span></li><li data-heat="2"><span class="t2-pair">ur</span><span class="num">3 of 37</span></li></ul>
+  </div>
+    <div class="t2-panel" id="t2-i" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">i</span> <span class="num">1.3%</span> of 760 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-o" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">o</span> <span class="num">1.9%</span> of 820 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-p" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">p</span> <span class="num">2.2%</span> of 220 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-a" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">a</span> <span class="num">1%</span> of 900 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-s" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">s</span> <span class="num">1.5%</span> of 720 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-d" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">d</span> <span class="num">1.2%</span> of 480 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-f" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">f</span> <span class="num">0.9%</span> of 260 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-g" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">g</span> <span class="num">2%</span> of 230 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-h" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">h</span> <span class="num">1.1%</span> of 610 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-j" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">j</span> <span class="num">3.1%</span> of 30 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-k" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">k</span> <span class="num">2.4%</span> of 110 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-l" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">l</span> <span class="num">1.7%</span> of 460 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-z" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">z</span> <span class="num">3%</span> of 20 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-x" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">x</span> <span class="num">7.4%</span> of 34 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="3"><span class="t2-pair">ex</span><span class="num">4 of 18</span></li><li data-heat="2"><span class="t2-pair">xp</span><span class="num">1 of 8</span></li><li data-heat="0"><span class="t2-pair">xt</span><span class="num">0 of 9</span></li></ul>
+  </div>
+    <div class="t2-panel" id="t2-c" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">c</span> <span class="num">5.3%</span> of 330 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="2"><span class="t2-pair">ce</span><span class="num">5 of 40</span></li><li data-heat="1"><span class="t2-pair">ck</span><span class="num">2 of 29</span></li><li data-heat="0"><span class="t2-pair">ec</span><span class="num">1 of 26</span></li></ul>
+  </div>
+    <div class="t2-panel" id="t2-v" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">v</span> <span class="num">2.8%</span> of 140 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-b" data-panel="t2">
+    <p class="t2-key"><span class="t2-letter">b</span> <span class="num">9.1%</span> of 212 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="3"><span class="t2-pair">br</span><span class="num">7 of 31</span></li><li data-heat="2"><span class="t2-pair">bl</span><span class="num">2 of 22</span></li><li data-heat="1"><span class="t2-pair">ob</span><span class="num">1 of 17</span></li><li data-heat="0"><span class="t2-pair">be</span><span class="num">1 of 38</span></li></ul>
+  </div>
+    <div class="t2-panel" id="t2-n" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">n</span> <span class="num">2.2%</span> of 760 first tries missed</p>
+    
+  </div>
+    <div class="t2-panel" id="t2-m" data-panel="t2" hidden>
+    <p class="t2-key"><span class="t2-letter">m</span> <span class="num">4.2%</span> of 300 first tries missed</p>
+    <ul class="t2-pairs"><li data-heat="3"><span class="t2-pair">my</span><span class="num">3 of 12</span></li><li data-heat="2"><span class="t2-pair">mb</span><span class="num">1 of 10</span></li><li data-heat="0"><span class="t2-pair">me</span><span class="num">1 of 44</span></li></ul>
+  </div>
+  </div>
+  <div class="actions t2-actions"><button class="btn btn-primary" type="button">Drill b, x and r</button><button class="btn btn-ghost" type="button">Drill only b</button></div>
+</div>
+      </section>
+      <section class="screen d-screen" data-state="empty" hidden>
+<div class="t2">
+  <div class="kb kb-big" role="group" aria-label="Keys shaded by first tries missed">
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-q" aria-label="q, no tries yet"><span class="kb-letter">q</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-w" aria-label="w, no tries yet"><span class="kb-letter">w</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-e" aria-label="e, no tries yet"><span class="kb-letter">e</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-r" aria-label="r, no tries yet"><span class="kb-letter">r</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-t" aria-label="t, no tries yet"><span class="kb-letter">t</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-y" aria-label="y, no tries yet"><span class="kb-letter">y</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-u" aria-label="u, no tries yet"><span class="kb-letter">u</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-i" aria-label="i, no tries yet"><span class="kb-letter">i</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-o" aria-label="o, no tries yet"><span class="kb-letter">o</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-p" aria-label="p, no tries yet"><span class="kb-letter">p</span></button></div>
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-a" aria-label="a, no tries yet"><span class="kb-letter">a</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-s" aria-label="s, no tries yet"><span class="kb-letter">s</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-d" aria-label="d, no tries yet"><span class="kb-letter">d</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-f" aria-label="f, no tries yet"><span class="kb-letter">f</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-g" aria-label="g, no tries yet"><span class="kb-letter">g</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-h" aria-label="h, no tries yet"><span class="kb-letter">h</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-j" aria-label="j, no tries yet"><span class="kb-letter">j</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-k" aria-label="k, no tries yet"><span class="kb-letter">k</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-l" aria-label="l, no tries yet"><span class="kb-letter">l</span></button></div>
+  <div class="kb-row"><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-z" aria-label="z, no tries yet"><span class="kb-letter">z</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-x" aria-label="x, no tries yet"><span class="kb-letter">x</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-c" aria-label="c, no tries yet"><span class="kb-letter">c</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-v" aria-label="v, no tries yet"><span class="kb-letter">v</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-b" aria-label="b, no tries yet"><span class="kb-letter">b</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-n" aria-label="n, no tries yet"><span class="kb-letter">n</span></button><button type="button" class="kb-key" data-heat="none" aria-pressed="false" data-set="t2e" data-show="t2e-m" aria-label="m, no tries yet"><span class="kb-letter">m</span></button></div>
+</div>
+  <div class="t2-detail"><p class="lbl t2-none">no tries yet</p></div>
+  <div class="actions t2-actions"><button class="btn btn-primary" type="button">Start general drill</button><button class="btn btn-ghost" type="button">Take a test</button></div>
+</div>
+      </section>
+    </main>
+    <footer class="site-footer">
+      <span class="personal-best num proto-member-only">Best · 91 wpm</span>
+      <span class="personal-best proto-guest-only">guest · runs aren’t saved</span>
+      <span class="footer-links"><button class="footer-link" type="button">suggest a feature</button><button class="footer-link" type="button">v0.2.0</button></span>
+    </footer>
+  </div>
+</body>
+</html>
