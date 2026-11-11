@@ -24,7 +24,7 @@ Train, the results card's Drill action and adaptive mode took their target from 
 
 ## Evaluation
 
-### Decision rule
+### Decision rule v1
 
 Written on 11 November 2026, before the evaluation below was rerun, and not changed after seeing its results.
 
@@ -42,7 +42,7 @@ Written on 11 November 2026, before the evaluation below was rerun, and not chan
 - **Before there are users** (`PRODUCT.md` principle 4). Until the learning study in `docs/ml-data-evaluation.md` can run, a policy becomes the default only by this rule. The promotion is provisional, and the study stays the bar for any claim about learning.
 - **No learning-speed result.** A simulated typist improves after a drill only as the simulator says it does, so a simulated learning result would restate that assumption. The evaluation reports none.
 
-### Results
+### Results v1
 
 The run that decided is recorded in [`0013-evaluation.json`](0013-evaluation.json), with every variant still in the code. Validation chose K = 40 for the counts-only rate (log loss 0.2079; K = 10 gave 0.2113) and a half-life of 10 runs for the full model (0.2093; 30 runs gave 0.2103). The tables are test seeds 1 to 5: the mean, then the lowest and highest seed. The hesitation term changes no prediction, so the rows that differ only by it predict the same.
 
@@ -76,6 +76,38 @@ The run that decided is recorded in [`0013-evaluation.json`](0013-evaluation.jso
 - **Strata, outside the rule.** By run 10 no policy finds rare planted pairs (0–2%). By run 40 `counting@1`, which ranks by rate alone, finds more middle pairs than counts-gain beyond the spread (68% against 45%), and counts-gain, which weighs pairs by frequency, finds more common ones (80% against 70%, within the spread).
 - **Drift, outside the rule.** Without decay, counts-gain lets go of a fixed pair after a median of 18.7 runs. With the 10-run half-life, `+decay` needs 10.8 and the full model 8.2, within counts-gain's spread (11–21).
 - **Two disclosures.** The `features` switch covered the error prior only, so `+hesitation` without features still fitted its hesitation prior over finger-map features. And the first evaluation's "true top pairs" column is gone: those were the pairs with the highest true expected gain, the learner's own objective, so it could only favour the learner.
+
+### Decision rule v2
+
+Written on 11 November 2026, after v1's table above was seen. It amends v1, which had four faults:
+
+1. **It left out letting go.** TOB-419 required, before any evaluation ran, that the learner forgets: a pair that was fixed stops being drilled, and a pair that slips comes back. v1 judged ranking only on planted pairs and pick-up, so the default it chose never forgets within the 120 runs a profile keeps.
+2. **It compared unpaired ranges over five seeds.** Every policy types the same simulated typists on a seed, so the right test is the per-seed paired difference. Lowest-to-highest overlap across five seeds can call almost nothing a win.
+3. **Its only ranking target was a planted pair in the top four.** Ranking by expected gain puts a rare pair low on purpose, so that measure penalises what the product is for. The product's objective is time lost, and v1 measured none.
+4. **No simulated typist had a pair that is accurate but slow.** So a timing term could not show what it is for. The counting rule can name a pair for slowness alone, and `docs/ml-data-evaluation.md` puts timing in the baseline policy.
+
+Because v2 was written after v1's results were seen, it is judged only on seeds no earlier run used. It is not changed after its results are seen.
+
+- **Seeds.** Validation seeds 9001 and 9002 choose every constant. Test seeds 101 to 130, thirty never used before, are run once with the chosen constants.
+- **Typists.** v1's three groups of 24 (8 per skill level), 40 runs of 25 words each, with v1's mechanics. Added to every typist: one planted slow-only pair. Its first-try error rate is the typist's base rate exactly (no mechanics pull, no noise), and its median interval is 1.5 to 2 times the typist's pace (a log ratio drawn evenly from 0.4 to 0.7; at pace otherwise). It is drawn from the common or the middle stratum, at even odds, and differs from the typist's other planted pairs. A drifting typist's slow-only pair is common and becomes fast (at pace) at run 20, and another common pair becomes slow the same way from run 20. So a drifting typist has one weak error pair and one slow-only pair at any time.
+- **Candidates.**
+  - `counting@1`, as the app runs it (v1).
+  - Counts-gain, `learner@1` (v1). K from {2, 5, 10, 20, 40, 80}, by counts-gain's log loss on the validation seeds.
+  - Counts-gain with decay, `learner-decay@1` (v1's weights). The half-life in runs from {10, 15, 20, 30, 60}, by this policy's log loss on the validation seeds. The 60 days stay untested.
+  - Counts-gain with a plain timing term, `learner-timing@1`. A run's timing for a pair is r, the log of the pair's median clean interval over that run's median, from n clean intervals. The pair's slowdown pools across runs and shrinks toward none: h = Σ w·n·r / (Σ w·n + S), where w is the run's weight (1 without decay). There are no features and no regression. S comes from {5, 10, 20, 40, 80}, by the next run's timing error on the validation seeds: the squared difference between h and the next run's r, weighted by n, as a mean per typist. The gain adds time lost to slowness to time lost to errors, in units of one miss per letter typed: frequency × (misses above the typical pair per try, as in counts-gain, + max(0, e^h − 1) / 2). A miss is taken to cost two clean intervals, a wrong key and then the right one. That is the old correction default, not fitted. The simulator's miss costs 1.5, 2 or 2.5 intervals by skill level, so this constant sits near the simulator by construction.
+  - Counts-gain with both, `learner-decay-timing@1`, at the same constants.
+- **Measures, all per test seed.**
+  - Prediction: log loss and calibration error on the next run's first tries (v1).
+  - Captured gain at 10 and at 40 runs: over all 72 typists, the mean of the true time lost of the policy's top four units as a share of the true time lost of the best possible four. True time lost uses the simulator's hidden state at the run after the fit (run 10, run 40) and one formula for every policy. A unit's time lost per letter typed is its share of the letters in the app's passages (a pair's occurrences, or a key's word-initial ones, where the simulator uses a key's own rate) × (max(0, its first-try error rate − the typist's typical rate) × the typist's miss cost + max(0, its median interval − the typist's pace)). The typical rate is the letter-weighted mean first-try error rate, the miss cost is the simulator's (correction keys − 1) × the typist's median interval, and the pace is the median interval over pair occurrences. A policy with fewer than four units scores its units against the best four.
+  - Planted at 10 and at 40, on mechanics and unrelated typists: the share of planted pairs in the top four, by stratum (common, middle, rare error pairs), with the slow-only pairs as their own stratum. "Planted error pairs" is the three error strata together.
+  - Pick-up and let-go on drifting typists, for the error pairs and for the slow pairs, as v1 defines them (a median over drifting typists; 21 means not within 20).
+- **Test.** For two policies and a measure, take the thirty per-seed differences. A difference is real when the 95% t interval of its mean, mean ± 2.045 × sd / √30 (29 degrees of freedom), excludes zero. Every mean difference is reported with its interval.
+- **Decision.**
+  1. **Timing**, a capability the counting rule has, not something evidence has to win. The default includes the timing term when counts-gain with timing is not really worse than counts-gain, and counts-gain with both is not really worse than counts-gain with decay, on log loss, calibration, captured gain at 10 or at 40, or planted error pairs at 10. A policy with no timing term finds no slow-only pair by construction, and its number says so; it is not a discovery.
+  2. **Decay**, a requirement from the issue, not something evidence has to win. With timing as step 1 set it, compare the policy with decay against the same policy without it. The default includes decay when it is really better on error pick-up or error let-go (or, with timing, slow pick-up or slow let-go), and not really worse on log loss, calibration, or captured gain at 10 or at 40. If it is really worse on one of those, the default has no decay, the constants are not retuned on the test seeds, and this ADR says the requirement is unmet and why.
+  3. **The baseline.** The learner policy from steps 1 and 2 replaces `counting@1` as the default only if it is not really worse than `counting@1` on captured gain at 10 and at 40. If it is really worse on either, `counting@1` stays the default.
+  4. **Simplest.** Steps 1 and 2 leave one learner policy, and step 3 picks between it and `counting@1`, so the simplicity clause decides only what stays in the code. A component the default does not use is deleted, unless keeping it as a named variant costs a line or two. `counting@1` stays in the code as the labelled baseline either way.
+- **Still provisional** (`PRODUCT.md` principle 4). Until the learning study in `docs/ml-data-evaluation.md` can run, the promotion makes no claim about learning, and no simulated learning-speed result is reported (v1).
 
 ## Consequences
 
