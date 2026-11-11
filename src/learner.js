@@ -390,3 +390,13 @@ export function recommendFor(policy, { runs, loops, traces, source, now }) {
   return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboardOf(source)), now, LEARNER_VARIANTS[policy]));
 }
 
+
+export const SLOW_FLOOR_MS = 20;
+
+export function paceShift(ms) {
+  const rounded = Math.round(ms);
+
+  return rounded > 0 ? `${rounded} ms slower` : rounded < 0 ? `${-rounded} ms faster` : 'at your pace';
+}
+
+export const paceAgainst = (ms) => (Math.round(ms) ? `${paceShift(ms)} than your pace` : 'at your pace');

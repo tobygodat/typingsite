@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BASELINE_POLICY, DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, HALF_LIFE_DAYS, HALF_LIFE_RUNS, LEARNER_POLICY, LEARNER_VARIANTS, POOLED_TRIES,
-  TIMING_POLICY, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, recommendFor, stated,
+  SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceAgainst,
+  paceShift, recommendFor, stated,
 } from '../src/learner.js';
 import { KEY_COUNTS_VERSION } from '../src/insights.js';
 import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive, makeDrill } from '../src/typing.js';
@@ -237,6 +238,94 @@ test('a pair ranked on its slowness is named only on its observed timing, and re
   // Slower in only half the runs that timed it: not named, however slow on average.
   const mixed = learnerRecommendation(fit([slowRun('a', 0, 500), slowRun('b', 1, 500), slowRun('c', 2, 190), slowRun('d', 3, 190)]));
   assert.equal(mixed.kind, 'general');
+});
+
+// A run at `pace` ms a key, its background pairs at that pace, "th" `thMs` a key over `n` clean intervals.
+const pacedRun = (id, i, pace, thMs, n) => summary(id, day(i), withBackground([['th', n, 0, n, thMs, thMs - pace]]).map((row) => (row[0] === 'th' ? row : [row[0], 3, 0, 3, pace, 0])));
+
+test('a pair is named for slowness only when the figure the page prints is more than the floor slower', () => {
+  // The reproduction from the TOB-419 check: two runs at 60 ms a key with "th" 40 ms late, then one at 400 ms a
+  // key with "th" 250 ms early. Its mean log ratio is above none, but its mean in ms is faster than the pace.
+  const runs = [pacedRun('a', 0, 60, 100, 12), pacedRun('b', 1, 60, 100, 12), pacedRun('c', 2, 400, 150, 10)];
+  const model = fit(runs);
+  const th = estimate(model, 'th');
+  assert.equal(th.basis, 'slow');
+  assert.ok(th.slowdown > 0, 'ranking still reads the log ratio');
+  assert.ok(th.observed.slowMs < 0, `printed figure ${th.observed.slowMs}`);
+  const recommendation = learnerRecommendation(model);
+  assert.equal(recommendation.kind, 'general');
+  assert.deepEqual(recommendation.queue, []);
+  assert.equal(recommendation.lean[0].unit, 'th', 'the drill still leans toward it');
+  assert.doesNotMatch(JSON.stringify(recommendation), /-\d+ ms|\b0 ms slower/);
+
+  // A slowdown that rounds to a millisecond or two is never queued or offered as Next.
+  const hair = learnerRecommendation(fit(Array.from({ length: 4 }, (_, i) => pacedRun(`h${i}`, i, 200, 201, 4))));
+  assert.equal(estimate(fit(Array.from({ length: 4 }, (_, i) => pacedRun(`h${i}`, i, 200, 201, 4))), 'th').observed.slowMs, 1);
+  assert.deepEqual(hair.queue, []);
+
+  // Just past the floor it is named, and the line prints that figure.
+  const past = learnerRecommendation(fit(Array.from({ length: 4 }, (_, i) => pacedRun(`p${i}`, i, 200, 200 + SLOW_FLOOR_MS + 1, 4))));
+  assert.equal(past.target, 'th');
+  assert.equal(past.reason, `“th”: ${SLOW_FLOOR_MS + 1} ms slower than your pace, in 4 of 4 runs that timed it (16 clean intervals).`);
+  const at = learnerRecommendation(fit(Array.from({ length: 4 }, (_, i) => pacedRun(`f${i}`, i, 200, 200 + SLOW_FLOOR_MS, 4))));
+  assert.equal(at.kind, 'general', 'at the floor is not past it');
+});
+
+test('pace copy never prints a negative or zero amount as slower', () => {
+  assert.equal(paceShift(45.4), '45 ms slower');
+  assert.equal(paceShift(-12.2), '12 ms faster');
+  assert.equal(paceShift(0.4), 'at your pace');
+  assert.equal(paceShift(-0.4), 'at your pace');
+  assert.equal(paceAgainst(45), '45 ms slower than your pace');
+  assert.equal(paceAgainst(-250), '250 ms faster than your pace');
+  assert.equal(paceAgainst(0), 'at your pace');
+});
+
+test('across mixed fast and slow runs, no named or queued slow unit prints a figure at or below the floor', () => {
+  const random = seeded(4242);
+  const pairs = ['th', 'he', 'in', 'er', 'an', 'ou'];
+  let slowNamed = 0;
+
+  for (let round = 0; round < 300; round += 1) {
+    const runs = Array.from({ length: 1 + Math.floor(random() * 6) }, (_, i) => {
+      const pace = 40 + Math.floor(random() * 460);
+
+      return summary(`m${round}-${i}`, day(i), withBackground(pairs.map((pair) => {
+        const n = Math.floor(random() * 8);
+        const ms = Math.max(1, Math.round(pace * Math.exp(random() * 1.4 - 0.6)));
+
+        return [pair, n + Math.floor(random() * 3), random() < 0.1 ? 1 : 0, n, n ? ms : null, n ? ms - pace : null];
+      })).map((row) => (pairs.includes(row[0]) ? row : [row[0], 3, 0, 3, pace, 0])));
+    });
+
+    const recommendation = learnerRecommendation(fit(runs));
+
+    for (const { unit, was } of recommendation.queue) {
+      if (was.basis !== 'slow') continue;
+      slowNamed += 1;
+      assert.ok(Math.round(was.slowMs) > SLOW_FLOOR_MS, `round ${round}: “${unit}” queued at ${was.slowMs} ms`);
+    }
+
+    if (recommendation.was?.basis === 'slow') assert.match(recommendation.reason, new RegExp(`: \\d+ ms slower than your pace, in`));
+    assert.doesNotMatch(recommendation.reason, /-\d|\b0 ms slower/);
+  }
+
+  assert.ok(slowNamed > 20, `the generator names slow pairs (${slowNamed})`);
+});
+
+test('Train names the highest-ranked unit that can be named, below a thin slow pair that cannot', () => {
+  // From the TOB-419 check: "th" missed on 9 of 11 first tries, and "he" slow over 4 clean intervals ranking above it.
+  const run = summary('a', day(0), withBackground([['th', 11, 9, 2, 200, 0], ['he', 6, 0, 4, 600, 400]]));
+  const model = fit([run]);
+  assert.deepEqual(model.units.slice(0, 2).map((e) => [e.unit, e.basis]), [['he', 'slow'], ['th', 'errors']]);
+  const recommendation = learnerRecommendation(model);
+  assert.equal(recommendation.kind, 'targeted');
+  assert.equal(recommendation.title, 'Practice “th”');
+  assert.equal(recommendation.reason, '“th”: 9 first-try errors in 11 tries over 1 run.');
+  assert.deepEqual(recommendation.was, { errors: 9, observations: 11, runs: 1, slowRuns: 0 });
+  assert.deepEqual(recommendation.queue.map(({ unit }) => unit), ['th']);
+  // The drill and adaptive text still lean toward the top-ranked units, named or not.
+  assert.deepEqual(recommendation.lean.slice(0, 2).map(({ unit }) => unit), ['he', 'th']);
 });
 
 test('only measured runs on the same keyboard are evidence; drills, adaptive runs and touch never are', () => {
