@@ -1,4 +1,4 @@
-// Coarse pointers keep a 44px minimum target (DESIGN.md, Breakpoints). This sweep visits each view
+// Coarse pointers keep a 44px minimum target (DESIGN.md, Floors). This sweep visits each view
 // and state on a touch phone and measures every visible control generically, so a new control is
 // checked without being listed here. The hit area is measured with elementFromPoint, outward from the
 // control's centre, so padding, negative margins, pseudo-elements and a wrapping label all count,

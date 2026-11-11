@@ -68,6 +68,38 @@ test('two strangers press quick match, race the standard setup, see the rating m
   }
 });
 
+test('a ranked account reads its rank on the rating line, and a win that crosses into the next rank says from where', async ({ page, browser, supabase }) => {
+  // Both settled at 1795 (Gust I) with 20 rated races, so K is 20 and a win at equal ratings moves 10 each way.
+  for (const email of ['ada@stilltype.test', 'lin@stilltype.test']) supabase.races.quick.ratings.set(supabase.addUser(email).id, { rating: 1795, races: 20 });
+  supabase.races.quick.duration = 5;
+  supabase.races.quick.countdownMs = 2000;
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Gust I · 1795 · 20 rated races');
+  await quick(page).click();
+  const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin');
+
+  try {
+    await quick(lin).click();
+    await expect(page.locator('#online-input')).toBeEnabled({ timeout: 8000 });
+    await expect(lin.locator('#online-input')).toBeEnabled();
+    const passage = await page.locator('#online-accessible-passage').textContent();
+    await Promise.all([typeInto(page, passage.slice(0, 60), '#online-input', { delay: 35 }), typeInto(lin, passage.slice(0, 30), '#online-input', { delay: 70 })]);
+    await expect(page.locator('#online-rating-change')).toHaveText('Rated win. Gale III · 1805 · 21 rated races (+10), up from Gust I.', { timeout: 15000 });
+    // Lin stays in Gust I, so her line says nothing more, and neither page shows the other racer's rating.
+    await expect(lin.locator('#online-rating-change')).toHaveText('Rated loss. Gust I · 1785 · 21 rated races (−10)', { timeout: 15000 });
+    expect(await page.locator('#online-room').textContent()).not.toContain('1785');
+    expect(await lin.locator('#online-room').textContent()).not.toContain('1805');
+    await page.locator('#online-leave').click();
+    await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Gale III · 1805 · 21 rated races');
+    expect(supabase.errors).toEqual([]);
+  } finally {
+    await context.close();
+  }
+});
+
 test('a racer who closes the page mid-race loses, rated; the other racer wins once the clock and its grace run out', async ({ page, browser, supabase }) => {
   supabase.addUser('ada@stilltype.test');
   supabase.addUser('lin@stilltype.test');
