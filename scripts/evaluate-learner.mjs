@@ -1,7 +1,12 @@
 // Evaluates the recommendation policies on simulated typists, and applies ADR 0013's decision rule v2 to pick
 // the default. Deterministic from its seeds. See docs/adr/0013-learning-core.md.
 //
-//   npm run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--profile path/to/profile.json]
+//   npm run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--naming out.json] [--profile path/to/profile.json]
+//   npm run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
+//   npm run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
+//
+// The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
+// nothing: rule v2's run on the shipped simulator is the record.
 //
 // What it shows, and what it does not: how well each policy predicts the next run's first-try errors, how much
 // of the time a typist loses its top units hold, and how soon it finds, picks up and lets go of planted weak and
@@ -11,8 +16,8 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
-import { evidenceRun, runRecord } from '../src/insights.js';
-import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, TIMING_POLICY, countingRecommendation, englishFrequency,
+import { MIN_PATTERN_SAMPLES, evidenceRun, runRecord } from '../src/insights.js';
+import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation, englishFrequency,
   fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { normalizeProfile } from '../src/profile.js';
 import { keyboardRows } from '../src/layouts.js';
@@ -130,7 +135,12 @@ const pick = (random, list, taken) => {
 // missed at the typist's base rate and typed 1.5 to 2 times slower than their pace. A drifting typist has a
 // common weak pair that is fixed at run CHANGE and another that starts slipping then, and a common slow pair
 // that becomes fast at CHANGE and another that becomes slow then.
-export function makeTypist(random, group, skill, index = 0) {
+//
+// `world` changes the simulator for the sensitivity runs, drawing the same random numbers: `errorPairsAtPace`
+// types planted weak pairs at the typist's pace, and `missCost` scales every skill's correction so the average
+// typist's miss costs that many intervals (2 is the shipped 1.5, 2 and 2.5 by skill).
+export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
+  const skill = world.missCost ? { ...rawSkill, correctionKeys: 1 + ((rawSkill.correctionKeys - 1) * world.missCost) / 2 } : rawSkill;
   const pairs = [...englishFrequency().pairs.keys()].sort();
   const mech = mechanics();
   const base = logit(skill.errorRate);
@@ -150,7 +160,13 @@ export function makeTypist(random, group, skill, index = 0) {
     slowness.set(pair, (weights ? 0.6 * pull : 0) + 0.1 * gaussian(random));
   }
 
-  const weakness = () => ({ error: 1.6 + random() * 0.8, slow: 0.3 + random() * 0.3 });
+  const weakness = () => {
+    const error = 1.6 + random() * 0.8;
+    const slow = 0.3 + random() * 0.3;
+
+    return { error, slow: world.errorPairsAtPace ? 0 : slow };
+  };
+
   const planted = [];
 
   const slowOnly = () => ({ error: 0, slow: 0.4 + random() * 0.3 });
@@ -359,11 +375,11 @@ function captured(top, loss) {
 
 // The typists of one seed: 8 per skill level per group, 40 runs each, typed once and scored by every policy,
 // with their true time lost after 10 runs and after all of them.
-export function simulate(seed, { typists = 8, runs = 40 } = {}) {
+export function simulate(seed, { typists = 8, runs = 40, world = {} } = {}) {
   const random = seeded(seed);
 
   return GROUPS.flatMap((group) => SKILLS.flatMap((skill) => Array.from({ length: typists }, (_, i) => {
-    const typist = makeTypist(random, group, skill, i);
+    const typist = makeTypist(random, group, skill, i, world);
     const history = Array.from({ length: runs }, (_, r) => typeRun(typist, random, r, `${seed}-${group}-${skill.name}-${i}-${r}`));
 
     return { typist, history, truth: { 10: trueLoss(typist, 10), [runs]: trueLoss(typist, runs) } };
@@ -547,6 +563,52 @@ export function fitTime(seed = 419) {
   return { median: median(times), max: Math.max(...times) };
 }
 
+// Descriptive, outside rule v2: how often Train names a target by each run, under the earlier naming rule and
+// the current one, and how often a named target is among the typist's true top four units by time lost.
+export const NAMING_RUNS = [5, 10, 20, 40];
+
+// The earlier rule: only the top-ranked unit could be named, and a slow pair on its intervals and runs alone,
+// with no floor on its slowdown in ms.
+function earlierRuleTarget(model) {
+  const top = model.units.find((e) => e.gain > 0);
+  const slowEnough = ({ timed = 0, slowRuns = 0, timedRuns = 0 }) => timed >= MIN_PATTERN_SAMPLES && slowRuns * 2 > timedRuns;
+
+  if (!top) return null;
+  const own = top.own || top.observed;
+  const named = top.basis === 'slow' ? slowEnough(top.observed) : own.seen >= MIN_PATTERN_SAMPLES && (own.errors > 0 || slowEnough(own));
+
+  return named ? { unit: top.unit, basis: top.basis } : null;
+}
+
+export function naming({ constants, seeds = TEST_SEEDS, ...options }) {
+  const variant = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...constants };
+  const tally = Object.fromEntries(['earlier', 'current'].map((rule) => [rule, Object.fromEntries(NAMING_RUNS.map((t) => [t, { fits: 0, named: 0, topFour: 0, slow: 0 }]))]));
+
+  for (const seed of seeds) {
+    for (const { typist, history } of simulate(seed, options)) {
+      for (const t of NAMING_RUNS) {
+        const model = fitLearner(learnerEvidence(history.slice(0, t).map((h) => h.run), KEYBOARD), START + t * RUN_MS, variant);
+        const recommendation = learnerRecommendation(model);
+        const loss = [...trueLoss(typist, t)].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, LEAN_UNITS).map(([unit]) => unit);
+        const current = recommendation.target ? { unit: recommendation.target, basis: recommendation.was.basis || 'errors' } : null;
+
+        for (const [rule, target] of [['earlier', earlierRuleTarget(model)], ['current', current]]) {
+          const cell = tally[rule][t];
+          cell.fits += 1;
+
+          if (!target) continue;
+          cell.named += 1;
+          cell.topFour += loss.includes(target.unit) ? 1 : 0;
+          cell.slow += target.basis === 'slow' ? 1 : 0;
+        }
+      }
+    }
+  }
+
+  return Object.fromEntries(Object.entries(tally).map(([rule, byRun]) => [rule, Object.fromEntries(Object.entries(byRun).map(([t, c]) => [t,
+    { fits: c.fits, named: c.named / c.fits, topFour: c.named ? c.topFour / c.named : null, slow: c.named ? c.slow / c.named : null }]))]));
+}
+
 const fixed = (digits) => (v) => v.toFixed(digits);
 const percent = (v) => `${(v * 100).toFixed(1)}%`;
 const points = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}`;
@@ -576,6 +638,7 @@ export function report(validation, result) {
   const diff = (d, m) => (d ? `${FORMATS[m](d.mean)} [${FORMATS[m](d.low)}, ${FORMATS[m](d.high)}]` : '–');
 
   return [
+    ...(result.world ? [`Sensitivity run, which decides nothing: ${JSON.stringify(result.world)}.`, ''] : []),
     `Validation (seeds ${VALIDATION_SEEDS.join(', ')}). K by counts-gain's log loss: ${validation.pooled.map((r) => `${r.pooledTries} ${loss(r.logLoss)}`).join(', ')}: K = ${validation.pooledTries}.`,
     `Half-life by +decay's log loss: ${validation.halfLife.map((r) => `${r.halfLifeRuns} ${loss(r.logLoss)}`).join(', ')}: ${validation.halfLifeRuns} runs.`,
     `Timing shrinkage by +timing's next-run timing error: ${validation.timing.map((r) => `${r.timingTries} ${fixed(5)(r.timingError)}`).join(', ')}: S = ${validation.timingTries}.`,
@@ -598,6 +661,25 @@ export function report(validation, result) {
   ].join('\n');
 }
 
+export function namingReport(rates) {
+  const share = (v) => (v === null ? '–' : percent(v));
+  const rows = Object.entries(rates).flatMap(([rule, byRun]) => Object.entries(byRun).map(([t, c]) => [rule, t, share(c.named), share(c.topFour), share(c.slow)]));
+
+  return ['Descriptive, outside rule v2: Train under the earlier naming rule (top-ranked unit only, no slowness floor) and the current one (the',
+    `highest-ranked unit that can be named, slowness past ${SLOW_FLOOR_MS} ms). Named: share of typist fits with a target. Top four: share of named`,
+    'targets among the typist\'s true top four units by time lost. Slow: share of named targets named for slowness.',
+    table(['rule', 'runs', 'named', 'top four', 'slow'], rows)].join('\n');
+}
+
+// What a sensitivity run keeps: no per-seed rows, which the rule's record holds for the shipped simulator.
+function sensitivityRecord(world, validation, result, rates) {
+  const means = Object.fromEntries(result.policies.map(({ name }) => [name, Object.fromEntries(Object.keys(MEASURES)
+    .map((m) => [m, result.perSeed.some((seed) => seed[name][m] === null) ? null : mean(result.perSeed.map((seed) => seed[name][m]))]))]));
+
+  return { rule: 'v2', sensitivity: world, decides: 'nothing', seeds: result.seeds, constants: result.constants, validation, means,
+    differences: differences(result), decision: decide(result), naming: rates };
+}
+
 function option(name, fallback) {
   const at = process.argv.indexOf(`--${name}`);
 
@@ -605,7 +687,15 @@ function option(name, fallback) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const world = {};
+
+  if (process.argv.includes('--errors-at-pace')) world.errorPairsAtPace = true;
+
+  if (option('miss-cost', null)) world.missCost = Number(option('miss-cost', null));
+  const sensitivity = Object.keys(world).length > 0;
   const options = { typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) };
+
+  if (sensitivity) options.world = world;
   const validation = validate(options);
   const constants = { pooledTries: validation.pooledTries, halfLifeRuns: validation.halfLifeRuns, timingTries: validation.timingTries };
   console.log(`constants chosen on validation: ${JSON.stringify(constants)}`);
@@ -616,10 +706,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
 
   const result = evaluate({ constants, ...options });
-  console.log(report(validation, result));
+  console.log(report(validation, sensitivity ? { ...result, world } : result));
+  const rates = naming({ constants, ...options });
+  console.log(`\n${namingReport(rates)}`);
   const json = option('json', null);
 
-  if (json) writeFileSync(json, `${JSON.stringify({ rule: 'v2', validation, ...result, differences: differences(result), decision: decide(result) }, null, 1)}\n`);
+  if (json) {
+    const record = sensitivity ? sensitivityRecord(world, validation, result, rates) : { rule: 'v2', validation, ...result, differences: differences(result), decision: decide(result) };
+    writeFileSync(json, `${JSON.stringify(record, null, 1)}\n`);
+  }
+
+  const namingJson = option('naming', null);
+
+  if (namingJson) writeFileSync(namingJson, `${JSON.stringify({ descriptive: true, constants, seeds: TEST_SEEDS, naming: rates }, null, 1)}\n`);
   const timing = fitTime();
   console.log(`\n${DEFAULT_POLICY}, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
   const shipped = LEARNER_VARIANTS[DEFAULT_POLICY];
