@@ -28,13 +28,10 @@ const byDate = (a, b) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a
 // What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
 export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
-// The target's observed evidence on measured runs on the keyboard, before its drill and from its retest on, of the
-// kind it was drilled for: tries and misses, or clean intervals and their mean slowdown over the person's pace.
-// A side with no observations is null.
-export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions))) {
-  const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
-  const basis = basisOf(loop);
-
+// A unit's observed evidence on measured runs on the keyboard, before `split` (ms) and from it on, of one kind: tries
+// and misses, or clean intervals and their mean slowdown over the person's pace. A side with no observations is null.
+// Undated records belong to neither side.
+export function evidenceSince(unit, basis, split, records) {
   const tally = (side) => {
     let held = 0;
     let tries = 0;
@@ -43,14 +40,14 @@ export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboar
     let ms = 0;
 
     for (const record of side) {
-      const unit = record.units.find((item) => item.unit === loop.target);
+      const item = record.units.find((entry) => entry.unit === unit);
 
-      if (!unit) continue;
+      if (!item) continue;
       held += 1;
-      tries += unit.seen;
-      errors += unit.errors;
+      tries += item.seen;
+      errors += item.errors;
 
-      if (unit.slowMs !== null && unit.timed) { intervals += unit.timed; ms += unit.timed * unit.slowMs; }
+      if (item.slowMs !== null && item.timed) { intervals += item.timed; ms += item.timed * item.slowMs; }
     }
 
     if (basis === 'slow') return intervals ? { runs: held, intervals, ms: ms / intervals } : null;
@@ -63,7 +60,16 @@ export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboar
   return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)) };
 }
 
-// The one rule for "fixed" (see FIXED_RUNS).
+// A drilled target's evidence, split at its retest: before its drill and from its retest on, of the kind it was
+// drilled for.
+export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions))) {
+  const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
+
+  return evidenceSince(loop.target, basisOf(loop), split, records);
+}
+
+// The one rule for "fixed" (see FIXED_RUNS). Train asks it of a drilled target, split at its retest; Progress also
+// asks it of a unit never drilled, split where its week began (week-change.js), so the two pages share one rule.
 export function isFixed(since, queued) {
   const after = since?.after;
 
