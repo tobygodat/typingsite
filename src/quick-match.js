@@ -31,10 +31,10 @@ export function ratingChanges(a, b, outcome) {
 
 export const provisional = (races) => races < RATING.provisional;
 
-// The race rank, read from a settled rating and never stored (docs/adr/0016-race-rank.md). Still is under the
+// The race rank, read from a settled rating and never stored (docs/adr/0016-race-rank.md). Whisper is under the
 // floor and Hurricane from the top; each rank between spans perRank points in three perStep steps, III lowest.
 export const RANKS = Object.freeze({
-  names: Object.freeze(['Still', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']),
+  names: Object.freeze(['Whisper', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']),
   steps: Object.freeze(['III', 'II', 'I']),
   floor: 1200,
   perRank: 300,

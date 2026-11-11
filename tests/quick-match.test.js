@@ -122,10 +122,10 @@ test('the rating line says the count and whether the rating is provisional', () 
   }
 });
 
-test('the rank ladder: Still under 1200, Hurricane from 2400, and three 100-point steps in each rank between', () => {
+test('the rank ladder: Whisper under 1200, Hurricane from 2400, and three 100-point steps in each rank between', () => {
   const label = (rating) => rankLabel(rankOf({ rating, races: 10 }));
 
-  const edges = [[0, 'Still'], [1199, 'Still'], [1200, 'Breeze III'], [1299, 'Breeze III'], [1300, 'Breeze II'], [1399, 'Breeze II'],
+  const edges = [[0, 'Whisper'], [1199, 'Whisper'], [1200, 'Breeze III'], [1299, 'Breeze III'], [1300, 'Breeze II'], [1399, 'Breeze II'],
     [1400, 'Breeze I'], [1499, 'Breeze I'], [1500, 'Gust III'], [1599, 'Gust III'], [1600, 'Gust II'], [1699, 'Gust II'], [1700, 'Gust I'],
     [1799, 'Gust I'], [1800, 'Gale III'], [1899, 'Gale III'], [1900, 'Gale II'], [1999, 'Gale II'], [2000, 'Gale I'], [2099, 'Gale I'],
     [2100, 'Tempest III'], [2199, 'Tempest III'], [2200, 'Tempest II'], [2299, 'Tempest II'], [2300, 'Tempest I'], [2399, 'Tempest I'],
@@ -134,7 +134,7 @@ test('the rank ladder: Still under 1200, Hurricane from 2400, and three 100-poin
   for (const [rating, expected] of edges) assert.equal(label(rating), expected, `${rating}`);
   assert.deepEqual(rankOf({ rating: 1840, races: 23 }), { index: 3, name: 'Gale', step: 'III' });
   assert.deepEqual(rankOf({ rating: 2400, races: 10 }), { index: 5, name: 'Hurricane', step: null });
-  assert.deepEqual(RANKS.names, ['Still', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']);
+  assert.deepEqual(RANKS.names, ['Whisper', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']);
 
   // No rank while provisional, or for a rating that isn't one.
   for (const rating of [{ rating: 2500, races: 9 }, { rating: 1500, races: 0 }, null, {}, { rating: '1800', races: 12 }, { rating: 1800.5, races: 12 }]) {
@@ -146,7 +146,7 @@ test('the rank ladder: Still under 1200, Hurricane from 2400, and three 100-poin
 
 test('a ranked rating line leads with the rank, and a rated race that moves the rank or step says from where', () => {
   assert.equal(ratingLine({ rating: 1840, races: 23 }), 'Gale III · 1840 · 23 rated races');
-  assert.equal(ratingLine({ rating: 1199, races: 40 }), 'Still · 1199 · 40 rated races');
+  assert.equal(ratingLine({ rating: 1199, races: 40 }), 'Whisper · 1199 · 40 rated races');
   assert.equal(ratingLine({ rating: 2450, races: 80 }), 'Hurricane · 2450 · 80 rated races');
   // The provisional line is unchanged, and neither half of a rank breaks across lines.
   assert.equal(rawLine({ rating: 1500, races: 9 }), 'Race rating 1500 · 9\u00a0rated\u00a0races\u00a0·\u00a0provisional');
@@ -159,7 +159,7 @@ test('a ranked rating line leads with the rank, and a rated race that moves the 
   assert.equal(race('won', 1610, 15, 30), 'Rated win. Gust II · 1610 · 30 rated races (+15), up from Gust III.');
   assert.equal(race('lost', 1595, -10, 30), 'Rated loss. Gust III · 1595 · 30 rated races (−10), down from Gust II.');
   assert.equal(race('won', 2405, 10, 50), 'Rated win. Hurricane · 2405 · 50 rated races (+10), up from Tempest I.');
-  assert.equal(race('lost', 1190, -12, 50), 'Rated loss. Still · 1190 · 50 rated races (−12), down from Breeze III.');
+  assert.equal(race('lost', 1190, -12, 50), 'Rated loss. Whisper · 1190 · 50 rated races (−12), down from Breeze III.');
   assert.equal(race('tied', 1800, 0, 12), 'Rated tie. Gale III · 1800 · 12 rated races (+0)');
   // The race that ends the provisional period gives a rank but no movement: there was no rank before it.
   assert.equal(race('won', 1820, 40, 10), 'Rated win. Gale III · 1820 · 10 rated races (+40)');

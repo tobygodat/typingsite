@@ -12,14 +12,14 @@ Status: Accepted, 2026-11-11 (TOB-429).
 
 | Rank | Rating | Steps |
 | --- | --- | --- |
-| Still | under 1200 | none |
+| Whisper | under 1200 | none |
 | Breeze | 1200 to 1499 | III, II, I |
 | Gust | 1500 to 1799 | III, II, I |
 | Gale | 1800 to 2099 | III, II, I |
 | Tempest | 2100 to 2399 | III, II, I |
 | Hurricane | 2400 and up | none |
 
-Each rank between Still and Hurricane spans 300 points in three 100-point steps, III the lowest hundred and I the highest. So 1500 is Gust III, 1699 is Gust II, 1799 is Gust I and 1800 is Gale III. Everyone starts at 1500, so a new account that holds its level lands in Gust III. The table, its floor of 1200 and its 300- and 100-point spans are `RANKS` in `src/quick-match.js`, and `rankOf` reads it.
+Each rank between Whisper and Hurricane spans 300 points in three 100-point steps, III the lowest hundred and I the highest. So 1500 is Gust III, 1699 is Gust II, 1799 is Gust I and 1800 is Gale III. Everyone starts at 1500, so a new account that holds its level lands in Gust III. The table, its floor of 1200 and its 300- and 100-point spans are `RANKS` in `src/quick-match.js`, and `rankOf` reads it.
 
 **What the racer reads.** The rating line leads with the rank: "Gale III · 1840 · 23 rated races". A rated result that changes the rank or the step says so at its end: "Rated win. Gale III · 1808 · 23 rated races (+16), up from Gust I." The state before the race is the rating less the change, with one rated race fewer. A racer can't start another quick match until one settles (ADR 0014), so the count the service returns with a settled race is the count after it.
 
