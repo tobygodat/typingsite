@@ -350,7 +350,8 @@ function fitHesitationWeights(rows) {
 // The model: a fold over evidence records at time `now` (ms) on one layout.
 //   { policy, runs, medianMs, costMs, errorRate, weights: { error, hesitation }, units: Estimate[] }
 //   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, error: { mean, sd },
-//     hesitation: { mean, sd } | null, observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns } }
+//     hesitation: { mean, sd } | null, observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns },
+//     own?: { seen, errors } (keys: the observations naming reads, see stated) }
 // units is ranked by gain, highest first: the queue. `observed` holds raw, undecayed counts, the only
 // numbers a person is shown.
 export function fitLearner(evidence, now, layout) {
@@ -402,11 +403,30 @@ export function fitLearner(evidence, now, layout) {
     }
   });
 
+  // A key's own evidence: its tries and misses outside the pairs ending in it that can be named themselves
+  // (stated). A miss inside "th" is th's, so "h" ranks and is named only on misses elsewhere.
+  for (const [unit, t] of tally) {
+    if (unit.length === 1) t.own = { seen: t.seen, errors: t.errors, n: t.n, e: t.e };
+  }
+
+  for (const [unit, t] of tally) {
+    const key = tally.get(unit[1]);
+
+    if (unit.length !== 2 || !key || !stated({ observed: t })) continue;
+    key.own.seen = Math.max(0, key.own.seen - t.seen);
+    key.own.errors = Math.max(0, Math.min(key.own.seen, key.own.errors - t.errors));
+    key.own.n = Math.max(0, key.own.n - t.n);
+    key.own.e = Math.max(0, Math.min(key.own.n, key.own.e - t.e));
+  }
+
   const names = [...new Set([...table.pairs.keys(), ...table.keys.keys(), ...tally.keys()])].sort(compare);
   const units = centered(names.map((unit) => ({ unit, x: unitFeatures(unit, positions, frequency), t: tally.get(unit) || null })), frequency);
 
-  const errorWeights = fitErrorWeights(units.flatMap(({ x, t }) => (t?.n > 0
-    ? [{ x, rate: t.e / t.n, weight: (t.n * PRIOR_TRIES) / (t.n + PRIOR_TRIES) }] : [])));
+  const errorWeights = fitErrorWeights(units.flatMap(({ x, t }) => {
+    const { n, e } = t?.own || t || {};
+
+    return n > 0 ? [{ x, rate: e / n, weight: (n * PRIOR_TRIES) / (n + PRIOR_TRIES) }] : [];
+  }));
 
   const hesitationWeights = fitHesitationWeights(units.flatMap(({ unit, x, t }) => (unit.length === 2 && t?.precision > 0
     ? [{ x, mean: t.timing / t.precision, precision: t.precision }] : [])));
@@ -419,8 +439,9 @@ export function fitLearner(evidence, now, layout) {
 
   const estimates = units.map(({ unit, x, t }) => {
     const prior = sigmoid(dot(x, errorWeights));
-    const a = PRIOR_TRIES * prior + (t?.e || 0);
-    const b = PRIOR_TRIES * (1 - prior) + (t ? t.n - t.e : 0);
+    const { n = 0, e = 0 } = t?.own || t || {};
+    const a = PRIOR_TRIES * prior + e;
+    const b = PRIOR_TRIES * (1 - prior) + n - e;
     const mean = a / (a + b);
     const error = { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) };
     let hesitation = null;
@@ -434,7 +455,11 @@ export function fitLearner(evidence, now, layout) {
     const observed = t ? { seen: t.seen, errors: t.errors, runs: t.runs, errorRuns: t.errorRuns, timed: t.timed, timedRuns: t.timedRuns, slowRuns: t.slowRuns }
       : { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0 };
 
-    return { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: frequency.share(unit), error, hesitation, observed };
+    const estimate = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: frequency.share(unit), error, hesitation, observed };
+
+    if (unit.length === 1) estimate.own = t ? { seen: t.own.seen, errors: t.own.errors } : { seen: 0, errors: 0 };
+
+    return estimate;
   });
 
   // The person's typical pair: the frequency-weighted mean of the pairs' error estimates. Practice can bring a
@@ -442,30 +467,8 @@ export function fitLearner(evidence, now, layout) {
   const pairs = estimates.filter((e) => e.kind === 'pair');
   const errorRate = pairs.reduce((s, e) => s + e.frequency * e.error.mean, 0) / pairs.reduce((s, e) => s + e.frequency, 0);
 
-  // A key's tries are mostly its pairs' tries. Its gain counts only misses the pairs ending in it don't
-  // explain: their decayed tries at their own estimates, and the rest of the key's tries (word starts) at the
-  // typical rate. So a weakness in one pair is drilled as that pair, and a key weak everywhere as the key.
-  const explained = new Map();
-
-  for (const e of pairs) {
-    const t = tally.get(e.unit);
-
-    if (!t?.n) continue;
-    const [n, errors] = explained.get(e.unit[1]) || [0, 0];
-    explained.set(e.unit[1], [n + t.n, errors + t.n * e.error.mean]);
-  }
-
-  const typicalFor = (e) => {
-    const keyTries = tally.get(e.unit)?.n;
-
-    if (e.kind !== 'key' || !keyTries || !explained.has(e.unit)) return errorRate;
-    const [n, errors] = explained.get(e.unit);
-
-    return Math.max(errorRate, (errors + Math.max(0, keyTries - n) * errorRate) / Math.max(keyTries, n));
-  };
-
   for (const e of estimates) {
-    const missed = Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - typicalFor(e)) * costMs;
+    const missed = Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate) * costMs;
     const slow = e.hesitation ? intervalMs * Math.max(0, Math.exp(e.hesitation.mean - UNCERTAINTY_Z * e.hesitation.sd) - 1) : 0;
     e.gain = e.frequency * (missed + slow);
   }
@@ -475,12 +478,14 @@ export function fitLearner(evidence, now, layout) {
   return { policy: LEARNER_POLICY, runs: records.length, medianMs, costMs, errorRate, weights: { error: errorWeights, hesitation: hesitationWeights }, units: estimates };
 }
 
-// A unit can be named when its own observations say so: at least the floor of first tries, and either a
-// first-try error or the floor of clean intervals with the pair slower than that run's median in most of the
-// runs that timed it. Intervals pool across runs: a 25-word run rarely holds ten of one pair.
-export function stated({ observed }) {
-  return observed.seen >= MIN_PATTERN_SAMPLES
-    && (observed.errors > 0 || (observed.timed >= MIN_PATTERN_SAMPLES && observed.slowRuns * 2 > observed.timedRuns));
+// The one rule for naming a unit (ADR 0013): its own observations must say so. That is at least the floor
+// of first tries, and either a first-try error or the floor of clean intervals with the pair slower than that
+// run's median in most of the runs that timed it. Intervals pool across runs: a 25-word run rarely holds ten
+// of one pair. A key's own observations are those outside the pairs ending in it that pass this rule
+// themselves (`own`), so a key is named only when it is missed beyond its named pairs. Keys have no timing.
+export function stated({ observed, own = observed }) {
+  return own.seen >= MIN_PATTERN_SAMPLES
+    && (own.errors > 0 || (own.timed >= MIN_PATTERN_SAMPLES && own.slowRuns * 2 > own.timedRuns));
 }
 
 const errorCount = ({ errors, seen }) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${seen} ${seen === 1 ? 'try' : 'tries'}`;

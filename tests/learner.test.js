@@ -151,6 +151,36 @@ test('a target is named only on observed evidence, and its counts are the real o
   assert.equal(targeted.runs, 4);
 });
 
+test('a key is named only on misses outside the pairs ending in it that are named themselves', () => {
+  // Every miss on "h" is inside "th", which is named on its own: "h" is no weakness of its own.
+  const th = Array.from({ length: 3 }, (_, i) => summary(`t${i}`, day(i), withBackground([['th', 12, 12, 0, null, null]]),
+    { keys: [['h', 40, 12], ['t', 50, 0]], keysVersion: KEY_COUNTS_VERSION }));
+
+  const inside = fit(th);
+  const h = estimate(inside, 'h');
+  assert.deepEqual(h.own, { seen: 84, errors: 0 });
+  assert.deepEqual([h.observed.seen, h.observed.errors], [120, 36], 'what is shown stays the key’s full count');
+  assert.equal(stated(h), false);
+  assert.equal(h.gain, 0);
+  const recommendation = learnerRecommendation(inside);
+  assert.equal(recommendation.target, 'th');
+  assert.deepEqual(recommendation.queue.map(({ unit }) => unit), ['th']);
+  assert.ok(!recommendation.lean.some(({ unit }) => unit === 'h'));
+
+  // "e" missed across ten pairs, none with the tries to be named alone: the key is the weakness, and is named.
+  const spread = ['he', 're', 'te', 'me', 'de', 'ne', 've', 'le', 'se', 'we'];
+
+  const everywhere = fit(Array.from({ length: 3 }, (_, i) => summary(`e${i}`, day(i), withBackground(spread.map((pair) => [pair, 3, 1, 0, null, null])),
+    { keys: [['e', 40, 10]], keysVersion: KEY_COUNTS_VERSION })));
+
+  assert.deepEqual(estimate(everywhere, 'e').own, { seen: 120, errors: 30 });
+  const named = learnerRecommendation(everywhere);
+  assert.equal(named.target, 'e');
+  assert.equal(named.reason, '“e”: 30 first-try errors in 120 tries over 3 runs.');
+  assert.deepEqual(named.was, { errors: 30, observations: 120, runs: 3, slowRuns: 0 });
+  assert.deepEqual(named.queue.map(({ unit }) => unit), ['e']);
+});
+
 test('slowness is stated from pooled clean intervals, slower in most of the runs that timed them', () => {
   // "ou" never missed, three intervals a run at 300 ms against a 200 ms median.
   const runs = Array.from({ length: 4 }, (_, i) => summary(`r${i}`, day(i), [['ou', 3, 0, 3, 300, 100], ['th', 30, 0, 20, 200, 0]]));

@@ -34,6 +34,19 @@ function keyCounts(replay) {
   return [...keys.values()];
 }
 
+// A pair's or a letter's first tries in one run, { errors, observations }, or null when the run holds none.
+export function firstTriesAt(attempt, target) {
+  if (/^[a-z]$/.test(target || '')) {
+    const counts = keyCounts(attempt.summary || replayAttempt(attempt)).find(([key]) => key === target);
+
+    return counts ? { errors: counts[2], observations: counts[1] } : null;
+  }
+
+  const pair = summarizePatterns([attempt]).pairs.find((item) => item.pair === target);
+
+  return pair ? { errors: pair.errors, observations: pair.observations } : null;
+}
+
 // A correction that takes longer than this was a pause, not a correction, and is left out.
 const MAX_CORRECTION_MS = 5000;
 

@@ -70,7 +70,7 @@ import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, LEARNER_POLICY, countingEvidence, recommendFor } from './learner.js';
-import { CORRECTION_LABELS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { CORRECTION_LABELS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -3054,14 +3054,15 @@ function renderComparison(before, after, saved) {
 
   const beforePattern = summarizePatterns([before]).pairs.find((item) => item.pair === trainedTarget);
   const afterPattern = summarizePatterns([after]).pairs.find((item) => item.pair === trainedTarget);
-  // The pair's misses on the retest, beside the evidence the drill was chosen on (or, for a target picked by
-  // hand, the baseline run's).
-  const was = trainingContext?.was || beforePattern;
-  $('comparison-target-row').hidden = !afterPattern || !was;
+  // The target's misses on the retest, a pair's or a key's, beside the evidence the drill was chosen on (or,
+  // for a target picked by hand, the baseline run's).
+  const now = firstTriesAt(after, trainedTarget);
+  const was = trainingContext?.was || firstTriesAt(before, trainedTarget);
+  $('comparison-target-row').hidden = !now || !was;
 
-  if (afterPattern && was) {
+  if (now && was) {
     $('comparison-target-label').textContent = `${trainedTarget} missed`;
-    $('comparison-target').textContent = missedCopy(afterPattern);
+    $('comparison-target').textContent = missedCopy(now);
     $('comparison-target-was').textContent = `was ${missedCopy(was)}`;
   }
 
@@ -3073,8 +3074,9 @@ function renderComparison(before, after, saved) {
   $('comparison-conditions').textContent = ['fresh text', parts.language, parts.length].join(' · ');
   const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
 
-  const timingSummary = { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0, afterCount: afterPattern?.timings.length || 0,
-    deltaMs: enoughTiming ? afterPattern.medianMs - beforePattern.medianMs : null };
+  // A key has no timing of its own.
+  const timingSummary = trainedTarget?.length === 1 ? null : { target: trainedTarget, beforeCount: beforePattern?.timings.length || 0,
+    afterCount: afterPattern?.timings.length || 0, deltaMs: enoughTiming ? afterPattern.medianMs - beforePattern.medianMs : null };
 
   let comparisonSaved = saved;
 
@@ -3092,6 +3094,7 @@ function renderComparison(before, after, saved) {
       conditions: after.conditions,
       comparison,
       targetTiming: timingSummary,
+      targetMisses: now && was ? { target: trainedTarget, was: { errors: was.errors, observations: was.observations }, now } : null,
       drill: trainingContext?.drill || null,
     });
     comparisonSaved = saveProfile();
@@ -4088,9 +4091,12 @@ function renderHistory() {
       : 'Fresh-text check';
     row.querySelector('.history-conditions').textContent = describeConditions(loop.conditions);
 
-    if (loop.targetTiming?.target) {
-      row.querySelector('.history-conditions').textContent += ` · ${loop.targetTiming.target} · ${loop.targetTiming.beforeCount} before · ${loop.targetTiming.afterCount} after`;
-    }
+    // A pair's clean intervals in the baseline and the retest, else the target's misses as the comparison read them.
+    const timing = loop.targetTiming?.target && loop.targetTiming.beforeCount + loop.targetTiming.afterCount > 0 ? loop.targetTiming : null;
+    const misses = loop.targetMisses;
+
+    if (timing) row.querySelector('.history-conditions').textContent += ` · ${timing.target} · ${timing.beforeCount} before · ${timing.afterCount} after`;
+    else if (misses) row.querySelector('.history-conditions').textContent += ` · ${misses.target} missed ${missedCopy(misses.now)}, was ${missedCopy(misses.was)}`;
 
     row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
     const measures = row.querySelectorAll('.history-measure span');
@@ -4107,9 +4113,8 @@ function renderHistory() {
       // Loops saved without a drill length come from when every drill ran 60 s.
       ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
     ]));
-    const timing = loop.targetTiming;
 
-    if (timing?.target) detail.append(element('p', `“${timing.target}” clean intervals: ${timing.beforeCount} before / ${timing.afterCount} after. ${timing.deltaMs === null ? 'Too few samples to call a timing change.' : `${signed(timing.deltaMs, 'ms')} median timing change.`}`));
+    if (timing) detail.append(element('p', `“${timing.target}” clean intervals: ${timing.beforeCount} before / ${timing.afterCount} after. ${timing.deltaMs === null ? 'Too few samples to call a timing change.' : `${signed(timing.deltaMs, 'ms')} median timing change.`}`));
     detail.append(element('p', loop.comparison.reason || 'One retest is feedback, not proof.'));
 
     if (loop.beforeAttemptId && loop.afterAttemptId) detail.append(element('p', `Baseline ${loop.beforeAttemptId} · retest ${loop.afterAttemptId}. Open their run entries above for saved details.`));
