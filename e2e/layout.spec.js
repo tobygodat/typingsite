@@ -94,9 +94,18 @@ for (const [name, viewport, touch] of [['a 1440x900 desktop', { width: 1440, hei
     test.use({ viewport, ...touch });
 
     test('the score and every action show, clear of the bottom edge and the dock', async ({ page }) => {
+      await page.clock.install();
       await openApp(page);
       await chooseWords(page, 100);
-      await typeInto(page, await passageText(page));
+      const text = await passageText(page);
+
+      // At a person's pace (80 characters a second, about 190 wpm): typed at once, the score runs to five
+      // digits, and a five-digit score wraps its unit and makes the card taller than any real run's.
+      for (let at = 0; at < text.length; at += 80) {
+        await typeInto(page, text.slice(at, at + 80));
+        await page.clock.fastForward(1000);
+      }
+
       await expect(page.locator('#run-card')).toBeVisible();
       await expect(page.locator('#run-again')).toBeFocused();
 
