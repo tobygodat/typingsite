@@ -16,6 +16,7 @@ export const LEARNER_POLICY = 'learner@1';
 export const DECAY_POLICY = 'learner-decay@1';
 export const TIMING_POLICY = 'learner-timing@1';
 export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
+export const OWN_COST_POLICY = 'learner-own-cost@2';
 export const BASELINE_POLICY = 'counting@1';
 
 // The policy that picks targets (ADR 0013): counts-gain with decay and the timing term. Timing is in by product
@@ -42,19 +43,30 @@ export const HALF_LIFE_DAYS = 60;
 export const TIMING_TRIES = 5;
 
 // A miss costs about two clean intervals (a wrong key, then the right one), so slowness counts in misses at this
-// many intervals each. Not fitted (ADR 0013).
-const MISS_INTERVALS = 2;
+// many intervals each. Not fitted (ADR 0013). The own-cost variant uses it until it has measured enough of the
+// person's own corrections.
+export const MISS_INTERVALS = 2;
 
-// The learner's policies, one line each: with or without decay (old runs fade) and the timing term (slow pairs
-// rank on the time they lose). ADR 0013 keeps the three the default does not use as named variants.
-const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES };
+// The own-cost variant only: the person's corrections are their cost of a miss once this many are timed (ADR 0015).
+export const COST_CORRECTIONS = 20;
+
+// The learner's policies, one line each: with or without decay (old runs fade), the timing term (slow pairs
+// rank on the time they lose) and the person's own cost of a miss. ADR 0013 keeps the variants the default
+// does not use as named variants.
+const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 
 export const LEARNER_VARIANTS = {
-  [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, timing: false, ...constants },
-  [DECAY_POLICY]: { policy: DECAY_POLICY, decay: true, timing: false, ...constants },
-  [TIMING_POLICY]: { policy: TIMING_POLICY, decay: false, timing: true, ...constants },
-  [DECAY_TIMING_POLICY]: { policy: DECAY_TIMING_POLICY, decay: true, timing: true, ...constants },
+  [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, timing: false, ownCost: false, ...constants },
+  [DECAY_POLICY]: { policy: DECAY_POLICY, decay: true, timing: false, ownCost: false, ...constants },
+  [TIMING_POLICY]: { policy: TIMING_POLICY, decay: false, timing: true, ownCost: false, ...constants },
+  [DECAY_TIMING_POLICY]: { policy: DECAY_TIMING_POLICY, decay: true, timing: true, ownCost: false, ...constants },
+  [OWN_COST_POLICY]: { policy: OWN_COST_POLICY, decay: true, timing: true, ownCost: true, ...constants },
 };
+
+// How a person trains (a preference, never a test condition): balanced ranks by all the time a unit loses,
+// accuracy by the time lost to first-try misses only, speed by slowness only. They are views of one model.
+export const FOCUSES = ['balanced', 'accuracy', 'speed'];
+export const DEFAULT_FOCUS = 'balanced';
 
 // Before any evidence, a first try is taken to miss this often (about 3%), the rate the evaluation ran with.
 // It ranks nothing: every unit starts level.
@@ -115,9 +127,11 @@ export function englishFrequency() {
 
 // Evidence: one record per measured run on this keyboard, from the run summaries. Which runs count is
 // evidenceRun's rule (complete, uninterrupted, measured kind, fresh text); drills and adaptive runs never do.
-//   { id, at: ms | null, units: [{ unit, seen, errors, timed, slow: boolean | null, ratio: number | null, slowMs: number | null }] }
+//   { id, at: ms | null, correction: { count, ratio } | null,
+//     units: [{ unit, seen, errors, timed, slow: boolean | null, ratio: number | null, slowMs: number | null }] }
 // A pair's `slow` says whether its median clean interval was slower than the run's median, `ratio` is the log of
-// one over the other and `slowMs` the difference (all null: untimed).
+// one over the other and `slowMs` the difference (all null: untimed). `correction` is the run's timed
+// corrections and the log of their median over the run's median interval (null: none timed, or an untimed run).
 export function learnerEvidence(runs, keyboard) {
   return runs.flatMap((run) => {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) return [];
@@ -129,11 +143,14 @@ export function learnerEvidence(runs, keyboard) {
 
 function evidenceRecord(run) {
   const units = [];
+  let pace = null;
 
   for (const [pair, seen, errors, timed, pairMs, slowdownMs] of run.patterns || []) {
     if (!PAIR.test(pair) || !(seen >= 0)) continue;
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
     const measured = timed > 0 && runMs >= MIN_PACE_MS && pairMs > 0;
+
+    if (measured) pace ??= runMs;
     units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null,
       ratio: measured ? Math.log(pairMs / runMs) : null, slowMs: measured ? pairMs - runMs : null });
   }
@@ -154,7 +171,10 @@ function evidenceRecord(run) {
   units.sort((a, b) => compare(a.unit, b.unit));
   const at = run.at ? Date.parse(run.at) : NaN;
 
-  return { id: String(run.id), at: Number.isFinite(at) ? at : null, units };
+  const [count, ms] = Array.isArray(run.corrections) ? run.corrections : [0, null];
+  const correction = pace && Number.isInteger(count) && count > 0 && Number.isFinite(ms) && ms > 0 ? { count, ratio: Math.log(ms / pace) } : null;
+
+  return { id: String(run.id), at: Number.isFinite(at) ? at : null, correction, units };
 }
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -175,24 +195,32 @@ function orderedEvidence(evidence) {
 }
 
 // The model: a fold over evidence records at time `now` (ms), under one of LEARNER_VARIANTS (the evaluation
-// also passes its own pooledTries and halfLifeRuns).
-//   { policy, runs, errorRate, units: Estimate[] }
+// also passes its own constants), ranked for one of FOCUSES.
+//   { policy, focus, runs, errorRate, missCost, units: Estimate[] }
 //   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, basis: 'errors' | 'slow', error: { mean, sd },
 //     slowdown: number | null (timing variants, pairs: the pooled log ratio to the person's pace),
 //     observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns, slowMs },
 //     own?: { seen, errors } (keys: the observations naming reads, see stated) }
-// units is ranked by gain, highest first, and `basis` says which part of the gain is larger. `observed` holds
-// raw, undecayed counts, the only numbers a person is shown; `slowMs` is the mean of the runs' slowdowns over
-// the person's pace, weighted by clean intervals.
-export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY]) {
-  const { policy, decay, timing, halfLifeRuns, pooledTries, timingTries } = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
+// units is ranked by gain for the focus, highest first, and `basis` says what it is ranked on: the larger part
+// of its gain when balanced, its misses for accuracy, its slowness for speed. `missCost` is what a miss costs in
+// clean intervals. `observed` holds raw, undecayed counts, the only numbers a person is shown; `slowMs` is the
+// mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
+export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS) {
+  const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
   const records = orderedEvidence(evidence);
   const table = englishFrequency();
   const tally = new Map();
+  const corrections = { count: 0, weight: 0, ratio: 0 };
 
   records.forEach((record, index) => {
     const age = record.at === null ? 0 : Math.max(0, now - record.at) / DAY_MS;
     const w = decay ? 0.5 ** ((records.length - 1 - index) / halfLifeRuns) * 0.5 ** (age / HALF_LIFE_DAYS) : 1;
+
+    if (record.correction) {
+      corrections.count += record.correction.count;
+      corrections.weight += w * record.correction.count;
+      corrections.ratio += w * record.correction.count * record.correction.ratio;
+    }
 
     for (const { unit, seen, errors, timed, slow, ratio, slowMs } of record.units) {
       const t = tally.get(unit) || { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, slowMs: 0, n: 0, e: 0, tn: 0, tr: 0 };
@@ -278,20 +306,21 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
 
   // The person's typical pair: the frequency-weighted mean of the pairs' estimates. Practice can bring a weak
   // unit toward it, so the gain is the misses above it a unit costs per letter typed. The timing variants add
-  // the time a slow pair loses over the person's pace, counted in misses.
+  // the time a slow pair loses over the person's pace, counted in misses at missCost intervals each.
   const pairs = estimates.filter((e) => e.kind === 'pair');
   const errorRate = pairs.reduce((s, e) => s + e.frequency * e.error.mean, 0) / pairs.reduce((s, e) => s + e.frequency, 0);
+  const missCost = ownCost && corrections.count >= costCorrections ? Math.max(1, Math.exp(corrections.ratio / corrections.weight) - 1) : MISS_INTERVALS;
 
   for (const e of estimates) {
     const missed = Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
-    const slow = e.slowdown === null ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / MISS_INTERVALS;
-    e.gain = e.frequency * (missed + slow);
-    e.basis = slow > missed ? 'slow' : 'errors';
+    const slow = e.slowdown === null ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / missCost;
+    e.gain = e.frequency * (focus === 'speed' ? slow : focus === 'accuracy' ? missed : missed + slow);
+    e.basis = focus === 'speed' || (focus !== 'accuracy' && slow > missed) ? 'slow' : 'errors';
   }
 
   estimates.sort((a, b) => b.gain - a.gain || compare(a.unit, b.unit));
 
-  return { policy, runs: records.length, errorRate, units: estimates };
+  return { policy, focus, runs: records.length, errorRate, missCost, units: estimates };
 }
 
 // Whether a pair's tally holds the evidence to be named, leaving out the slowness floor: the floor of first tries,
@@ -355,7 +384,7 @@ export function learnerRecommendation(model) {
   const named = ranked.filter(stated);
   const queue = named.map((e) => ({ unit: e.unit, was: wasOf(e) }));
   const top = named[0];
-  const common = { lean, queue, runs: model.runs, policy: model.policy };
+  const common = { lean, queue, runs: model.runs, policy: model.policy, focus: model.focus };
 
   if (top) {
     const { observed } = top;
@@ -366,7 +395,7 @@ export function learnerRecommendation(model) {
     return { kind: 'targeted', target: top.unit, title: `Practice “${top.unit}”`, reason, was: wasOf(top), ...common };
   }
 
-  const missed = ranked.find((e) => e.observed.errors > 0);
+  const missed = model.focus !== 'speed' && ranked.find((e) => e.observed.errors > 0);
 
   return { kind: 'general', target: null, title: 'General drill',
     reason: missed ? `Too little data to target a pattern yet (“${missed.unit}”: ${errorCount(missed.observed)}).` : 'Not enough clean data to name a weakness yet.',
@@ -405,9 +434,9 @@ export function countingEvidence(runs, loops, pair, source) {
 
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
 // keyboard `source` is typed on; the counting rule reads only runs at its exact conditions.
-export function recommendFor(policy, { runs, loops, traces, source, now }) {
+export function recommendFor(policy, { runs, loops, traces, source, now, focus = DEFAULT_FOCUS }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
-  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboardOf(source)), now, LEARNER_VARIANTS[policy]));
+  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboardOf(source)), now, LEARNER_VARIANTS[policy], focus));
 }
 

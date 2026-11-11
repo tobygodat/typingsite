@@ -728,8 +728,8 @@ test('a counted run records its first-try missed words as practice uses them, ca
   const text = 'the table, the Still cat';
   const record = typedRun('a', text, [1, 9, 11, 15]);
   assert.deepEqual(record.missedWords, ['the', 'table,', 'Still']);
-  // Nothing else in the summary changes: the same keys as before, plus the list.
-  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'day', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'keys', 'keysVersion', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
+  // Nothing else in the summary changes: the same keys as before, plus the list and the correction times.
+  assert.deepEqual(Object.keys(record).sort(), ['at', 'challengeDate', 'conditions', 'corrections', 'day', 'elapsedMs', 'errors', 'firstDailyAttempt', 'fresh', 'id', 'interrupted', 'keys', 'keysVersion', 'kind', 'missedWords', 'patterns', 'score', 'status', 'target', 'textId']);
   assert.equal(record.errors, 4);
   // A clean counted run records an empty list: evidence that nothing was missed.
   assert.deepEqual(typedRun('clean', text, []).missedWords, []);

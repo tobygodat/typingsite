@@ -4,6 +4,7 @@
 //   npm run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--naming out.json] [--profile path/to/profile.json]
 //   npm run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
 //   npm run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
+//   npm run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.
@@ -17,8 +18,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
 import { MIN_PATTERN_SAMPLES, evidenceRun, runRecord } from '../src/insights.js';
-import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation, englishFrequency,
-  fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
+import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, OWN_COST_POLICY, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation,
+  englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { normalizeProfile } from '../src/profile.js';
 import { keyboardRows } from '../src/layouts.js';
 
@@ -136,11 +137,14 @@ const pick = (random, list, taken) => {
 // common weak pair that is fixed at run CHANGE and another that starts slipping then, and a common slow pair
 // that becomes fast at CHANGE and another that becomes slow then.
 //
-// `world` changes the simulator for the sensitivity runs, drawing the same random numbers: `errorPairsAtPace`
-// types planted weak pairs at the typist's pace, and `missCost` scales every skill's correction so the average
-// typist's miss costs that many intervals (2 is the shipped 1.5, 2 and 2.5 by skill).
+// `world` changes the simulator, drawing the same random numbers: `errorPairsAtPace` types planted weak pairs
+// at the typist's pace, `missCost` scales every skill's correction so the average typist's miss costs that many
+// intervals (2 is the shipped 1.5, 2 and 2.5 by skill), and `missIntervals` is this typist's own miss cost
+// (ADR 0015).
 export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
-  const skill = world.missCost ? { ...rawSkill, correctionKeys: 1 + ((rawSkill.correctionKeys - 1) * world.missCost) / 2 } : rawSkill;
+  const skill = world.missIntervals ? { ...rawSkill, correctionKeys: 1 + world.missIntervals }
+    : world.missCost ? { ...rawSkill, correctionKeys: 1 + ((rawSkill.correctionKeys - 1) * world.missCost) / 2 } : rawSkill;
+
   const pairs = [...englishFrequency().pairs.keys()].sort();
   const mech = mechanics();
   const base = logit(skill.errorRate);
@@ -192,7 +196,7 @@ export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
   const keyLogit = new Map([...englishFrequency().keys.keys()].map((key) => [key, base + 0.3 * gaussian(random)]));
 
   return {
-    group, skill, planted,
+    group, skill, planted, missCost: world.missIntervals ?? null,
     fixed: group === 'drifting' ? planted[0].pair : null,
     slipping: group === 'drifting' ? planted[1].pair : null,
     fixedSlow: group === 'drifting' ? planted[2].pair : null,
@@ -252,15 +256,15 @@ function timingRows(run) {
 
 // A policy fitted on a typist's first runs: what it predicts for each pair's first try and timing, and the
 // units it acts on.
-function learnerPolicy(policy, constants) {
+function learnerPolicy(policy, constants, focus) {
   const variant = { ...LEARNER_VARIANTS[policy], ...constants };
 
   return (runs, traces, now) => {
-    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, variant);
+    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, variant, focus);
     const byUnit = new Map(model.units.map((e) => [e.unit, e]));
 
     return { predict: (pair) => byUnit.get(pair)?.error.mean ?? model.errorRate, slowdown: (pair) => byUnit.get(pair)?.slowdown ?? 0,
-      lean: learnerRecommendation(model).lean.map((item) => item.unit) };
+      lean: learnerRecommendation(model).lean.map((item) => item.unit), missCost: model.missCost };
   };
 }
 
@@ -272,6 +276,7 @@ function replay(history, policy) {
   const losses = [];
   const predictions = [];
   const lean = [];
+  const costs = [];
   let timingError = 0;
   let timingWeight = 0;
 
@@ -279,6 +284,7 @@ function replay(history, policy) {
     const prefix = history.slice(0, t);
     const model = policy(prefix.map((h) => h.run), prefix.slice(-TRACES).map((h) => h.trace), START + t * RUN_MS);
     lean.push(model.lean.slice(0, LEAN_UNITS));
+    costs.push(model.missCost ?? null);
 
     if (t === history.length || !model.predict) continue;
     let loss = 0;
@@ -299,7 +305,7 @@ function replay(history, policy) {
     }
   }
 
-  return { losses, predictions, lean, timingError: timingWeight ? timingError / timingWeight : null };
+  return { losses, predictions, lean, costs, timingError: timingWeight ? timingError / timingWeight : null };
 }
 
 // Expected calibration error over ten equal-count bins of predicted probability, weighted by tries.
@@ -375,11 +381,16 @@ function captured(top, loss) {
 
 // The typists of one seed: 8 per skill level per group, 40 runs each, typed once and scored by every policy,
 // with their true time lost after 10 runs and after all of them.
+// With `world.ownCost`, each typist's own miss cost (ADR 0015) is drawn log-uniformly from 1 to 8 intervals
+// from a stream of its own, so every other draw is the shipped simulator's.
+export const OWN_COST_STREAM = 15_000_000;
+
 export function simulate(seed, { typists = 8, runs = 40, world = {} } = {}) {
   const random = seeded(seed);
+  const costs = seeded(seed + OWN_COST_STREAM);
 
   return GROUPS.flatMap((group) => SKILLS.flatMap((skill) => Array.from({ length: typists }, (_, i) => {
-    const typist = makeTypist(random, group, skill, i, world);
+    const typist = makeTypist(random, group, skill, i, world.ownCost ? { ...world, missIntervals: 8 ** costs() } : world);
     const history = Array.from({ length: runs }, (_, r) => typeRun(typist, random, r, `${seed}-${group}-${skill.name}-${i}-${r}`));
 
     return { typist, history, truth: { 10: trueLoss(typist, 10), [runs]: trueLoss(typist, runs) } };
@@ -400,7 +411,7 @@ export function score(population, policy) {
   const steady = (read) => median(drifting.map((r) => runsUntilSteady(r.lean, (top) => read(r.typist, top))));
   const errors = STRATA.map(([name]) => name);
 
-  return {
+  const scores = {
     logLoss: predicts ? mean(replays.map((r) => mean(r.losses))) : null,
     byGroup: Object.fromEntries(GROUPS.map((g) => [g, predicts ? mean(replays.filter((r) => r.typist.group === g).map((r) => mean(r.losses))) : null])),
     calibration: predicts ? calibration(replays.flatMap((r) => r.predictions)) : null,
@@ -415,6 +426,13 @@ export function score(population, policy) {
     slowPickUp: steady((typist, top) => top.includes(typist.slippingSlow)),
     slowLetGo: steady((typist, top) => !top.includes(typist.fixedSlow)),
   };
+
+  // ADR 0015's simulator only: how far the cost of a miss the policy uses is from the typist's own.
+  if (population[0].typist.missCost !== null) {
+    scores.costError = mean(replays.map((r) => mean([10, end].map((t) => Math.abs(Math.log((r.costs[t] ?? 2) / r.typist.missCost))))));
+  }
+
+  return scores;
 }
 
 // The constants ADR 0013's rule v2 chooses on validation typists: K by counts-gain's next-run log loss, the
@@ -508,6 +526,139 @@ export const COMPARISONS = [['+timing', 'counts-gain'], ['+decay +timing', '+dec
 
 export function differences(result) {
   return COMPARISONS.map(([a, b]) => ({ a, b, ...Object.fromEntries(Object.keys(MEASURES).map((m) => [m, paired(result, a, b, m)])) }));
+}
+
+// ADR 0015's rule: learner@2. Each typist has a miss cost of its own, in two simulator variants.
+export const RULE_0015 = {
+  testSeeds: Array.from({ length: 30 }, (_, i) => 201 + i),
+  costGrid: [1, 5, 10, 20, 40, 80],
+  halfLifeGrid: [10, 20, 30, 60],
+  worlds: { slow: { ownCost: true }, 'at pace': { ownCost: true, errorPairsAtPace: true } },
+  guards: ['logLoss', 'calibration', 'captured10', 'captured40', 'planted10', 'pickUp', 'letGo'],
+};
+
+const RULE_0015_WORLDS = Object.keys(RULE_0015.worlds);
+
+// Every named policy ({ name, policy, constants, focus }) on every seed, in both simulator variants.
+export function evaluate0015(policies, seeds, options = {}) {
+  return Object.fromEntries(Object.entries(RULE_0015.worlds).map(([variant, world]) => [variant, {
+    seeds,
+    perSeed: seeds.map((seed) => {
+      const population = simulate(seed, { ...options, world });
+
+      return Object.fromEntries(policies.map((p) => [p.name, score(population, learnerPolicy(p.policy, p.constants, p.focus))]));
+    }),
+  }]));
+}
+
+const meanOver = (byVariant, name, read) => mean(Object.values(byVariant).flatMap((result) => result.perSeed.map((seed) => read(seed[name]))));
+
+// A against B under rule 0015: really better on any of `gains` in at least one variant, and really worse on none of
+// the guards in either.
+export function decide0015(byVariant, a, b, gains) {
+  const helps = RULE_0015_WORLDS.flatMap((v) => gains.filter((m) => really(byVariant[v], a, b, m, 'better')).map((m) => `${v} ${m}`));
+  const harm = RULE_0015_WORLDS.flatMap((v) => RULE_0015.guards.filter((m) => really(byVariant[v], a, b, m, 'worse')).map((m) => `${v} ${m}`));
+
+  return { wins: helps.length > 0 && harm.length === 0, helps, harm };
+}
+
+const SHIPPED = { pooledTries: LEARNER_VARIANTS[DECAY_TIMING_POLICY].pooledTries, halfLifeRuns: LEARNER_VARIANTS[DECAY_TIMING_POLICY].halfLifeRuns,
+  timingTries: LEARNER_VARIANTS[DECAY_TIMING_POLICY].timingTries };
+
+const FOCUS_MEASURES = ['captured10', 'captured40', 'planted10', 'planted40'];
+
+export function rule0015(options = {}) {
+  const shipped = { name: 'shipped', policy: DECAY_TIMING_POLICY, constants: SHIPPED };
+
+  // A's constant: C by the cost error on validation seeds, both variants.
+  const costValidation = evaluate0015(RULE_0015.costGrid.map((c) => ({ name: String(c), policy: OWN_COST_POLICY, constants: { ...SHIPPED, costCorrections: c } })),
+    VALIDATION_SEEDS, options);
+
+  const cost = RULE_0015.costGrid.map((c) => ({ costCorrections: c, costError: meanOver(costValidation, String(c), (s) => s.costError) }));
+  const costCorrections = cost.reduce((a, b) => (b.costError < a.costError ? b : a)).costCorrections;
+  const candidate = { name: 'candidate', policy: OWN_COST_POLICY, constants: { ...SHIPPED, costCorrections } };
+
+  // A, on the test seeds.
+  const testA = evaluate0015([shipped, candidate], RULE_0015.testSeeds, options);
+  const a = decide0015(testA, 'candidate', 'shipped', ['captured10', 'captured40']);
+  const chosenA = a.wins ? candidate : shipped;
+
+  // B's constant at A's choice: the half-lives within a point of the best on captured gain, then the lowest let-go + pick-up.
+  const lifeValidation = evaluate0015(RULE_0015.halfLifeGrid.map((h) => ({ name: String(h), policy: chosenA.policy, constants: { ...chosenA.constants, halfLifeRuns: h } })),
+    VALIDATION_SEEDS, options);
+
+  const halfLife = RULE_0015.halfLifeGrid.map((h) => ({ halfLifeRuns: h, ...Object.fromEntries(['captured10', 'captured40', 'letGo', 'pickUp']
+    .map((m) => [m, meanOver(lifeValidation, String(h), (s) => s[m])])) }));
+
+  const best = (m) => Math.max(...halfLife.map((row) => row[m]));
+  const eligible = halfLife.filter((row) => row.captured10 >= best('captured10') - 0.01 && row.captured40 >= best('captured40') - 0.01);
+  const halfLifeRuns = eligible.reduce((x, y) => (y.letGo + y.pickUp < x.letGo + x.pickUp || (y.letGo + y.pickUp === x.letGo + x.pickUp && y.halfLifeRuns > x.halfLifeRuns) ? y : x)).halfLifeRuns;
+
+  // B, on the test seeds, only when validation moved the half-life.
+  const forgetting = { ...chosenA, name: 'forgetting', constants: { ...chosenA.constants, halfLifeRuns } };
+  const testB = halfLifeRuns === chosenA.constants.halfLifeRuns ? null : evaluate0015([{ ...chosenA, name: 'chosen' }, forgetting], RULE_0015.testSeeds, options);
+  const b = testB ? decide0015(testB, 'forgetting', 'chosen', ['letGo', 'pickUp']) : { wins: false, helps: [], harm: [], validationKept: true };
+  const final = b.wins ? forgetting : chosenA;
+  const name = a.wins || b.wins ? `learner${a.wins ? '-own-cost' : ''}${b.wins ? `-forget-${halfLifeRuns}` : ''}@2` : DECAY_TIMING_POLICY;
+
+  // Reported, deciding nothing: what the accuracy and speed focuses trade, for the default after A and B.
+  const focus = evaluate0015(['balanced', 'accuracy', 'speed'].map((f) => ({ ...final, name: f, focus: f })), RULE_0015.testSeeds, options);
+
+  const focusMeans = Object.fromEntries(Object.entries(focus).map(([variant, result]) => [variant, Object.fromEntries(['balanced', 'accuracy', 'speed'].map((f) => [f, {
+    ...Object.fromEntries(FOCUS_MEASURES.map((m) => [m, mean(result.perSeed.map((seed) => seed[f][m]))])),
+    strata: Object.fromEntries(PLANTED.map((st) => [st, { at10: mean(result.perSeed.map((seed) => seed[f].strata[st].at10)), at40: mean(result.perSeed.map((seed) => seed[f].strata[st].at40)) }])),
+  }]))]));
+
+  return { rule: '0015', validation: { cost, costCorrections, halfLife, eligible: eligible.map((row) => row.halfLifeRuns), halfLifeRuns },
+    a: { candidate: candidate.constants, result: testA, decision: a }, b: { constants: forgetting.constants, result: testB, decision: b },
+    default: { name, policy: final.policy, constants: final.constants }, focus: focusMeans };
+}
+
+const MEASURES_0015 = [...RULE_0015.guards, 'slowPickUp', 'slowLetGo', 'costError'];
+
+export function report0015(record) {
+  const { validation, a, b } = record;
+  const perTenThousand = (v) => `${v >= 0 ? '+' : ''}${(v * 1e4).toFixed(2)}`;
+  const formats = { ...FORMATS, logLoss: perTenThousand, calibration: perTenThousand, costError: signed(3) };
+  const lower = { ...MEASURES, costError: true };
+  const meanFormat = (m) => (['logLoss', 'calibration'].includes(m) ? fixed(4) : m.startsWith('captured') || m === 'planted10' ? percent : m === 'costError' ? fixed(3) : fixed(1));
+
+  const means = (result, names) => RULE_0015_WORLDS.flatMap((v) => names.map((name) => [v, name, ...MEASURES_0015.map((m) => {
+    const values = result[v].perSeed.map((seed) => seed[name][m]);
+
+    return values.includes(null) || values.includes(undefined) ? '–' : meanFormat(m)(mean(values));
+  })]));
+
+  const diffs = (result, x, y) => RULE_0015_WORLDS.map((v) => [`${v}: ${x} − ${y}`, ...MEASURES_0015.map((m) => {
+    const d = result[v].perSeed.some((seed) => seed[x][m] === undefined) ? null : paired(result[v], x, y, m);
+
+    return d ? `${formats[m](d.mean)} [${formats[m](d.low)}, ${formats[m](d.high)}]${(lower[m] ? d.high < 0 : d.low > 0) ? ' better' : (lower[m] ? d.low > 0 : d.high < 0) ? ' worse' : ''}` : '–';
+  })]);
+
+  const verdict = (d) => (d.wins ? `wins, really better on ${d.helps.join(', ')}` : d.validationKept ? 'validation kept 60 runs, so nothing changes'
+    : `stays out${d.helps.length ? `, really better on ${d.helps.join(', ')}` : ', really better on nothing it must win'}${d.harm.length ? `, really worse on ${d.harm.join(', ')}` : ''}`);
+
+  return [
+    `ADR 0015. Validation (seeds ${VALIDATION_SEEDS.join(', ')}, both variants). C by cost error: ${validation.cost.map((r) => `${r.costCorrections} ${fixed(4)(r.costError)}`).join(', ')}: C = ${validation.costCorrections}.`,
+    '',
+    `A. Test seeds ${RULE_0015.testSeeds[0]} to ${RULE_0015.testSeeds.at(-1)}: the shipped default and the candidate (own cost, C = ${validation.costCorrections}), means over the seeds.`,
+    table(['variant', 'policy', ...MEASURES_0015], means(a.result, ['shipped', 'candidate'])),
+    'Paired differences over the thirty seeds, mean [95% t interval]: log loss and calibration in 10⁻⁴, captured and planted in points, the rest in runs.',
+    table(['A − B', ...MEASURES_0015], diffs(a.result, 'candidate', 'shipped')),
+    `A: the candidate ${verdict(a.decision)}.`,
+    '',
+    `B. Validation at A's choice: ${validation.halfLife.map((r) => `${r.halfLifeRuns} runs: captured@10 ${percent(r.captured10)}, captured@40 ${percent(r.captured40)}, let-go ${fixed(2)(r.letGo)}, pick-up ${fixed(2)(r.pickUp)}`).join('; ')}.`,
+    `Eligible: ${validation.eligible.join(', ')}. Chosen: ${validation.halfLifeRuns} runs.`,
+    ...(b.result ? [table(['variant', 'policy', ...MEASURES_0015], means(b.result, ['chosen', 'forgetting'])), table(['A − B', ...MEASURES_0015], diffs(b.result, 'forgetting', 'chosen'))] : []),
+    `B: a ${validation.halfLifeRuns}-run half-life ${verdict(b.decision)}.`,
+    '',
+    `Default by ADR 0015: ${record.default.name} (${JSON.stringify(record.default.constants)}). The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
+    '',
+    'Descriptive, deciding nothing: the default by focus, means over the test seeds.',
+    table(['variant', 'focus', ...FOCUS_MEASURES, ...PLANTED.map((st) => `${st}@10`), ...PLANTED.map((st) => `${st}@40`)],
+      Object.entries(record.focus).flatMap(([variant, byFocus]) => Object.entries(byFocus).map(([f, m]) => [variant, f, ...FOCUS_MEASURES.map((k) => percent(m[k])),
+        ...PLANTED.map((st) => percent(m.strata[st].at10)), ...PLANTED.map((st) => percent(m.strata[st].at40))]))),
+  ].join('\n');
 }
 
 // A stored profile, replayed the same way on its own measured runs (the keyboard with the most of them).
@@ -692,6 +843,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (process.argv.includes('--errors-at-pace')) world.errorPairsAtPace = true;
 
   if (option('miss-cost', null)) world.missCost = Number(option('miss-cost', null));
+
+  if (option('rule', null) === '0015') {
+    const record = rule0015({ typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) });
+    console.log(report0015(record));
+    const json = option('json', null);
+
+    if (json) writeFileSync(json, `${JSON.stringify(record, null, 1)}\n`);
+    const timing = fitTime();
+    console.log(`\n${DEFAULT_POLICY}, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
+    process.exit(0);
+  }
+
   const sensitivity = Object.keys(world).length > 0;
   const options = { typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) };
 
