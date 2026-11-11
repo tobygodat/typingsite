@@ -13,6 +13,8 @@ import { recommendTarget } from './typing.js';
 
 export const LEARNER_POLICY = 'learner@1';
 export const DECAY_POLICY = 'learner-decay@1';
+export const TIMING_POLICY = 'learner-timing@1';
+export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const BASELINE_POLICY = 'counting@1';
 
 // The policy that picks targets, by ADR 0013's rule on simulated typists (`npm run evaluate:learner`): the
@@ -25,17 +27,30 @@ export const DEFAULT_POLICY = LEARNER_POLICY;
 // {2, 5, 10, 20, 40, 80} by next-run log loss on validation typists (ADR 0013).
 export const POOLED_TRIES = 40;
 
-// The decay variant only: evidence halves every 10 runs (chosen from {10, 15, 20, 30, 60} on validation
-// typists) and every 60 days.
-export const HALF_LIFE_RUNS = 10;
+// The decay variants only: evidence halves every 60 runs (chosen from {10, 15, 20, 30, 60} by log loss on
+// validation typists) and every 60 days (untested).
+export const HALF_LIFE_RUNS = 60;
 export const HALF_LIFE_DAYS = 60;
+
+// The timing variants only: a pair's slowdown pools across runs and shrinks toward none as if this many clean
+// intervals at the person's pace stood beside it. Chosen from {5, 10, 20, 40, 80} by next-run timing error on
+// validation typists.
+export const TIMING_TRIES = 5;
+
+// A miss costs about two clean intervals (a wrong key, then the right one), so slowness counts in misses at this
+// many intervals each. Not fitted (ADR 0013).
+const MISS_INTERVALS = 2;
 
 // The learner's policies: learner@1 weighs every run alike; learner-decay@1 fades old runs. ADR 0013 kept the
 // decay variant by name because it costs a line: on drifting simulated typists it let go of a fixed pair sooner,
 // though not beyond the spread.
+const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES };
+
 export const LEARNER_VARIANTS = {
-  [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES },
-  [DECAY_POLICY]: { policy: DECAY_POLICY, decay: true, halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES },
+  [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, timing: false, ...constants },
+  [DECAY_POLICY]: { policy: DECAY_POLICY, decay: true, timing: false, ...constants },
+  [TIMING_POLICY]: { policy: TIMING_POLICY, decay: false, timing: true, ...constants },
+  [DECAY_TIMING_POLICY]: { policy: DECAY_TIMING_POLICY, decay: true, timing: true, ...constants },
 };
 
 // Before any evidence, a first try is taken to miss this often (about 3%), the rate the evaluation ran with.
@@ -93,8 +108,9 @@ export function englishFrequency() {
 
 // Evidence: one record per measured run on this keyboard, from the run summaries. Which runs count is
 // evidenceRun's rule (complete, uninterrupted, measured kind, fresh text); drills and adaptive runs never do.
-//   { id, at: ms | null, units: [{ unit, seen, errors, timed, slow: boolean | null }] }
-// A pair's `slow` says whether its median clean interval was slower than the run's median (null: untimed).
+//   { id, at: ms | null, units: [{ unit, seen, errors, timed, slow: boolean | null, ratio: number | null, slowMs: number | null }] }
+// A pair's `slow` says whether its median clean interval was slower than the run's median, `ratio` is the log of
+// one over the other and `slowMs` the difference (all null: untimed).
 export function learnerEvidence(runs, keyboard) {
   return runs.flatMap((run) => {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) return [];
@@ -111,7 +127,8 @@ function evidenceRecord(run) {
     if (!PAIR.test(pair) || !(seen >= 0)) continue;
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
     const measured = timed > 0 && runMs > 0 && pairMs > 0;
-    units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null });
+    units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null,
+      ratio: measured ? Math.log(pairMs / runMs) : null, slowMs: measured ? pairMs - runMs : null });
   }
 
   // Older summaries have no letter counts; a pair's first try is a try at its second letter.
@@ -126,7 +143,7 @@ function evidenceRecord(run) {
     }
   }
 
-  for (const [key, [seen, errors]] of keys) units.push({ unit: key, seen, errors, timed: 0, slow: null });
+  for (const [key, [seen, errors]] of keys) units.push({ unit: key, seen, errors, timed: 0, slow: null, ratio: null, slowMs: null });
   units.sort((a, b) => compare(a.unit, b.unit));
   const at = run.at ? Date.parse(run.at) : NaN;
 
@@ -153,13 +170,15 @@ function orderedEvidence(evidence) {
 // The model: a fold over evidence records at time `now` (ms), under one of LEARNER_VARIANTS (the evaluation
 // also passes its own pooledTries and halfLifeRuns).
 //   { policy, runs, errorRate, units: Estimate[] }
-//   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, error: { mean, sd },
-//     observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns },
+//   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, basis: 'errors' | 'slow', error: { mean, sd },
+//     slowdown: number | null (timing variants, pairs: the pooled log ratio to the person's pace),
+//     observed: { seen, errors, runs, errorRuns, timed, timedRuns, slowRuns, slowMs },
 //     own?: { seen, errors } (keys: the observations naming reads, see stated) }
-// units is ranked by gain, highest first. `observed` holds raw, undecayed counts, the only numbers a person
-// is shown.
+// units is ranked by gain, highest first, and `basis` says which part of the gain is larger. `observed` holds
+// raw, undecayed counts, the only numbers a person is shown; `slowMs` is the mean of the runs' slowdowns over
+// the person's pace, weighted by clean intervals.
 export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY]) {
-  const { policy, decay, halfLifeRuns, pooledTries } = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
+  const { policy, decay, timing, halfLifeRuns, pooledTries, timingTries } = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
   const records = orderedEvidence(evidence);
   const table = englishFrequency();
   const tally = new Map();
@@ -168,8 +187,8 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
     const age = record.at === null ? 0 : Math.max(0, now - record.at) / DAY_MS;
     const w = decay ? 0.5 ** ((records.length - 1 - index) / halfLifeRuns) * 0.5 ** (age / HALF_LIFE_DAYS) : 1;
 
-    for (const { unit, seen, errors, timed, slow } of record.units) {
-      const t = tally.get(unit) || { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, n: 0, e: 0 };
+    for (const { unit, seen, errors, timed, slow, ratio, slowMs } of record.units) {
+      const t = tally.get(unit) || { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, slowMs: 0, n: 0, e: 0, tn: 0, tr: 0 };
       t.seen += seen;
       t.errors += errors;
       t.runs += 1;
@@ -181,6 +200,9 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
       if (slow !== null) {
         t.timed += timed;
         t.timedRuns += 1;
+        t.slowMs += timed * slowMs;
+        t.tn += w * timed;
+        t.tr += w * timed * ratio;
 
         if (slow) t.slowRuns += 1;
       }
@@ -234,10 +256,13 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
     const mean = a / (a + b);
     const [map, rarest] = shares.get(unit.length);
 
-    const observed = t ? { seen: t.seen, errors: t.errors, runs: t.runs, errorRuns: t.errorRuns, timed: t.timed, timedRuns: t.timedRuns, slowRuns: t.slowRuns }
-      : { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0 };
+    const observed = t ? { seen: t.seen, errors: t.errors, runs: t.runs, errorRuns: t.errorRuns, timed: t.timed, timedRuns: t.timedRuns, slowRuns: t.slowRuns,
+      slowMs: t.timed ? t.slowMs / t.timed : null } : { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, slowMs: null };
 
-    const estimate = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) }, observed };
+    const slowdown = timing && unit.length === 2 ? (t?.tr || 0) / ((t?.tn || 0) + timingTries) : null;
+
+    const estimate = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
+      slowdown, observed };
 
     if (unit.length === 1) estimate.own = t ? { seen: t.own.seen, errors: Math.max(0, t.own.errors - t.own.worst) } : { seen: 0, errors: 0 };
 
@@ -245,11 +270,18 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   });
 
   // The person's typical pair: the frequency-weighted mean of the pairs' estimates. Practice can bring a weak
-  // unit toward it, so the gain is the misses above it a unit costs per letter typed.
+  // unit toward it, so the gain is the misses above it a unit costs per letter typed. The timing variants add
+  // the time a slow pair loses over the person's pace, counted in misses.
   const pairs = estimates.filter((e) => e.kind === 'pair');
   const errorRate = pairs.reduce((s, e) => s + e.frequency * e.error.mean, 0) / pairs.reduce((s, e) => s + e.frequency, 0);
 
-  for (const e of estimates) e.gain = e.frequency * Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
+  for (const e of estimates) {
+    const missed = Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
+    const slow = e.slowdown === null ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / MISS_INTERVALS;
+    e.gain = e.frequency * (missed + slow);
+    e.basis = slow > missed ? 'slow' : 'errors';
+  }
+
   estimates.sort((a, b) => b.gain - a.gain || compare(a.unit, b.unit));
 
   return { policy, runs: records.length, errorRate, units: estimates };
@@ -260,35 +292,51 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
 // run's median in most of the runs that timed it. A key's own observations (`own`) are its tries outside the
 // pairs ending in it that pass this rule themselves, and its misses outside those and outside its most-missed
 // other pair. So a key is named only when it is missed beyond any one pair: misses that all sit in "th" are
-// th's, whether "th" has the tries to be named yet or not. Keys have no timing. Only ranked units are named,
-// and the gain counts misses, so slowness alone never names a pair; it does mark the pair's tries as its own.
+// th's, whether "th" has the tries to be named yet or not. Keys have no timing.
 export function stated({ observed, own = observed }) {
-  return own.seen >= MIN_PATTERN_SAMPLES
-    && (own.errors > 0 || (own.timed >= MIN_PATTERN_SAMPLES && own.slowRuns * 2 > own.timedRuns));
+  return own.seen >= MIN_PATTERN_SAMPLES && (own.errors > 0 || slowStated(own));
 }
+
+// A pair ranked on its slowness is named only on its observed timing: the floor of clean intervals, pooled
+// across runs, and slower than the run's median in most of the runs that timed it.
+const slowStated = ({ timed = 0, slowRuns = 0, timedRuns = 0 }) => timed >= MIN_PATTERN_SAMPLES && slowRuns * 2 > timedRuns;
+
+const nameable = (e) => (e.basis === 'slow' ? slowStated(e.observed) : stated(e));
 
 const errorCount = ({ errors, seen }) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${seen} ${seen === 1 ? 'try' : 'tries'}`;
 
+// "45 ms slower than your pace, in 4 of 5 runs that timed it (31 clean intervals)": observed timing only.
+export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }) => `${Math.round(slowMs)} ms slower than your pace, in ${slowRuns} of ${timedRuns} ${timedRuns === 1 ? 'run' : 'runs'} that timed it (${timed} clean ${timed === 1 ? 'interval' : 'intervals'})`;
+
 // What Train, the results card and adaptive text act on. The top unit is named only when its observations
 // can be stated; otherwise it is a general drill that says so, whose text still leans toward the units the
-// model ranks highest (`lean`). `was` carries the observed counts the comparison later reads back. `queue`
-// is every unit that can be named, best first, each with its counts; `runs` is the evidence runs behind it.
+// model ranks highest (`lean`). `was` carries the observed counts the comparison later reads back, and for a
+// pair ranked on slowness its observed timing. `queue` is every unit that can be named, best first, each with
+// its counts; `runs` is the evidence runs behind it.
 //   { kind: 'targeted' | 'general', target, title, reason, was, lean: [{ unit, weight }],
 //     queue: [{ unit, was }], runs, policy }
-const wasOf = ({ observed }) => ({ errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns });
+function wasOf({ observed, basis }) {
+  const was = { errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns };
+
+  if (basis === 'slow') Object.assign(was, { basis, slowMs: observed.slowMs, timed: observed.timed, timedRuns: observed.timedRuns });
+
+  return was;
+}
 
 export function learnerRecommendation(model) {
   const ranked = model.units.filter((e) => e.gain > 0);
   const lean = ranked.slice(0, LEAN_UNITS).map((e) => ({ unit: e.unit, weight: e.gain }));
-  const queue = ranked.filter(stated).map((e) => ({ unit: e.unit, was: wasOf(e) }));
+  const queue = ranked.filter(nameable).map((e) => ({ unit: e.unit, was: wasOf(e) }));
   const top = ranked[0];
   const common = { lean, queue, runs: model.runs, policy: model.policy };
 
-  if (top && stated(top)) {
+  if (top && nameable(top)) {
     const { observed } = top;
 
-    return { kind: 'targeted', target: top.unit, title: `Practice “${top.unit}”`, reason: `“${top.unit}”: ${errorCount(observed)} over ${observed.runs} ${observed.runs === 1 ? 'run' : 'runs'}.`,
-      was: wasOf(top), ...common };
+    const reason = top.basis === 'slow' ? `“${top.unit}”: ${paceCopy(observed)}.`
+      : `“${top.unit}”: ${errorCount(observed)} over ${observed.runs} ${observed.runs === 1 ? 'run' : 'runs'}.`;
+
+    return { kind: 'targeted', target: top.unit, title: `Practice “${top.unit}”`, reason, was: wasOf(top), ...common };
   }
 
   const missed = ranked.find((e) => e.observed.errors > 0);
