@@ -3071,6 +3071,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 /* Online opens under the same rule as Daily, Friends and One keyboard, so the tabs never lose their floor. */
 #online-challenge { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
+/* Quick match sits above hosting, on the same rules-and-space footing, and moves as one element. */
+.quick-match { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
+.quick-match > .online-actions:first-child { margin-top: 0; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.quick-match [data-quick-part="status"]:empty { display: none; }
+.quick-match [data-quick-part="lonely"] { margin-top: var(--space-3); flex-wrap: wrap; }
+.quick-match [data-quick-part="lonely"][hidden], .quick-match [hidden] { display: none; }
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
 .online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }

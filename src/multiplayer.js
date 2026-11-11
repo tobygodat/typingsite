@@ -163,6 +163,31 @@ export function queueFriendRequests(apply, { load, limit = FRIEND_REQUEST_MS } =
   return requests;
 }
 
+// Quick match (public.quick_match): 'rating', 'queue' (join, or keep a place, and pair when it can) and
+// 'unqueue'. A paired reply carries the room as race_action returns one. Before its migration is applied the
+// function is missing, and the error says quick match is being set up.
+export async function quickMatch(session, type, data = {}) {
+  if (!session?.user?.id) throw new AuthError('Sign in to race someone new.');
+  const stored = loadSession();
+  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+
+  try {
+    const result = await request('/rest/v1/rpc/quick_match', { method: 'POST', token: active?.access_token, body: { p_action: type, p_data: data } });
+
+    if (result?.room?.id && typeof result.room.passage === 'string') result.room.passage = { id: result.room.conditions?.textId || result.room.id, text: result.room.passage };
+
+    return result;
+  } catch (error) {
+    if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
+      const missing = new AuthError('Quick match is being set up. Please try again shortly.');
+      missing.unavailable = true;
+      throw missing;
+    }
+
+    throw error;
+  }
+}
+
 export const listRaceInvites = (session) => session ? action(session, 'invites') : Promise.resolve([]);
 
 export function joinRace(session, { roomId, inviteToken, displayName, guestToken }) {

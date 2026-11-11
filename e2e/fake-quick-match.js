@@ -20,6 +20,16 @@ export class FakeQuickMatch {
     // The race clock of the next quick rooms, shortened by tests that don't need the standard 30 seconds.
     this.duration = 30;
     this.countdownMs = 5000;
+    this.held = null;
+  }
+
+  // Holds the reply to the next 'queue' request: the service acts on it at once, and the answer comes back
+  // only once the test calls the returned release.
+  holdNextQueue() {
+    let release;
+    this.held = new Promise((resolve) => { release = resolve; });
+
+    return () => release();
   }
 
   rating(user) { return this.ratings.get(user) || { rating: RATING.start, races: 0 }; }
@@ -92,7 +102,12 @@ export class FakeQuickMatch {
     for (const [id, rows] of this.results) this.results.set(id, rows.filter((row) => row.user !== user));
   }
 
-  handle(caller, { p_action: action, p_data: data = {} }, send) {
+  handle(caller, { p_action: action, p_data: data = {} }, reply) {
+    const held = action === 'queue' ? this.held : null;
+
+    if (held) this.held = null;
+    const send = held ? (status, json) => held.then(() => reply(status, json)) : reply;
+
     if (this.missing) return send(404, { code: 'PGRST202', message: 'Could not find the function public.quick_match(p_action, p_data) in the schema cache' });
 
     if (!caller) return send(400, { message: 'Sign in to race someone new.' });

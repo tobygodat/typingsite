@@ -619,6 +619,17 @@
         <div id="online-challenge">
           <p id="online-error" class="field-error" role="alert"></p>
           <div id="online-host">
+            <section id="quick-match" class="quick-match" aria-label="Quick match">
+              <div class="online-actions">
+                <button class="btn btn-secondary" type="button" data-quick="toggle" data-quick-part="toggle">Quick match</button>
+                <p class="quick-match-rating num" data-quick-part="rating" hidden></p>
+              </div>
+              <p class="online-copy" role="status" data-quick-part="status"></p>
+              <div class="online-actions" data-quick-part="lonely" hidden>
+                <button class="btn btn-ghost btn-sm" type="button" data-quick="keep">Keep waiting</button>
+                <button class="btn btn-ghost btn-sm" type="button" data-quick="best" data-quick-part="best">Race your best run</button>
+              </div>
+            </section>
             <div id="online-account-required">
               <button id="online-signin" class="btn btn-primary" type="button">Sign in to host</button>
             </div>
@@ -660,6 +671,7 @@
           <section id="online-room" class="online-room" aria-labelledby="online-room-heading" hidden>
             <div class="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" class="btn btn-ghost btn-sm" type="button">Leave race</button></div>
             <p id="online-room-status" class="online-copy" role="status"></p>
+            <p id="online-rating-change" class="online-copy" role="status" hidden></p>
             <p id="online-connection" class="online-copy" role="status"></p>
             <p id="online-account-invite-status" class="online-copy" role="status" hidden></p>
             <div id="online-share" class="online-share" hidden>

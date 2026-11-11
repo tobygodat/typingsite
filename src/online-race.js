@@ -8,6 +8,8 @@ import { showSpeed } from './units.js';
 import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } from './race-result.js';
 import { redrawList } from './inbox.js';
 import { createRaceReview } from './race-review.js';
+import { ratingChangeLine } from './quick-match.js';
+import { createQuickMatch } from './quick-match-view.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
@@ -39,7 +41,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -80,6 +82,17 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     { load: (signal) => multiplayer.listFriends(getSession(), signal) });
 
   let befriended = false;
+
+  // A stranger sees the race name, so the name filled in from the account's email is never sent to one.
+  function strangerName() {
+    const name = $('online-name').value.trim();
+
+    return !name || name === getSession()?.user.email.split('@')[0].slice(0, 24) ? 'Racer' : name;
+  }
+
+  const quick = createQuickMatch({ root: $('quick-match'), getSession, signIn, racerName: strangerName,
+    enterRoom: (result) => enterRoom(result), busyElsewhere: () => busy || Boolean(room && !terminal(room)), ownBest, raceOwnBest });
+
   const fx = createTypingFx($('online-stage').querySelector('.online-typing-wrap'), $('online-text-display'), { ensureCharacters: (index) => textView?.ensureForward(index) });
 
   // Keys take practice's path (src/app.js), accent keys included; this race keeps the clock, draws and sends.
@@ -126,7 +139,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('challenge-friends').setAttribute('aria-pressed', String(value === 'friends'));
     setRunning(false);
 
-    if (value === 'online') { fx.relayout(); refreshInvites(); }
+    if (value === 'online') { fx.relayout(); refreshInvites(); quick.refresh(); }
 
     onModeChange?.();
 
@@ -138,6 +151,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-host').hidden = Boolean(room || joinLink);
     $('online-guest-join').hidden = !joinLink || Boolean(room);
     $('online-room').hidden = !room;
+    quick.render();
     $('online-account-required').hidden = signedIn;
     $('online-setup').hidden = !signedIn;
     $('online-inbox').hidden = !signedIn;
@@ -471,6 +485,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
 
   function enterRoom(result) {
+    // Any other room ends a quick match search; a paired one is where the search led.
+    if (!result.room?.quick) quick.leave();
     const nextId = result.roomId || result.room.id;
     // Going on to another race leaves a closed one, so its other racer sees that; its own rematch doesn't.
     const left = room && credentials && terminal(room) && ![room.id, room.rematchId].includes(nextId) ? credentials : null;
@@ -559,6 +575,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       if (room.status === 'finished') renderResults();
 
       if (previousStatus !== room.status) say(room.status === 'finished' ? resultSentence() : $('online-room-status').textContent);
+
+      if (room.quick && previousStatus !== room.status) quick.refresh();
       followRematch();
     }
   }
@@ -605,7 +623,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     // A host who invited by email already has them by email; the list never links the two.
     const canAdd = terminal(room) && Boolean(opponent) && Boolean(getSession()) && opponent.account && !opponent.friend && !befriended
-      && !(room.selfSlot === 1 && room.inviteKind === 'account');
+      && !(room.selfSlot === 1 && room.inviteKind === 'account' && !room.quick);
 
     $('online-after').hidden = !canAdd;
     $('online-befriend').hidden = !canAdd;
@@ -621,15 +639,21 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const copy = {
       waiting: room.players.length < 2 ? 'Waiting for your opponent.'
         : room.rematchOf && !opponent?.connected && !opponent?.ready ? `Rematch sent. Waiting for ${opponent.name} to join.` : 'Both players are here.',
-      countdown: 'Both players are ready.',
-      racing: finishRequested || me?.finished ? 'Waiting for the other player.' : 'The clock keeps running if you leave the passage.',
+      countdown: room.quick ? `Matched with ${opponent?.name || 'another racer'}.` : 'Both players are ready.',
+      racing: finishRequested || me?.finished ? 'Waiting for the other player.'
+        : room.quick ? 'Leaving now counts as a loss.' : 'The clock keeps running if you leave the passage.',
       // The results below say it.
       finished: '',
-      cancelled: 'This race ended because a player left.',
+      cancelled: !room.quick ? 'This race ended because a player left.'
+        : room.rating ? `${opponent?.name || 'The other racer'} left the race.` : 'The race was called off before the start.',
       expired: 'This invitation has expired.',
     };
 
     $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
+    // A settled quick match says how the rating moved, or why it didn't.
+    const change = room.quick ? ratingChangeLine(room.rating, opponent?.name) : '';
+    $('online-rating-change').hidden = !change;
+    $('online-rating-change').textContent = change;
     $('online-ready').hidden = room.status !== 'waiting';
     const readyLabel = me?.ready ? 'Not ready' : 'Ready to race';
 
@@ -846,7 +870,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
 
   async function leave() {
+    quick.leave();
     const previous = credentials;
+    const rated = room?.quick;
     generation += 1;
     clearTimeout(pollTimer);
     credentials = null;
@@ -864,6 +890,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       try { await multiplayer.leaveRace(getSession(), previous); }
       catch (failure) { error(`You left this tab’s race. ${failure.message || 'The server will close the room when it expires.'}`); }
     }
+
+    if (rated) quick.refresh();
   }
 
   $('challenge-online').addEventListener('click', () => setMode('online'));
@@ -1000,7 +1028,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       if (view === 'compete') {
         renderHome();
 
-        if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); }
+        if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); quick.refresh(); }
 
         if (mode === 'friends') board?.show();
       } else { setRunning(false); board?.hide(); }

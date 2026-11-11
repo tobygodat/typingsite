@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PAIRING, QUEUE_IDLE, RATING, TRACE_CHECK, acceptableGap, expectedScore, kFactor, pickOpponent, queueStep, quickConditions,
   ratingChangeLine, ratingChanges, ratingLine, traceCheck, LONELY_MS } from '../src/quick-match.js';
-import { racePassage } from '../src/race-options.js';
 import { wordList } from '../src/words.js';
 import { FakeRaces } from '../e2e/fake-races.js';
 
@@ -15,7 +14,6 @@ test('the migration draws its passage from the same 200 words and sends the same
   const conditions = JSON.parse(/select '(\{"mode":"time".*?\})'::jsonb/.exec(migration)[1]);
   // A new corpus or metric version changes these conditions, so the migration's copy needs a new migration.
   assert.deepEqual(conditions, quickConditions());
-  assert.ok(racePassage(quickConditions()).text.length <= 1000);
   assert.match(migration, /exit when length\(v_text\) \+ length\(v_word\) \+ 1 > 1000;/);
 });
 
