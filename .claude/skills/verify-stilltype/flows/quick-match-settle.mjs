@@ -137,7 +137,7 @@ export default async ({ page, shot, note, check, fake, url }) => {
     const [t, m] = [await quickStatus(toby), await quickStatus(mara)];
     note('Toby', t);
     note('Mara', m);
-    check(t.startsWith('Not rated: neither racer finished with a run that could be checked.'), 'both leave: Toby, who stayed and then left, is unrated');
+    check(t === 'Not rated: neither racer finished with a run that could be checked. You left the race.', 'both leave: Toby, who stayed and then left, is unrated and told so');
     check(m.startsWith('Rated loss: you left the race.'), 'both leave: Mara still takes the rated loss for leaving first');
     check((await toby.page.locator('#quick-match [data-quick-part="rating"]').textContent()).replaceAll(' ', ' ') === 'Race rating 1500 · 0 rated races · provisional', 'both leave: Toby\'s rating is unmoved');
     await save('both-leave', toby, mara);
