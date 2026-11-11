@@ -103,6 +103,9 @@ test('practice compares minutes this week with the week before, as a plain fact,
   assert.deepEqual({ ...practice, current: Math.round(practice.current), previous: Math.round(practice.previous) },
     { status: 'less', current: 3, previous: 10, streak: 2, goal: 0 });
   assert.equal(weekPractice([], {}, 0, NOW_DATE), null);
+  // Six 20-second runs are two minutes, not 1.999…
+  const six = Array.from({ length: 6 }, (_, i) => ({ ...run(`s${i}`, daysAgo(i % 3)), elapsedMs: 20_000 }));
+  assert.equal(weekPractice(six, {}, 0, NOW_DATE).current, 2);
   assert.equal(weekPractice(runs.slice(0, 2), {}, 0, NOW_DATE).status, 'more');
   // The archive of days whose runs aged out counts too, as the calendar counts it.
   assert.equal(weekPractice(runs.slice(0, 2), { [dayKey(daysAgo(9))]: 180_000 }, 0, NOW_DATE).status, 'same');
@@ -135,6 +138,16 @@ test('a pair drilled for its pace and now at it is fixed by pace, read since its
   assert.deepEqual(moverCopy(mover), { before: '100 ms slower', after: '4 ms faster', tail: '' });
   const path = trainPath({ recommendation: recommend(runs, loops, 'balanced'), loops, runs, keyboard: KEYBOARD });
   assert.equal(path.behind.find((step) => step.unit === 'ol').state, 'fixed');
+});
+
+test('a unit fixed since a drill it had no evidence before is left out: there is no before to show', () => {
+  const retest = run('t', daysAgo(5), { patterns: withBackground([['zq', 12, 0, 12, 200, 0]]) });
+  const since = Array.from({ length: 3 }, (_, i) => run(`u${i}`, daysAgo(4 - i), { patterns: withBackground([['zq', 12, 0, 12, 200, 0]]) }));
+  const runs = [retest, ...since];
+  const loops = [loop('l', 'zq', retest)];
+  const path = trainPath({ recommendation: recommend(runs, loops, 'balanced'), loops, runs, keyboard: KEYBOARD });
+  assert.equal(path.behind.find((step) => step.unit === 'zq')?.state, 'fixed');
+  assert.equal(overview(runs, loops).movers.find((mover) => mover.unit === 'zq'), undefined);
 });
 
 test('movers follow the train focus, as Train does', () => {
@@ -285,6 +298,9 @@ test('across random histories in every focus, every mover follows the stated rul
         const was = newestLoop(loops, step.unit, THEN);
 
         if (was && fixedRaw(earlier, was, queuedThen.has(step.unit))) continue;
+
+        // A drill on a unit never typed before it has no before to read back, so the list leaves it out.
+        if (!step.since.before) continue;
         assert.equal(movers.find((m) => m.unit === step.unit)?.status, 'fixed', `${where}: Train fixed “${step.unit}” this week`);
       }
     }

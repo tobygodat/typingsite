@@ -4456,9 +4456,14 @@ function showProgressDetail({ focus = false } = {}) {
   $('progress-detail').hidden = !name;
 
   for (const panel of $('progress-detail').querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== name;
-  $('lead-meta').append($('progress-filters'));
-  $('week-charts').querySelector('.week-charts-head').append($('progress-period'));
-  $('detail-filters').append(...(DETAIL_FILTERS[name] || []).map((id) => $(id)));
+  // Moved only when not already in place: moving a node takes focus off whatever inside it held it.
+  const place = (id, parent) => { if ($(id).parentElement !== parent) parent.append($(id)); };
+  const filters = DETAIL_FILTERS[name] || [];
+
+  for (const id of ['progress-filters', 'progress-period']) {
+    place(id, filters.includes(id) ? $('detail-filters') : id === 'progress-filters' ? $('lead-meta') : $('week-charts').querySelector('.week-charts-head'));
+  }
+
   setText($('progress-detail-heading'), PROGRESS_DETAILS[name] || '');
   drawProgressView();
 
@@ -7396,8 +7401,8 @@ function paletteCommands(query) {
     ...[['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
       group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
     })),
-    ...[['runs', 'runs and drills', 'history list retests comparisons'], ['keys', 'keys', 'heatmap pairs patterns across runs'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'standard score', 'standard test best median']].map(([detail, label, keywords]) => ({
-      group: 'go to', label: `progress · ${label}`, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
+    ...[['runs', 'runs and drills', 'history list retests comparisons'], ['keys', 'keys and pairs', 'heatmap patterns across runs'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'your standard score', 'standard test best median']].map(([detail, label, keywords]) => ({
+      group: 'go to', label, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
       run: () => { navigate('progress'); openProgressDetail(detail); },
     })),
     { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },

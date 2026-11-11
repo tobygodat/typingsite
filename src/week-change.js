@@ -103,9 +103,10 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
     if (Date.parse(loop.at) < began) drilledThen.set(loop.target, loop);
   }
 
+  // A mover is a before → after, so it needs observations on both sides; without them the list says nothing of it.
   const movers = [];
 
-  const add = (unit, status, since, split) => movers.push({ unit, status, basis: since.basis, before: since.before, after: since.after, split,
+  const add = (unit, status, since, split) => since.before && since.after && movers.push({ unit, status, basis: since.basis, before: since.before, after: since.after, split,
     weight: Math.abs((gainNow.get(unit) || 0) - (gainThen.get(unit) || 0)) });
 
   for (const unit of [...new Set([...queuedNow.keys(), ...queuedThen.keys(), ...drilledNow.keys()])].sort()) {
@@ -142,7 +143,8 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
 export function weekPractice(runs, practiceDays, goal, date) {
   const byDay = minutesByDay(runs, practiceDays);
   const fortnight = periodDays(14, date);
-  const sum = (days) => days.reduce((total, day) => total + (byDay[day] || 0), 0);
+  // Each day's minutes are a division, so the week's sum is rounded to a microminute before it is floored for print.
+  const sum = (days) => Math.round(days.reduce((total, day) => total + (byDay[day] || 0), 0) * 1e6) / 1e6;
   const [previous, current] = [sum(fortnight.slice(0, 7)), sum(fortnight.slice(7))];
 
   if (!(previous > 0) && !(current > 0)) return null;

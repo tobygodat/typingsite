@@ -383,7 +383,8 @@ export function renderWeekChart(container, runs, metric, { period = null, onOpen
   const button = document.createElement('button');
   button.type = 'button';
   button.className = `week-chart week-chart-${metric}`;
-  button.setAttribute('aria-label', `${spec.title}, ${shortDate(range[0])} to ${isToday ? 'today' : shortDate(range[1])}: ${days.length} ${days.length === 1 ? 'day' : 'days'}, ${total} ${total === 1 ? 'run' : 'runs'}, from ${spec.shown(Math.min(...values))}${spec.suffix} to ${spec.shown(Math.max(...values))}${spec.suffix}. ${lastValue}${metric === 'wpm' ? ` ${unit}` : '%'} ${when}, ${last.runs.length === 1 ? 'one run' : `the median of ${count}`}. Open the ${metric === 'wpm' ? 'speed' : 'accuracy'} chart.`);
+  const read = (value) => (metric === 'wpm' ? `${value} ${unit}` : `${value}%`);
+  button.setAttribute('aria-label', `${spec.title}, ${shortDate(range[0])} to ${isToday ? 'today' : shortDate(range[1])}: ${days.length} ${days.length === 1 ? 'day' : 'days'}, ${total} ${total === 1 ? 'run' : 'runs'}, from ${spec.shown(Math.min(...values))} to ${read(spec.shown(Math.max(...values)))}. ${read(lastValue)} ${when}, ${last.runs.length === 1 ? 'one run' : `the median of ${count}`}. Open the ${metric === 'wpm' ? 'speed' : 'accuracy'} chart.`);
   button.addEventListener('click', onOpen);
 
   const chart = svgNode('svg', { viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true', focusable: 'false' });
