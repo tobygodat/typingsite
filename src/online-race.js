@@ -1,6 +1,6 @@
 import { createAttempt, replayAttempt } from './typing.js';
 import { LENGTHS } from './lengths.js';
-import { raceConditions, raceOptions, racePassage } from './race-options.js';
+import { raceConditions, raceOptions, racePassage, raceSetupText } from './race-options.js';
 import { createTypingFx } from './motion.js';
 import { encodeTrace, standIn, validTrace } from './ghost-race.js';
 import * as multiplayer from './multiplayer.js';
@@ -27,6 +27,9 @@ const TRACE_READS = 3;
 const TRACE_RETRY_MS = 2000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
+
+// The race setup chosen in Race setup holds for this tab, a reload included; a new tab starts from practice.
+const RACE_SETUP = 'stilltype-race-setup-tab-v1';
 
 // Invitations dismissed from the people list on this device, per account. The service has no decline, so a dismissed
 // invitation only leaves this list; it still lapses on its own, and the inbox keeps its entry.
@@ -93,6 +96,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let linkedIds = '';
   let linksBusy = false;
   let linksAgain = false;
+  // Set once the service says it has no race_people: it isn't asked again until the page loads again.
+  let linksMissing = false;
   let dismissed = new Set();
   // Why the list can't be complete: the friend list's last read, and the invitations' last poll.
   let friendsFailure = null;
@@ -104,7 +109,18 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   const review = createRaceReview({ renderText });
 
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
-  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; friendsFailure = null; renderFriends(); renderPeople(); },
+  // A friend list that changed (here, from another tab, or on the service) is read against the links again, so an
+  // invitation or ghost from someone just saved joins their row, with the pair's tally.
+  const friendRequests = multiplayer.queueFriendRequests((list) => {
+    const changed = JSON.stringify(list.map((friend) => friend.id).sort()) !== JSON.stringify(friends.map((friend) => friend.id).sort());
+    friends = list;
+    friendsLoaded = true;
+    friendsFailure = null;
+    renderFriends();
+    renderPeople();
+
+    if (changed) refreshLinks();
+  },
     { load: (signal) => multiplayer.listFriends(getSession(), signal) });
 
   let befriended = false;
@@ -203,6 +219,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The people list, drawn from the records as they stand now. A guest has no list.
   function renderPeople() {
     const signedIn = Boolean(getSession());
+    renderSetupLink();
     const rows = signedIn ? peopleRows({ friends, invites, challenges, links, dismissed, now: Date.now() }) : [];
 
     // With nobody to list yet, the list offers the race anyone can join, and the foot leaves it out.
@@ -233,7 +250,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   async function refreshLinks() {
     const session = getSession();
 
-    if (!session || document.body.dataset.view !== 'compete') return;
+    if (!session || linksMissing || document.body.dataset.view !== 'compete') return;
 
     if (linksBusy) {
       linksAgain = true;
@@ -246,6 +263,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     try {
       const read = await multiplayer.listPeopleLinks(session);
+
+      linksMissing = read === null;
 
       if (getSession() === session) { links = read; linkedIds = ids; renderPeople(); }
     } catch {} finally {
@@ -436,9 +455,27 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
   }
 
-  // A race takes the practice setup until Race setup changes it; the change holds for this tab's races until Match
-  // practice puts the practice setup back.
-  let customized = null;
+  // A race takes the practice setup until Race setup changes it; the change holds for this tab's races, reloads
+  // included, until Match practice puts the practice setup back. A saved setup is read back through raceOptions, so
+  // only a setup a race can take returns.
+  let customized = (() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(RACE_SETUP));
+
+      return saved && typeof saved === 'object' ? raceOptions({ ...saved, session: 'practice', adaptive: false }) : null;
+    } catch { return null; }
+  })();
+
+  function setCustomized(value) {
+    customized = value;
+
+    try {
+      if (value) sessionStorage.setItem(RACE_SETUP, JSON.stringify(value));
+      else sessionStorage.removeItem(RACE_SETUP);
+    } catch {}
+
+    renderSetupLink();
+  }
 
   function newRace() {
     const conditions = raceConditions(customized ?? raceOptions(practice()));
@@ -448,6 +485,17 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
   // What the race setup shows and races start from: the setup chosen here, or else practice's.
   const raceSetup = () => customized ?? raceOptions(practice());
+
+  // The same setup, whatever order its options were written in.
+  const sameSetup = (a, b) => JSON.stringify(Object.entries(raceConditions(a)).sort()) === JSON.stringify(Object.entries(raceConditions(b)).sort());
+
+  // The Race setup link names what a one-press Race (and Copy a race link, and Race once) uses, as a conditions line.
+  function renderSetupLink() {
+    const text = raceSetupText(raceConditions(raceSetup()));
+    const node = $('people-setup-conditions');
+
+    if (node.textContent !== text) node.textContent = text;
+  }
 
   // The practice row's own controls (mode, length, punctuation), cloned from it, so Race setup looks and
   // works like practice but changes only races.
@@ -477,8 +525,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
       if (!mode || mode === shown.mode) return;
       const { punctuation: marks = false } = shown;
-      customized = mode === 'quote' ? raceOptions({ mode, quoteLength: practice().quoteLength })
-        : raceOptions({ ...practice(), mode, punctuation: marks, session: 'practice', adaptive: false });
+      setCustomized(mode === 'quote' ? raceOptions({ mode, quoteLength: practice().quoteLength })
+        : raceOptions({ ...practice(), mode, punctuation: marks, session: 'practice', adaptive: false }));
       renderCustomize();
     });
     lengths.addEventListener('click', (event) => {
@@ -487,11 +535,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       const shown = raceSetup();
 
       if (!length || length === shown[LENGTHS[shown.mode].key]) return;
-      customized = { ...shown, [LENGTHS[shown.mode].key]: length };
+      setCustomized({ ...shown, [LENGTHS[shown.mode].key]: length });
       renderCustomize();
     });
     punctuation.querySelector('input').addEventListener('change', (event) => {
-      customized = { ...raceSetup(), punctuation: event.target.checked };
+      setCustomized({ ...raceSetup(), punctuation: event.target.checked });
       renderCustomize();
     });
   }
@@ -499,7 +547,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   function renderCustomize() {
     buildCustomize();
     const shown = raceSetup();
-    $('online-customize-reset').hidden = !customized;
+    // Match practice shows whenever the setup races would use isn't practice's.
+    $('online-customize-reset').hidden = !customized || sameSetup(customized, raceOptions(practice()));
     const options = $('online-options');
     const modes = options.querySelector('[data-race-modes]');
     modes.querySelectorAll('[data-mode]').forEach((button) => {
@@ -785,6 +834,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     };
 
     $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
+    const setup = room.conditions?.mode ? raceSetupText(room.conditions) : '';
+
+    if ($('online-room-conditions').textContent !== setup) $('online-room-conditions').textContent = setup;
     // A settled quick match says how the rating moved, or why it didn't.
     const change = room.quick ? ratingChangeLine(room.rating, opponent?.name) : '';
 
@@ -1033,7 +1085,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   $('people-race-link').addEventListener('click', () => { if (!$('people-race-link').hasAttribute('aria-disabled')) raceLink(); });
   $('online-setup-done').addEventListener('click', () => show('people', { focus: true }));
   $('online-customize-reset').addEventListener('click', () => {
-    customized = null;
+    setCustomized(null);
     renderCustomize();
     $('online-setup-done').focus();
   });

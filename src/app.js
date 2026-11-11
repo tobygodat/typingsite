@@ -7598,7 +7598,7 @@ friendsBoard = createFriendsBoard({
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
   runs: () => profile.runs,
   signIn: () => openAccountDialog('signin'),
-  // The button that asks for this disappears with the board, so focus lands on the Online selector.
+  // The button that asks for this goes with the board, so Add a friend opens with its email field focused.
   openOnline: () => onlineRace.openAdd(),
   onShared: repairBoardNow,
 });

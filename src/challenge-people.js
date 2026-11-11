@@ -47,7 +47,10 @@ function parseLinks(links) {
   for (const link of of(links?.friends)) {
     const tally = link.tally;
 
-    if (Array.isArray(tally) && tally.length === 2 && tally.every((value) => Number.isSafeInteger(value) && value >= 0)) tallies.set(link.id, { mine: tally[0], theirs: tally[1] });
+    // A tally is shown once either side has a win: after only ties it would read 0–0 beside results that aren't it.
+    if (Array.isArray(tally) && tally.length === 2 && tally.every((value) => Number.isSafeInteger(value) && value >= 0) && tally[0] + tally[1] > 0) {
+      tallies.set(link.id, { mine: tally[0], theirs: tally[1] });
+    }
   }
 
   const friendOf = (list) => new Map(of(list).filter((link) => text(link.friendId)).map((link) => [link.id, link.friendId]));
@@ -120,6 +123,22 @@ export function peopleRows({ friends = [], invites = [], challenges = [], links 
 
   const rows = [...people.values()].map(rowOf);
 
+  // Two people with one name are told apart by the email typed for them, the one thing recorded that can; a friend
+  // saved from a race has none, so two of those stay alike.
+  const named = new Map();
+
+  for (const row of rows) named.set(sameName(row.name), (named.get(sameName(row.name)) || 0) + 1);
+
+  for (const row of rows) {
+    if (named.get(sameName(row.name)) > 1 && row.email) {
+      row.detail = row.email;
+
+      if (row.line?.kind === 'email') row.line = null;
+    }
+  }
+
+  for (const row of rows) delete row.email;
+
   return rows.sort(compareRows);
 }
 
@@ -136,6 +155,8 @@ function rowOf(person) {
   return {
     key: person.key,
     name: person.name,
+    detail: null,
+    email: person.email,
     state,
     friendId: person.friendId,
     inviteId: invite?.id || null,
@@ -147,6 +168,8 @@ function rowOf(person) {
     latest: newest(person.facts)?.at ?? null,
   };
 }
+
+const sameName = (name) => name.toLocaleLowerCase();
 
 const RANK = { invited: 0, ghost: 1, friend: 2 };
 

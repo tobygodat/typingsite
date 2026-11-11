@@ -202,7 +202,7 @@ test('property: every row follows the rules recomputed from the raw records', ()
       else if (times.length) assert.equal(row.line.at, Math.max(...times));
       else {
         const email = input.friends.find((friend) => `friend:${friend.id}` === row.key)?.email;
-        assert.deepEqual(row.line, email ? { kind: 'email', email } : null);
+        assert.deepEqual(row.line, email && !row.detail ? { kind: 'email', email } : null);
       }
 
       if (row.line?.kind === 'ghost-result') {
@@ -212,9 +212,14 @@ test('property: every row follows the rules recomputed from the raw records', ()
         assert.equal(row.line.outcome, lead === 'tie' ? 'tied' : lead === mine ? 'won' : 'lost');
       }
 
-      // A tally only from the service's record for that friend.
+      // A tally only from the service's record for that friend, and only once either side has a win.
       const tally = row.friendId && input.links?.friends?.find((link) => link.id === row.friendId)?.tally;
-      assert.deepEqual(row.tally, tally ? { mine: tally[0], theirs: tally[1] } : null, `seed ${seed}: ${row.key} tally`);
+      assert.deepEqual(row.tally, tally && tally[0] + tally[1] > 0 ? { mine: tally[0], theirs: tally[1] } : null, `seed ${seed}: ${row.key} tally`);
+
+      // Someone who shares a name with another row is told apart by the email typed for them, and only then.
+      const shared = rows.filter((other) => other.name.toLocaleLowerCase() === row.name.toLocaleLowerCase()).length > 1;
+      const typed = input.friends.find((friend) => `friend:${friend.id}` === row.key)?.email || null;
+      assert.equal(row.detail, shared && typed ? typed : null, `seed ${seed}: ${row.key} detail`);
     }
 
     // The order, recomputed.
@@ -237,6 +242,28 @@ test('property: every row follows the rules recomputed from the raw records', ()
 
     assert.deepEqual(again, rows, `seed ${seed}: order of records changed the list`);
   }
+});
+
+test('a tally nobody has won yet is left out, and any win shows it', () => {
+  const rows = peopleRows({ now: NOW, friends: [{ id: 'a', name: 'Ann', account: true }, { id: 'b', name: 'Bo', account: true }],
+    links: { friends: [{ id: 'a', tally: [0, 0] }, { id: 'b', tally: [0, 1] }] } });
+
+  assert.deepEqual(rows.map((row) => [row.name, row.tally]), [['Ann', null], ['Bo', { mine: 0, theirs: 1 }]]);
+});
+
+test('people who share a name are told apart by a typed email, and two saved from races stay alike', () => {
+  const rows = peopleRows({ now: NOW, friends: [{ id: 'a', name: 'Sam', email: 'sam.a@example.com' }, { id: 'b', name: 'sam', email: 'sam.b@example.com' },
+    { id: 'c', name: 'Sam', account: true }, { id: 'd', name: 'Lee', email: 'lee@example.com' }] });
+
+  const byKey = Object.fromEntries(rows.map((row) => [row.key, row]));
+
+  assert.equal(byKey['friend:a'].detail, 'sam.a@example.com');
+  assert.equal(byKey['friend:a'].line, null);
+  assert.equal(byKey['friend:b'].detail, 'sam.b@example.com');
+  assert.equal(byKey['friend:c'].detail, null);
+  assert.equal(byKey['friend:d'].detail, null);
+  assert.deepEqual(byKey['friend:d'].line, { kind: 'email', email: 'lee@example.com' });
+  assert.equal('email' in byKey['friend:a'], false);
 });
 
 test('malformed records are left out, never guessed at', () => {

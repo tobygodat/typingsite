@@ -161,13 +161,15 @@ test('friends who share a name are told apart by the email typed for them, seen 
 test('a tally nobody has won yet is not printed', async ({ page, supabase }) => {
   const toby = supabase.addUser('toby@stilltype.test');
   const sam = supabase.addUser('sam@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
   supabase.races.addFriend(toby.id, { name: 'Sam', friendId: sam.id });
+  supabase.races.addFriend(toby.id, { name: 'Lin', friendId: lin.id });
   supabase.races.tallies.set(pair(toby.id, sam.id), [0, 0]);
+  supabase.races.tallies.set(pair(toby.id, lin.id), toby.id < lin.id ? [1, 0] : [0, 1]);
   await signedIn(page);
-  await expect(page.getByRole('button', { name: 'Race Sam', exact: true })).toBeVisible();
-  await page.evaluate(() => dispatchEvent(new Event('online')));
-  await page.waitForTimeout(1000);
-  await expect(page.locator('.people-tally')).toHaveCount(0);
+  // Lin's tally shows once the links have come back; Sam's, all ties, doesn't.
+  await expect(rows(page).filter({ hasText: 'Lin' }).locator('.people-tally .sr-only')).toHaveText('1 win, 0 losses');
+  await expect(rows(page).filter({ hasText: 'Sam' }).locator('.people-tally')).toHaveCount(0);
 });
 
 test('without race_people the page asks for it once per load, however often the list is opened', async ({ page, supabase }) => {

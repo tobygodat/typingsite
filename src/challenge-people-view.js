@@ -5,10 +5,13 @@ import { lineParts, tallyLabel } from './challenge-people.js';
 import { speedFigure } from './units.js';
 
 // What each state offers: [action, label, accessible name] for its one action, and the quiet one beside it.
+// Two people with one name are told apart by the email typed for them, heard as well as seen.
+const personName = (row) => (row.detail ? `${row.name} (${row.detail})` : row.name);
+
 const ACTIONS = {
-  invited: (row) => [['join', 'Join', `Join ${row.name}’s race`], ['dismiss', 'Dismiss', `Dismiss ${row.name}’s invitation`]],
-  ghost: (row) => [['ghost', 'Race the ghost', `Race ${row.name}’s ghost`]],
-  friend: (row) => [['race', 'Race', `Race ${row.name}`]],
+  invited: (row) => [['join', 'Join', `Join ${personName(row)}’s race`], ['dismiss', 'Dismiss', `Dismiss ${personName(row)}’s invitation`]],
+  ghost: (row) => [['ghost', 'Race the ghost', `Race ${personName(row)}’s ghost`]],
+  friend: (row) => [['race', 'Race', `Race ${personName(row)}`]],
   link: () => [['link', 'Copy a race link', 'Copy a race link']],
 };
 
@@ -41,6 +44,14 @@ function build(row, now) {
   const name = document.createElement('p');
   name.className = 'people-name';
   name.textContent = row.name;
+
+  if (row.detail) {
+    const detail = document.createElement('span');
+    detail.className = 'people-detail';
+    detail.textContent = ` · ${row.detail}`;
+    name.append(detail);
+  }
+
   who.append(name, lineNode(row, now));
   const side = document.createElement('div');
   side.className = 'people-side';
@@ -81,13 +92,16 @@ function build(row, now) {
 }
 
 // Two rows draw the same when everything they show is the same; `now` only moves the line's age.
-const look = (row, now) => JSON.stringify([row.name, row.state, row.kind, row.tally, row.inviteId, row.challengeId, row.friendId,
+const look = (row, now) => JSON.stringify([row.name, row.detail, row.state, row.kind, row.tally, row.inviteId, row.challengeId, row.friendId,
   lineParts(row.line, now).map((part) => (typeof part === 'string' ? part : [part.wpm, part.bare]))]);
 
+// Focus stays on the same action. When that action has gone (a Dismiss, or a row that left), it moves to the main
+// action of the same person's row if it stays, else of the row now in its place, else of the last row, else to
+// `fallback`; never onto a Dismiss, so a repeated press can't take a second invitation.
 export function drawPeople(list, rows, { now = Date.now(), fallback = null, decorate = () => {} } = {}) {
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
-  const buttons = () => [...list.querySelectorAll('button')];
-  const focusAt = focused ? buttons().indexOf(focused) : -1;
+  const focusedRow = focused?.closest('.people-row');
+  const rowAt = focusedRow ? [...list.children].indexOf(focusedRow) : -1;
   const focusId = focused && `${focused.dataset.peopleKey}|${focused.dataset.peopleAction}`;
   const focusVisible = focused?.matches(':focus-visible');
   const kept = new Map([...list.children].map((item) => [item.dataset.key, item]));
@@ -111,10 +125,11 @@ export function drawPeople(list, rows, { now = Date.now(), fallback = null, deco
     if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
   });
 
-  for (const button of buttons()) decorate(button);
+  for (const button of list.querySelectorAll('button')) decorate(button);
 
   if (!focused || list.contains(document.activeElement)) return;
-  const same = buttons().find((button) => `${button.dataset.peopleKey}|${button.dataset.peopleAction}` === focusId);
-  const near = buttons()[Math.min(focusAt, buttons().length - 1)];
-  (same || near || fallback)?.focus({ preventScroll: true, focusVisible });
+  const same = [...list.querySelectorAll('button')].find((button) => `${button.dataset.peopleKey}|${button.dataset.peopleAction}` === focusId);
+  const person = items.find((item) => item.dataset.key === focusedRow?.dataset.key);
+  const near = person || items[Math.min(rowAt, items.length - 1)];
+  (same || near?.querySelector('.people-action') || fallback)?.focus({ preventScroll: true, focusVisible });
 }

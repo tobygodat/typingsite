@@ -3292,6 +3292,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   transition: color var(--dur-quick) var(--ease-out);
 }
 .people-link:hover { color: var(--text); }
+/* Race setup carries what a one-press Race uses, as a conditions line. */
+.people-setup-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; justify-content: flex-start; column-gap: var(--space-2); text-align: start; }
+.people-conditions { font: var(--text-mono)/1.5 var(--font-mono); letter-spacing: 0.01em; }
+.people-conditions:empty { display: none; }
+.people-detail { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+#online-room-conditions { margin-top: var(--space-2); }
+#online-room-conditions:empty { display: none; }
 .people-link:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius-sm); }
 
 /* Add a friend, Race setup, the daily passage with the friends board, and One keyboard: one step from the list. */

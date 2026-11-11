@@ -632,7 +632,7 @@
             <div class="people-foot-group">
               <button id="people-add" class="people-link" type="button" data-signed-in>Add a friend</button>
               <button id="people-race-link" class="people-link" type="button" data-signed-in>Copy a race link</button>
-              <button id="people-setup" class="people-link" type="button" data-signed-in>Race setup</button>
+              <button id="people-setup" class="people-link people-setup-link" type="button" data-signed-in>Race setup <span id="people-setup-conditions" class="people-conditions"></span></button>
               <button id="online-signin" class="people-link" type="button" data-guest>Sign in to keep friends</button>
             </div>
             <div class="people-foot-group">
@@ -680,6 +680,7 @@
           </form>
           <section id="online-room" class="online-room" aria-labelledby="online-room-heading" hidden>
             <div class="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" class="btn btn-ghost btn-sm" type="button">Leave race</button></div>
+            <p id="online-room-conditions" class="condition-copy"></p>
             <p id="online-room-status" class="online-copy" role="status"></p>
             <p id="online-rating-change" class="online-copy" role="status" hidden></p>
             <p id="online-connection" class="online-copy" role="status"></p>
