@@ -100,10 +100,10 @@ test('a friend change in another tab reads the links again: an invitation joins 
   await other.locator('#online-invite-email').fill('mo@stilltype.test');
   await other.locator('#add-friend').click();
 
+  // Kim's friend row takes the invitation, and Kim is listed once.
+  await expect(page.locator('#people-list .people-row[data-key^="friend:"][data-state="invited"]', { hasText: 'Kim' })).toHaveCount(1, { timeout: 5000 });
   const kimRow = page.locator('#people-list .people-row', { hasText: 'Kim' });
-  await expect(kimRow).toHaveCount(1, { timeout: 5000 });
-  await expect(kimRow).toHaveAttribute('data-key', /^friend:/);
-  await expect(kimRow).toHaveAttribute('data-state', 'invited');
+  await expect(kimRow).toHaveCount(1);
   await expect(kimRow.locator('.people-tally .sr-only')).toHaveText('2 wins, 1 loss');
   await other.close();
 });
