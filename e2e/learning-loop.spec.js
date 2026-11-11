@@ -71,9 +71,17 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await expect(page.locator('.history-conditions')).toContainText('10 words');
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('30 s · br');
-  // Ten words give too few "br" intervals to call a timing change.
-  await expect(page.locator('.history-conditions')).toContainText(/ · br · \d+ before · \d+ after$/);
-  await expect(page.locator('.history-detail')).toContainText(/“br” clean intervals: \d+ before \/ \d+ after\. Too few samples to call a timing change\./);
+  // Ten words give too few "br" intervals to call a timing change. When neither run held "br", the row says
+  // nothing about it rather than "0 before · 0 after".
+  const held = [baseline, retest].some((text) => text.includes('br'));
+
+  if (held) {
+    await expect(page.locator('.history-conditions')).toContainText(/ · br · \d+ before · \d+ after$/);
+    await expect(page.locator('.history-detail')).toContainText(/“br” clean intervals: \d+ before \/ \d+ after\. Too few samples to call a timing change\./);
+  } else {
+    await expect(page.locator('.history-conditions')).not.toContainText('br');
+    await expect(page.locator('.history-detail')).not.toContainText('clean intervals');
+  }
 });
 
 test('leaving a drill for another view ends it without drawing a retest passage', async ({ page, supabase }) => {

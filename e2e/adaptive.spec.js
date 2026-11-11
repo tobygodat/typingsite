@@ -1,7 +1,7 @@
 import { test, expect, openApp, chooseWords, completePassage, passageText, chooseMore } from './fixtures.js';
 
-// Types the passage with one slip, on the second letter of its most frequent letter pair, so that pair has
-// the ten tries and a first-try error a target needs. Returns the pair.
+// Types the passage with a slip on every try at its most frequent letter pair (ten or more), so that pair
+// has the observed misses a target needs and leads the learner's ranking. Returns the pair.
 async function typeWithPairSlip(page, text) {
   const counts = new Map();
 
@@ -13,12 +13,17 @@ async function typeWithPairSlip(page, text) {
 
   const [pair, tries] = [...counts].sort((a, b) => b[1] - a[1])[0];
   expect(tries).toBeGreaterThanOrEqual(10);
-  const at = text.indexOf(pair) + 1;
   await page.locator('#typing-input').focus();
-  await page.keyboard.type(text.slice(0, at));
-  await page.keyboard.type(text[at] === 'x' ? 'z' : 'x');
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type(text.slice(at));
+  let from = 0;
+
+  for (let at = text.indexOf(pair) + 1; at > 0; at = text.indexOf(pair, at) + 1) {
+    await page.keyboard.type(text.slice(from, at));
+    await page.keyboard.type(text[at] === 'x' ? 'z' : 'x');
+    await page.keyboard.press('Backspace');
+    from = at;
+  }
+
+  await page.keyboard.type(text.slice(from));
 
   return pair;
 }
@@ -33,7 +38,7 @@ const seedRandom = () => {
   };
 };
 
-test('adaptive practice draws on the run’s target, never counts, and retests on fresh text', async ({ page }) => {
+test('adaptive practice draws on the learner’s target, never counts, and retests on fresh text', async ({ page }) => {
   await page.addInitScript(seedRandom);
   await openApp(page);
   await chooseWords(page, 100);

@@ -11,11 +11,11 @@ Stilltype is a static web app: native HTML, CSS and JavaScript modules with no r
 
 ## What the app does, by screen
 
-- **Practice.** Time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Time and words text is generated like Monkeytype's English (`drawnPassage` in `src/typing.js`): no word equals either of the two before it, punctuation is sentence-aware at Monkeytype's rates, and 1 word in 10 is a number. Adaptive mode (time and words) leans the text toward the pairs you keep missing. Its runs are drill-kind, so never a best, trend point or baseline.
+- **Practice.** Time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Time and words text is generated like Monkeytype's English (`drawnPassage` in `src/typing.js`): no word equals either of the two before it, punctuation is sentence-aware at Monkeytype's rates, and 1 word in 10 is a number. Adaptive mode (time and words) leans the text toward the learner's top few units, weighted by the time each loses. Its runs are drill-kind, so never a best, trend point or baseline.
 - **More.** Code (js, python, go, rust), a standard 60 s test, book pages, compose, custom text, and a 1–8 letter manual drill.
 - **Learn to type.** 14 lessons. Only physical-keyboard runs unlock the next one.
 - **Results.** Shown on Practice in place of the passage (`body[data-view=results]`). One run card (Paper "Stilltype · Results card", V10): wpm; accuracy, time and consistency; average and best at these conditions; the speed trace; the typed words; practice missed words. Then Run again, Drill "pair" and Watch replay, beside the conditions line.
-- **Train** (Direction D). One button. It plans for the current settings from saved history: the recurring pair, else the newest traces, else a general drill. It runs a 30-second drill, then a fresh retest, and shows the comparison. Its Back to practice opens the retest's run card. "Patterns across runs" lives on Progress, and "words you keep missing" is a palette command.
+- **Train** (Direction D). One button. The learner (`src/learner.js`, [ADR 0013](adr/0013-learning-core.md)) ranks letter pairs and keys by the time each loses, from misses and slowness, over every measured run on this keyboard, older runs fading. Train names the highest-ranked one whose observed counts, or for a slow pair its observed timing past 20 ms, can be stated, else it offers a general drill. Either way the drill's text leans toward the top units. Its evidence line, missed words and last loop's line all read those runs. It runs a 30-second drill, then a fresh retest at the current settings, and shows the comparison. The counting rule it replaced stays as the labelled baseline policy. Its Back to practice opens the retest's run card. "Patterns across runs" lives on Progress, and "words you keep missing" is a palette command.
 - **Progress.** Period and length filters, figures, and speed, accuracy, consistency, practice and keys tabs. Also the daily goal and streaks, and runs started.
 - **Challenge.** Online races, by invite, guest link or friends. A race uses the host's practice setup (time, words or quote, length, punctuation, numbers, word set), or what Customize sets for that race. Practice-only setups fall back to a medium quote on 60 s. Also Daily, the friends board and one keyboard. A finished online race shows both results side by side, with the pair's lasting tally (accounts only), a Rematch pick under each result (when both pick, the next race starts on its own), and a Graph / Replay of both racers drawn from their keystroke traces. See `docs/online-races.md`.
 - **Ghost races.** A friend races your recorded run within seven days.
@@ -40,7 +40,8 @@ In `src/`:
 - `lengths.js`: test lengths.
 - `quote-filters.js`: quote and book dropdowns.
 - `lessons.js`: the beginner path.
-- `insights.js`: run summaries, retention, patterns, filters, targets, daily text.
+- `insights.js`: run summaries, retention, patterns, filters, the counting rule's recurring targets, daily text.
+- `learner.js`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, and the recommendation policies ([ADR 0013](adr/0013-learning-core.md)).
 - `run-counts.js`: runs started and finished.
 - `progress-view.js`: Progress charts.
 - `graph.js`: the speed graph.
@@ -72,7 +73,7 @@ Elsewhere:
 
 - `index.html`, `sw.js`, `manifest.webmanifest`, `icons/`: markup, offline shell and install files.
 - `server.mjs`: the local server. It serves only what the build copies.
-- `scripts/`: `build-static.mjs` (the build), `build-book-texts.mjs`, `measure-latency.mjs` and `measure-profile.mjs`.
+- `scripts/`: `build-static.mjs` (the build), `build-book-texts.mjs`, `measure-latency.mjs`, `measure-profile.mjs` and `evaluate-learner.mjs` (`npm run evaluate:learner`: the policies on simulated typists, and ADR 0013's rule v2 that picks the default; or a stored profile).
 - `tests/`: Node unit tests. `e2e/`: Playwright specs with a fake Supabase (`e2e/fake-supabase.js`).
 - `supabase/`: migrations, Edge Functions and SQL tests.
 - `tools/oxlint/anti-slop/`: the vendored lint plugin.
