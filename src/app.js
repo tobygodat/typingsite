@@ -6619,9 +6619,17 @@ function bindEvents() {
     markRaceInterrupted();
     $('release-dialog').showModal();
   });
-  $('release-close').addEventListener('click', () => $('release-dialog').close());
-  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) $('release-dialog').close(); });
-  $('release-dialog').addEventListener('close', () => $('release-trigger').focus({ preventScroll: true }));
+
+  // Focus goes back to the version in the same task that closes the panel. The close event comes a task
+  // later, when focus may already be back in the passage, and would take it from the keys being typed.
+  const closeRelease = () => {
+    $('release-dialog').close();
+    $('release-trigger').focus({ preventScroll: true });
+  };
+
+  $('release-close').addEventListener('click', closeRelease);
+  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) closeRelease(); });
+  $('release-dialog').addEventListener('cancel', (event) => { event.preventDefault(); closeRelease(); });
 
   $('import-trigger').addEventListener('click', openImport);
   $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });

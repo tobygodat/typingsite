@@ -10,6 +10,21 @@ import { test, expect, openApp, chooseWords, passageText, openSettings, closeSet
 
 const layer = (page) => page.locator('#wallpaper');
 
+// Whether the device's copy of the picked image is in IndexedDB. The app writes and deletes it after the screen
+// changes, so a reload waits for this.
+const storedImage = (page) => page.evaluate(() => new Promise((resolve, reject) => {
+  const open = indexedDB.open('stilltype-device', 1);
+  open.onupgradeneeded = () => open.result.createObjectStore('files');
+  open.onerror = () => reject(open.error);
+  open.onsuccess = () => {
+    const db = open.result;
+    const request = db.transaction('files').objectStore('files').getKey('wallpaper');
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result !== undefined);
+    db.close();
+  };
+}));
+
 // A solid PNG of one grey, drawn by the page itself.
 const solidImage = async (page, grey) => ({
   name: `grey-${grey}.png`,
@@ -49,6 +64,7 @@ test('a picked image stays on this device until it is removed', async ({ page })
   expect(await before(page, 'maskImage')).toContain('blob:');
   await expect.poll(() => opacity(page)).toBe(1);
   expect(await page.evaluate(() => Object.keys(localStorage).some((key) => localStorage.getItem(key).includes('wallpaper')))).toBe(false);
+  await expect.poll(() => storedImage(page)).toBe(true);
 
   await page.reload();
   await expect(layer(page)).toHaveAttribute('data-shown', '');
@@ -58,6 +74,7 @@ test('a picked image stays on this device until it is removed', async ({ page })
   await expect(page.locator('#wallpaper-remove')).toBeHidden();
   await expect(page.locator('#wallpaper-file')).toBeFocused();
   await expect(layer(page)).not.toHaveAttribute('data-shown');
+  await expect.poll(() => storedImage(page)).toBe(false);
 
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
