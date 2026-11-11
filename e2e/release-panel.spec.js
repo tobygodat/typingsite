@@ -1,11 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { test, expect, openApp, chooseWords, passageText, typeInto } from './fixtures.js';
 
-const version = (page) => page.getByRole('button', { name: 'What’s new in v0.2.0', exact: true });
-const panel = (page) => page.getByRole('dialog', { name: 'v0.2.0', exact: true });
+// The version each release bumps (tests/release.test.js keeps the page on it).
+const current = `v${JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version}`;
+const version = (page) => page.getByRole('button', { name: `What’s new in ${current}`, exact: true });
+const panel = (page) => page.getByRole('dialog', { name: current, exact: true });
 
 test('the footer version opens What’s new by keyboard and returns focus on Escape, Close and the backdrop', async ({ page }) => {
   await openApp(page);
-  await expect(version(page)).toHaveText('v0.2.0');
+  await expect(version(page)).toHaveText(current);
   await version(page).focus();
 
   for (const key of ['Enter', 'Space']) {
