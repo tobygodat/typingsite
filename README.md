@@ -44,7 +44,7 @@ A guest link admits one opponent. After joining, a separate tab-scoped credentia
 
 Corrected WPM counts correct retained characters divided by five and elapsed minutes. Input accuracy counts correct printable insertions out of all printable insertions, preserving errors after correction. First-attempt errors and clean pair timings are retained separately. Timing uses a monotonic clock; interruptions exclude a run from comparable results. See [PRODUCT.md](PRODUCT.md) for the contract.
 
-The app uses native HTML/CSS/JavaScript. Its visual system, Afterimage (Literata on warm near-black or paper, one green accent, a still typing surface), is set by the tokens at the top of `src/styles.css` and described in [DESIGN.md](DESIGN.md). The former Ash system (`design/ash/`) and the canvas artboards remain historical reference, not served code.
+The app uses native HTML/CSS/JavaScript. The tokens at the top of `src/styles.css` set its look, and [DESIGN.md](DESIGN.md) lists the floors that every visual change holds. The former Ash system (`design/ash/`) and the canvas artboards remain historical reference, not served code.
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Conventions: run, test, deploy](docs/CONVENTIONS.md)
