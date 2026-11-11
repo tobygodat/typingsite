@@ -40,8 +40,8 @@ Preconditions:
   fills the width, and the trace, words and actions follow below the fold (add `--full-page` to capture it).
 - **Train loop.** Run `$V drive .claude/skills/verify-stilltype/flows/train-d.mjs` (desktop) and again with
   `--width 390 --height 844 --mobile --full-page`. It seeds a signed-in history that keeps missing "ou" and "br" and
-  shoots the result on Practice, one-button Train, the comparison after Drill and retest, Train after the loop, and
-  an adaptive run and its result.
+  shoots the result on Practice, Train's path, the comparison as the newest step behind you after Drill and retest,
+  Train after the loop, and an adaptive run and its result. Train's path itself has its own map: [Train's path](./train-path.md).
 - **Learner.** `flows/learner-guest.mjs` is a new guest's plain general drill, a 10-word run and Train after it.
   `flows/learner-th.mjs` types three 100-word passages missing every "th", then Train, drill, retest and the
   comparison, and checks that nothing offers "h" (ADR 0013's naming rule). `flows/learner-forget.mjs`

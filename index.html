@@ -390,30 +390,36 @@
       </section>
 
       <section id="train-screen" class="screen train-screen" data-screen="train" aria-labelledby="train-heading" hidden>
-        <div id="train-next" class="train-block">
-          <h1 id="train-heading" tabindex="-1">General drill</h1>
-          <p id="train-words" class="train-words" hidden></p>
-          <p id="train-evidence" class="train-evidence" hidden></p>
-          <div class="train-actions">
-            <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill">Drill and retest</button>
-          </div>
-          <p id="train-last" class="train-last" hidden></p>
-        </div>
-
-        <article id="comparison-panel" class="train-block comparison-panel" data-outcome="insufficient" aria-labelledby="comparison-status" hidden>
-          <h1 id="comparison-status" tabindex="-1">Retest complete.</h1>
-          <dl class="comparison-rows">
-            <div id="comparison-target-row"><dt id="comparison-target-label">missed</dt><dd><strong id="comparison-target" class="num">—</strong><span id="comparison-target-was"></span></dd></div>
-            <div><dt>accuracy</dt><dd><strong class="num"><span id="comparison-accuracy-now">—</span><b>%</b></strong><span id="comparison-accuracy" class="num">—</span></dd></div>
-            <div><dt data-speed-unit>wpm</dt><dd><strong id="comparison-wpm-now" class="num" data-bare>—</strong><span id="comparison-wpm" class="num" data-bare data-signed>—</span></dd></div>
-          </dl>
-          <p id="comparison-conditions" class="condition-copy"></p>
-          <p id="comparison-caveat"></p>
-          <div class="train-actions">
-            <button id="comparison-back" class="btn btn-primary" type="button">Back to practice</button>
-            <button id="comparison-next" class="btn btn-secondary" type="button" hidden>Next</button>
-          </div>
-        </article>
+        <h1 id="train-heading" class="sr-only" tabindex="-1">General drill</h1>
+        <!-- The path: steps behind you, the open step, then the steps ahead. app.js draws the steps around the two
+             written here: the comparison, the newest step behind you while it shows, and the open step. -->
+        <ol id="train-path" class="train-path" aria-label="Path">
+          <li id="comparison-panel" class="path-step is-behind is-just" data-outcome="insufficient" hidden>
+            <div class="path-head"><span class="path-node" aria-hidden="true"></span><span id="comparison-unit" class="path-unit"></span></div>
+            <h2 id="comparison-status" tabindex="-1">Retest complete.</h2>
+            <dl class="comparison-rows">
+              <div id="comparison-target-row"><dt id="comparison-target-label">missed</dt><dd><strong id="comparison-target" class="num">—</strong><span id="comparison-target-was"></span></dd></div>
+              <div><dt>accuracy</dt><dd><strong class="num"><span id="comparison-accuracy-now">—</span><b>%</b></strong><span id="comparison-accuracy" class="num">—</span></dd></div>
+              <div><dt data-speed-unit>wpm</dt><dd><strong id="comparison-wpm-now" class="num" data-bare>—</strong><span id="comparison-wpm" class="num" data-bare data-signed>—</span></dd></div>
+            </dl>
+            <p id="comparison-conditions" class="condition-copy"></p>
+            <p id="comparison-caveat"></p>
+          </li>
+          <li id="train-current" class="path-step is-current" aria-current="step">
+            <div class="path-head"><span class="path-node" aria-hidden="true"></span><span id="train-unit" class="path-unit">General drill</span></div>
+            <div id="train-next" class="train-open">
+              <p id="train-evidence" class="train-evidence" hidden></p>
+              <p id="train-last" class="train-last" hidden></p>
+              <p id="train-words" class="train-words" hidden></p>
+              <div class="train-actions">
+                <button id="start-drill" class="btn btn-primary" type="button" data-action="start-drill">Drill and retest</button>
+                <button id="comparison-next" class="btn btn-primary" type="button" hidden>Next</button>
+                <span id="train-starts" class="condition-copy"></span>
+                <button id="comparison-back" class="btn btn-ghost" type="button" hidden>Back to practice</button>
+              </div>
+            </div>
+          </li>
+        </ol>
       </section>
 
       <section id="learn-screen" class="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>

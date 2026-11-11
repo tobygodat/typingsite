@@ -2458,65 +2458,248 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-more { min-width: 0; display: grid; gap: var(--space-8); }
 .result-more:not(:has(> :not([hidden]))) { display: none; }
 
-/* ── Train: one drill, then its comparison ──────────────────────────────── */
+/* ── Train: the path ───────────────────────────────────────────────────── */
 
-.train-block {
-  padding-top: calc(var(--space-16) * 2);
+/* One line of steps: behind you (accent, a ring, or a disc once fixed, with its status word), the open step (a larger
+   ring holding a dot, its target at display size) and the steps ahead (a smaller outline ring on a dashed line).
+   Position, node shape, the status word and the line's dash tell them apart without colour. From 901px the steps sit
+   in columns, six to a screen, with a gutter between them, and the line scrolls back through every step behind you.
+   The six leave room at the start for the tail of the step before them, so a line that holds more shows a part of
+   the next step behind you there, faded, while the first whole step stays clear; the end fades the same way while
+   more lies past it. app.js sets --columns, --open (the open step's column) and data-more-behind and data-more-ahead. */
+.train-path {
+  --columns: 6;
+  --open: 1;
+  --fade-behind: 0px;
+  --fade-ahead: 0px;
+  margin: 0 calc(var(--space-2) * -1);
+  padding: var(--space-10) var(--space-2) var(--space-2);
+  list-style: none;
   display: grid;
-  justify-items: center;
-  text-align: center;
+  grid-template-columns: repeat(var(--columns), calc((100% - var(--space-8)) / 6));
+  align-items: start;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+.train-path[data-more-behind] { --fade-behind: var(--space-8); }
+.train-path[data-more-ahead] { --fade-ahead: var(--space-8); }
+/* Focused for its arrow keys, the line drops the fade so its focus ring shows whole. */
+.train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
 }
 
-.train-block h1 {
-  margin: 0;
-  font-size: var(--text-display);
-  font-weight: 400;
-  line-height: 1.08;
-  letter-spacing: -0.025em;
-  overflow-wrap: anywhere;
+.path-step { grid-row: 1; min-width: 0; padding: 0 var(--space-4) var(--space-2) 0; display: grid; align-content: start; gap: var(--space-1); }
+.path-step.is-just { grid-column: span 2; }
+/* The open step lays its head on the line and its details under it, from its column to the end. */
+#train-current { display: contents; }
+#train-current > .path-head { grid-row: 1; grid-column: var(--open); margin-right: var(--space-4); }
+
+.path-head { position: relative; display: grid; justify-items: start; row-gap: var(--space-6); }
+/* Each step draws the line to the next one: travelled behind you, dashed from the open step on. */
+.path-head::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--space-4) / 2 - 1px);
+  left: 0;
+  right: calc(var(--space-4) * -1);
+  height: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+:is(#train-current, .is-ahead) .path-head::before {
+  background: repeating-linear-gradient(90deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
+}
+.train-path > :last-child .path-head::before { display: none; }
+
+.path-node {
+  position: relative;
+  z-index: 1;
+  width: var(--space-4);
+  height: var(--space-4);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-full);
+  background: var(--ground);
+}
+.is-fixed .path-node { background: var(--accent); }
+#train-current .path-node {
+  width: var(--space-6);
+  height: var(--space-6);
+  margin: calc((var(--space-4) - var(--space-6)) / 2);
+  box-shadow: inset 0 0 0 var(--space-1) var(--ground), inset 0 0 0 var(--space-6) var(--accent);
+}
+.is-ahead .path-node {
+  width: var(--space-3);
+  height: var(--space-3);
+  margin: calc((var(--space-4) - var(--space-3)) / 2);
+  border-color: var(--outline);
 }
 
-/* Missed words that hold the target: the target in the text colour, the rest muted. Coral would say its letters
-   were the ones mistyped, which isn't known. */
-.train-words {
-  margin: var(--space-4) 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-1) var(--space-6);
+.path-unit { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; overflow-wrap: anywhere; }
+/* "drilled" or "fixed" beside the target, a status word whose dot is the step's own node. */
+.path-status { margin-left: var(--space-2); }
+/* A number stays with its unit, and each half of a before → after pair stays whole. */
+.path-figure { white-space: nowrap; }
+#train-unit { font-size: var(--text-display); line-height: 1; letter-spacing: -0.025em; white-space: nowrap; }
+.path-line { margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
+.is-behind .path-line:first-of-type { color: var(--text); }
+
+/* A step ahead is chosen as a whole; its target brightens on hover. */
+.path-choose {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
   color: var(--muted);
-  font-size: var(--text-lead);
+  font: inherit;
+  text-align: start;
+  display: grid;
+  gap: var(--space-1);
 }
-.train-words b { color: var(--text); font-weight: inherit; }
-.train-evidence { margin: var(--space-1) 0 0; font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-.train-actions { margin-top: var(--space-8); display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); }
-.train-last { margin: var(--space-14) 0 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
+.path-choose .path-unit { transition: color var(--dur-quick) var(--ease-out); }
+.path-choose:hover .path-unit { color: var(--text); }
 
-/* The comparison: three figures over a hairline, deltas muted. */
-.train-block .comparison-rows {
-  width: min(720px, 100%);
-  margin: var(--space-10) 0 0;
+/* The open step's details: its evidence, the words it was missed in, and its one button. */
+.train-open {
+  grid-row: 2;
+  grid-column: var(--open) / -1;
+  min-width: 0;
+  margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--hairline);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-  gap: var(--space-6);
+  justify-items: start;
+  gap: var(--space-4);
 }
-.train-block .comparison-rows > div { display: grid; gap: var(--space-2); }
-.train-block .comparison-rows > div[hidden] { display: none; }
-.train-block .comparison-rows dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.train-block .comparison-rows dd { margin: 0; display: grid; gap: var(--space-1); }
-.train-block .comparison-rows strong { font-size: var(--text-title); font-weight: 400; line-height: 1.1; letter-spacing: -0.015em; }
-.train-block .comparison-rows strong b { color: var(--muted); font-size: var(--text-small); font-weight: 400; margin-left: 1px; }
-.train-block .comparison-rows dd > span { color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-.train-block .condition-copy { margin: var(--space-6) 0 0; }
-.train-block .condition-copy:empty { display: none; }
+.train-evidence { margin: 0; font-size: var(--text-lead); font-variant-numeric: tabular-nums lining-nums; }
+.train-last { margin: calc(var(--space-3) * -1) 0 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
+/* Missed words that hold the target: the target in the text colour, the rest muted. Coral would say its letters
+   were the ones mistyped, which isn't known. */
+.train-words {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-title);
+  line-height: 1.3;
+}
+.train-words b { color: var(--text); font-weight: inherit; }
+.train-actions { margin-top: var(--space-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+
+/* The comparison is the step just retested: its outcome, then its figures beside the baseline's, in three rows. */
+#comparison-status {
+  margin: var(--space-2) 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-body);
+  font-weight: 400;
+  line-height: 1.4;
+}
+#comparison-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--muted); transform: translateY(-2px); }
+[data-outcome="improved"] > #comparison-status::before { background: var(--accent); }
+[data-outcome="mixed"] > #comparison-status::before { background: var(--warning); }
+[data-outcome="regressed"] > #comparison-status::before { background: var(--danger); }
 /* Focus lands on the outcome so it is read out; it isn't a control, so it draws no ring. */
 #comparison-status:focus-visible { outline: none; }
-#comparison-caveat { max-width: 60ch; margin: var(--space-4) 0 0; color: var(--muted); font-size: var(--text-small); }
+.comparison-rows {
+  margin: var(--space-2) 0 0;
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.comparison-rows > div, .comparison-rows dd { display: contents; }
+.comparison-rows dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.comparison-rows strong { font-size: var(--text-body); font-weight: 400; font-variant-numeric: tabular-nums lining-nums; }
+.comparison-rows strong b { color: var(--muted); font-size: var(--text-small); font-weight: 400; margin-left: 1px; }
+.comparison-rows dd > span { color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
+#comparison-panel.is-uncompared .comparison-rows { display: none; }
+#comparison-conditions { margin: var(--space-2) 0 0; }
+#comparison-conditions:empty { display: none; }
+#comparison-caveat { max-width: 60ch; margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-small); }
 #comparison-caveat:empty { display: none; }
-.comparison-panel.is-uncompared .comparison-rows { display: none; }
-#comparison-panel > .ghost-offer { width: min(720px, 100%); margin-top: var(--space-10); text-align: start; }
+
+/* As a retest's comparison opens, the path moves on one step and the next step opens. */
+@keyframes path-advance { from { transform: translateX(var(--advance)); } }
+@keyframes path-open { from { opacity: 0; transform: translateY(var(--space-2)); } }
+.train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head {
+  animation: path-advance var(--dur-fast) var(--ease-out);
+}
+.train-path.is-advancing .train-open { animation: path-open var(--dur-fast) var(--ease-out); }
+
+/* Up to 900px the path runs down the page, its line on the left: the two newest steps behind you (a line fading in
+   from above when there are more), then the open step with its details under its target, then the steps ahead. */
+@media (max-width: 900px) {
+  .train-path { margin: 0; padding: var(--space-4) 0 0; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+  .train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
+  .path-step, .path-step.is-just, #train-current { grid-row: auto; grid-column: 1; position: relative; display: grid; padding: 0 0 var(--space-6); }
+  #train-current > .path-head, .train-open { grid-row: auto; grid-column: auto; }
+  .path-step:is([data-early], .is-place) { display: none; }
+  .path-head { margin-right: 0; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-4); }
+  .path-head::before { display: none; }
+  .path-node { justify-self: center; }
+  :is(.path-line, #comparison-status, .comparison-rows, #comparison-conditions, #comparison-caveat, .train-open) { margin-left: var(--space-10); }
+  .path-choose { gap: 0; }
+  .path-choose .path-line { margin-left: var(--space-10); }
+  .train-open { margin-top: var(--space-3); padding-top: 0; border-top: 0; }
+  .train-last { margin-top: calc(var(--space-2) * -1); }
+  .train-words { font-size: var(--text-lead); }
+  #train-unit { white-space: normal; }
+
+  /* Each step's line runs from its node's centre to the next node's. */
+  .path-step { --mid: calc(var(--text-title) * 0.575); }
+  #train-current { --mid: calc(var(--text-display) / 2); }
+  .path-step::before {
+    content: "";
+    position: absolute;
+    top: var(--mid);
+    bottom: calc(var(--text-title) * -0.575);
+    left: calc(var(--space-6) / 2 - 1px);
+    width: 2px;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+  }
+  .path-step:has(+ #train-current)::before { bottom: calc(var(--text-display) / -2); }
+  :is(#train-current, .is-ahead)::before {
+    background: repeating-linear-gradient(180deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
+  }
+  .train-path > :last-child::before, #train-current:has(+ .is-place)::before { display: none; }
+  /* A target that wraps keeps its node on its first line. */
+  #train-current > .path-head { align-items: start; }
+  #train-current .path-node { margin: calc(var(--mid) - var(--space-6) / 2) 0 0; }
+  .path-step[data-early] + .path-step::after {
+    content: "";
+    position: absolute;
+    top: calc(var(--space-4) * -1);
+    height: calc(var(--mid) + var(--space-4));
+    left: calc(var(--space-6) / 2 - 1px);
+    width: 2px;
+    background: linear-gradient(transparent, var(--accent));
+  }
+
+  .train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head, .train-path.is-advancing .train-open { animation: none; }
+  .train-path.is-advancing > #train-current { animation: path-open var(--dur-fast) var(--ease-out); }
+}
+
+/* Forced colours would draw every node as the same ring and drop the open step's dot and the line: draw them in system
+   colours. Behind you a CanvasText ring, or a CanvasText disc once fixed, on a solid CanvasText line; the open step a
+   Highlight ring holding a Highlight dot; ahead a smaller GrayText ring on a dashed GrayText line. */
+@media (forced-colors: active) {
+  .path-node, .path-head::before, .path-step::before, .path-step[data-early] + .path-step::after { forced-color-adjust: none; }
+  .path-node { border-color: CanvasText; background: Canvas; }
+  .is-fixed .path-node { background: CanvasText; }
+  #train-current .path-node { border-color: Highlight; box-shadow: inset 0 0 0 var(--space-1) Canvas, inset 0 0 0 var(--space-6) Highlight; }
+  .is-ahead .path-node { border-color: GrayText; }
+  .path-head::before, .path-step::before { background: CanvasText; }
+  :is(#train-current, .is-ahead) .path-head::before { background: repeating-linear-gradient(90deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
+  :is(#train-current, .is-ahead)::before { background: repeating-linear-gradient(180deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
+  .path-step[data-early] + .path-step::after { background: linear-gradient(transparent, CanvasText); }
+}
 
 .run-card-graph { margin: 0; }
 
@@ -3725,9 +3908,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .result-buttons .btn, .result-buttons .btn:not(.btn-ghost) { min-width: 0; padding-inline: var(--space-2); }
   .result-buttons .btn-primary, .result-buttons .btn[hidden] + .btn, .result-buttons .btn:has(+ .btn[hidden]) { grid-column: 1 / -1; }
   .result-actions .condition-copy { text-align: start; }
-  .train-block { padding-top: var(--space-16); }
-  .train-block h1 { font-size: 38px; }
-  .train-block .comparison-rows { gap: var(--space-3); }
   .history-summary { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
