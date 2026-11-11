@@ -54,6 +54,7 @@ const SHELL = [
   '/src/sound.js',
   '/src/tape.js',
   '/src/theme-editor.js',
+  '/src/train-path.js',
   '/src/typing.js',
   '/src/units.js',
   '/src/wallpaper.js',

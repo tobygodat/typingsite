@@ -362,5 +362,5 @@ test('a pair typed slowly but never missed is named on its observed timing, dril
 
   // Train's "since you drilled it" line reads the same figure, and says faster in words, never a negative.
   await openView(page, 'Train');
-  await expect(page.locator('#train-last')).toHaveText(/^th · \d+ ms slower → (at your pace|\d+ ms (slower|faster) than your pace) since you drilled it$/);
+  await expect(page.locator('#train-last')).toHaveText(/^\d+ ms slower → (at your pace|\d+ ms (slower|faster) than your pace) since you drilled it$/);
 });
