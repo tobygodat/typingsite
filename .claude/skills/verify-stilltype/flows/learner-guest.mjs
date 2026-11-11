@@ -1,5 +1,5 @@
-// A brand-new guest and the learner (TOB-419): Train with no runs is a general drill leaning toward the prior's
-// top units; Practice at 10 words gives the run card and Run again a fresh passage; then Train's general drill,
+// A brand-new guest and the learner (TOB-419): Train with no runs is the plain general drill, since with no
+// evidence nothing ranks; Practice at 10 words gives the run card and Run again a fresh passage; then Train's general drill,
 // its fresh retest and the comparison. Run at 1440×900.
 export default async ({ page, h, shot, note, check }) => {
   await h.openApp();
@@ -11,7 +11,7 @@ export default async ({ page, h, shot, note, check }) => {
 
   await page.locator('#start-drill').click();
   await h.attr('#typing-screen', 'data-session', 'drill');
-  note('leaning drill words', (await h.passage()).split(' ').slice(0, 24).join(' '));
+  note('drill words', (await h.passage()).split(' ').slice(0, 24).join(' '));
   await shot('drill-new-guest');
 
   await h.openView('Practice');

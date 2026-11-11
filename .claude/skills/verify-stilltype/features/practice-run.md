@@ -42,6 +42,9 @@ Preconditions:
   `--width 390 --height 844 --mobile --full-page`. It seeds a signed-in history that keeps missing "ou" and "br" and
   shoots the result on Practice, one-button Train, the comparison after Drill and retest, Train after the loop, and
   an adaptive run and its result.
+- **Learner.** `flows/learner-guest.mjs` is a new guest's plain general drill, a 10-word run and Train after it.
+  `flows/learner-th.mjs` types three 100-word passages missing every "th", then Train, drill, retest and the
+  comparison, and checks that nothing offers "h" (ADR 0013's naming rule).
 - **Restart.** Drive it: in a flow file, type a few letters with `h.type('ab')`, press
   `page.keyboard.press('Escape')`, then `check` that `#accessible-passage` text changed and
   `body[data-running]` is gone.

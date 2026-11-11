@@ -69,8 +69,8 @@ import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DEFAULT_POLICY, LEARNER_POLICY, countingEvidence, recommendFor } from './learner.js';
-import { CORRECTION_LABELS, MAX_PATTERN_RUNS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
+import { DEFAULT_POLICY, countingEvidence, keyboardOf, learnerEvidence, recommendFor } from './learner.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, recurringTargets, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun, weeklyChange } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend } from './progress-view.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, wpmFromSpeed } from './units.js';
 import { createReplayView } from './replay-view.js';
@@ -3176,14 +3176,14 @@ function renderTrain() {
   $('train-last').hidden = !last;
 }
 
-// Words this person missed on the first try that hold the pair, newest first, from the runs pattern
-// memory reads at these conditions.
+// Words this person missed on the first try that hold the target, newest first, from the runs the
+// recommendation reads: every measured run on this keyboard.
 function evidenceWords(target, source) {
-  const key = conditionKey(source);
+  const keyboard = keyboardOf(source);
   const words = [];
 
   for (const run of [...profile.runs].reverse()) {
-    if (!evidenceRun(run) || conditionKey(run.conditions) !== key) continue;
+    if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) continue;
 
     for (const word of run.missedWords || []) {
       const bare = word.toLowerCase().replace(/[^a-z]/g, '');
@@ -3197,31 +3197,31 @@ function evidenceWords(target, source) {
   return words;
 }
 
-// The newest finished loop with a target at these conditions: how often its pair was missed on fresh
-// runs before the retest and from the retest on.
+// The newest finished loop with a target on this keyboard: how often its pair or key was missed on measured
+// runs on the keyboard before the retest and from the retest on, as the recommendation counts them.
 function lastLoopCopy(source) {
-  const key = conditionKey(source);
-  const loop = [...profile.loops].reverse().find((item) => item.target && conditionKey(item.conditions) === key);
+  const keyboard = keyboardOf(source);
+  const loop = [...profile.loops].reverse().find((item) => item.target && keyboardOf(item.conditions) === keyboard);
 
   if (!loop) return '';
-  const split = profile.runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at;
-  const runs = profile.runs.filter((run) => evidenceRun(run) && run.at && conditionKey(run.conditions) === key).slice(-MAX_PATTERN_RUNS);
+  const split = Date.parse(profile.runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
 
-  const rate = (list) => {
+  const rate = (records) => {
     let observations = 0;
     let errors = 0;
 
-    for (const run of list) {
-      const pattern = run.patterns?.find((item) => item[0] === loop.target);
+    for (const record of records) {
+      const unit = record.units.find((item) => item.unit === loop.target);
 
-      if (pattern) { observations += pattern[1]; errors += pattern[2]; }
+      if (unit) { observations += unit.seen; errors += unit.errors; }
     }
 
     return observations ? Math.round((errors / observations) * 100) : null;
   };
 
-  const before = rate(runs.filter((run) => run.at < split));
-  const after = rate(runs.filter((run) => run.at >= split));
+  const records = learnerEvidence(profile.runs, keyboard).filter((record) => record.at !== null);
+  const before = rate(records.filter((record) => record.at < split));
+  const after = rate(records.filter((record) => record.at >= split));
 
   return before === null || after === null ? '' : `${loop.target} · ${before}% → ${after}% missed since you drilled it`;
 }
@@ -3592,12 +3592,10 @@ function trainingRecommendation(source, current = null) {
   return recommendFor(DEFAULT_POLICY, { runs: profile.runs, loops: profile.loops, traces, source, now: Date.now() });
 }
 
-// A drill's text: the target's words, or, for a general drill the learner ranked units for, words leaning
+// A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
 function drillPassage() {
-  const lean = !selectedTarget && activeRecommendation?.policy === LEARNER_POLICY ? activeRecommendation.lean : [];
-
-  return makeDrill(selectedTarget, prefs.wordList, lean);
+  return makeDrill(selectedTarget, prefs.wordList, activeRecommendation?.lean || []);
 }
 
 function renderTraining() {

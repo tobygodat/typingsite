@@ -26,7 +26,7 @@ async function typeMissing(page, missed) {
 const secondOfTh = (text, at) => text.slice(at - 1, at + 1) === 'th';
 const wordStartW = (text, at) => text[at] === 'w' && (at === 0 || text[at - 1] === ' ');
 
-test('a brand-new guest gets a general drill that leans toward the units the prior ranks highest', async ({ page }) => {
+test('a brand-new guest gets the plain general drill: with no evidence nothing ranks', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Train');
   await expect(page.locator('#train-heading')).toHaveText('General drill');
@@ -34,13 +34,8 @@ test('a brand-new guest gets a general drill that leans toward the units the pri
   await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText('General drill');
-
-  // With no history the model is its hand-set prior alone, the same on every device.
-  const { lean } = learnerRecommendation(fitLearner([], Date.now(), 'qwerty'));
-  expect(lean.length).toBeGreaterThan(0);
-  const drill = await passageText(page);
-  expect(drill).toBe(makeDrill(null, '200', lean).text);
-  expect(drill).not.toBe(makeDrill(null, '200').text);
+  expect(learnerRecommendation(fitLearner([], Date.now())).lean).toEqual([]);
+  expect(await passageText(page)).toBe(makeDrill(null, '200').text);
 });
 
 test('after one clean run, Train is a general drill, then a fresh retest and the comparison', async ({ page }) => {
@@ -84,7 +79,7 @@ test('a pair missed in every run is named with its observed counts, drilled, ret
 
   await expect.poll(() => profile()?.runs?.length).toBe(2);
   // What the learner makes of exactly these runs, worked out here from the saved summaries.
-  const expected = learnerRecommendation(fitLearner(learnerEvidence(profile().runs, 'physical-keyboard:qwerty'), Date.now(), 'qwerty'));
+  const expected = learnerRecommendation(fitLearner(learnerEvidence(profile().runs, 'physical-keyboard:qwerty'), Date.now()));
   expect(expected.target).toBe('th');
   expect(expected.was.runs).toBe(2);
   expect(expected.was.observations).toBeGreaterThanOrEqual(10);
@@ -149,7 +144,7 @@ test('a key missed beyond its pairs is named, drilled and read back with its own
 
   await expect.poll(() => profile()?.runs?.length).toBe(2);
   // A miss at the start of a word is in no pair, so "w" is missed beyond every pair ending in it.
-  const expected = learnerRecommendation(fitLearner(learnerEvidence(profile().runs, 'physical-keyboard:qwerty'), Date.now(), 'qwerty'));
+  const expected = learnerRecommendation(fitLearner(learnerEvidence(profile().runs, 'physical-keyboard:qwerty'), Date.now()));
   expect(expected.target).toBe('w');
   expect(expected.was.errors).toBeGreaterThan(0);
 

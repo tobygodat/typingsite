@@ -11,8 +11,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
 import { evidenceRun, runRecord } from '../src/insights.js';
-import { DEFAULT_POLICY, FULL_MODEL, LEAN_UNITS, countingRecommendation, englishFrequency, fitLearner, keyboardOf, learnerEvidence,
-  learnerRecommendation } from '../src/learner.js';
+import { DECAY_POLICY, DEFAULT_POLICY, HALF_LIFE_RUNS, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, countingRecommendation, englishFrequency, fitLearner, keyboardOf,
+  learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { normalizeProfile } from '../src/profile.js';
 import { keyboardRows } from '../src/layouts.js';
 
@@ -32,7 +32,6 @@ const CHANGE = 20;
 export const VALIDATION_SEEDS = [9001, 9002];
 export const TEST_SEEDS = [1, 2, 3, 4, 5];
 export const POOLED_TRIES_GRID = [2, 5, 10, 20, 40, 80];
-export const HALF_LIFE_GRID = [10, 15, 20, 30, 60];
 export const GROUPS = ['mechanics', 'unrelated', 'drifting'];
 export const STRATA = [['common', 1, 30], ['middle', 31, 90], ['rare', 91, Infinity]];
 
@@ -191,18 +190,16 @@ export function typeRun(typist, random, index, id) {
   return { run: runRecord(attempt, at), trace: attempt };
 }
 
-// Every learner variant: each subset of the three components, simplest first.
-const COMPONENTS = ['features', 'decay', 'hesitation'];
-
-export const VARIANTS = [[], ['hesitation'], ['decay'], ['features'], ['decay', 'hesitation'], ['features', 'hesitation'], ['features', 'decay'], COMPONENTS]
-  .map((on) => ({ name: on.length === 3 ? 'full' : on.length ? on.map((c) => `+${c}`).join(' ') : 'counts-gain', components: on }));
+// The learner's variants still in the code, simplest first (ADR 0013 records the ones deleted: the feature
+// regression and the hesitation term).
+export const VARIANTS = [{ name: 'counts-gain', policy: LEARNER_POLICY, components: [] }, { name: '+decay', policy: DECAY_POLICY, components: ['decay'] }];
 
 // A policy fitted on a typist's first runs: what it predicts for each pair, and the units it acts on.
-function learnerPolicy(components, constants) {
-  const variant = { ...Object.fromEntries(COMPONENTS.map((c) => [c, components.includes(c)])), ...constants };
+function learnerPolicy(policy, constants) {
+  const variant = { ...LEARNER_VARIANTS[policy], ...constants };
 
   return (runs, traces, now) => {
-    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, 'qwerty', variant);
+    const model = fitLearner(learnerEvidence(runs, KEYBOARD), now, variant);
     const byUnit = new Map(model.units.map((e) => [e.unit, e.error.mean]));
 
     return { predict: (pair) => byUnit.get(pair) ?? model.errorRate, lean: learnerRecommendation(model).lean.map((item) => item.unit) };
@@ -318,23 +315,20 @@ export function score(population, policy) {
   };
 }
 
-// The constants ADR 0013 chooses on validation typists: K for the counts-only rate, then the half-life for
-// the full model, each by mean next-run log loss.
+// The constant ADR 0013 chooses on validation typists: K for the counts-only rate, by mean next-run log loss.
+// The decay variant keeps the half-life the deciding run chose with the full model, since deleted: 10 runs.
 export function validate(options = {}) {
   const populations = VALIDATION_SEEDS.map((seed) => simulate(seed, options));
-  const loss = (components, constants) => mean(populations.map((population) => score(population, learnerPolicy(components, constants)).logLoss));
-  const pooled = POOLED_TRIES_GRID.map((pooledTries) => ({ pooledTries, logLoss: loss([], { pooledTries }) }));
-  const pooledTries = pooled.reduce((best, row) => (row.logLoss < best.logLoss ? row : best)).pooledTries;
-  const halfLives = HALF_LIFE_GRID.map((halfLifeRuns) => ({ halfLifeRuns, logLoss: loss(COMPONENTS, { pooledTries, halfLifeRuns }) }));
-  const halfLifeRuns = halfLives.reduce((best, row) => (row.logLoss < best.logLoss ? row : best)).halfLifeRuns;
+  const loss = (constants) => mean(populations.map((population) => score(population, learnerPolicy(LEARNER_POLICY, constants)).logLoss));
+  const pooled = POOLED_TRIES_GRID.map((pooledTries) => ({ pooledTries, logLoss: loss({ pooledTries }) }));
 
-  return { pooledTries, halfLifeRuns, pooled, halfLives };
+  return { pooledTries: pooled.reduce((best, row) => (row.logLoss < best.logLoss ? row : best)).pooledTries, pooled };
 }
 
 // Every policy on every test seed, at the validated constants.
 export function evaluate({ constants, seeds = TEST_SEEDS, ...options }) {
   const policies = [{ name: 'counting@1', components: null, policy: countingPolicy },
-    ...VARIANTS.map((v) => ({ ...v, policy: learnerPolicy(v.components, constants) }))];
+    ...VARIANTS.map((v) => ({ name: v.name, components: v.components, policy: learnerPolicy(v.policy, constants) }))];
 
   const perSeed = seeds.map((seed) => {
     const population = simulate(seed, options);
@@ -381,10 +375,9 @@ export function evaluateProfile(stored, constants) {
   for (const run of profile.runs.filter(evidenceRun)) counts.set(keyboardOf(run.conditions), (counts.get(keyboardOf(run.conditions)) || 0) + 1);
   const keyboard = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
   const runs = profile.runs.filter((run) => evidenceRun(run) && keyboardOf(run.conditions) === keyboard && run.patterns?.length && run.at);
-  const layout = runs[0]?.conditions?.layout;
 
-  const fitWith = (components) => (prefix, now) => {
-    const model = fitLearner(learnerEvidence(prefix, keyboard), now, layout, { ...Object.fromEntries(COMPONENTS.map((c) => [c, components.includes(c)])), ...constants });
+  const fitWith = (policy) => (prefix, now) => {
+    const model = fitLearner(learnerEvidence(prefix, keyboard), now, { ...LEARNER_VARIANTS[policy], ...constants });
     const byUnit = new Map(model.units.map((e) => [e.unit, e.error.mean]));
 
     return (pair) => byUnit.get(pair) ?? model.errorRate;
@@ -412,20 +405,20 @@ export function evaluateProfile(stored, constants) {
     return { logLoss: mean(losses), calibration: calibration(predictions) };
   };
 
-  return { keyboard, runs: runs.length, countsOnly: scored(fitWith([])), full: scored(fitWith(COMPONENTS)) };
+  return { keyboard, runs: runs.length, learner: scored(fitWith(LEARNER_POLICY)), decay: scored(fitWith(DECAY_POLICY)) };
 }
 
-// A 120-run history (the most pattern evidence a profile keeps), fitted repeatedly with the full model.
+// A 120-run history (the most pattern evidence a profile keeps), fitted repeatedly with the default.
 export function fitTime(seed = 419) {
   const random = seeded(seed);
   const typist = makeTypist(random, 'mechanics', SKILLS[1]);
   const history = Array.from({ length: 120 }, (_, r) => typeRun(typist, random, r, `timing-${r}`).run);
   const now = Date.parse(history.at(-1).at);
-  fitLearner(learnerEvidence(history, KEYBOARD), now, 'qwerty');
+  fitLearner(learnerEvidence(history, KEYBOARD), now);
 
   const times = Array.from({ length: 30 }, () => {
     const started = performance.now();
-    fitLearner(learnerEvidence(history, KEYBOARD), now, 'qwerty');
+    fitLearner(learnerEvidence(history, KEYBOARD), now);
 
     return performance.now() - started;
   });
@@ -451,7 +444,7 @@ export function report(validation, result) {
 
   return [
     `Validation (seeds ${VALIDATION_SEEDS.join(', ')}): log loss by K for the counts-only rate, ${validation.pooled.map((r) => `${r.pooledTries} ${loss(r.logLoss)}`).join(', ')}: K = ${validation.pooledTries}.`,
-    `By half-life for the full model, ${validation.halfLives.map((r) => `${r.halfLifeRuns} ${loss(r.logLoss)}`).join(', ')}: ${validation.halfLifeRuns} runs.`,
+    `The decay variant's half-life: ${HALF_LIFE_RUNS} runs, chosen with the full model in the run that decided (ADR 0013).`,
     '',
     `Test seeds ${result.seeds.join(', ')}: mean [lowest–highest seed]. Log loss: next run's first tries, mean per typist. ECE: calibration over ten bins.`,
     table(['policy', 'log loss', ...GROUPS, 'ECE'], names.map((name) => [name, at(name, (s) => s.logLoss, loss),
@@ -465,7 +458,7 @@ export function report(validation, result) {
     '',
     `Eligible (log loss not worse than the counts-only rate's beyond the spread): ${verdict.eligible.join(', ')}.`,
     `Not beaten on ranking by an eligible policy: ${verdict.unbeaten.join(', ')}.`,
-    `Default by the rule: ${verdict.default}. The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
+    `Default by the rule: ${verdict.default} (${VARIANTS.find((v) => v.name === verdict.default)?.policy ?? verdict.default}). The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
   ].join('\n');
 }
 
@@ -478,21 +471,22 @@ function option(name, fallback) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const options = { typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) };
   const validation = validate(options);
-  const constants = { pooledTries: validation.pooledTries, halfLifeRuns: validation.halfLifeRuns };
+  const constants = { pooledTries: validation.pooledTries, halfLifeRuns: HALF_LIFE_RUNS };
   const result = evaluate({ constants, ...options });
   console.log(report(validation, result));
   const json = option('json', null);
 
   if (json) writeFileSync(json, `${JSON.stringify({ validation, ...result, default: decide(result).default }, null, 1)}\n`);
   const timing = fitTime();
-  console.log(`\nfull model, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
-  console.log(`constants as shipped: pooledTries ${FULL_MODEL.pooledTries}, halfLifeRuns ${FULL_MODEL.halfLifeRuns}`);
+  console.log(`\n${DEFAULT_POLICY}, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
+  const shipped = LEARNER_VARIANTS[DEFAULT_POLICY];
+  console.log(`constants as shipped: pooledTries ${shipped.pooledTries}, halfLifeRuns ${shipped.halfLifeRuns}`);
   const path = option('profile', null);
 
   if (path) {
     const profile = evaluateProfile(JSON.parse(readFileSync(path, 'utf8')), constants);
     console.log(`\nprofile ${path}: ${profile.runs} runs on ${profile.keyboard}`);
-    console.log(`  counts-only  log loss ${fixed(4)(profile.countsOnly.logLoss)}  calibration ${fixed(4)(profile.countsOnly.calibration)}`);
-    console.log(`  full model   log loss ${fixed(4)(profile.full.logLoss)}  calibration ${fixed(4)(profile.full.calibration)}`);
+    console.log(`  ${LEARNER_POLICY}        log loss ${fixed(4)(profile.learner.logLoss)}  calibration ${fixed(4)(profile.learner.calibration)}`);
+    console.log(`  ${DECAY_POLICY}  log loss ${fixed(4)(profile.decay.logLoss)}  calibration ${fixed(4)(profile.decay.calibration)}`);
   }
 }

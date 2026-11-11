@@ -47,55 +47,6 @@ export function firstTriesAt(attempt, target) {
   return pair ? { errors: pair.errors, observations: pair.observations } : null;
 }
 
-// A correction that takes longer than this was a pause, not a correction, and is left out.
-const MAX_CORRECTION_MS = 5000;
-
-// [first-try errors timed, their median correction time in ms] (ADR 0013). A correction runs from the kept
-// keystroke before the wrong first try to the right letter kept at its position: the wrong key, any letters
-// typed past it and deleted, and the right key. An error never put right, or with no kept keystroke before
-// it, isn't timed. Positions follow replayAttempt's rules, so the times are of the text it scores.
-export function correctionTimes(attempt) {
-  const keptAt = [];
-  const pending = new Map();
-  const costs = [];
-  const firstTried = new Set();
-
-  for (const event of attempt.events || []) {
-    if (event.type === 'delete') {
-      keptAt.splice(Math.max(0, keptAt.length - Math.max(1, event.count || 1)));
-      continue;
-    }
-
-    if (event.type !== 'insert' || !printable(event.text)) continue;
-
-    for (const char of event.text) {
-      const position = Number.isInteger(event.position) ? event.position : keptAt.length;
-
-      if (position >= attempt.text.length) break;
-      const correct = char === attempt.text[position];
-
-      if (!firstTried.has(position)) {
-        firstTried.add(position);
-
-        if (!correct && position > 0 && keptAt.length === position) pending.set(position, keptAt[position - 1]);
-      } else if (correct && pending.has(position) && event.accepted !== false) {
-        const ms = event.offsetMs - pending.get(position);
-        pending.delete(position);
-
-        if (ms > 0 && ms <= MAX_CORRECTION_MS) costs.push(ms);
-      }
-
-      if (event.accepted !== false) keptAt.push(event.offsetMs);
-    }
-  }
-
-  if (!costs.length) return [0, null];
-  costs.sort((a, b) => a - b);
-  const mid = costs.length >> 1;
-
-  return [costs.length, Math.round(costs.length % 2 ? costs[mid] : (costs[mid - 1] + costs[mid]) / 2)];
-}
-
 export const MAX_MISSED_WORDS = 12;
 
 // Run kinds that are never compared, used as a baseline or mined for patterns (custom text, missed-word
@@ -145,8 +96,6 @@ export function runRecord(attempt, at = attempt.at || null) {
   // Same eligibility as patterns (no drills, races, repeated dailies or non-comparable kinds).
   record.keys = evidence.attemptCount ? keyCounts(replay) : [];
   record.keysVersion = KEY_COUNTS_VERSION;
-
-  if (evidence.attemptCount && attempt.events) record.corrections = correctionTimes(attempt);
 
   // The words missed on the first try, for "words you keep missing": only from runs pattern memory
   // reads, so a run without the field (older, trimmed or not eligible) is no evidence either way. A code
