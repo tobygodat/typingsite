@@ -44,7 +44,7 @@ import {
   characterBreakdown,
   wordHistory,
 } from './typing.js';
-import { wordListIds } from './words.js';
+import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
 import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength, parseCustomLength } from './lengths.js';
@@ -1675,7 +1675,8 @@ function configureSessionCopy() {
     missed: ['missed words', wordsPassage?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
-    challenge: ['ghost race', `Race ${ghostRace?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
+    challenge: ghostRace?.own ? ['ghost race', 'Race your best run', 'The ghost is your own recording. Not counted toward your best.']
+      : ['ghost race', `Race ${ghostRace?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
   }[sessionKind];
 
   $('session-kicker').textContent = copy[0];
@@ -2843,11 +2844,12 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
     const sameInput = inputOf(completed.conditions) === inputOf(ghostRace.conditions);
     ghostRace.run = completed;
     ghostRace.trace = valid && sameInput ? encodeTrace(completed) : null;
-    ghostRace.state = !valid ? 'interrupted' : !sameInput ? 'other-input' : ghostRace.trace ? 'sending'
+    ghostRace.state = !valid ? 'interrupted' : !sameInput ? 'other-input' : ghostRace.own && ghostRace.trace ? 'own' : ghostRace.trace ? 'sending'
       : traceTrouble(completed) === 'character' ? 'unreplayable' : 'unsendable';
     renderGhostResult();
 
-    if (ghostRace.trace) submitGhostRun();
+    // Your own recording goes nowhere: the result is this replay.
+    if (ghostRace.trace && !ghostRace.own) submitGhostRun();
     else announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
   }
 
@@ -4768,7 +4770,7 @@ const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbe
 const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
 
 // A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
-const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input'];
+const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input', 'own'];
 const ghostInputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
@@ -4872,6 +4874,42 @@ async function startGhostRace(id) {
   resetSession('challenge', { focus: true });
 }
 
+// When nobody is waiting for a quick match: the fastest recorded run of yours on its setup (30 seconds of the
+// 200 words, no punctuation or numbers, a physical keyboard) that this device still keeps the keystrokes of.
+// Only your own recording is ever used; other people's stay on their devices (ADR 0006).
+function ownBestRun() {
+  let best = null;
+
+  for (const run of profile.attempts) {
+    const c = run.conditions || {};
+
+    if (run.adaptive || c.mode !== 'time' || c.duration !== 30 || c.punctuation || c.numbers || (c.wordList || DEFAULT_WORD_LIST) !== '200'
+      || inputOf(c) !== 'physical-keyboard' || (c.corpus || CORPUS_VERSION) !== CORPUS_VERSION) continue;
+    // The same run a friend would get: its trace, its passage cut past the furthest key, its checked conditions.
+    const payload = challengePayload(run);
+
+    if (payload && (!best || payload.score.wpm > best.score.wpm)) best = payload;
+  }
+
+  return best;
+}
+
+function startOwnGhost() {
+  const best = ownBestRun();
+
+  if (!best || onlineRoomFirst()) return;
+
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+
+  if (race.attempt?.status === 'running') markRaceInterrupted();
+  ghostRace = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
+    points: ghostPoints(best.trace, best.passage.length), sender: best.score, result: null, run: null, state: 'ready' };
+  baselineAttempt = null;
+  trainingContext = null;
+  navigate('practice');
+  resetSession('challenge', { focus: true });
+}
+
 function renderGhostResult() {
   const ghost = ghostRace;
   const panel = $('ghost-result');
@@ -4882,7 +4920,7 @@ function renderGhostResult() {
   const mine = ghost.result || (ghost.trace ? scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' }) : null);
   const match = { duration: ghost.duration, sender: ghost.sender, result: mine };
   const leader = mine ? challengeOutcome(match) : null;
-  $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? 'Interrupted, so not sent.'
+  $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? (ghost.own ? 'Interrupted.' : 'Interrupted, so not sent.')
     : ghost.state === 'other-input' ? 'A different kind of input, so not sent.'
       : ghost.state === 'unreplayable' ? 'A character a ghost race can’t replay, so not sent.' : !mine ? 'Too long to send.'
         : leader === 'tie' ? 'A tie.' : `${leader === 'recipient' ? 'You' : ghost.name} ${leadVerb(match, leader)}.`;
@@ -4907,6 +4945,7 @@ function renderGhostResult() {
     unsendable: 'Race again with fewer corrections.',
     unreplayable: 'Race again without emoji.',
     'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
+    own: 'The ghost was your own recording.',
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
   const action = $('ghost-result-action');
@@ -7568,6 +7607,8 @@ onlineRace = createOnlineRace({
   navigate, renderText, updateCharacterStates, setRunning, announce,
   wireTyping: wireOnlineTyping,
   updateGlide,
+  ownBest: ownBestRun,
+  raceOwnBest: startOwnGhost,
   // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
   // are practice's own, so a race falls back to its default).
   practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,

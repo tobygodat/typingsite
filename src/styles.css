@@ -3256,6 +3256,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 /* Online opens under the same rule as Daily, Friends and One keyboard, so the tabs never lose their floor. */
 #online-challenge { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
+/* Quick match sits above hosting, on the same rules-and-space footing, and moves as one element. */
+.quick-match { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
+.quick-match > .online-actions:first-child { margin-top: 0; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.quick-match [data-quick-part="status"]:empty { display: none; }
+.quick-match [data-quick-part="lonely"] { margin-top: var(--space-3); flex-wrap: wrap; }
+.quick-match [data-quick-part="lonely"][hidden], .quick-match [hidden] { display: none; }
 .online-optional { font-size: var(--text-fine); }
 .online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
 .online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
@@ -3295,8 +3302,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .duel-wpm { font: 300 var(--text-numeral-mobile)/0.9 var(--font-app); letter-spacing: -0.04em; }
 .duel-unit { color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
 .duel-accuracy { margin: var(--space-4) 0 0; font-size: var(--text-title); }
-.duel-side[data-outcome="lost"] :is(.duel-name, .duel-wpm, .duel-accuracy) { color: var(--muted); }
-.duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-numeral-narrow); }
+.duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) :is(.duel-name, .duel-wpm, .duel-accuracy) { color: var(--muted); }
+.duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-numeral-narrow); }
 .duel-choice { width: 100%; margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--hairline); display: flex; justify-content: center; }
 .duel-middle { padding-top: var(--space-6); display: grid; justify-items: center; align-content: start; gap: var(--space-3); }
 .duel-tally { margin: 0; display: flex; align-items: baseline; gap: var(--space-3); font: 300 var(--text-numeral-narrow)/1 var(--font-app); }
@@ -4026,7 +4033,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .duel-scores { gap: var(--space-3); }
   .duel-side { grid-template-rows: auto var(--text-display) auto auto; }
   .duel-wpm { font-size: var(--text-display); }
-  .duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-title); }
+  .duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-title); }
   .duel-unit, .duel-accuracy { font-size: var(--text-small); }
   .duel-tally { font-size: var(--text-title); gap: var(--space-1); }
 }

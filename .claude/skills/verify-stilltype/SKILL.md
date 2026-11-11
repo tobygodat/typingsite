@@ -98,6 +98,13 @@ $V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every ty
 $V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs     # background image: settings without/with one, each style idle, dimmed mid-run
 $V drive .claude/skills/verify-stilltype/flows/online-rematch.mjs --full-page   # two accounts race: results, graph, replay, each Rematch state
 $V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs   # Challenge page: Challenge and Customize, closed and open
+$V drive .claude/skills/verify-stilltype/flows/quick-match.mjs   # two strangers matched and raced: the rated win and loss, Add to friends
+$V drive .claude/skills/verify-stilltype/flows/quick-match-abandon.mjs   # one racer closes the page: the other's rated win, the leaver's loss on return
+$V drive .claude/skills/verify-stilltype/flows/quick-match-unchecked.mjs   # both runs fail the trace check: unrated, and why
+$V drive .claude/skills/verify-stilltype/flows/quick-match-alone.mjs   # nobody waiting: keep waiting, or race your own best run
+$V drive .claude/skills/verify-stilltype/flows/quick-match-waiting-drill.mjs   # a quick match while a drill or retest waits: Train and Practice after it, beside a no-match control
+$V drive .claude/skills/verify-stilltype/flows/quick-match-settle.mjs   # both racers' results: rated, pasted, forfeit, both leave, a fourth race in a day, typed to the end
+$V drive .claude/skills/verify-stilltype/flows/quick-match-latency.mjs   # one racer's requests delayed 0 to 600 ms: both honest runs checked, the faster wins
 ```
 
 ```js
