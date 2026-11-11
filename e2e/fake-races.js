@@ -21,19 +21,21 @@ export class FakeRaces {
     this.quick = new FakeQuickMatch(this);
   }
 
-  // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing).
+  // As race_private.settle: a finished race between two accounts adds the winner's win (a tie, nothing). A quick
+  // match is rated first, and its winner is the seat whose rated result won: a run that couldn't be checked never
+  // wins, and a race with no checked run has none.
   settle(room) {
+    this.quick.rate(room);
     const [one, two] = [1, 2].map((slot) => room.players.find((p) => p.slot === slot));
 
     if (!one?.userId || !two?.userId) return;
     const key = [one.userId, two.userId].sort().join(':');
     const wins = this.tallies.get(key) || [0, 0];
     const ahead = one.wpm - two.wpm || one.accuracy - two.accuracy;
-    const winner = ahead > 0 ? one : ahead < 0 ? two : null;
+    const winner = room.quick ? [one, two].find((p) => this.quick.row(room, p.userId)?.outcome === 'won') : ahead > 0 ? one : ahead < 0 ? two : null;
 
     if (winner) wins[key.startsWith(winner.userId) ? 0 : 1] += 1;
     this.tallies.set(key, wins);
-    this.quick.rate(room);
   }
 
   tally(room, slot) {
@@ -111,11 +113,26 @@ export class FakeRaces {
           friend: Boolean(userId) && (this.friends.get(room.players.find((p) => p.slot === slot)?.userId) || []).some((f) => f.friendId === userId),
         };
 
+        const row = room.quick ? this.quick.row(room, userId) : null;
+
         if (player.slot === slot) Object.assign(seen, { typed, sequence, keystrokes, errors });
+
+        // A settled quick match seat's result and whether its run was checked: the one record of who won.
+        if (row) Object.assign(seen, { outcome: row.outcome, checked: verdict === 'ok' });
 
         return seen;
       }),
     };
+  }
+
+  // A quick match whose every seat has finished or left settles at once; a seat that left is finished on its last
+  // progress over the whole clock.
+  closeQuick(room) {
+    if (!room.players.every((p) => p.finished || p.left)) return;
+
+    for (const p of room.players.filter((seat) => !seat.finished)) Object.assign(p, { finished: true, elapsed: room.duration, wpm: Math.round(p.correct / 5 / (room.duration / 60)) });
+    room.status = 'finished';
+    this.settle(room);
   }
 
   // As race_private.settle_due: every quick match past its clock and grace, moved on as its next request would.
@@ -297,13 +314,14 @@ export class FakeRaces {
     if (action === 'leave') {
       // A closed race marks the seat as left, which ends the other's rematch choice.
       if (['finished', 'cancelled', 'expired'].includes(room.status)) Object.assign(player, { left: true, rematch: false });
-      // A seat that has finished a quick match just goes; the clock settles the race.
-      else if (room.quick && room.status === 'racing' && player.finished) player.left = true;
-      else {
-        // Leaving a quick match after its start, before finishing, forfeits it.
-        if (room.quick && room.status === 'racing') this.quick.rate(room, player.slot);
-        room.status = 'cancelled';
-      }
+      else if (room.quick && room.status === 'racing') {
+        // Leaving a quick match after its start, before finishing, while the other racer is still in it, forfeits:
+        // a rated loss now, and the race goes on for the other. A seat that has finished, or whose rival has left,
+        // just goes. Once every seat has finished or left, it settles.
+        if (!player.finished && !room.players.some((p) => p.slot !== player.slot && p.left)) this.quick.rate(room, player.slot);
+        player.left = true;
+        this.closeQuick(room);
+      } else room.status = 'cancelled';
 
       return reply(200, this.snapshot(room, player.slot));
     }
@@ -336,11 +354,14 @@ export class FakeRaces {
       player.wpm = Math.round(correct / 5 / (player.elapsed / 60));
       player.accuracy = data.keystrokes ? Math.round((data.keystrokes - data.errors) / data.keystrokes * 100) : 100;
       player.correct = correct;
-      player.finished = Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
+      // A quick seat finishes only with its own finishing packet, the one that carries its keystroke trace.
+      player.finished = room.quick ? Boolean(data.finished) && (data.typed === room.passage || player.elapsed >= room.duration)
+        : Boolean(data.finished && data.typed === room.passage) || player.elapsed >= room.duration;
 
       if (player.finished) this.keepTrace(room, player, data.trace);
 
-      if (room.players.every((p) => p.finished)) {
+      if (room.quick) this.closeQuick(room);
+      else if (room.players.every((p) => p.finished)) {
         room.status = 'finished';
         this.settle(room);
       }

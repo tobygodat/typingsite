@@ -9,16 +9,22 @@
 -- once its browser asks the race about the room; a room whose other seat never came is called off at the
 -- start, so nobody races a racer who isn't there. Leaving the queue calls off a room the seat never came to.
 -- Rating: Elo, one number per account, moved only by quick matches. Once a race has started it is settled by
--- the clock: when both seats have finished, or ten seconds after the race clock ends. A seat counts only with a
--- finished run whose keystroke trace passes race_private.trace_check. Both pass: the traces decide. One passes:
--- a rated win for it and a rated loss for the other, whatever the other did or didn't send. Neither: unrated.
--- Leaving before finishing, after the start, is a rated loss (a forfeit). A request about a room settles it once
--- due, and every quick match request and every room opened settles every due race first (settle_due), so nobody
--- waits on a racer who has gone and no rating is read unsettled. The result is written once per room
--- (race_private.rated_results): a replay or a late finish changes nothing.
+-- the clock: when both seats have finished or left, or ten seconds after the race clock ends. A seat finishes only
+-- with its own finishing packet, the one that carries its keystroke trace, and counts only when that trace passes
+-- race_private.trace_check. Both pass: the traces decide. One passes: a rated win for it and a rated loss for the
+-- other. Neither: unrated. A win is rated only from the winner's own checked run. Leaving after the start, before
+-- finishing, while the other racer is still in the race, is a rated loss for the leaver at once (a forfeit); the
+-- other racer races on alone, and wins rated only with a checked run. Between the same two accounts only the first
+-- three rated results in any 24 hours move ratings. A request about a room settles it once due, and every quick
+-- match request and every room opened settles every due race first (settle_due), so nobody waits on a racer who
+-- has gone and no rating is read unsettled. Each seat's result is written once (race_private.rated_results): a
+-- replay or a late finish changes nothing.
 -- Every new table cascades from auth.users and is reached only through these functions.
 
 alter table race_private.rooms add column quick boolean not null default false;
+-- Whether the pair had already moved ratings three times in the 24 hours before this room was first rated.
+-- Decided once, by race_private.rate; null until then.
+alter table race_private.rooms add column repeat boolean;
 alter table race_private.players add column trace_verdict text
   check (trace_verdict in ('ok', 'no-trace', 'unreadable', 'times', 'intervals', 'wrong-text', 'speed'));
 
@@ -36,11 +42,14 @@ create table race_private.ratings (
   updated_at timestamptz not null default now()
 );
 -- One row per seat of each settled quick match. It outlives the room, which is deleted a day after it
--- expires, and keeps no id of the other racer, so it goes with its own account only.
+-- expires, and keeps no id of the other racer, so it goes with its own account only. A seat that forfeits gets
+-- its row when it leaves; the other seat's comes when the race settles.
 create table race_private.rated_results (
   room_id uuid not null,
   user_id uuid not null references auth.users(id) on delete cascade,
-  outcome text not null check (outcome in ('won', 'lost', 'tied')),
+  -- Null when neither seat had a checked run: no winner. A decided result that is not rated is a repeat
+  -- pairing, past the pair's three rated results in 24 hours.
+  outcome text check (outcome in ('won', 'lost', 'tied')),
   rated boolean not null,
   -- Why the result is what it is, for this seat: null when both runs passed and the traces decided.
   reason text check (reason in ('forfeit', 'opponent-absent', 'opponent-unchecked', 'no-trace', 'unreadable', 'times',
@@ -76,7 +85,7 @@ declare
   child few small since against ask late home interest large person end open public follow during present
   without again hold govern around possible head consider word program problem however lead system set order
   eye plan run keep face fact group play stand increase early course change help line
-$words$), '\s+');
+$words$, E' \n'), '\s+');
   v_text text := '';
   v_word text;
   v_one text := '';
@@ -159,81 +168,118 @@ returns integer language sql immutable set search_path = '' as $$
 $$;
 revoke all on function race_private.rating_k(integer) from public, anon, authenticated;
 
--- Settles a quick match once. A forfeit (p_forfeit, the seat that left after the start before finishing) is a
--- rated loss for that seat. Otherwise each seat counts only with a finished run whose trace passed the check:
--- both, and the traces decide (more wpm, then more accuracy); one, and it wins, rated; neither, and the match is
--- unrated, the race result still shown. Called with the room row locked; the rows it writes make every later
--- call for the room change nothing.
+-- Writes each seat's rated result once. Called with the room row locked: with p_forfeit, the seat that left after
+-- the start before finishing while the other racer was still in the race, it writes that seat's rated loss now;
+-- without, when the race settles, every seat still without a row. A seat counts only with a finished run whose
+-- trace passed the check. Both count: the traces decide (more wpm, then more accuracy). One counts: it wins and
+-- the other loses, rated. Neither: no winner, unrated, and a forfeit's loss stands alone. Each change is K × (score
+-- − expected) from the two ratings before the race: a seat rated earlier, on leaving, is rated from the rating it
+-- had then. Past the pair's third rated result in 24 hours, the result stands unrated.
 create function race_private.rate(p_room_id uuid, p_forfeit integer)
 returns void language plpgsql set search_path = '' as $$
 declare
+  v_now timestamptz := clock_timestamp();
   v_room race_private.rooms%rowtype;
-  v_one race_private.players%rowtype;
-  v_two race_private.players%rowtype;
-  v_r1 race_private.ratings%rowtype;
-  v_r2 race_private.ratings%rowtype;
-  v_why1 text;
-  v_why2 text;
-  v_rated boolean;
-  v_score float8;
+  v_user uuid[];
+  v_verdict text[];
+  v_before integer[] := array[1500, 1500];
+  v_races integer[] := array[0, 0];
+  v_written boolean[] := array[false, false];
+  v_left boolean[] := array[false, false];
+  v_pass boolean[] := array[false, false];
+  v_wpm integer[] := array[0, 0];
+  v_accuracy integer[] := array[0, 0];
   v_expected float8;
-  v_d1 integer := 0;
-  v_d2 integer := 0;
-  v_s1 jsonb;
-  v_s2 jsonb;
+  v_score jsonb;
+  v_points float8;
+  v_reason text;
+  v_rated boolean;
+  v_delta integer;
+  v_them integer;
+  v_row race_private.rated_results%rowtype;
+  v_rating race_private.ratings%rowtype;
 begin
   select * into v_room from race_private.rooms where id = p_room_id;
-  if not found or not v_room.quick or exists(select 1 from race_private.rated_results where room_id = p_room_id) then return; end if;
-  select * into v_one from race_private.players where room_id = p_room_id and slot = 1;
-  select * into v_two from race_private.players where room_id = p_room_id and slot = 2;
-  if v_one.user_id is null or v_two.user_id is null or v_one.user_id = v_two.user_id then return; end if;
-  insert into race_private.ratings (user_id) values (v_one.user_id), (v_two.user_id) on conflict (user_id) do nothing;
-  perform 1 from race_private.ratings where user_id in (v_one.user_id, v_two.user_id) order by user_id for update;
-  select * into v_r1 from race_private.ratings where user_id = v_one.user_id;
-  select * into v_r2 from race_private.ratings where user_id = v_two.user_id;
-  if p_forfeit is not null then
-    v_rated := true;
-    v_why1 := 'forfeit';
-    v_why2 := 'forfeit';
-    v_score := case when p_forfeit = 1 then 0 else 1 end;
-  else
-    v_why1 := coalesce(v_one.trace_verdict, 'unfinished');
-    v_why2 := coalesce(v_two.trace_verdict, 'unfinished');
-    -- A seat whose kept trace can't be scored counts as unreadable: it fails alone, never both seats.
-    if v_why1 = 'ok' then
-      begin v_s1 := race_private.trace_score(v_room.passage, v_one.trace, null, false);
-      exception when others then v_why1 := 'unreadable'; end;
+  if not found or not v_room.quick then return; end if;
+  select array_agg(user_id order by slot), array_agg(trace_verdict order by slot) into v_user, v_verdict
+    from race_private.players where room_id = p_room_id;
+  if cardinality(v_user) is distinct from 2 or v_user[1] is null or v_user[2] is null or v_user[1] = v_user[2] then return; end if;
+  insert into race_private.ratings (user_id) values (v_user[1]), (v_user[2]) on conflict (user_id) do nothing;
+  perform 1 from race_private.ratings where user_id = any(v_user) order by user_id for update;
+  for i in 1 .. 2 loop
+    select * into v_rating from race_private.ratings where user_id = v_user[i];
+    v_before[i] := v_rating.rating;
+    v_races[i] := v_rating.rated;
+    select * into v_row from race_private.rated_results where room_id = p_room_id and user_id = v_user[i];
+    if found then
+      v_written[i] := true;
+      v_before[i] := v_row.rating_before;
+      v_left[i] := v_row.reason = 'forfeit';
     end if;
-    if v_why2 = 'ok' then
-      begin v_s2 := race_private.trace_score(v_room.passage, v_two.trace, null, false);
-      exception when others then v_why2 := 'unreadable'; end;
+    -- A kept trace that can't be scored counts as unreadable: it fails alone, never both seats.
+    if v_verdict[i] = 'ok' then
+      begin
+        v_score := race_private.trace_score(v_room.passage, (select trace from race_private.players where room_id = p_room_id and slot = i), null, false);
+        v_pass[i] := true;
+        v_wpm[i] := (v_score->>'wpm')::integer;
+        v_accuracy[i] := (v_score->>'accuracy')::integer;
+      exception when others then
+        v_verdict[i] := 'unreadable';
+        update race_private.players set trace_verdict = 'unreadable' where room_id = p_room_id and slot = i;
+      end;
     end if;
-    v_rated := v_why1 = 'ok' or v_why2 = 'ok';
-    if v_why1 = 'ok' and v_why2 = 'ok' then
-      v_score := case when ((v_s1->>'wpm')::integer, (v_s1->>'accuracy')::integer) > ((v_s2->>'wpm')::integer, (v_s2->>'accuracy')::integer) then 1
-        when ((v_s1->>'wpm')::integer, (v_s1->>'accuracy')::integer) < ((v_s2->>'wpm')::integer, (v_s2->>'accuracy')::integer) then 0 else 0.5 end;
-      v_why1 := null;
-      v_why2 := null;
-    elsif v_rated then
-      v_score := case when v_why1 = 'ok' then 1 else 0 end;
-      if v_why1 = 'ok' then v_why1 := case when v_why2 = 'unfinished' then 'opponent-absent' else 'opponent-unchecked' end;
-      else v_why2 := case when v_why1 = 'unfinished' then 'opponent-absent' else 'opponent-unchecked' end; end if;
+  end loop;
+  if v_written[1] and v_written[2] then return; end if;
+  -- Decided once per room: the pair's rated results in the 24 hours before (a result that outlives its room keeps
+  -- no id of the other racer, but every room of the last day is still there to join).
+  if v_room.repeat is null then
+    update race_private.rooms set repeat = (select count(distinct o.room_id) from race_private.rated_results o
+        join race_private.players a on a.room_id = o.room_id and a.user_id = v_user[1]
+        join race_private.players b on b.room_id = o.room_id and b.user_id = v_user[2]
+        where o.user_id = any(v_user) and o.rated and o.room_id <> p_room_id and o.settled_at > v_now - interval '24 hours') >= 3
+      where id = p_room_id returning repeat into v_room.repeat;
+  end if;
+  -- Seat 1's expectation; seat 2's is one minus it, as ratingChanges in src/quick-match.js computes it.
+  v_expected := 1 / (1 + 10 ^ ((v_before[2] - v_before[1]) / 400.0::float8));
+  for i in 1 .. 2 loop
+    continue when v_written[i] or (p_forfeit is not null and i <> p_forfeit);
+    v_them := 3 - i;
+    if p_forfeit is not null then
+      v_points := 0;
+      v_reason := 'forfeit';
+    elsif v_pass[i] and v_pass[v_them] then
+      v_points := case when (v_wpm[i], v_accuracy[i]) > (v_wpm[v_them], v_accuracy[v_them]) then 1
+        when (v_wpm[i], v_accuracy[i]) < (v_wpm[v_them], v_accuracy[v_them]) then 0 else 0.5 end;
+      v_reason := null;
+    elsif v_pass[i] then
+      v_points := 1;
+      v_reason := case when v_left[v_them] then 'forfeit' when v_verdict[v_them] is null then 'opponent-absent' else 'opponent-unchecked' end;
     else
-      v_score := case race_private.winner(p_room_id) when 1 then 1 when 2 then 0 else 0.5 end;
+      v_points := case when v_pass[v_them] then 0 end;
+      v_reason := coalesce(v_verdict[i], 'unfinished');
     end if;
-  end if;
-  if v_rated then
-    v_expected := 1 / (1 + 10 ^ ((v_r2.rating - v_r1.rating) / 400.0::float8));
-    v_d1 := round((race_private.rating_k(v_r1.rated) * (v_score - v_expected))::numeric);
-    v_d2 := round((race_private.rating_k(v_r2.rated) * ((1 - v_score) - (1 - v_expected)))::numeric);
-    update race_private.ratings set rating = rating + v_d1, rated = rated + 1, updated_at = clock_timestamp() where user_id = v_one.user_id;
-    update race_private.ratings set rating = rating + v_d2, rated = rated + 1, updated_at = clock_timestamp() where user_id = v_two.user_id;
-  end if;
-  insert into race_private.rated_results (room_id, user_id, outcome, rated, reason, rating_before, rating_after, delta) values
-    (p_room_id, v_one.user_id, case v_score when 1 then 'won' when 0 then 'lost' else 'tied' end, v_rated, v_why1, v_r1.rating, v_r1.rating + v_d1, v_d1),
-    (p_room_id, v_two.user_id, case v_score when 1 then 'lost' when 0 then 'won' else 'tied' end, v_rated, v_why2, v_r2.rating, v_r2.rating + v_d2, v_d2);
+    v_rated := v_points is not null and not v_room.repeat;
+    v_delta := case when v_rated then round((race_private.rating_k(v_races[i])
+      * (v_points - case when i = 1 then v_expected else 1 - v_expected end))::numeric) else 0 end;
+    if v_rated then
+      update race_private.ratings set rating = rating + v_delta, rated = rated + 1, updated_at = v_now where user_id = v_user[i];
+    end if;
+    insert into race_private.rated_results (room_id, user_id, outcome, rated, reason, rating_before, rating_after, delta)
+      values (p_room_id, v_user[i], case v_points when 1 then 'won' when 0 then 'lost' when 0.5 then 'tied' end, v_rated, v_reason,
+        v_before[i], v_before[i] + v_delta, v_delta);
+  end loop;
 end $$;
 revoke all on function race_private.rate(uuid, integer) from public, anon, authenticated;
+
+-- The other racer in an account's latest quick match, which pairing passes over while anyone else is in range.
+create function race_private.last_opponent(p_user uuid)
+returns uuid language sql stable set search_path = '' as $$
+  select them.user_id from race_private.players me
+    join race_private.rooms r on r.id = me.room_id and r.quick
+    join race_private.players them on them.room_id = me.room_id and them.slot <> me.slot
+  where me.user_id = p_user order by r.created_at desc limit 1
+$$;
+revoke all on function race_private.last_opponent(uuid) from public, anon, authenticated;
 
 -- The queue. Every request first settles every quick match whose clock has run out, so the ratings it reads
 -- and pairs on are settled. 'rating' reads the asker's rating and their last quick match result; 'queue' joins
@@ -252,6 +298,7 @@ declare
   v_room race_private.rooms%rowtype;
   v_slot integer;
   v_wait numeric;
+  v_last uuid;
 begin
   if v_uid is null or not exists(select 1 from auth.users where id = v_uid) then raise exception 'Sign in to race someone new.'; end if;
   if p_data is null or jsonb_typeof(p_data) <> 'object' then raise exception 'Invalid quick match request.'; end if;
@@ -285,6 +332,11 @@ begin
 
   if v_room.id is not null then
     delete from race_private.match_queue where user_id = v_uid;
+    -- A race this seat left goes on for the other racer until it settles, and the seat is still in it, so it waits
+    -- to be paired again rather than being seated in two races.
+    if (select left_race from race_private.players where room_id = v_room.id and slot = v_slot) then
+      return jsonb_build_object('state', 'waiting', 'rating', v_rating, 'races', v_rated, 'waitedMs', 0);
+    end if;
     return jsonb_build_object('state', 'paired', 'roomId', v_room.id, 'room', race_private.snapshot(v_room.id, v_slot));
   end if;
   v_name := btrim(coalesce(p_data->>'displayName', ''));
@@ -292,11 +344,14 @@ begin
   insert into race_private.match_queue (user_id, name, rating, joined_at, seen_at) values (v_uid, v_name, v_rating, v_now, v_now)
     on conflict (user_id) do update set name = excluded.name, rating = excluded.rating, seen_at = excluded.seen_at
     returning * into v_me;
-  -- The closest rating within the gap for the longer wait: 100, and 10 more for every second waited
-  -- (acceptableGap in src/quick-match.js); then the longest wait.
+  -- Within the gap for the longer wait: 100, and 10 more for every second waited (acceptableGap in
+  -- src/quick-match.js). Anyone but the racer either of the two last raced, then the closest rating, then the
+  -- longest wait (pickOpponent).
+  v_last := race_private.last_opponent(v_uid);
   select * into v_them from race_private.match_queue q where q.user_id <> v_uid
     and abs(q.rating - v_me.rating) <= 100 + 10 * floor(extract(epoch from v_now - least(q.joined_at, v_me.joined_at)))
-    order by abs(q.rating - v_me.rating), q.joined_at, q.user_id limit 1 for update;
+    order by (q.user_id is not distinct from v_last or race_private.last_opponent(q.user_id) is not distinct from v_uid),
+      abs(q.rating - v_me.rating), q.joined_at, q.user_id limit 1 for update;
   if v_them.user_id is null then
     v_wait := round(extract(epoch from v_now - v_me.joined_at) * 1000);
     return jsonb_build_object('state', 'waiting', 'rating', v_rating, 'races', v_rated, 'waitedMs', v_wait);
@@ -325,7 +380,8 @@ $$;
 revoke all on function public.quick_match(text, jsonb) from public, anon, authenticated;
 grant execute on function public.quick_match(text, jsonb) to authenticated;
 
--- The snapshot also says whether the room is a quick match and, once settled, this seat's rated result.
+-- The snapshot also says whether the room is a quick match and, once settled, this seat's rated result, and for
+-- each seat of a settled quick match its result and whether its run was checked: the one record of who won.
 create or replace function race_private.snapshot(p_room_id uuid, p_slot integer)
 returns jsonb language sql set search_path = '' as $$
  select jsonb_build_object(
@@ -359,14 +415,16 @@ returns jsonb language sql set search_path = '' as $$
      'friend', p.user_id is not null and exists(select 1 from race_private.friends f where f.friend_id = p.user_id
        and f.owner_id = (select s.user_id from race_private.players s where s.room_id = r.id and s.slot = p_slot))
    ) || case when p.slot = p_slot then jsonb_build_object('typed', p.typed, 'keystrokes', p.keystrokes,
-     'errors', p.errors, 'sequence', p.sequence) else '{}'::jsonb end order by p.slot)
+     'errors', p.errors, 'sequence', p.sequence) else '{}'::jsonb end
+     || coalesce((select jsonb_build_object('outcome', rr.outcome, 'checked', coalesce(p.trace_verdict = 'ok', false))
+       from race_private.rated_results rr where r.quick and rr.room_id = r.id and rr.user_id = p.user_id), '{}'::jsonb) order by p.slot)
      from race_private.players p where p.room_id = r.id), '[]'::jsonb))
  from race_private.rooms r where r.id = p_room_id
 $$;
 revoke all on function race_private.snapshot(uuid, integer) from public, anon, authenticated;
 
 -- A quick room's first trace from a finished racer is checked, and the verdict kept, whether or not it replays.
--- Once the room is settled no verdict changes: a finish that arrives after it moves nothing.
+-- Once the seat's result is written no verdict changes: a finish that arrives after it moves nothing.
 create or replace function race_private.keep_trace(p_room_id uuid, p_slot integer, p_trace jsonb)
 returns void language plpgsql set search_path = '' as $$
 declare
@@ -377,7 +435,7 @@ begin
   select * into v_room from race_private.rooms where id = p_room_id;
   select * into v_player from race_private.players where room_id = p_room_id and slot = p_slot;
   if v_room.quick and v_player.finished and v_player.trace_verdict is null
-    and not exists(select 1 from race_private.rated_results where room_id = p_room_id) then
+    and not exists(select 1 from race_private.rated_results where room_id = p_room_id and user_id = v_player.user_id) then
     update race_private.players set trace_verdict = race_private.trace_check(v_room.passage, p_trace, v_room.duration, v_player.correct)
       where room_id = p_room_id and slot = p_slot;
   end if;
@@ -473,7 +531,8 @@ begin
 end $$;
 revoke all on function race_private.open_room(uuid,uuid,text,text,text,jsonb,uuid,text) from public, anon, authenticated;
 
--- Settling a quick match also rates it.
+-- Settling a quick match also rates it, and its tally counts the rated result's winner: a run that couldn't be
+-- checked never wins, and a race with no checked run has none.
 create or replace function race_private.settle(p_room_id uuid)
 returns void language plpgsql set search_path = '' as $$
 declare
@@ -485,7 +544,10 @@ begin
   select user_id into v_one from race_private.players where room_id = p_room_id and slot = 1;
   select user_id into v_two from race_private.players where room_id = p_room_id and slot = 2;
   if v_one is null or v_two is null or v_one = v_two then return; end if;
-  v_winner := race_private.winner(p_room_id);
+  v_winner := case when (select quick from race_private.rooms where id = p_room_id)
+    then (select p.slot from race_private.players p join race_private.rated_results rr on rr.room_id = p.room_id and rr.user_id = p.user_id
+      where p.room_id = p_room_id and rr.outcome = 'won')
+    else race_private.winner(p_room_id) end;
   insert into race_private.head_to_head (a_id, b_id, a_wins, b_wins)
     values (least(v_one, v_two), greatest(v_one, v_two),
       case when (v_winner = 1 and v_one < v_two) or (v_winner = 2 and v_two < v_one) then 1 else 0 end,
@@ -496,9 +558,10 @@ begin
 end $$;
 revoke all on function race_private.settle(uuid) from public, anon, authenticated;
 
--- race_action as in 20261027130000_race_options.sql, with the clock's moves in race_private.advance and three
+-- race_action as in 20261027130000_race_options.sql, with the clock's moves in race_private.advance and four
 -- changes for quick rooms: a seat arrives with its first request, the start calls off a room with a seat that
--- never arrived (and only the clock ends one), and leaving after the start, before finishing, forfeits.
+-- never arrived (and only the clock ends one), a seat finishes only with its own finishing packet, and leaving
+-- after the start, before finishing, forfeits while the race goes on for the other seat.
 create or replace function race_private.action(p_action text, p_room_id uuid, p_data jsonb, p_guest_token text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
@@ -632,13 +695,20 @@ begin
       || case when v_player.guest_hash is not null then jsonb_build_object('guestToken',p_guest_token) else '{}'::jsonb end;
   elsif p_action='get' then null;
   elsif p_action='leave' then
-    -- Leaving a quick match after its start, before finishing, is a forfeit, rated as a loss. A seat that has
-    -- finished has its run in and just goes; the clock settles the race. Before the start, the race is off.
-    if v_room.quick and v_room.status='racing' and not v_player.finished then
-      update race_private.rooms set status='cancelled' where id=p_room_id;
-      perform race_private.rate(p_room_id, v_slot);
-    elsif v_room.quick and v_room.status='racing' then
+    -- Leaving a quick match after its start, before finishing, while the other racer is still in it, is a forfeit:
+    -- a rated loss now. The race goes on for the other racer, whose own checked run is what wins it. A seat that has
+    -- finished, or whose rival has already left, just goes. Once every seat has finished or left, it settles.
+    -- Before the start, the race is off.
+    if v_room.quick and v_room.status='racing' then
+      if not v_player.finished and not exists(select 1 from race_private.players where room_id=p_room_id and slot<>v_slot and left_race) then
+        perform race_private.rate(p_room_id, v_slot);
+      end if;
       update race_private.players set left_race=true where room_id=p_room_id and slot=v_slot;
+      if (select count(*) from race_private.players where room_id=p_room_id and (finished or left_race))=2 then
+        update race_private.players set finished=true,elapsed=v_room.duration where room_id=p_room_id and not finished;
+        update race_private.rooms set status='finished' where id=p_room_id;
+        perform race_private.settle(p_room_id);
+      end if;
     elsif v_room.status in ('waiting','countdown','racing') then
       update race_private.rooms set status='cancelled' where id=p_room_id;
     else
@@ -676,11 +746,15 @@ begin
       or v_keys - v_player.keystrokes < v_added then raise exception 'Typing counters do not match the submitted text.'; end if;
     v_finished := (p_data->>'finished')::boolean;
     if v_finished and v_elapsed < v_room.duration and v_typed <> v_room.passage then raise exception 'Complete the passage before finishing early.'; end if;
-    v_finished := v_finished or v_elapsed >= v_room.duration;
+    -- A quick seat finishes only with its own finishing packet, the one that carries its keystroke trace, so its
+    -- verdict comes from that packet: progress that lands after the clock is progress, and the grace period
+    -- finishes a seat that never sends its finish.
+    v_finished := v_finished or (v_elapsed >= v_room.duration and not v_room.quick);
     update race_private.players set typed=v_typed,keystrokes=v_keys,errors=v_errors,sequence=v_sequence,
       correct=v_correct,elapsed=v_elapsed,finished=v_finished where room_id=p_room_id and slot=v_slot;
     if v_finished then perform race_private.keep_trace(p_room_id, v_slot, p_data->'trace'); end if;
-    if (select count(*) from race_private.players where room_id=p_room_id and finished)=2 then
+    if (select count(*) from race_private.players where room_id=p_room_id and (finished or (v_room.quick and left_race)))=2 then
+      update race_private.players set finished=true,elapsed=v_room.duration where room_id=p_room_id and not finished;
       update race_private.rooms set status='finished' where id=p_room_id;
       perform race_private.settle(p_room_id);
     end if;

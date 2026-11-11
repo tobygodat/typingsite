@@ -3117,8 +3117,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .duel-wpm { font: 300 var(--text-numeral-mobile)/0.9 var(--font-app); letter-spacing: -0.04em; }
 .duel-unit { color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
 .duel-accuracy { margin: var(--space-4) 0 0; font-size: var(--text-title); }
-.duel-side[data-outcome="lost"] :is(.duel-name, .duel-wpm, .duel-accuracy) { color: var(--muted); }
-.duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-numeral-narrow); }
+.duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) :is(.duel-name, .duel-wpm, .duel-accuracy) { color: var(--muted); }
+.duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-numeral-narrow); }
 .duel-choice { width: 100%; margin-top: var(--space-6); padding-top: var(--space-6); border-top: 1px solid var(--hairline); display: flex; justify-content: center; }
 .duel-middle { padding-top: var(--space-6); display: grid; justify-items: center; align-content: start; gap: var(--space-3); }
 .duel-tally { margin: 0; display: flex; align-items: baseline; gap: var(--space-3); font: 300 var(--text-numeral-narrow)/1 var(--font-app); }
@@ -3851,7 +3851,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .duel-scores { gap: var(--space-3); }
   .duel-side { grid-template-rows: auto var(--text-display) auto auto; }
   .duel-wpm { font-size: var(--text-display); }
-  .duel-side[data-outcome="lost"] .duel-wpm { font-size: var(--text-title); }
+  .duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-title); }
   .duel-unit, .duel-accuracy { font-size: var(--text-small); }
   .duel-tally { font-size: var(--text-title); gap: var(--space-1); }
 }

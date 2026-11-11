@@ -8,7 +8,7 @@ import { showSpeed } from './units.js';
 import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } from './race-result.js';
 import { redrawList } from './inbox.js';
 import { createRaceReview } from './race-review.js';
-import { ratingChangeLine } from './quick-match.js';
+import { cardOutcome, ratingChangeLine } from './quick-match.js';
 import { createQuickMatch } from './quick-match-view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -581,6 +581,16 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
   }
 
+  // Who won, as each result card shows it: [mine, theirs]. A quick match reads its settled rated result, the one
+  // record the tally and the rating line read too, so a run that couldn't be checked is never the winner. Every
+  // other race reads the speeds.
+  function outcomes(me, opponent) {
+    return room.quick ? [cardOutcome(me), cardOutcome(opponent)] : [raceOutcome(me, opponent), raceOutcome(opponent, me)];
+  }
+
+  // "You beat", "You tied with", or "You raced" when this racer didn't win (or nobody did).
+  const leadOf = (me, opponent) => RACE_LEADS[outcomes(me, opponent)[0]] || RACE_LEADS.lost;
+
   // The result as one sentence, as the inbox keeps it: "You beat Lin: 72 wpm to 65."
   function resultSentence() {
     const me = self();
@@ -588,7 +598,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     if (!me || !opponent) return 'Race complete.';
 
-    return raceResultText({ lead: RACE_LEADS[raceOutcome(me, opponent)], opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] });
+    return raceResultText({ lead: leadOf(me, opponent), opponent: opponent.name, wpm: [me.wpm || 0, opponent.wpm || 0] });
   }
 
   const away = () => document.hidden || document.body.dataset.view !== 'compete';
@@ -608,7 +618,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     if (room.status === 'finished' && opponent && (justFinished || entering)) {
       const me = self();
-      const lead = RACE_LEADS[raceOutcome(me, opponent)];
+      const lead = leadOf(me, opponent);
       // Finished rooms are deleted a day after they expire, so Race again lapses a little before.
       const until = new Date(Date.parse(room.expiresAt || new Date().toISOString()) + RESULT_RETAINED_MS).toISOString();
       // Saved in wpm, like every speed; the inbox words it in the unit chosen when it is shown.
@@ -640,12 +650,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       waiting: room.players.length < 2 ? 'Waiting for your opponent.'
         : room.rematchOf && !opponent?.connected && !opponent?.ready ? `Rematch sent. Waiting for ${opponent.name} to join.` : 'Both players are here.',
       countdown: room.quick ? `Matched with ${opponent?.name || 'another racer'}.` : 'Both players are ready.',
-      racing: finishRequested || me?.finished ? 'Waiting for the other player.'
-        : room.quick ? 'Leaving now counts as a loss.' : 'The clock keeps running if you leave the passage.',
+      racing: room.quick && opponent?.left ? `${opponent.name} left the race. Finish your run to win.`
+        : finishRequested || me?.finished ? 'Waiting for the other player.'
+          : room.quick ? 'Leaving now counts as a loss.' : 'The clock keeps running if you leave the passage.',
       // The results below say it.
       finished: '',
-      cancelled: !room.quick ? 'This race ended because a player left.'
-        : room.rating ? `${opponent?.name || 'The other racer'} left the race.` : 'The race was called off before the start.',
+      cancelled: room.quick ? 'The race was called off before the start.' : 'This race ended because a player left.',
       expired: 'This invitation has expired.',
     };
 
@@ -802,20 +812,20 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     $('online-results').hidden = !me || !opponent;
 
     if (!me || !opponent) return;
-    const outcome = raceOutcome(me, opponent);
-    const sides = [['mine', me, outcome], ['theirs', opponent, raceOutcome(opponent, me)]];
+    const [myResult, theirResult] = outcomes(me, opponent);
 
-    for (const [side, player, result] of sides) {
+    for (const [side, player, result] of [['mine', me, myResult], ['theirs', opponent, theirResult]]) {
       const node = $(`online-duel-${side}`);
       node.dataset.outcome = result;
 
       if (side === 'theirs') node.querySelector('.duel-name').textContent = player.name;
       showSpeed(node.querySelector('.duel-wpm'), player.wpm || 0);
-      node.querySelector('.duel-accuracy').textContent = `${player.accuracy ?? 100}%`;
+      // A run that couldn't be checked shows its speed plainly, with no accuracy to compare.
+      node.querySelector('.duel-accuracy').textContent = result !== 'unchecked' ? `${player.accuracy ?? 100}%` : player.left ? 'left' : 'not checked';
     }
 
-    // Guests have no tally.
-    const tally = me.account && opponent.account ? tallyView(room.tally, outcome) : null;
+    // Guests have no tally. The figure raised is the winner's, and a race nobody won raises none.
+    const tally = me.account && opponent.account ? tallyView(room.tally, myResult === 'won' ? 'won' : theirResult === 'won' ? 'lost' : 'tied') : null;
     $('online-tally').hidden = !tally;
 
     if (tally) {

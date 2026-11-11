@@ -31,11 +31,13 @@ export function ratingChanges(a, b, outcome) {
 
 export const provisional = (races) => races < RATING.provisional;
 
+// The count and "provisional" stay on one line (no-break spaces), so a narrow screen never starts a line with
+// "· provisional".
 export function ratingLine(rating) {
   if (!rating || !Number.isSafeInteger(rating.rating) || !Number.isSafeInteger(rating.races)) return '';
-  const count = `${rating.races} rated ${rating.races === 1 ? 'race' : 'races'}`;
+  const count = `${rating.races} rated ${rating.races === 1 ? 'race' : 'races'}${provisional(rating.races) ? ' · provisional' : ''}`;
 
-  return `Race rating ${rating.rating} · ${count}${provisional(rating.races) ? ' · provisional' : ''}`;
+  return `Race rating ${rating.rating} · ${count.replaceAll(' ', '\u00a0')}`;
 }
 
 // What was wrong with a run that couldn’t be checked, as the results say it after "It" or "Yours".
@@ -54,10 +56,13 @@ const OUTCOME_WORDS = Object.freeze({ won: 'win', lost: 'loss', tied: 'tie' });
 const signed = (delta) => (delta < 0 ? `−${-delta}` : `+${delta}`);
 
 // This seat's settled quick match, as the service keeps it: { rated, reason, outcome, after, delta, races }.
-// The reason says why it ended the way it did: null when both runs were checked and the traces decided.
+// The reason says why it ended the way it did: null when both runs were checked and the traces decided. The
+// outcome is null when neither run was checked; a decided result that isn't rated is a repeat pairing.
 export function ratingChangeLine(result, opponent = 'the other racer') {
   if (!result || typeof result !== 'object') return '';
   const { rated, reason, outcome } = result;
+
+  if (!rated && outcome) return `Not rated: you and ${opponent} have raced each other too often today.`;
 
   if (!rated) {
     const yours = reason === 'unfinished' ? `${LATE[0].toUpperCase()}${LATE.slice(1)}.` : `Yours ${RUN_FAULTS[reason] || 'couldn’t be checked'}.`;
@@ -80,15 +85,26 @@ export function ratingChangeLine(result, opponent = 'the other racer') {
 export const PAIRING = Object.freeze({ baseGap: 100, gapPerSecond: 10, staleMs: 10_000 });
 export const acceptableGap = (waitMs) => PAIRING.baseGap + PAIRING.gapPerSecond * Math.floor(Math.max(0, waitMs) / 1000);
 
-// The waiting player `me` pairs with: the closest rating within the gap, then the longest wait, then the id.
+// Between the same two accounts only the first three rated results in any 24 hours move ratings.
+export const REPEAT = Object.freeze({ rated: 3, windowMs: 24 * 3600_000 });
+
+// The waiting player `me` pairs with: anyone in the gap but the racer either of the two last raced (`last`, the
+// other racer of each one's latest quick match), then the closest rating, then the longest wait, then the id.
 export function pickOpponent(queue, me, now) {
   const fits = queue.filter((other) => other.user !== me.user && now - other.seenAt <= PAIRING.staleMs
     && Math.abs(other.rating - me.rating) <= acceptableGap(Math.max(now - me.joinedAt, now - other.joinedAt)));
 
-  fits.sort((a, b) => Math.abs(a.rating - me.rating) - Math.abs(b.rating - me.rating) || a.joinedAt - b.joinedAt || (a.user < b.user ? -1 : 1));
+  const recent = (other) => Number(other.user === me.last || other.last === me.user);
+
+  fits.sort((a, b) => recent(a) - recent(b) || Math.abs(a.rating - me.rating) - Math.abs(b.rating - me.rating) || a.joinedAt - b.joinedAt
+    || (a.user < b.user ? -1 : 1));
 
   return fits[0] || null;
 }
+
+// How a settled quick match's result card reads a seat: its rated result when its run was checked, or unchecked.
+// A run that couldn't be checked is never the winner.
+export const cardOutcome = (player) => (player?.checked && player.outcome ? player.outcome : 'unchecked');
 
 // The trace check: whether a finished run could be a person typing this passage. It is a floor, not
 // anti-cheat. 20 keys in a row each under 20 ms after the one before is 600 wpm held for four words, which
