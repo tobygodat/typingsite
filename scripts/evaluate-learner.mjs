@@ -5,6 +5,7 @@
 //   npm run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
 //   npm run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
 //   npm run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
+//   npm run evaluate:learner -- --rule 0017 --json out.json           (ADR 0017's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.
@@ -14,8 +15,9 @@
 // slow pairs, on simulated typists. It says nothing about whether anyone learns faster: a simulated typist
 // improves after a drill only as the simulator says it does.
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
 import { MIN_PATTERN_SAMPLES, evidenceRun, runRecord } from '../src/insights.js';
 import { DECAY_POLICY, DECAY_TIMING_POLICY, DEFAULT_POLICY, LEAN_UNITS, LEARNER_POLICY, LEARNER_VARIANTS, OWN_COST_POLICY, SLOW_FLOOR_MS, TIMING_POLICY, countingRecommendation,
@@ -848,10 +850,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   if (option('miss-cost', null)) world.missCost = Number(option('miss-cost', null));
 
+  // ADR 0017's rule runs in its own process, on worker threads, because it imports this module.
   if (option('rule', null) === '0017') {
-    const { main } = await import('./evaluate-let-go.mjs');
-    await main(option);
-    process.exit(0);
+    const child = spawnSync(process.execPath, [fileURLToPath(new URL('./evaluate-let-go.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
+    process.exit(child.status ?? 1);
   }
 
   if (option('rule', null) === '0015') {

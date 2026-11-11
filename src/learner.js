@@ -65,9 +65,9 @@ export const COST_CORRECTIONS = 1;
 // second walk, of the opposite ratio and never below zero, reaches ln RETURN_ODDS. The three were chosen on
 // validation typists (ADR 0017).
 export const LET_GO_ODDS = 100;
-export const WEAK_RATIO = 4;
-export const SLOW_SHARE = 0.85;
-export const RETURN_ODDS = 10_000;
+export const WEAK_RATIO = 3;
+export const SLOW_SHARE = 0.75;
+export const RETURN_ODDS = 100_000;
 
 // A let-go claim needs at least this much evidence since the drill, of the kind drilled: Train's floors for "fixed".
 export const FIXED_RUNS = 2;

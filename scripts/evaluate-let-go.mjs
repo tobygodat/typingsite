@@ -2,7 +2,7 @@
 // the shipped learner-decay-timing@1. Deterministic from its seeds: the work is split across worker threads by seed and
 // cell, and every result is put back in seed and cell order before anything is summed.
 //
-//   npm run evaluate:learner -- --rule 0017 [--json out.json] [--workers 12]
+//   npm run evaluate:learner -- --rule 0017 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go.mjs ...)
 //   npm run evaluate:learner -- --rule 0017 --validation-only
 //
 // Two simulators. The guard world is ADR 0015's, with drills saved at run 20, scored on ADR 0015's measures. The season
@@ -12,7 +12,7 @@
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DECAY_TIMING_POLICY, DEFAULT_POLICY, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, LEARNER_VARIANTS, drillSplit, drilledTargets, fitLearner, learnerEvidence,
   learnerRecommendation, letGo, letGoIndex, recommendFor } from '../src/learner.js';
 import { trainPath } from '../src/train-path.js';
@@ -275,7 +275,7 @@ export async function validate0017(workers) {
   const grid = RULE_0017.weakRatio.map((weakRatio, i) => candidate(`R${weakRatio} q${RULE_0017.slowShare[Math.min(i, RULE_0017.slowShare.length - 1)]}`,
     { weakRatio, slowShare: RULE_0017.slowShare[Math.min(i, RULE_0017.slowShare.length - 1)], returnOdds: 1e4 }));
 
-  const first = await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'unchanged'], grid), workers);
+  const first = (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'unchanged'], grid), workers)).flat();
   const at25 = (t) => t.cell.words === 25;
 
   const pick = (kind, values, read) => {
@@ -295,7 +295,7 @@ export async function validate0017(workers) {
   const weak = pick('errors', RULE_0017.weakRatio, (k) => k.weakRatio);
   const slow = pick('slow', RULE_0017.slowShare, (k) => k.slowShare);
   const back = RULE_0017.returnOdds.map((returnOdds) => candidate(`H${returnOdds}`, { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds }));
-  const second = await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'regress'], back), workers);
+  const second = (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'regress'], back), workers)).flat();
 
   const returns = RULE_0017.returnOdds.map((returnOdds) => {
     const s = summarize(second, `H${returnOdds}`);
@@ -429,7 +429,7 @@ export async function rule0017({ workers = 12 } = {}) {
   const policies = [shippedPolicy, candidate('candidate', chosen)];
   const guardPolicies = [...policies, candidate('misses', chosen, LET_GO_MISSES_POLICY)];
   const seeds = RULE_0017.testSeeds;
-  const rows = await pool('season', seasonTasks(seeds, RULE_0017.worlds, policies), workers);
+  const rows = (await pool('season', seasonTasks(seeds, RULE_0017.worlds, policies), workers)).flat();
   const guardRows = await pool('guard', seeds.flatMap((seed) => Object.keys(RULE_0015.worlds).map((variant) => ({ seed, variant, policies: guardPolicies }))), workers);
 
   const guard = Object.fromEntries(Object.keys(RULE_0015.worlds).map((variant) => [variant, { seeds, perSeed: guardRows.filter((row) => row.variant === variant).map((row) => row.scores) }]));
@@ -499,7 +499,13 @@ export function report0017(record) {
   ].join('\n');
 }
 
-export async function main(option) {
+function option(name, fallback) {
+  const at = process.argv.indexOf(`--${name}`);
+
+  return at > 0 ? process.argv[at + 1] : fallback;
+}
+
+async function main() {
   const workers = Number(option('workers', 12));
 
   if (process.argv.includes('--validation-only')) {
@@ -516,3 +522,5 @@ export async function main(option) {
   const times = fitTime0017();
   console.log(`\nFit on 1,000 runs and 200 loops: ${Object.entries(times).map(([p, t]) => `${p} recommendation median ${t.recommendation.median.toFixed(1)} ms (slowest ${t.recommendation.max.toFixed(1)}), Train's path ${t.trainPath.median.toFixed(1)} ms (slowest ${t.trainPath.max.toFixed(1)})`).join('; ')}`);
 }
+
+if (isMainThread && process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
