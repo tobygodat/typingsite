@@ -102,6 +102,8 @@ $V drive .claude/skills/verify-stilltype/flows/quick-match.mjs   # two strangers
 $V drive .claude/skills/verify-stilltype/flows/quick-match-abandon.mjs   # one racer closes the page: the other's rated win, the leaver's loss on return
 $V drive .claude/skills/verify-stilltype/flows/quick-match-unchecked.mjs   # both runs fail the trace check: unrated, and why
 $V drive .claude/skills/verify-stilltype/flows/quick-match-alone.mjs   # nobody waiting: keep waiting, or race your own best run
+$V drive .claude/skills/verify-stilltype/flows/quick-match-settle.mjs   # both racers' results: rated, pasted, forfeit, both leave, a fourth race in a day, typed to the end
+$V drive .claude/skills/verify-stilltype/flows/quick-match-latency.mjs   # one racer's requests delayed 0 to 600 ms: both honest runs checked, the faster wins
 ```
 
 ```js
