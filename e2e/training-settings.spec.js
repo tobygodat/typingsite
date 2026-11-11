@@ -176,3 +176,108 @@ test('a loop records the focus its target was ranked for, beside the policy', as
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ policy: DEFAULT_POLICY, focus: 'accuracy', drill: { duration: 30 } });
 });
+
+// The focus history signed in on this page: its results card, Train and comparison read the cloud's runs.
+async function signInWithHistory(page, supabase, email, runs = focusRuns()) {
+  const user = supabase.addUser(email);
+  supabase.profiles.set(user.id, { data: { version: 2, preferences: { mode: 'words', count: 25 }, attempts: [], runs, loops: [], seenTextIds: [], bests: {},
+    updatedAt: '2026-11-06T12:00:00Z' } });
+  await openApp(page);
+  await signInWithEmail(page, email);
+  await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  return user;
+}
+
+// A drill already on screen, run out, then its retest typed: the comparison opens on Train.
+async function drillAndRetest(page, seconds = 30) {
+  await runDrillFor(page, seconds);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+}
+
+for (const [from, to, before, after] of [['balanced', 'accuracy', 'th', 'an'], ['accuracy', 'speed', 'an', 'th']]) {
+  test(`the results card follows a change from ${from} to ${to} made while it shows, and its drill records ${to}`, async ({ page, supabase }) => {
+    const user = await signInWithHistory(page, supabase, `card-${to}@stilltype.test`);
+    await chooseSetting(page, 'train-focus', from);
+    await closeSettings(page);
+    await chooseWords(page, 10);
+    await completePassage(page);
+    await expect(page.locator('#result-drill')).toHaveText(`Drill “${before}”`);
+
+    await runPalette(page, `train focus · ${to}`);
+    await expect(page.locator('#result-drill')).toHaveText(`Drill “${after}”`);
+    await page.clock.install();
+    await page.locator('#result-drill').click();
+    await expect(page.locator('#session-title')).toHaveText(`Practice “${after}”`);
+    await drillAndRetest(page);
+    await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ target: after, focus: to, policy: DEFAULT_POLICY, recommendationKind: 'targeted' });
+  });
+}
+
+test('the comparison’s Next follows a focus change made while it shows, and its drill records the focus that queued it', async ({ page, supabase }) => {
+  const user = await signInWithHistory(page, supabase, 'next-focus@stilltype.test');
+  await chooseSetting(page, 'train-focus', 'accuracy');
+  await closeSettings(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.clock.install();
+  await openView(page, 'Train');
+  await expect(page.locator('#train-heading')).toHaveText('Practice “an”');
+  await page.locator('#start-drill').click();
+  await drillAndRetest(page);
+  // Accuracy queues only "an", which was just trained.
+  await expect(page.locator('#comparison-next')).toBeHidden();
+
+  await runPalette(page, 'train focus · speed');
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#comparison-next')).toHaveText('Next: “th”');
+  await page.locator('#comparison-next').click();
+  await expect(page.locator('#session-title')).toHaveText('Practice “th”');
+  await drillAndRetest(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ target: 'th', focus: 'speed', policy: DEFAULT_POLICY, recommendationKind: 'manual' });
+});
+
+test('a focus chosen on another device updates the results card, Train and the comparison open here', async ({ page, browser, supabase }) => {
+  const user = await signInWithHistory(page, supabase, 'focus-sync@stilltype.test');
+  const context = await browser.newContext();
+  const phone = await context.newPage();
+  await supabase.attach(phone);
+  // A returning connection reads the account again, as when the phone's change reaches this device.
+  const hear = () => page.evaluate(() => dispatchEvent(new Event('online')));
+
+  const chooseOnPhone = async (focus) => {
+    await chooseSetting(phone, 'train-focus', focus);
+    await closeSettings(phone);
+    await expect.poll(() => supabase.profileFor(user.email)?.preferences?.trainFocus).toBe(focus);
+    await hear();
+  };
+
+  try {
+    await openApp(phone);
+    await signInWithEmail(phone, user.email);
+    await chooseWords(page, 10);
+    await completePassage(page);
+    await expect(page.locator('#result-drill')).toHaveText('Drill “th”');
+
+    await chooseOnPhone('accuracy');
+    await expect(page.locator('#result-drill')).toHaveText('Drill “an”');
+
+    await openView(page, 'Train');
+    await expect(page.locator('#train-heading')).toHaveText('Practice “an”');
+    await chooseOnPhone('speed');
+    await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
+
+    await page.clock.install();
+    await page.locator('#start-drill').click();
+    await drillAndRetest(page);
+    // Speed queues only "th", which was just trained.
+    await expect(page.locator('#comparison-next')).toBeHidden();
+    await chooseOnPhone('accuracy');
+    await expect(page.locator('#comparison-panel')).toBeVisible();
+    await expect(page.locator('#comparison-next')).toHaveText('Next: “an”');
+  } finally {
+    await context.close();
+  }
+});
