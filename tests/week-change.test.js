@@ -204,12 +204,14 @@ function tallyRaw(runs, unit, basis, from, to) {
     const timed = rows.filter((row) => row[3] > 0 && row[4] > 0 && row[4] - row[5] >= 30);
     const intervals = timed.reduce((sum, row) => sum + row[3], 0);
 
-    return intervals ? { runs: rows.length, intervals, ms: timed.reduce((sum, row) => sum + row[3] * row[5], 0) / intervals } : null;
+    return intervals ? { runs: timed.length, intervals, ms: timed.reduce((sum, row) => sum + row[3] * row[5], 0) / intervals } : null;
   }
 
-  const tries = rows.reduce((sum, row) => sum + row[1], 0);
+  // A run counts only when it holds an observation of the kind.
+  const tried = rows.filter((row) => row[1] > 0);
+  const tries = tried.reduce((sum, row) => sum + row[1], 0);
 
-  return tries ? { runs: rows.length, tries, errors: rows.reduce((sum, row) => sum + Math.min(row[1], row[2]), 0) } : null;
+  return tries ? { runs: tried.length, tries, errors: tried.reduce((sum, row) => sum + Math.min(row[1], row[2]), 0) } : null;
 }
 
 const newestLoop = (loops, unit, before = Infinity) => loops.filter((l) => l.target === unit && Date.parse(l.at) < before)
