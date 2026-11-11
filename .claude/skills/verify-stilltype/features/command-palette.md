@@ -42,5 +42,7 @@ Preconditions:
 - Opening the palette mid-run takes that run out of comparisons; open it before typing unless that is
   what you're checking.
 - Commands toggle: running `punctuation` twice turns it back off. Check the state after each run.
+- The train group sets the training settings: "train focus · balanced|accuracy|speed", "drill length · N seconds"
+  and the "retest after drill" toggle. They are preferences, so running one never restarts the passage.
 - Some commands appear only signed in (`sign out`, `delete account…`) or only in context (`next lesson · …`).
 - Keyboard-only flows must press Ctrl+K while focus is on the page, not inside a text field that swallows it.

@@ -182,9 +182,9 @@ test('runs recorded on another device are no baseline: their drill stands alone,
     runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' } });
   await openApp(page);
   await signInWithEmail(page, user.email);
-  // The summaries arrive, so the recurring target does too; the recordings stay where they were made.
+  // The summaries arrive, so the learner's target does too; the recordings stay where they were made.
   await openView(page, 'Progress');
-  await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+  await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
@@ -209,8 +209,7 @@ test('a drill started from saved history, left once, is retested against that hi
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await expect(page.locator('#training-targets')).toContainText('50 tries');
-  await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+  await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
 
   // A recurring target, left mid-drill for Progress.
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();

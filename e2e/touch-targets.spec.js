@@ -324,7 +324,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'train'));
       // The patterns across runs moved to Progress, with their "Practice … again" buttons.
       await openView(page, 'Progress');
-      await expect(page.locator('#training-targets')).toContainText('observed in 2 runs');
+      await expect(page.locator('#training-targets')).toContainText(/missed in 2 runs|than your pace/);
       await expect(page.locator('#training-targets button').first()).toBeVisible();
       small.push(...await sweep(page, 'progress, patterns across runs'));
 
