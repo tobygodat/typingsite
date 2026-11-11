@@ -376,6 +376,71 @@ test('a failed drill whose history another device cleared while it waited shows 
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
 });
 
+test('a drill waiting when another device clears history still runs the length it shows and records', async ({ page, browser, supabase }) => {
+  const user = supabase.addUser('cleared-length@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  await chooseSetting(page, 'drill-length', '60');
+  await closeSettings(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.length).toBe(1);
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#session-kicker')).toHaveText('drill · 60 s');
+  // The setting changes under the waiting drill, which keeps the length it was drawn with.
+  await runPalette(page, 'drill length · 15 seconds');
+  await expect(page.locator('#session-kicker')).toHaveText('drill · 60 s');
+
+  const context = await browser.newContext();
+  const phone = await context.newPage();
+  await supabase.attach(phone);
+
+  try {
+    await openApp(phone);
+    await signInWithEmail(phone, user.email);
+    await expect(phone.locator('#account')).toHaveAttribute('data-sync', 'synced');
+    await openView(phone, 'Progress');
+    await expect(phone.locator('#clear-history')).toBeEnabled();
+    await phone.locator('#clear-history').click();
+    await phone.locator('#confirm-clear-input').fill('clear');
+    await phone.locator('#confirm-clear').click();
+    await expect.poll(() => supabase.profileFor(user.email)?.historyClearedAt, { intervals: [100] }).toBeTruthy();
+  } finally {
+    await context.close();
+  }
+
+  await page.evaluate(() => dispatchEvent(new Event('online')));
+  await expect(page.locator('#best')).toHaveText('No best yet');
+  await expect(page.locator('#session-kicker')).toHaveText('drill · 60 s');
+
+  await page.clock.install();
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await page.clock.fastForward(20_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.fastForward(41_000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.profileFor(user.email)?.runs?.at(-1)).toMatchObject({ kind: 'drill', drillSeconds: 60, elapsedMs: 60_000 });
+});
+
+test('the plain passage that follows an adaptive run is kept when the focus changes', async ({ page, supabase }) => {
+  await signInWithHistory(page, supabase, 'plain-next@stilltype.test');
+  await page.locator('#adaptive-switch').click();
+  await expect(page.locator('#adaptive-toggle')).toBeChecked();
+  await expect(page.locator('#condition-line')).toContainText('adaptive');
+  await completePassage(page);
+  // With no normal run at these settings to compare with, the retest is a plain test that can become the baseline.
+  await expect(page.locator('#result-drill')).toHaveText('Retest');
+  await page.locator('#result-drill').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#condition-line')).not.toContainText('adaptive');
+  const plain = await passageText(page);
+
+  await runPalette(page, 'train focus · accuracy');
+  await expect(page.locator('#condition-line')).not.toContainText('adaptive');
+  expect(await passageText(page)).toBe(plain);
+});
+
 test('the lessons’ hand-off states the drill length chosen in the settings dialog while it shows', async ({ page, supabase }) => {
   const user = supabase.addUser('handoff-length@stilltype.test');
   const record = { wpm: 20, accuracy: 97, at: '2026-10-01T18:10:00Z' };

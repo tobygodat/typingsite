@@ -1584,8 +1584,11 @@ function setPassageNotice(text) {
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
 const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
-// A drill runs the length it started with, else the drill length setting.
-const drillLength = () => trainingContext?.drill?.duration || prefs.drillSeconds;
+// A drill runs the length it started with. That is its context's, or its own once another device's clear
+// has taken the context from under a drill that is waiting or under way. A drill not yet drawn takes the setting.
+const drillLength = () => trainingContext?.drill?.duration
+  || (['ready', 'running'].includes(attempt?.status) && attempt.drillSeconds)
+  || prefs.drillSeconds;
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs(kind = sessionKind) {
@@ -7007,15 +7010,14 @@ function setTraining(key, value) {
   prefs[key] = value;
   applyPreferences();
   saveChoice(key);
-
-  // A new focus can lean a waiting passage that the old one left plain.
-  if (!showTraining() && key === 'trainFocus' && prefs.adaptive && untouchedPractice() && document.body.dataset.view === 'practice') resetSession('practice');
+  showTraining();
 }
 
 // Every surface that shows what Train would drill asks the recommender again, after a training setting changes here
 // or arrives from another device: the results card's drill, Train or its comparison's Next, and Patterns across runs.
 // Each binds its button to what it shows. A drill or retest under way keeps what it started with. The lessons'
-// hand-off states the drill's length, and a waiting adaptive passage is drawn again for a new focus: true when it was.
+// hand-off states the drill's length. A waiting adaptive passage is drawn again for a new focus; a plain one is
+// kept, so the plain passage that follows an adaptive run stays the baseline it was drawn to be.
 function showTraining() {
   const view = document.body.dataset.view;
 
@@ -7030,10 +7032,7 @@ function showTraining() {
 
   renderTraining();
 
-  if (view !== 'practice' || !staleAdaptive()) return false;
-  resetSession('practice');
-
-  return true;
+  if (view === 'practice' && staleAdaptive()) resetSession('practice');
 }
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
