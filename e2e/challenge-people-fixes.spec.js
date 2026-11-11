@@ -85,6 +85,9 @@ test('a friend change in another tab reads the links again: an invitation joins 
   await signedIn(page);
   await expect(rows(page)).toHaveCount(1);
   await expect(rows(page).first()).toHaveAttribute('data-key', /^invite:/);
+  // Every read the page makes on its own (the inbox's first poll and the links read it sets off) is done.
+  await expect.poll(() => supabase.requests.filter((entry) => entry.includes('/rpc/race_people')).length).toBeGreaterThan(0);
+  await page.waitForTimeout(2000);
 
   // Kim becomes an account friend on the service, and the pair has raced; another tab makes a friend change.
   supabase.races.addFriend(toby.id, { name: 'Kim', friendId: kim.id });
