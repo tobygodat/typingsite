@@ -34,6 +34,9 @@ export default async ({ page, h, shot, note, check, fake }) => {
   friend('lena', 'Lena Ortiz');
   friend('jonas', 'Jonas Weber');
   fake.races.addFriend(toby.id, { name: 'Theo Lindqvist', email: 'theo@example.com' });
+  // Two friends saved by email under one name: told apart by the email typed for each.
+  fake.races.addFriend(toby.id, { name: 'Alex', email: 'alex.kim@example.com' });
+  fake.races.addFriend(toby.id, { name: 'Alex', email: 'alex.ruiz@example.com' });
   tally('maya', 3, 4);
   tally('priya', 1, 6);
   tally('sam', 2, 2);
@@ -56,7 +59,10 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.settle();
   const rows = await page.locator('.people-row').evaluateAll((items) => items.map((item) => item.innerText.replace(/\s+/g, ' ').trim()));
   note('rows', rows);
-  check(rows.length === 6, 'one row per person');
+  check(rows.length === 8, 'one row per person');
+  check(await page.getByRole('button', { name: 'Race Alex (alex.kim@example.com)' }).count() === 1, 'same-named friends are told apart by email');
+  note('race setup link', await h.text('#people-setup'));
+  check(/words|quote|\d+ s/.test(await h.text('#people-setup-conditions')), 'the Race setup link names what a Race uses');
   check(/^Priya Raman invited you/.test(rows[0]) && /^Maya Okafor sent a ghost at \d+ wpm · 6 days left/.test(rows[1]), 'the invitation, then the ghost');
   check(rows.some((row) => /Sam Achebe won \d+–77/.test(row)) && rows.some((row) => /Lena Ortiz lost 79–\d+/.test(row)), 'finished ghost races read as won and lost');
   check(await page.getByRole('button', { name: 'Race Sam Achebe' }).count() === 1, 'Race names the person');
@@ -84,5 +90,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await page.locator('#online-room:not([hidden])').waitFor();
   await h.settle();
   note('room', await h.text('#online-account-invite-status'));
+  note('room conditions', await h.text('#online-room-conditions'));
+  check(/words/.test(await h.text('#online-room-conditions')), 'the room names the setup Race setup chose');
   await shot('raced-sam');
 };
