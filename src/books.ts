@@ -1,6 +1,6 @@
 import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
-import type { RunRecord } from './profile-types.js';
+import { analysisRuns } from './domain-history.js';
 
 export interface BookPage { id: string; book: string; text: string; page: number }
 
@@ -117,7 +117,8 @@ export function openBook(id: string) {
 // book, from the run history (so it syncs and clears with it). A drill at book conditions types no
 // page, and a page from another text version isn't found, so neither counts. After the last page
 // the book starts again at page 1.
-export function bookPlace(runs: RunRecord[], id: string) {
+export function bookPlace(inputRuns: readonly unknown[], id: string) {
+  const runs = analysisRuns(inputRuns);
   const pages = openBook(id);
 
   if (!pages) return 0;

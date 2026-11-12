@@ -1,6 +1,6 @@
 import { isRecord } from './domain-values.js';
 import type { Attempt, AttemptEvent, Conditions, Replay, Score } from './typing.js';
-import type { RunRecord, TrainingLoop } from './profile-types.js';
+import type { RunRecord, TrainingLoop, HistoricalRecord } from './profile-types.js';
 
 export function isScore(value: unknown): value is Score {
   return isRecord(value) && typeof value.wpm === 'number' && typeof value.accuracy === 'number';
@@ -8,13 +8,14 @@ export function isScore(value: unknown): value is Score {
 
 export function isConditions(value: unknown): value is Conditions {
   if (!isRecord(value)) return false;
-  const strings = ['mode', 'quoteLength', 'difficulty', 'wordList', 'inputClass', 'correctionPolicy', 'language', 'corpus', 'metricVersion', 'recipe', 'layout', 'codeLanguage', 'book', 'customOrder', 'lesson'];
-  const numbers = ['duration', 'count'];
-  const booleans = ['punctuation', 'numbers', 'strictSpace', 'quickEnd', 'onlineRace'];
 
-  return strings.every((key) => value[key] === undefined || value[key] === null || typeof value[key] === 'string')
-    && numbers.every((key) => value[key] === undefined || value[key] === null || typeof value[key] === 'number')
-    && booleans.every((key) => value[key] === undefined || typeof value[key] === 'boolean');
+  return optional(value, ['mode'], (mode) => typeof mode === 'string' && ['time', 'words', 'quote', 'standard', 'code', 'book', 'custom', 'lesson'].includes(mode))
+    && optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
+    && optional(value, ['correctionPolicy'], (policy) => typeof policy === 'string' && ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'].includes(policy))
+    && optional(value, ['quoteLength', 'difficulty', 'wordList'], nullableString)
+    && optional(value, ['language', 'corpus', 'metricVersion', 'recipe', 'layout', 'codeLanguage', 'book', 'customOrder', 'lesson'], string)
+    && optional(value, ['duration', 'count'], nullableNumber)
+    && optional(value, ['punctuation', 'numbers', 'strictSpace', 'quickEnd', 'onlineRace'], boolean);
 }
 
 export function isAttemptEvent(value: unknown): value is AttemptEvent {
@@ -50,24 +51,60 @@ function isReplay(value: unknown): value is Replay {
       && typeof item.pair === 'string' && typeof item.durationMs === 'number' && typeof item.position === 'number');
 }
 
+function isKind(value: unknown) {
+  return typeof value === 'string' && ['test', 'drill', 'missed', 'race', 'lesson', 'challenge', 'retest', 'daily', 'custom'].includes(value);
+}
+
+function isStatus(value: unknown) {
+  return value === 'ready' || value === 'running' || value === 'complete' || value === 'interrupted';
+}
+
+function isMinimums(value: unknown) {
+  return isRecord(value) && optional(value, ['accuracy', 'wpm'], number);
+}
+
+function isStop(value: unknown) {
+  return isRecord(value) && (value.metric === 'accuracy' || value.metric === 'wpm') && typeof value.minimum === 'number'
+    && typeof value.value === 'number' && (value.atEnd === undefined || value.atEnd === true);
+}
+
+function runtimeMetadata(value: HistoricalRecord) {
+  return optional(value, ['minimums'], (minimums) => minimums === null || isMinimums(minimums)) && optional(value, ['stopped'], isStop);
+}
+
 export function isAttempt(value: unknown): value is Attempt {
   return isRecord(value) && typeof value.id === 'string' && typeof value.eventVersion === 'string' && typeof value.metricVersion === 'string'
-    && typeof value.kind === 'string' && typeof value.text === 'string' && typeof value.textId === 'string' && isConditions(value.conditions)
-    && typeof value.status === 'string' && Array.isArray(value.events) && value.events.every(isAttemptEvent) && typeof value.typed === 'string'
+    && isKind(value.kind) && typeof value.text === 'string' && typeof value.textId === 'string' && isConditions(value.conditions)
+    && isStatus(value.status) && Array.isArray(value.events) && value.events.every(isAttemptEvent) && typeof value.typed === 'string'
     && (value.startedAt === null || typeof value.startedAt === 'number') && (value.endedAt === null || typeof value.endedAt === 'number')
-    && typeof value.interrupted === 'boolean' && typeof value.unsupportedInput === 'boolean' && (value.summary === undefined || isReplay(value.summary));
+    && typeof value.interrupted === 'boolean' && typeof value.unsupportedInput === 'boolean' && optional(value, ['summary'], isReplay)
+    && optional(value, ['fresh', 'dailyFirst', 'firstDailyAttempt', 'adaptive'], boolean)
+    && optional(value, ['at', 'failed', 'target', 'challengeDate'], nullableString)
+    && optional(value, ['challengeId', 'trainFocus', 'dailyDate', 'textVersion'], string) && optional(value, ['drillSeconds'], number)
+    && optional(value, ['lesson'], (lesson) => isRecord(lesson) && typeof lesson.id === 'string' && typeof lesson.index === 'number' && typeof lesson.pairs === 'number' && typeof lesson.words === 'number')
+    && runtimeMetadata(value);
 }
 
 export function isRunRecord(value: unknown): value is RunRecord {
-  return isRecord(value) && typeof value.id === 'string' && (value.at === null || typeof value.at === 'string')
-    && typeof value.kind === 'string' && typeof value.status === 'string' && isConditions(value.conditions) && typeof value.textId === 'string'
+  return isRecord(value) && isAnalysisRun(value) && typeof value.id === 'string' && (value.at === null || typeof value.at === 'string')
+    && isKind(value.kind) && isStatus(value.status) && isConditions(value.conditions) && typeof value.textId === 'string'
     && typeof value.interrupted === 'boolean' && isScore(value.score) && typeof value.elapsedMs === 'number' && typeof value.errors === 'number'
-    && (value.target === null || typeof value.target === 'string');
+    && (value.target === null || typeof value.target === 'string') && runtimeMetadata(value);
 }
 
 export function isTrainingLoop(value: unknown): value is TrainingLoop {
-  return isRecord(value) && typeof value.id === 'string' && typeof value.at === 'string' && isConditions(value.conditions)
-    && (value.target === null || typeof value.target === 'string') && typeof value.beforeAttemptId === 'string' && typeof value.afterAttemptId === 'string';
+  return isRecord(value) && isAnalysisLoop(value) && typeof value.id === 'string' && typeof value.at === 'string' && isConditions(value.conditions)
+    && (value.target === null || typeof value.target === 'string') && typeof value.beforeAttemptId === 'string' && typeof value.afterAttemptId === 'string'
+    && optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
+    && optional(value, ['minimums'], isMinimums) && optional(value, ['comparison'], isComparison);
+}
+
+function isComparison(value: unknown) {
+  if (!isRecord(value) || typeof value.reason !== 'string') return false;
+
+  return value.comparable === false ? value.state === 'not-comparable' : value.comparable === true && typeof value.state === 'string'
+    && ['mixed', 'improved', 'regressed', 'steady'].includes(value.state) && typeof value.wpmDelta === 'number' && typeof value.accuracyDelta === 'number'
+    && isScore(value.before) && isScore(value.after);
 }
 
 function optional(value: Record<string, unknown>, keys: string[], accepts: (value: unknown) => boolean) {
@@ -112,7 +149,11 @@ export function isAnalysisLoop(value: unknown): value is import('./profile-types
     && optional(value, ['targetBasis'], (basis) => basis === 'slow' || basis === 'errors')
     && optional(value, ['drillCompleted'], boolean)
     && optional(value, ['targetMisses'], (counts) => counts === null || (isRecord(counts) && isTargetCounts(counts.was) && isTargetCounts(counts.now)))
-    && optional(value, ['targetPace'], (pace) => pace === null || (isRecord(pace) && isRecord(pace.was) && typeof pace.was.slowMs === 'number' && isRecord(pace.now) && typeof pace.now.slowMs === 'number'));
+    && optional(value, ['targetPace'], (pace) => pace === null || (isRecord(pace) && isTargetPace(pace.was) && isTargetPace(pace.now)));
+}
+
+function isTargetPace(value: unknown) {
+  return isRecord(value) && typeof value.slowMs === 'number' && optional(value, ['timed', 'timedRuns', 'slowRuns'], number);
 }
 
 function isTargetCounts(value: unknown): value is { errors: number; observations: number } {
@@ -125,12 +166,12 @@ export function analysisLoops(values: readonly unknown[]) {
 
 export interface PatternAttempt {
   text: string; events?: AttemptEvent[]; startedAt?: number | null; endedAt?: number | null;
-  status?: string; kind?: string; interrupted?: boolean; fresh?: boolean; conditions?: Conditions; summary?: Replay;
+  status?: string; kind?: string; interrupted?: boolean; fresh?: boolean; conditions?: Conditions | HistoricalRecord; summary?: Replay;
 }
 
 export function isPatternAttempt(value: unknown): value is PatternAttempt {
   return isRecord(value) && typeof value.text === 'string'
     && optional(value, ['status', 'kind'], string) && optional(value, ['interrupted', 'fresh'], boolean)
-    && optional(value, ['startedAt', 'endedAt'], nullableNumber) && optional(value, ['conditions'], isConditions)
+    && optional(value, ['startedAt', 'endedAt'], nullableNumber) && optional(value, ['conditions'], isRecord)
     && optional(value, ['summary'], isReplay) && optional(value, ['events'], (events) => Array.isArray(events) && events.every(isAttemptEvent));
 }

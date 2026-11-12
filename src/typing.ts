@@ -49,6 +49,8 @@ export interface WeightedUnit { unit: string; weight: number }
 
 export interface Minimums { accuracy?: number; wpm?: number }
 
+export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: number; value: number; atEnd?: true }
+
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
 
 export interface PassageOptions { mode?: TestMode; count?: number; duration?: number; punctuation?: boolean; numbers?: boolean; quoteLength?: string; difficulty?: string; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
@@ -446,7 +448,7 @@ export function accuracyGraceCharacters(minimum: number) {
 
 // The first minimum the score is under, against the same rounded numbers the run shows. Pass the
 // live replay while the run is going, so each minimum waits out its grace.
-export function minimumMissed(minimums: Minimums | null, score: Score | null, running: Pick<Replay, 'elapsedMs' | 'insertions'> | null = null) {
+export function minimumMissed(minimums: Minimums | null, score: Score | null, running: Pick<Replay, 'elapsedMs' | 'insertions'> | null = null): MinimumFailure | null {
   if (!minimums || !score) return null;
   const judged = (characters: number) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
 
@@ -467,7 +469,7 @@ export function atRunEnd({ elapsedMs, durationMs = null, finished = false }: Run
 // The one judgement behind both checks, so they can't drift apart. A run at its end is judged on its
 // final score with no grace, and a miss there is an end-of-run failure (atEnd). Before the end it is
 // the live check, with the grace.
-export function minimumStop(minimums: Minimums | null, replay: Replay, position: RunPosition) {
+export function minimumStop(minimums: Minimums | null, replay: Replay, position: RunPosition): MinimumFailure | null {
   const atEnd = atRunEnd(position);
   const missed = minimumMissed(minimums, replay.score, atEnd ? null : replay);
 
@@ -865,6 +867,8 @@ export function replayScoreAt(attempt: Attempt, t: number) {
   };
 }
 
+export function completeAttempt(attempt: Attempt, options?: { endedAt?: number; status?: 'complete' }): CompletedAttempt;
+export function completeAttempt(attempt: Attempt, options: { endedAt?: number; status?: Attempt['status'] }): Attempt;
 export function completeAttempt(attempt: Attempt, { endedAt, status = 'complete' }: { endedAt?: number; status?: Attempt['status'] } = {}): Attempt {
   const replay = replayAttempt({ ...attempt, endedAt: endedAt ?? null });
 
@@ -1112,9 +1116,9 @@ export function comparable(before: Attempt | null | undefined, after: Attempt | 
     && !after.interrupted;
 }
 
-export type AttemptComparison = ReturnType<typeof compareAttempts>;
+export type AttemptComparison = { comparable: false; state: 'not-comparable'; reason: string } | { comparable: true; state: 'mixed' | 'improved' | 'regressed' | 'steady'; wpmDelta: number; accuracyDelta: number; before: Score; after: Score; reason: string };
 
-export function compareAttempts(before: Attempt, after: Attempt) {
+export function compareAttempts(before: Attempt, after: Attempt): AttemptComparison {
   // A retest stopped under its baseline's minimums is stored as interrupted; say why it isn't compared.
   if (after?.stopped) return { comparable: false, state: 'not-comparable', reason: 'The retest fell under the baseline’s minimums, so no comparison is made.' };
 

@@ -44,8 +44,8 @@ export interface TargetPace { slowMs: number; timed?: number; timedRuns?: number
 export interface TrainingLoop {
   id: string; at: string; conditions: Conditions; target: string | null; beforeAttemptId: string; afterAttemptId: string;
   drillAttemptId?: string; drillCompleted?: boolean; targetBasis?: 'errors' | 'slow';
-  targetMisses?: { was: TargetCounts; now: TargetCounts };
-  targetPace?: { was: TargetPace; now: TargetPace };
+  targetMisses?: { target?: string; was: TargetCounts; now: TargetCounts } | null;
+  targetPace?: { target?: string; was: TargetPace; now: TargetPace } | null;
   comparison?: import('./typing.js').AttemptComparison;
   minimums?: Minimums; inputClass?: InputClass;
 }

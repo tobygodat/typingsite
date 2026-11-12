@@ -1,7 +1,7 @@
 import { lookup } from './domain-values.js';
 import { analysisRuns, analysisLoops, isScoredRun } from './domain-history.js';
-import type { AnalysisRun, ScoredRun } from './profile-types.js';
-import { at as indexed, entry } from './domain-values.js';
+import type { AnalysisRun, ScoredRun, HistoricalRecord } from './profile-types.js';
+import { at as indexed, entry, isRecord } from './domain-values.js';
 
 interface RetentionRun { kind?: string; status?: string; interrupted?: boolean; fresh?: boolean; patterns?: unknown[]; keys?: unknown[]; corrections?: unknown; missedWords?: unknown }
 
@@ -11,9 +11,9 @@ interface DailyRecord { kind?: string; at?: string | null; id?: unknown; challen
 
 interface Window { from?: string | null; to?: string | null }
 
-interface ShapeVariant { key: string; conditions: Conditions; count: number; last: number }
+interface ShapeVariant { key: string; conditions: Conditions | HistoricalRecord; count: number; last: number }
 
-interface Shape { id: string; mode: string | undefined; size: string; variants: Map<string, ShapeVariant> }
+interface Shape { id: string; mode: unknown; size: string; variants: Map<string, ShapeVariant> }
 
 interface RecurringPair { pair: string; observations: number; errors: number; runs: number; errorRuns: number; slowRuns: number; lastAt: string | null }
 
@@ -132,13 +132,13 @@ export const MAX_MISSED_WORDS = 12;
 // pattern windows. Extend this set for any other kind like that.
 export const NON_COMPARABLE_KINDS = new Set(['custom', 'missed', 'challenge']);
 export const MAX_NON_COMPARABLE_RUNS = 50;
-export const comparableKind = (kind: string | undefined) => !NON_COMPARABLE_KINDS.has(kind ?? '');
+export const comparableKind = (kind: unknown) => typeof kind !== 'string' || !NON_COMPARABLE_KINDS.has(kind);
 
 // Run kinds that measure typing on ordinary text at the run's own conditions: practice tests, retests and daily
 // runs. Only these can be evidence (see evidenceRun). Narrower than comparableKind, which only splits retention
 // budgets and so includes drills: their synthetic, target-heavy text is never measured.
 const MEASURED_KINDS = new Set(['test', 'retest', 'daily']);
-export const measuredKind = (kind: string | undefined) => MEASURED_KINDS.has(kind ?? '');
+export const measuredKind = (kind: unknown) => typeof kind === 'string' && MEASURED_KINDS.has(kind);
 
 export function runRecord(attempt: Attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
@@ -256,20 +256,20 @@ export function retainTraces<T>(traces: T[], { max = MAX_TRACES, budget = TRACE_
   return kept.reverse();
 }
 
-export const validRun = (run: { status?: string; interrupted?: boolean }) => run.status === 'complete' && !run.interrupted;
+export const validRun = (run: unknown) => isRecord(run) && run.status === 'complete' && !run.interrupted;
 
 // Completed practice runs and retests, listed in Progress whatever their text. A non-comparable kind (custom
 // text) is never one, whatever kind list it might later share.
-export const practiceRun = (run: RetentionRun) => validRun(run) && comparableKind(run.kind) && ['test', 'retest'].includes(run.kind ?? '');
+export const practiceRun = (run: unknown) => isRecord(run) && validRun(run) && comparableKind(run.kind) && (run.kind === 'test' || run.kind === 'retest');
 
 // Two exclusions meet here: by kind (comparableKind, above) and by text, since only fresh text counts toward
 // bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
-export const trendRun = (run: RetentionRun) => practiceRun(run) && run.fresh !== false;
+export const trendRun = (run: unknown) => isRecord(run) && practiceRun(run) && run.fresh !== false;
 
 // A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
 // never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
-export const bestRun = (run: RetentionRun & { conditions?: Conditions }) => trendRun(run) && run.conditions?.mode !== 'code';
+export const bestRun = (run: unknown) => isRecord(run) && trendRun(run) && (!isRecord(run.conditions) || run.conditions.mode !== 'code');
 
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.
@@ -286,7 +286,7 @@ export function passageBest(inputRuns: readonly unknown[], run: AnalysisRun) {
 // text counts its pairs and words again). Recurring patterns, missed words to practise and the words you keep
 // missing all read only these; drills, races, word practice and custom text never count. Works on a stored run
 // summary or a just-finished attempt.
-export const evidenceRun = (run: RetentionRun) => validRun(run) && measuredKind(run.kind) && run.fresh !== false;
+export const evidenceRun = (run: unknown) => isRecord(run) && validRun(run) && measuredKind(run.kind) && run.fresh !== false;
 
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
 const missedWordsRun = (run: RetentionRun) => evidenceRun(run) && Array.isArray(run.missedWords);
@@ -391,7 +391,7 @@ export function histogram(values: number[], width: number) {
 // time, that mode's preset lengths without runs stay in place with no variants, so the row keeps its shape.
 const SHAPE_ORDER = ['words', 'time', 'quote', 'standard', 'code', 'book'];
 
-export function shapeOf(conditions: Conditions = {}) {
+export function shapeOf(conditions: Conditions | HistoricalRecord = {}) {
   const size = conditions.mode === 'words' ? conditions.count : conditions.mode === 'time' ? conditions.duration
     : conditions.mode === 'quote' ? conditions.quoteLength || 'any' : conditions.mode === 'code' ? conditions.codeLanguage || 'js'
       : conditions.mode === 'standard' ? conditions.recipe || '' : conditions.mode === 'book' ? conditions.book || '' : '';
@@ -399,16 +399,17 @@ export function shapeOf(conditions: Conditions = {}) {
   return `${conditions.mode}:${size}`;
 }
 
-export function testShapes(sources: { conditions: Conditions }[]) {
+export function testShapes(inputSources: readonly unknown[]) {
+  const sources = analysisRuns(inputSources);
   const shapes = new Map<string, Shape>();
   sources.forEach((source, order) => {
     const id = shapeOf(source.conditions);
 
-    if (!shapes.has(id)) shapes.set(id, { id, mode: source.conditions.mode, size: id.slice(id.indexOf(':') + 1), variants: new Map() });
+    if (!shapes.has(id)) shapes.set(id, { id, mode: source.conditions?.mode, size: id.slice(id.indexOf(':') + 1), variants: new Map() });
     const key = conditionKey(source.conditions);
     const variants = entry(shapes, id).variants;
 
-    if (!variants.has(key)) variants.set(key, { key, conditions: source.conditions, count: 0, last: 0 });
+    if (!variants.has(key)) variants.set(key, { key, conditions: source.conditions ?? {}, count: 0, last: 0 });
     Object.assign(entry(variants, key), { count: entry(variants, key).count + 1, last: order });
   });
 
@@ -422,7 +423,7 @@ export function testShapes(sources: { conditions: Conditions }[]) {
     }
   }
 
-  const rank = (mode: string | undefined) => (SHAPE_ORDER.includes(mode ?? '') ? SHAPE_ORDER.indexOf(mode ?? '') : SHAPE_ORDER.length);
+  const rank = (mode: unknown) => (typeof mode === 'string' && SHAPE_ORDER.includes(mode) ? SHAPE_ORDER.indexOf(mode) : SHAPE_ORDER.length);
 
   return [...shapes.values()]
     .map((shape) => ({ ...shape, variants: [...shape.variants.values()].sort((a, b) => b.count - a.count || b.last - a.last) }))
@@ -512,7 +513,8 @@ export function periodDays(days: string | number, date = new Date(), first: stri
 
 // Practice over the given days: days with any practice, the longest run of days meeting the goal (any
 // practice when it's off, as practiceStreak counts), minutes typed, and completed runs of every kind per day.
-export function practiceStats(byDay: Record<string, number>, runs: RunRecord[], days: string[], goal = 0) {
+export function practiceStats(byDay: Record<string, number>, inputRuns: readonly unknown[], days: string[], goal = 0) {
+  const runs = analysisRuns(inputRuns);
   const met = (day: string) => (goal ? (byDay[day] || 0) >= goal : (byDay[day] || 0) > 0);
   let longest = 0;
   let streak = 0;
