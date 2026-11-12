@@ -92,7 +92,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts) {
+export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -124,29 +124,26 @@ function customPassage() {
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
 
-let storageAvailable = true;
-
 // No session means guest mode: default settings, and nothing leaves this tab.
 
 await accounts.replaceIdentity(accounts.session);
-let syncTimer = 0;
+const { loadProfile, saveProfile, storeLocally, commitPreferences, saveChoice, absorbCache, pushProfile, pullProfile, syncOnLoad } = sync;
+sync.configure({ running: () => runInProgress(), showMerged, resetListedRuns() { progressState.allRuns = false; }, boardFor: (data) => boardFor(data),
+  boardPushed() { friendsBoard?.pushed(); }, boardResume() { friendsBoard?.resume(); }, repairBoard, adoptProfile,
+  legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences); }, clearCountsUnsaved() { countsUnsaved = false; } });
+
 
 // Saves only count as edits once the account row has been compared with the device cache;
 // otherwise a boot-time save (marking the first passage seen) would make a stale cache look newer.
-let cloudChecked = false;
-let unsynced = false;
 
 // Counts saves, so a push can tell whether anything changed while it was waiting on the network.
-let localEdits = 0;
+
 
 // The account row's updated_at as last merged here: the version a conditional write expects to replace.
-let lastCloudAt = null;
+
 
 // The device cache as this tab last wrote it, or took it in holding everything this tab had written;
 // different text means another tab wrote since.
-let cacheText = null;
-let lastPull = 0;
-let cacheWaiting = false;
 
 // A change to the history that arrived mid-run, which the training surfaces show once the run ends (followHistory).
 let historyWaiting = false;
@@ -154,24 +151,15 @@ let historyWaiting = false;
 // Another tab signed this account out, or the device is now signed in as someone else
 // (followSessionElsewhere): this tab saves and sends nothing more for it, and starts again as the device
 // now is once no run is in progress.
-let signedOutElsewhere = false;
+
 
 // A sign-out in another tab that sent everything names the copy of the device cache it sent before
 // removing it (account.signOut). Its stamp is kept here until that removal is heard, so a copy removed
 // that wasn't the one sent goes back for the next sign-in (finishFollow).
-let pendingSignOut = null;
+
 
 // The device cache as the last push that left nothing unsent stored it: what a sign-out here has sent.
 // absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
-let sentText = null;
-const PULL_INTERVAL_MS = 15000;
-
-function loadProfile() {
-  if (!accounts.session) return emptyProfile();
-  cacheText = account.loadCachedProfileText(accounts.session.user.id);
-
-  try { return normalizeProfile(JSON.parse(cacheText)); } catch { return emptyProfile(); }
-}
 
 const initialProfile = loadProfile();
 learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences));
@@ -292,7 +280,7 @@ const offerBusy = () => Boolean(offerRun) && offerSending === offerRun;
 // For each clear still in force here, the copies merged here that it removed history from, as they were
 // before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
 // A list goes back only with its own clear's undo. In memory only.
-let heldClears = {};
+
 
 // The history clears this tab had applied when its training state (baseline, results on show) was last
 // checked against them, and where an older build's clear left history starting (legacyClearedAt).
@@ -321,79 +309,20 @@ const saveRunCounts = () => countsUnsaved && saveProfile();
 
 // Signed in, the profile is cached on this device and synced to the account shortly after.
 // A guest's profile lives only in memory, so there is nothing to fail.
-function saveProfile() {
-  countsUnsaved = false;
-  commitPreferences();
-  account.capHistory(learning.profile);
 
-  if (!accounts.session || signedOutElsewhere) return true;
-  unsynced = true;
-  localEdits += 1;
-
-  if (cloudChecked) {
-    account.stampProfile(learning.profile);
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(pushWhenIdle, 1500);
-  }
-
-  storageAvailable = storeLocally();
-
-  return storageAvailable;
-}
 
 // The device cache is shared by every tab signed in to this account. Whatever another tab wrote since
 // this one last read it is merged in first, so no tab overwrites another's runs or settings.
-function storeLocally() {
-  const userId = accounts.session.user.id;
-  const stored = account.loadCachedProfileText(userId);
-  // Signed out here (the sign-out removed the copy this tab had read, or kept it and left its marker), or
-  // someone else signed in: this tab's copy must not come back. A session that only ended (its refresh
-  // was refused) keeps caching, as before, so the next sign-in on this device merges these runs into the
-  // account.
-  const current = account.loadSession()?.user.id;
 
-  if ((current && current !== userId) || (stored === null && cacheText !== null)) return false;
-
-  if (signedOutElsewhere || account.signedOut(userId)) return false;
-
-  if (stored && stored !== cacheText) {
-    try {
-      absorb(JSON.parse(stored));
-      // Shown once the current step (often preparing a passage) has finished.
-      setTimeout(showMerged);
-    } catch {}
-  }
-
-  const text = JSON.stringify(account.storedCopy(learning.profile));
-  const saved = account.cacheProfileText(userId, text);
-
-  if (saved) cacheText = text;
-
-  return saved;
-}
 
 // Records preference edits made in this tab (only the settings that changed, on top of the stored ones,
 // which may already hold a newer change from elsewhere) and stamps each for syncing. `chosen` names
 // settings the person just picked: stamped even when the pick matches what is shown, so it outranks a
 // different value from another tab or device that was waiting to apply.
-function commitPreferences(chosen = []) {
-  const json = JSON.stringify(learning.preferences);
 
-  if (json === learning.livePreferences && !chosen.length) return;
-  const before = JSON.parse(learning.livePreferences);
-  const edited = Object.keys(learning.preferences).filter((key) => (key === 'keybindings' ? JSON.stringify(learning.preferences[key]) !== JSON.stringify(before[key]) : learning.preferences[key] !== before[key]) || chosen.includes(key));
-  const stamps = learning.profile.preferencesAt || {};
-  learning.profile.preferences = { ...learning.profile.preferences, ...Object.fromEntries(edited.map((key) => [key, learning.preferences[key]])) };
-  learning.profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
-  learning.livePreferences = json;
-}
 
 // Saves after the person picks settings, stamping the ones picked (see commitPreferences).
-function saveChoice(...keys) {
-  commitPreferences(keys);
 
-  return saveProfile();
-}
 
 // How Train trains: what it ranks on, the drill's length and whether a retest follows.
 const TRAINING_PREFERENCES = ['trainFocus', 'drillSeconds', 'retest'];
@@ -707,14 +636,14 @@ function runChanged() {
 function flushDeferredSync() {
   if (runInProgress()) return;
 
-  if (signedOutElsewhere) {
+  if (sync.state.signedOutElsewhere) {
     // A sign-out that sent everything reloads once its removal of the cache is heard (finishFollow).
-    if (pendingSignOut === null) location.reload();
+    if (sync.state.pendingSignOut === null) location.reload();
 
     return;
   }
 
-  if (cacheWaiting && absorbCache()) setTimeout(showMerged);
+  if (sync.state.cacheWaiting && absorbCache()) setTimeout(showMerged);
 
   if (preferencesWaiting) followStoredPreferences();
 
@@ -4584,7 +4513,7 @@ function clearHistory() {
 
   if (queued && passage.fresh === false) labelPassage(true, false);
   clearedAt = learning.profile.historyClearedAt;
-  heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
+  sync.state.heldClears = account.joinHolds(sync.state.heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
   trainingClears = account.clearsApplied(learning.profile);
   forgetTraining();
   const saved = saveProfile();
@@ -4612,7 +4541,7 @@ function undoClear() {
   // Restores the history even if the clear has already synced, keeping anything added since: this tab's
   // own copy from just before it, and whatever the clear removed from the account row or another tab as
   // they merged here (held for it), as far as clears still in force allow.
-  ({ merged: learning.profile, holds: heldClears } = account.undoClearHere(heldClears, learning.profile, clearedAt, snapshot));
+  ({ merged: learning.profile, holds: sync.state.heldClears } = account.undoClearHere(sync.state.heldClears, learning.profile, clearedAt, snapshot));
   // The passage that waited through the clear gets its old label back while it is still unstarted. A run on it
   // already under way is left alone (still run): it started as fresh text, and stays that way.
   const queued = clearedPassage;
@@ -4651,22 +4580,11 @@ const boardFor = (data) => (at) => (optOutPending(accounts.session) ? null : boa
 // Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
 // someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
 // a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
-function signedInAs(userId) {
-  return !signedOutElsewhere && accounts.session?.user.id === userId && account.loadSession()?.user.id === userId;
-}
+
 
 // Folds another copy of this account's profile (the account row, or another tab's cache) into memory.
 // Only stored data changes here; showMerged() brings the screen up to date. Returns whether it changed.
-function absorb(data) {
-  if (data?.version !== 2) return false;
-  const before = account.syncSignature(learning.profile);
-  ({ merged: learning.profile, holds: heldClears } = account.mergeAndHold(heldClears, learning.profile, normalizeProfile(data)));
-  const changed = account.syncSignature(learning.profile) !== before;
 
-  if (changed) progressState.allRuns = false;
-
-  return changed;
-}
 
 // After a merge: preferences follow where they can't disturb a run, the training surfaces follow the merged history
 // (followHistory), and the visible history view re-renders, but not while someone is using it. Nothing takes focus or
@@ -4702,177 +4620,20 @@ function showMerged() {
 // more than the cache writes nothing, so tabs settle instead of echoing each other. If that write is
 // refused (a sign-out elsewhere is under way), cacheText stays this tab's own last write: the copy taken
 // in lacks it, and a repair of the sign-out's removal must still put it back (finishFollow).
-function absorbCache() {
-  cacheWaiting = false;
-
-  if (!accounts.session || !signedInAs(accounts.session.user.id)) return false;
-  const text = account.loadCachedProfileText(accounts.session.user.id);
-
-  if (!text || text === cacheText) return false;
-
-  try {
-    const data = JSON.parse(text);
-    const changed = absorb(data);
-    const own = cacheText;
-    cacheText = text;
-
-    if (data?.version === 2 && !account.sameProfile(learning.profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
-
-    return changed;
-  } catch {
-    return false;
-  }
-}
-
-function noteCloudAt(updatedAt) {
-  if (updatedAt && !(Date.parse(lastCloudAt) >= Date.parse(updatedAt))) lastCloudAt = updatedAt;
-}
 
 // Pushes wait for the run in progress to end, so network and merge work never lands mid-run.
-function pushWhenIdle() {
-  if (runInProgress()) {
-    syncTimer = setTimeout(pushWhenIdle, 1500);
 
-    return;
-  }
-
-  pushProfile();
-}
 
 // One push at a time, each reading the account row afresh. Resolves true once the row holds this tab's edits.
-let pushQueue = Promise.resolve();
-
-function pushProfile(options = {}) {
-  clearTimeout(syncTimer);
-  syncTimer = 0;
-  const run = pushQueue.then(() => pushOnce(options));
-  pushQueue = run.catch(() => {});
-
-  return run;
-}
 
 // Read the row, merge, then write only if the row is still the version read. If another writer got in
 // between, the write matches nothing: read again and merge again, three times at most. The merged copy
 // is kept here and in the device cache.
-async function pushOnce({ cloud: known } = {}) {
-  if (!accounts.session) return false;
 
-  if (!unsynced) {
-    setSyncState('synced');
-    friendsBoard?.pushed();
-
-    return true;
-  }
-
-  const userId = accounts.session.user.id;
-
-  // Checked before refreshing too: a tab still holding an account another tab has signed out of must
-  // not refresh it, nor end whichever session the device holds now.
-  if (!signedInAs(userId)) return false;
-
-  try {
-    accounts.session = await freshAccountSession();
-
-    if (!signedInAs(userId)) return false;
-    let cloud = known;
-
-    for (let tries = 0; tries < 3; tries += 1) {
-      if (cloud === undefined) {
-        cloud = await account.fetchCloudProfile(accounts.session);
-
-        if (!signedInAs(userId)) return false;
-      }
-
-      const edits = localEdits;
-      const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
-      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, learning.profile, theirs) : { merged: learning.profile, holds: heldClears };
-      let written;
-
-      if (theirs && account.sameRow(merged, theirs)) written = cloud.updated_at;
-      else if (cloud) written = await account.updateCloudProfile(accounts.session, merged, cloud.updated_at, { board: boardFor(merged) });
-      else written = await account.insertCloudProfile(accounts.session, merged, { board: boardFor(merged) });
-
-      if (!signedInAs(userId)) return false;
-
-      if (written) {
-        // What this merge held joins what is held now. Holds are only added to, and a list goes back only
-        // with its clear's undo (twice changes nothing), so an Undo or a clear made here while the write
-        // was out still holds and releases everything.
-        heldClears = account.joinHolds(heldClears, pushHolds);
-        noteCloudAt(written);
-        friendsBoard?.pushed();
-        absorb(merged);
-        const kept = storeLocally();
-
-        // Done unless this tab saved again, or took in another tab's save, while the write was out:
-        // that goes up with the next push.
-        if (edits === localEdits && account.sameProfile(learning.profile, merged)) {
-          unsynced = false;
-          sentText = kept ? cacheText : null;
-        } else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
-        showMerged();
-        setSyncState(unsynced ? 'syncing' : 'synced');
-
-        return !unsynced;
-      }
-
-      cloud = undefined;
-    }
-
-    // Lost every race: the edits stay here, and the next save, return to this tab or load merges them.
-    setSyncState('offline');
-
-    return false;
-  } catch {
-    setSyncState(account.loadSession() ? 'offline' : 'expired');
-
-    return false;
-  }
-}
 
 // Brings in what other devices saved: when the tab comes back into view (at most every 15 s) and when
 // the connection returns. With edits pending here it pushes instead, which reads and merges first.
-async function pullProfile({ force = false } = {}) {
-  if (!accounts.session || !cloudChecked || runInProgress()) return;
 
-  if (!force && Date.now() - lastPull < PULL_INTERVAL_MS) return;
-  lastPull = Date.now();
-
-  if (unsynced) {
-    await pushProfile();
-
-    return;
-  }
-
-  const userId = accounts.session.user.id;
-
-  if (!signedInAs(userId)) return;
-
-  try {
-    accounts.session = await freshAccountSession();
-
-    if (!signedInAs(userId)) return;
-    const cloud = await account.fetchCloudProfile(accounts.session);
-
-    if (!cloud || !signedInAs(userId)) return;
-
-    if (absorb(cloud.data)) {
-      storeLocally();
-      showMerged();
-    }
-
-    noteCloudAt(cloud.updated_at);
-
-    // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
-    // the device cache, whose own push failed or never ran. It goes up from here, as on load.
-    if (unsynced || !account.sameRow(learning.profile, normalizeProfile(cloud.data))) {
-      unsynced = true;
-      await pushProfile({ cloud });
-    } else setSyncState('synced');
-  } catch {
-    setSyncState(account.loadSession() ? 'offline' : 'expired');
-  }
-}
 
 function adoptProfile(data) {
   learning.profile = normalizeProfile(data);
@@ -4913,64 +4674,12 @@ function redrawLessons() {
 // The device's copy and the account row are merged, and whatever the row lacks goes up.
 function freshAccountSession() { return accounts.fresh(); }
 
-async function syncOnLoad() {
-  if (!accounts.session) return;
-  const userId = accounts.session.user.id;
-
-  try {
-    accounts.session = await freshAccountSession();
-    const cloud = await account.fetchCloudProfile(accounts.session);
-
-    if (cloudChecked || !signedInAs(userId)) return;
-    cloudChecked = true;
-    lastPull = Date.now();
-
-    if (!cloud) {
-      // History from before accounts existed goes to the first account that has none of its own.
-      // Taken only once the account is known to be empty, so a failed fetch leaves it in place.
-      const legacy = account.takeLegacyProfile();
-
-      if (legacy?.version === 2) {
-        learning.profile = account.mergeProfiles(learning.profile, normalizeProfile(legacy));
-        learning.preferences = preferencesInUse(learning.profile.preferences);
-      }
-
-      // Stored and sent before anything re-renders, so the import can't be left half done.
-      saveProfile();
-      await pushProfile();
-
-      if (legacy?.version === 2) adoptProfile(learning.profile);
-    } else {
-      absorb(cloud.data);
-      noteCloudAt(cloud.updated_at);
-      storeLocally();
-      showMerged();
-
-      // Edits made here before the check (usually the passage marked seen), or kept on this device
-      // since an earlier visit, go up; otherwise the row already holds everything.
-      if (unsynced || !account.sameRow(learning.profile, normalizeProfile(cloud.data))) {
-        unsynced = true;
-        await pushProfile({ cloud });
-      } else {
-        setSyncState('synced');
-        repairBoard(cloud);
-      }
-    }
-
-    // An opt-out kept on this device goes out now, and a device new to the account learns whether it shares.
-    friendsBoard?.resume();
-  } catch {
-    // Offline or unreachable: edits stay on the device, unstamped, until a check succeeds.
-    setSyncState(account.loadSession() ? 'offline' : 'expired');
-  }
-}
-
 // A row whose board summary doesn't describe it (written before the board column existed, by an older
 // cached build, or without a part this build adds) is given one counted from that row's own data, when
 // this load writes nothing itself. The write is conditional on the row's version, so a row another save
 // has moved since is left alone. Not while an opt-out here is unconfirmed: this device shows nothing new.
 function repairBoard(cloud) {
-  if (syncTimer || boardCurrent(cloud) || optOutPending(accounts.session)) return;
+  if (sync.state.syncTimer || boardCurrent(cloud) || optOutPending(accounts.session)) return;
   account.repairBoard(accounts.session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
     .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
 }
@@ -5016,7 +4725,7 @@ async function signOutAccount() {
   // account then signs out, as tabs that share one sign-in do.
   const stored = account.loadSession();
 
-  if (!signedOutElsewhere && stored?.user.id === userId) accounts.session = stored;
+  if (!sync.state.signedOutElsewhere && stored?.user.id === userId) accounts.session = stored;
   const ending = accounts.session;
 
   // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
@@ -5027,10 +4736,10 @@ async function signOutAccount() {
   const overtaken = () => {
     const now = account.loadSession();
 
-    if (!signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
+    if (!sync.state.signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
 
     // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
-    if (pendingSignOut === null) location.reload();
+    if (sync.state.pendingSignOut === null) location.reload();
 
     return true;
   };
@@ -5050,7 +4759,7 @@ async function signOutAccount() {
 
   for (let round = 0; round < 2 && !synced; round += 1) {
     absorbCache();
-    unsynced = true;
+    sync.state.unsynced = true;
     synced = await pushProfile();
 
     if (overtaken()) return;
@@ -5060,7 +4769,7 @@ async function signOutAccount() {
   }
 
   // The cache goes only if it still holds what the last push sent, checked as it is removed.
-  await account.signOut(accounts.session, { sentText: synced ? sentText : null });
+  await account.signOut(accounts.session, { sentText: synced ? sync.state.sentText : null });
   await accounts.replaceIdentity(null);
   location.reload();
 }
@@ -5135,9 +4844,9 @@ async function deleteAccountNow() {
 
   // The account is gone, so nothing may be saved or sent for it again. The inbox finds its device
   // entries through the session, so it forgets before the session goes.
-  clearTimeout(syncTimer);
-  syncTimer = 0;
-  unsynced = false;
+  clearTimeout(sync.state.syncTimer);
+  sync.state.syncTimer = 0;
+  sync.state.unsynced = false;
   inbox?.forget();
   forgetRace();
   friendsBoard?.forget();
@@ -5212,10 +4921,10 @@ function bindAccount() {
   addEventListener('online', () => {
     if (!accounts.session) return;
 
-    if (!cloudChecked) syncOnLoad();
+    if (!sync.state.cloudChecked) syncOnLoad();
     else pullProfile({ force: true });
 
-    if (cloudChecked) friendsBoard?.resume();
+    if (sync.state.cloudChecked) friendsBoard?.resume();
   }, { signal: lifetime.signal });
   // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
   // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
@@ -5224,17 +4933,17 @@ function bindAccount() {
   addEventListener('storage', (event) => {
     if (!accounts.session) return;
 
-    if (pendingSignOut !== null) {
+    if (sync.state.pendingSignOut !== null) {
       finishFollow(event);
 
       return;
     }
 
-    if (signedOutElsewhere || followSessionElsewhere(event)) return;
+    if (sync.state.signedOutElsewhere || followSessionElsewhere(event)) return;
 
     if (event.key !== account.profileKey(accounts.session.user.id)) return;
 
-    if (runInProgress()) cacheWaiting = true;
+    if (runInProgress()) sync.state.cacheWaiting = true;
     else if (absorbCache()) showMerged();
   }, { signal: lifetime.signal });
 }
@@ -5261,16 +4970,16 @@ function followSessionElsewhere(event) {
     || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
 
   if (!signedOut) return false;
-  signedOutElsewhere = true;
+  sync.state.signedOutElsewhere = true;
   void accounts.replaceIdentity(null);
   // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
   friendsBoard?.signOut();
-  clearTimeout(syncTimer);
-  syncTimer = 0;
+  clearTimeout(sync.state.syncTimer);
+  sync.state.syncTimer = 0;
   // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
   const sent = event.key === account.signedOutKey(userId) ? sentStamp(event.newValue) : null;
 
-  if (sent !== null) pendingSignOut = sent;
+  if (sent !== null) sync.state.pendingSignOut = sent;
   else if (!runInProgress()) location.reload();
 
   return true;
@@ -5301,8 +5010,8 @@ function finishFollow(event) {
 
   if (!finished) return;
 
-  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, pendingSignOut, cacheText);
-  pendingSignOut = null;
+  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, sync.state.pendingSignOut, sync.state.cacheText);
+  sync.state.pendingSignOut = null;
 
   if (!runInProgress()) location.reload();
 }
@@ -5610,7 +5319,7 @@ function bindEvents() {
     currentTheme: shownTheme,
     preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
     save: saveCustomThemes,
-    signedIn: () => Boolean(accounts.session) && !signedOutElsewhere,
+    signedIn: () => Boolean(accounts.session) && !sync.state.signedOutElsewhere,
     generate: (vibe) => account.generateTheme(accounts.session, vibe),
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
   });
@@ -6628,7 +6337,7 @@ document.fonts?.ready.then(() => { primaryFx.relayout(); updateGlides({ instant:
 
 console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 
-if (!storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
+if (!sync.state.storageAvailable) announce('Storage is unavailable. Results last only in this tab.');
 
 noticeDeletedAccount();
 
@@ -6683,6 +6392,7 @@ return {
     wallpaper.dispose();
     themeEditor.dispose();
     accounts.dispose();
+    sync.dispose();
     await disposePageWork();
   },
 };

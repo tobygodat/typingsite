@@ -1,3 +1,4 @@
+import { createProfileSync } from './profile-sync.js';
 import { createAccountSession } from './account-session.js';
 import { startPageWork } from './async-runtime.js';
 import { createThemeEditor } from './theme-editor.js';
@@ -26,6 +27,7 @@ const themeEditor = createThemeEditor();
 const wallpaper = createWallpaper();
 const practice = createPracticeSession();
 const learning = createLearningStore();
+const sync = createProfileSync(learning, accounts);
 const palette = createPalette();
 const settings = createSettings();
 const compose = createCompose();
@@ -35,7 +37,7 @@ const root = createRoot(container);
 
 flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} quoteFilters={quoteFilters} challenge={challenge} themeEditor={themeEditor} wallpaper={wallpaper} accounts={accounts} /></StrictMode>));
 
-const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts);
+const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync);
 
 function pagehide(event: PageTransitionEvent) {
   if (!event.persisted) void lifecycle.dispose();
