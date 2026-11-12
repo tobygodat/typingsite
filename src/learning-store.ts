@@ -1,3 +1,4 @@
+import type { SyncedProfile } from './profile-copy.js';
 import type { CopyPart } from './practice-session.js';
 import type { Preferences, HydratedProfile } from './profile-types.js';
 import type { trainPath } from './train-path.js';
@@ -46,7 +47,7 @@ export interface ComparisonView {
 }
 
 export function createLearningStore() {
-  let state: { profile: HydratedProfile; preferences: Preferences; livePreferences: string } | null = null;
+  let state: { profile: SyncedProfile<HydratedProfile>; preferences: Preferences; livePreferences: string } | null = null;
   const train = createStore<TrainView | null>(null);
   const comparison = createStore<ComparisonView>({ heading: 'Retest complete.', outcome: 'insufficient', unit: '', compared: true, target: null, accuracy: null, accuracyDelta: '—', wpm: null, wpmDelta: null, conditions: '', caveat: '' });
   const loops = createStore<LoopView[]>([]);
@@ -63,9 +64,9 @@ export function createLearningStore() {
     comparison,
     loops,
     commands,
-    initialize(profile: HydratedProfile, preferences: Preferences) { state = { profile, preferences, livePreferences: JSON.stringify(preferences) }; },
+    initialize(profile: SyncedProfile<HydratedProfile>, preferences: Preferences) { state = { profile, preferences, livePreferences: JSON.stringify(preferences) }; },
     get profile() { return current().profile; },
-    set profile(profile: HydratedProfile) { current().profile = profile; },
+    set profile(profile: SyncedProfile<HydratedProfile>) { current().profile = profile; },
     get preferences() { return current().preferences; },
     set preferences(preferences: Preferences) { current().preferences = preferences; },
     get livePreferences() { return current().livePreferences; },

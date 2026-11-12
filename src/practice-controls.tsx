@@ -11,7 +11,7 @@ function ModeButton({ mode, view, practice }: { mode: Preferences['mode']; view:
 
 export function PracticeControls({ practice }: { practice: PracticeSession }) {
   const view = useSyncExternalStore(practice.controls.subscribe, practice.controls.getSnapshot, practice.controls.getSnapshot);
-  const spec = view.mode === 'time' || view.mode === 'words' ? LENGTHS[view.mode] : null;
+  const spec = view.mode === 'time' || view.mode === 'words' ? LENGTHS[view.mode] : undefined;
   const current = view.mode === 'time' ? view.duration : view.count;
   const customLength = spec ? !isPresetLength(view.mode, current) : false;
   const special = view.custom || view.composing;

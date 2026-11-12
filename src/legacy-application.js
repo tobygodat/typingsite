@@ -75,7 +75,6 @@ import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speed
 import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
-import { createCompose } from './compose-view.js';
 import {
   FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
@@ -93,7 +92,7 @@ function copyParts(value) {
   });
 }
 
-export function attachApplication(practice, learning, palette, settingsView) {
+export function attachApplication(practice, learning, palette, settingsView, compose) {
 const selectSetting = settingsView.select;
 const disableSetting = settingsView.disable;
 const onSetting = settingsView.onSetting;
@@ -250,7 +249,6 @@ let keyboardTarget = null;
 
 // Composing practice takes the passage's place on the practice screen; see openCompose.
 let composeOpen = false;
-let compose = null;
 
 // The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
@@ -7035,7 +7033,7 @@ const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || naviga
 
 document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
 
-compose = createCompose({
+compose.configure({
   playKeySound: (outcome) => sounds.play(outcome),
   setRunning, announce, uid,
   signedIn: () => Boolean(session),

@@ -1,3 +1,4 @@
+import { createCompose } from './compose-view.js';
 import { createSettings } from './settings.js';
 import { createPalette } from './palette.js';
 import { StrictMode } from 'react';
@@ -16,8 +17,9 @@ const practice = createPracticeSession();
 const learning = createLearningStore();
 const palette = createPalette();
 const settings = createSettings();
+const compose = createCompose();
 const root = createRoot(container);
 
-flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} /></StrictMode>));
+flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} /></StrictMode>));
 
-attachApplication(practice, learning, palette, settings);
+attachApplication(practice, learning, palette, settings, compose);

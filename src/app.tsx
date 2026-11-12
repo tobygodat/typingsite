@@ -1,3 +1,5 @@
+import { ComposeSurface } from './compose-view.js';
+import type { ComposeController } from './compose-view.js';
 import type { SettingsController } from './settings.js';
 import { Palette } from './palette.js';
 import type { PaletteController } from './palette.js';
@@ -13,7 +15,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController }) {
+export function App({ practice, learning, palette, settings, compose }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -194,64 +196,7 @@ export function App({ practice, learning, palette, settings }: { practice: Pract
           </div>
         </div>
 
-        <form id="compose-form" className="compose-form" autoComplete="off" noValidate hidden>
-          <div className="measure-row compose-measure">
-            <div className="compose-intro">
-              <p className="sr-only">Composing practice. Write in response to the prompt; there is no text to copy.</p>
-              <h1 id="compose-prompt" className="compose-prompt"></h1>
-              <p id="compose-conditions" className="condition-copy"></p>
-            </div>
-            <div className="compose-side">
-              <button id="compose-another" className="btn btn-ghost btn-sm compose-another" type="button">Another prompt</button>
-              <div className="live-stat timer-stat">
-                <strong id="compose-timer" className="num">60</strong><span>s</span>
-                <small className="sr-only">remaining</small>
-              </div>
-            </div>
-          </div>
-
-          <div className="compose-wrap">
-            <label className="sr-only" htmlFor="compose-input">Your answer to the prompt</label>
-            <textarea id="compose-input" aria-describedby="compose-prompt compose-hint compose-privacy" maxLength={2000} spellCheck={false} autoCapitalize="sentences" autoComplete="off" autoCorrect="off" placeholder="Start typing. The minute starts with your first key."></textarea>
-            <span id="compose-hint" className="sr-only">Up to 60 seconds from your first key. Press Control+Enter or Done to finish. Escape starts over.</span>
-          </div>
-
-          <div id="compose-progress" className="progress-line" role="progressbar" aria-label="Composing time used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={0} aria-valuetext="Not started">
-            <span id="compose-progress-bar"></span>
-          </div>
-
-          <div id="compose-footer" className="typing-footer compose-footer">
-            <div className="compose-notes">
-              <p id="compose-help" className="compose-help"></p>
-              <p id="compose-privacy" className="compose-privacy"></p>
-            </div>
-            
-            <div className="typing-actions">
-              <button id="compose-done" className="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled>Done</button>
-              <button id="compose-restart" className="icon-control" type="button" title="Start over (Escape)" aria-label="Start over">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg>
-              </button>
-            </div>
-          </div>
-
-          <section id="compose-result" className="compose-result" aria-labelledby="compose-result-heading" hidden>
-            <h2 id="compose-result-heading"></h2>
-            <dl className="compose-facts">
-              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" className="num" data-bare="">—</strong><span data-speed-unit="">wpm</span></dd></div>
-              <div><dt>backspace rate</dt><dd><strong id="compose-backspace" className="num">—</strong><span>%</span></dd></div>
-              <div><dt>active typing</dt><dd><strong id="compose-active" className="num">—</strong><span>s</span></dd></div>
-              <div><dt>characters</dt><dd><strong id="compose-characters" className="num">—</strong></dd></div>
-            </dl>
-            <p id="compose-definition" className="metric-note"></p>
-            <div className="compose-result-foot">
-              <p id="compose-saved" className="compose-saved"></p>
-              <div className="compose-result-actions">
-                <button id="compose-retry" className="btn btn-ghost" type="button">Retry this prompt</button>
-                <button id="compose-next" className="btn btn-primary" type="button">Write another</button>
-              </div>
-            </div>
-          </section>
-        </form>
+        <ComposeSurface compose={compose} />
 
         <div className="shortcut-row key-hint" aria-hidden="true">
           <span className="compose-shortcut"><kbd className="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
