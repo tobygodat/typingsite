@@ -1,3 +1,4 @@
+import type { HistoricalRecord } from './profile-types.js';
 import { at } from './domain-values.js';
 
 export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
@@ -514,7 +515,7 @@ export function failureAtEnd(policy: CorrectionPolicy, text: string, typed: stri
 // Quick end decides how a word or quote run ends when its last word has a mistake. It only
 // matters where a mistake can stand: stop on error already needs every letter right, and a timed
 // run ends on the clock.
-export function quickEndApplies(conditions: Conditions = {}) {
+export function quickEndApplies(conditions: Conditions | HistoricalRecord = {}) {
   return conditions.mode !== 'time' && conditions.correctionPolicy === 'relaxed';
 }
 
@@ -542,7 +543,7 @@ export function refusesSpace(conditions: Conditions = {}, text: string, position
 
 // Input rules away from the defaults, in the order conditionKey appends them. Defaults add
 // nothing, so runs saved before these settings existed keep their keys.
-export function inputRules(conditions: Conditions = {}) {
+export function inputRules(conditions: Conditions | HistoricalRecord = {}) {
   const rules = [];
 
   if (conditions.strictSpace === true) rules.push('strict-space');
@@ -1066,7 +1067,7 @@ export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
-export function conditionKey(conditions: Conditions = {}) {
+export function conditionKey(conditions: Conditions | HistoricalRecord = {}) {
   const key = [
     // Code runs key by language and book pages by book; other modes keep their existing keys.
     conditions.mode === 'code' ? `code-${conditions.codeLanguage || 'js'}` : conditions.mode === 'book' ? `book-${conditions.book}` : conditions.mode,
