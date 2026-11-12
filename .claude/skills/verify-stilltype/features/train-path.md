@@ -53,6 +53,6 @@ Preconditions:
 
 - The drill only retests when there is a baseline at the same conditions in this tab. The flow types one 10-word
   run after signing in for that; without it the drill stands alone and no comparison opens.
-- A drilled target usually stays named after one retest: the learner remembers a lot. It then comes back as the
+- A drilled target usually stays named after one retest: the learner remembers a lot (34 to 111 clean runs on TOB-419's measure). `learner-let-go@2`, which lets one go sooner, failed ADR 0019's rule and is not the default, so a clean pair stays the open step for a long time in the browser too. It then comes back as the
   open step on the next visit, not behind you. A path grows as targets leave the learner's top four.
 - The mid-drill shot waits out a 15-second drill in real time (the flow sets the drill length from the palette).
