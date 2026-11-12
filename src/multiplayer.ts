@@ -11,7 +11,7 @@ import type { RaceConditions, CompactTrace, RaceRoom, RaceEntry } from './networ
 
 export type { RaceRoom, RaceEntry, RacePlayer, Friend, RaceInvite, PeopleLinks, QuickMatchReply } from './network-race.js';
 
-export interface RaceCredentials { roomId?: string; guestToken?: string; inviteToken?: string }
+export type RaceCredentials = { -readonly [K in 'roomId' | 'guestToken' | 'inviteToken']?: RaceEntry[K] };
 
 type Passage = string | { id?: string; text: string };
 

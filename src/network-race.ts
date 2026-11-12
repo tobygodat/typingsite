@@ -55,7 +55,7 @@ const RoomSchema = open({
 
 export type RaceRoom = typeof RoomSchema.Type & { passage: { id: string; text: string } };
 
-export const EntrySchema = open({ roomId: Schema.String, room: RoomSchema, guestToken: Schema.optional(Schema.String), inviteToken: Schema.optional(Schema.String) });
+export const EntrySchema = open({ roomId: Schema.String, room: RoomSchema, guestToken: optionalString, inviteToken: optionalString });
 
 export type RaceEntry = typeof EntrySchema.Type & { room: RaceRoom };
 

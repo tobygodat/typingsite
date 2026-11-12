@@ -228,3 +228,15 @@ test('quick-match rating replies preserve nullable SQL outcomes and reject unkno
   assert.throws(() => quickReply({ rating: 1000, races: 2,
     last: { roomId: 'room', rated: false, reason: null, outcome: 'unknown', before: 1000, after: 1000, delta: 0, races: 2 } }));
 });
+
+
+test('race entry replies preserve absent or nullable account tokens without inventing guest credentials', async () => {
+  const { entryReply } = await import('../src/network-race.js');
+
+  for (const tokens of [{}, { inviteToken: null }, { guestToken: null }, { guestToken: 'guest', inviteToken: 'invite' }]) {
+    const reply = entryReply({ roomId: 'room', room: { id: 'room', passage: 'hello' }, ...tokens });
+    assert.deepEqual(Object.fromEntries(Object.entries(reply).filter(([key]) => key.endsWith('Token'))), tokens);
+  }
+
+  assert.throws(() => entryReply({ roomId: 'room', room: { id: 'room', passage: 'hello' }, guestToken: 42 }));
+});
