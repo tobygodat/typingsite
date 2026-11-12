@@ -1,8 +1,9 @@
 // Progress, "What changed" (TOB-420). A new guest's page, then accounts whose history another device synced, dated
-// from today: a week with a gain (a pair fixed, a pair fixed by pace since its drill, a pair slipping, practice
-// down), a week with a drop, a week with no change, and one week of history only. Shots: each lead and list, the
-// conditions control open, every detail view and the way back, a slipping pair's drill, and Clear history then Undo.
-// PROGRESS_ONLY=gain (or drop, flat, week, guest) runs one account.
+// from today: a week with a gain (two pairs fixed, one fixed by pace since its drill, practice down), one pair fixed,
+// nothing fixed with practice, runs a month old (no list), a week with a drop, a week with no change, and one week of
+// history only. Shots: each lead and list, the conditions control open, every detail view and the way back, a drill
+// from Patterns across runs, and Clear history then Undo.
+// PROGRESS_ONLY=gain (or one, practice, quiet, drop, flat, week, guest) runs one account.
 import { englishFrequency } from '../../../../src/learner.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../../../../src/typing.js';
 
@@ -33,20 +34,28 @@ const loop = (id, target, after, extra) => ({ id, at: after.at, beforeAttemptId:
   policy: 'learner-decay-timing@1', focus: 'balanced', drillCompleted: true, conditions, comparison: { comparable: true, state: 'improved', wpmDelta: 3, accuracyDelta: 1.5 },
   targetTiming: null, targetMisses: null, targetPace: null, drill: { target, duration: 30, wordList: '1k' }, ...extra });
 
-// Last week: "qu" missed now and then, "ol" slow, "ex" clean. This week: "qu" clean, "ol" at pace since its drill,
-// "ex" missed. Speeds by `shape`: gain, drop or flat.
-export function history(shape = 'gain') {
+// Last week: "qu" and "ex" missed once a run, "ol" slow. This week: "qu" and "ex" clean in more tries, "ol" at pace
+// since its drill. Speeds by `shape`: gain, drop or flat; `fixed` picks which of the three are typed at all.
+export function history(shape = 'gain', fixed = ['qu', 'ol', 'ex']) {
   const speeds = { gain: [[70, 72, 74, 73, 75, 71, 74], [76, 78, 77, 79, 78, 80, 77, 79]], drop: [[78, 80, 79, 81, 80, 79, 82], [74, 75, 73, 76, 75, 74, 76, 75]],
     flat: [[74, 76, 75, 77, 75, 74, 76], [75, 76, 74, 75, 77, 75, 74, 76]] }[shape];
-  const before = speeds[0].map((wpm, i) => run(`b${i}`, 13 - i, 18, wpm, [['qu', 8, 1, 8, 200, 0], ['ol', 12, 0, 12, 300, 100], ['ex', 8, 0, 8, 200, 0]]));
-  const retest = run('retest-ol', 6, 9, 75, [['ol', 12, 0, 12, 200, 0], ['qu', 15, 0, 15, 200, 0]]);
-  const after = speeds[1].map((wpm, i) => run(`a${i}`, Math.max(0, 5 - i), 12 + (i % 3) * 3, wpm, [['qu', 15, 0, 15, 200, 0], ['ol', 12, 0, 12, 195, -5], ['ex', 8, 2, 8, 200, 0]]));
-  const loops = [loop('loop-ol', 'ol', retest, { targetBasis: 'slow', targetPace: { target: 'ol', was: { slowMs: 100, timed: 60, timedRuns: 5, slowRuns: 5 }, now: { slowMs: 0, timed: 12 } } })];
+  const typed = (rows) => rows.filter(([pair]) => fixed.includes(pair));
+  const before = speeds[0].map((wpm, i) => run(`b${i}`, 13 - i, 18, wpm, typed([['qu', 8, 1, 8, 200, 0], ['ol', 12, 0, 12, 300, 100], ['ex', 8, 1, 8, 200, 0]])));
+  const retest = run('retest-ol', 6, 9, 75, typed([['ol', 12, 0, 12, 200, 0], ['qu', 15, 0, 15, 200, 0], ['ex', 15, 0, 15, 200, 0]]));
+  const after = speeds[1].map((wpm, i) => run(`a${i}`, Math.max(0, 5 - i), 12 + (i % 3) * 3, wpm, typed([['qu', 15, 0, 15, 200, 0], ['ol', 12, 0, 12, 195, -5], ['ex', 15, 0, 15, 200, 0]])));
+  const loops = fixed.includes('ol') ? [loop('loop-ol', 'ol', retest, { targetBasis: 'slow', targetPace: { target: 'ol', was: { slowMs: 100, timed: 60, timedRuns: 5, slowRuns: 5 }, now: { slowMs: 0, timed: 12 } } })] : [];
   // Practice: more minutes the week before than this week.
   const practiceDays = Object.fromEntries([8, 9, 10, 11].map((back) => [dayOf(local(back, 12)), 20 * 60_000]));
 
   return { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: [], runs: [...before, retest, ...after], loops, practiceDays, seenTextIds: [], bests: {},
     updatedAt: new Date().toISOString() };
+}
+
+// Runs a month old and nothing since: no week to compare, nothing fixed, no practice this fortnight.
+export function quiet() {
+  const runs = [60, 62, 61].map((wpm, i) => run(`q${i}`, 30 - i, 19, wpm, []));
+
+  return { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: [], runs, loops: [], seenTextIds: [], bests: {}, updatedAt: new Date().toISOString() };
 }
 
 // One week of history only: five runs this week.
@@ -61,7 +70,8 @@ export default async ({ page, h, shot, note, check, fake }) => {
   const want = (name) => !only || only === name;
   const width = page.viewportSize().width;
   const sideways = async () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  const rows = async () => page.locator('#week-movers > li:not([hidden])').evaluateAll((items) => items.map((item) => `${item.dataset.unit || 'practice'}:${item.dataset.status || item.querySelector('.status')?.textContent}`));
+  const rows = async () => page.locator('#week-movers > li:not([hidden])').evaluateAll((items) => items.map((item) => `${item.dataset.unit || 'practice'}:${item.querySelector('.status')?.textContent}`));
+  const data = { gain: () => history('gain'), one: () => history('gain', ['qu']), practice: () => history('gain', []), quiet, drop: () => history('drop'), flat: () => history('flat'), week: firstWeek };
 
   await h.openApp();
 
@@ -73,9 +83,9 @@ export default async ({ page, h, shot, note, check, fake }) => {
     await shot('guest');
   }
 
-  for (const shape of ['gain', 'drop', 'flat', 'week'].filter(want)) {
+  for (const shape of Object.keys(data).filter(want)) {
     const user = fake.addUser(`${shape}@stilltype.test`);
-    fake.profiles.set(user.id, { data: shape === 'week' ? firstWeek() : history(shape) });
+    fake.profiles.set(user.id, { data: data[shape]() });
 
     if (await page.locator('#account[data-state="member"]').count()) {
       await page.keyboard.press('Control+k');
@@ -94,10 +104,16 @@ export default async ({ page, h, shot, note, check, fake }) => {
     check(await sideways() <= 0, `${shape}: nothing scrolls sideways at ${width}`);
     await shot(shape);
 
+    if (shape === 'one') check(JSON.stringify(await rows()) === JSON.stringify(['qu:fixed', 'practice:less']) && await page.locator('#more-movers').isHidden(), 'one fixed pair, then practice, no "more"');
+
+    if (shape === 'practice') check(JSON.stringify(await rows()) === JSON.stringify(['practice:less']), 'practice alone');
+
+    if (shape === 'quiet') check(await page.locator('#week-moved').isHidden() && await page.locator('#progress-more').isVisible(), 'no list, the links still there');
+
     if (shape !== 'gain') continue;
     check((await page.locator('#week-lead').getAttribute('data-tone')) === 'gain', 'the gain reads as a gain');
     const statuses = await rows();
-    check(statuses.includes('qu:fixed') && statuses.includes('ol:fixed') && statuses.includes('ex:slipping'), 'a pair fixed, one fixed by pace, one slipping');
+    check(['qu:fixed', 'ol:fixed', 'ex:fixed'].every((row) => statuses.includes(row)), 'two pairs fixed, one fixed by pace');
 
     // The conditions control, open.
     await page.locator('.conditions-disclosure > summary').click();
@@ -131,11 +147,14 @@ export default async ({ page, h, shot, note, check, fake }) => {
     check((await h.text('#lead-figure')).length > 0 && await page.locator('#week-lead').isVisible(), 'undone: the lead is back');
     await shot('undone');
 
-    // A slipping pair's drill starts the drill Train would.
-    await page.locator('#week-movers li[data-status="slipping"] button').first().click();
+    // A named pair is drilled from Patterns across runs, one step away.
+    await page.locator('[data-progress-open="keys"]').click();
+    const target = page.locator('#training-targets .training-target').first();
+    const unit = (await target.locator('h3').textContent()).match(/“(.+)”/)[1];
+    await target.getByRole('button').click();
     await h.attr('#typing-screen', 'data-session', 'drill');
     note('drill title', await h.text('#session-title'));
-    check((await h.text('#session-title')) === 'Practice “ex”', 'Drill “ex” starts a drill on ex');
+    check((await h.text('#session-title')) === `Practice “${unit}”`, `Practice “${unit}” again starts a drill on it`);
     await shot('drill');
   }
 };

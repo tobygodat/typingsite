@@ -20,7 +20,7 @@ export default async ({ page, h, shot, check, fake }) => {
     await page.locator('#settings-dialog').waitFor({ state: 'hidden' });
     await h.openView('Progress');
     await h.settle();
-    check((await page.locator('#week-movers li[data-status="slipping"]').count()) === 1, `${theme}: the slipping pair shows`);
+    check((await page.locator('#week-movers li.is-fixed:not([hidden])').count()) === 3, `${theme}: the three fixed pairs show`);
     await shot(theme);
   }
 };
