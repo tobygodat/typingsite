@@ -1,3 +1,5 @@
+import { createOnlineRace } from './online-race.js';
+import { createPracticeRun } from './practice-run.js';
 import { createPracticeRecording } from './practice-recording.js';
 import { createHistoryClear } from './history-clear.js';
 import { createReleaseDialog } from './release-dialog.js';
@@ -30,6 +32,8 @@ export function createApplication() {
     accounts, learning, practice, sync,
     historyClear: createHistoryClear(learning, practice, sync),
     recording: createPracticeRecording(learning, sync),
+    practiceRun: createPracticeRun(practice, learning, sync),
+    onlineRace: createOnlineRace(),
     inbox: createInbox(),
     friendsBoard: createFriendsBoard(),
     deletion: createAccountDeletion(accounts),

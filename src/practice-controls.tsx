@@ -22,7 +22,7 @@ export function PracticeControls({ practice, quoteFilters }: { practice: Practic
   const moreLabel = view.composing ? 'compose' : view.custom ? 'custom' : ['code', 'standard', 'book'].includes(mode) ? mode : 'more';
 
   return (
-        <div className="practice-controls" aria-label="Practice setup">
+        <div className="practice-controls" aria-label="Practice setup" hidden={!view.visible}>
           <div className="practice-rail">
             <div className="segmented glide mode-options" role="group" aria-label="Practice mode" data-glide="pressed">
               <span className="glide-pill" aria-hidden="true"></span>
@@ -58,7 +58,7 @@ export function PracticeControls({ practice, quoteFilters }: { practice: Practic
               </div>
               <div id="book-options" className="segmented quote-options book-options" role="group" aria-label="Book" hidden={special || view.mode !== 'book'}>
                 <QuoteFilters controller={quoteFilters} books />
-                <span id="book-page" className="book-page"></span>
+                <span id="book-page" className="book-page">page {view.bookPage}</span>
               </div>
               <div id="code-options" className="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden={special || view.mode !== 'code'}>
                 {['js', 'python', 'go', 'rust'].map((language) => <button key={language} type="button" data-language={language} aria-pressed={view.codeLanguage === language} className={view.codeLanguage === language ? 'is-active' : ''} onClick={() => practice.choices.chooseLanguage(language)}>{language}</button>)}

@@ -1,3 +1,4 @@
+import { markEndFailure } from './practice-run.js';
 import { FINGER_ROWS, FINGER_COLUMNS, fingerMapLabel } from './finger-map.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
@@ -32,7 +33,6 @@ import {
   orderCustomText,
   passageComplete,
   correctionPreference,
-  failureAtEnd,
   replayAttempt,
   selectPassage,
   standardConditions,
@@ -57,7 +57,6 @@ import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from
 import { matchesBinding, bindingLabel, ariaShortcuts } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
-import { createOnlineRace } from './online-race.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
@@ -73,7 +72,7 @@ import {
   LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
 } from './lessons.js';
-import { createRunCounter, runCountTotals } from './run-counts.js';
+import { runCountTotals } from './run-counts.js';
 import { CUSTOM_ORDERS, DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 function copyParts(value) {
@@ -86,13 +85,12 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
 const clearTimeout = lifetime.clearTimeout;
 const setInterval = lifetime.interval;
-const clearInterval = lifetime.clearInterval;
 const requestAnimationFrame = lifetime.frame;
 const cancelAnimationFrame = lifetime.cancelFrame;
 const selectSetting = settingsView.select;
@@ -124,7 +122,7 @@ await accounts.replaceIdentity(accounts.session);
 const { loadProfile, saveProfile, storeLocally, commitPreferences, saveChoice, absorbCache, pushProfile, pullProfile, syncOnLoad } = sync;
 sync.configure({ running: () => runInProgress(), showMerged, resetListedRuns() { progressState.allRuns = false; }, boardFor: (data) => boardFor(data),
   boardPushed() { friendsBoard?.pushed(); }, boardResume() { friendsBoard?.resume(); }, repairBoard, adoptProfile,
-  legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences); }, clearCountsUnsaved() { countsUnsaved = false; } });
+  legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences); }, clearCountsUnsaved() { runSession.markCountsSaved(); } });
 
 
 // Saves only count as edits once the account row has been compared with the device cache;
@@ -155,6 +153,8 @@ let historyWaiting = false;
 // The device cache as the last push that left nothing unsent stored it: what a sign-out here has sent.
 // absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
 
+const saveRunCounts = runSession.saveCounts;
+const runPosition = runSession.position;
 const initialProfile = loadProfile();
 learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences));
 
@@ -167,7 +167,7 @@ learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences)
 
 let preferencesWaiting = false;
 let passage = null;
-let ticker = null;
+
 let primaryCharacters = [];
 let primaryTextView = null;
 let primaryNotice = '';
@@ -220,7 +220,6 @@ let wordsPassage = null;
 const ghostOn = () => learning.preferences.paceCaret !== 'off';
 let keybindingEditor = null;
 let detachWallpaper = null;
-let onlineRace = null;
 let baselineAttempt = null;
 let selectedTarget = null;
 let trainingContext = null;
@@ -292,10 +291,6 @@ let race = {
 
 // Runs started and finished (src/run-counts.js). A start is counted at the first key but written with the
 // next save (the run's end, a restart, leaving the page), never on the keystroke itself.
-const runCounter = createRunCounter();
-let runTicket = null;
-let countsUnsaved = false;
-const saveRunCounts = () => countsUnsaved && saveProfile();
 
 // Signed in, the profile is cached on this device and synced to the account shortly after.
 // A guest's profile lives only in memory, so there is nothing to fail.
@@ -879,8 +874,6 @@ function applyPreferences() {
   renderKeyboard();
   applySoundPreferences();
   applyTheme();
-  $('punctuation-toggle').checked = learning.preferences.punctuation;
-  $('adaptive-toggle').checked = learning.preferences.adaptive;
   selectSetting('numbers-toggle', Boolean(learning.preferences.numbers));
   quoteFilters.refresh();
   selectSetting('word-list', learning.preferences.wordList);
@@ -992,8 +985,6 @@ function syncLockedSettings() {
   const standard = standardLocked();
   // Quotes, code snippets and book pages are fixed text, so these settings don't apply to them.
   const fixed = ['quote', 'code', 'book'].includes(learning.preferences.mode);
-  $('punctuation-toggle').disabled = fixed || standard;
-  $('punctuation-toggle').checked = standard || learning.preferences.punctuation;
   disableSetting('numbers-toggle', fixed || standard);
   selectSetting('numbers-toggle', standard || Boolean(learning.preferences.numbers));
   disableSetting('word-list', fixed || standard);
@@ -1012,43 +1003,14 @@ function setModeControls() {
   quoteFilters.dismiss();
   // Composing takes the passage's place, so Custom is never marked over it.
   const custom = !composeOpen && (customOpen || practice.sessionKind === 'custom');
-  $('mode-custom').classList.toggle('is-active', custom);
-  $('mode-custom').setAttribute('aria-pressed', String(custom));
-  $('mode-custom').setAttribute('aria-expanded', String(customOpen));
   $('custom-options').hidden = !customOpen;
-  document.querySelectorAll('[data-mode]').forEach((button) => {
-    const selected = !custom && !composeOpen && button.dataset.mode === learning.preferences.mode;
-    button.classList.toggle('is-active', selected);
-    button.setAttribute('aria-pressed', String(selected));
-  });
-  $('mode-compose').classList.toggle('is-active', composeOpen);
-  $('mode-compose').setAttribute('aria-pressed', String(composeOpen));
-  $('quote-options').hidden = custom || composeOpen || learning.preferences.mode !== 'quote';
-  $('standard-options').hidden = custom || composeOpen || learning.preferences.mode !== 'standard';
-  $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
   syncLockedSettings();
-  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code', 'book'].includes(learning.preferences.mode);
-  $('book-options').hidden = custom || composeOpen || learning.preferences.mode !== 'book';
-  // Custom text and composing hide the code language row, as they do the lengths.
-  $('code-options').hidden = custom || composeOpen || learning.preferences.mode !== 'code';
-  $('code-options').querySelectorAll('[data-language]').forEach((button) => {
-    const selected = button.dataset.language === learning.preferences.codeLanguage;
-    button.classList.toggle('is-active', selected);
-    button.setAttribute('aria-pressed', String(selected));
-  });
-  document.querySelectorAll('.practice-rail .compact-switch').forEach((toggle) => { toggle.hidden = custom || composeOpen; });
-
-  // Adaptive text is drawn word by word, so it only exists for time and words tests.
-  if (!['time', 'words'].includes(learning.preferences.mode)) $('adaptive-switch').hidden = true;
-  // "more" takes the name of the mode chosen inside it.
-  const moreActive = $('mode-more').querySelector('[aria-pressed="true"]');
-  $('mode-more-label').textContent = moreActive ? moreActive.textContent : 'more';
-  $('mode-more').toggleAttribute('data-active', Boolean(moreActive));
   showMinimumNote();
 
   if (custom || composeOpen || learning.preferences.mode === "standard") closeCustomLength();
   renderLengthOptions();
   flushSync(() => practice.controls.publish({
+    visible: practice.sessionKind === 'practice' || practice.sessionKind === 'custom', bookPage: bookPlace(learning.profile.runs, learning.preferences.book) + 1,
     mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count,
     lengthMode: ['time', 'words'].includes(learning.preferences.mode) ? learning.preferences.mode : practice.controls.getSnapshot().lengthMode,
     lengthValue: learning.preferences.mode === 'time' ? learning.preferences.duration : learning.preferences.mode === 'words' ? learning.preferences.count : practice.controls.getSnapshot().lengthValue,
@@ -1406,12 +1368,7 @@ function configureSessionCopy() {
   $('session-description').textContent = copy[2];
   $('typing-screen').dataset.session = practice.sessionKind;
   document.body.dataset.session = practice.sessionKind;
-  const setup = document.querySelector('.practice-controls');
-
-  if (setup) setup.hidden = practice.sessionKind !== 'practice' && practice.sessionKind !== 'custom';
-  $('quote-options').hidden = practice.sessionKind !== 'practice' || learning.preferences.mode !== 'quote' || composeOpen;
-  $('standard-options').hidden = practice.sessionKind !== 'practice' || learning.preferences.mode !== 'standard' || composeOpen;
-  $('book-page').textContent = `page ${bookPlace(learning.profile.runs, learning.preferences.book) + 1}`;
+  flushSync(() => practice.controls.publish({ ...practice.controls.getSnapshot(), visible: practice.sessionKind === 'practice' || practice.sessionKind === 'custom', bookPage: bookPlace(learning.profile.runs, learning.preferences.book) + 1 }));
   // Every new run (resetSession) brings its own settings and input class to the footer best.
   showBest();
 }
@@ -1435,8 +1392,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
   // Setting the field ends a composition without compositionend, so forget it first, and a held accent key
   // (let go while the field couldn't hear it).
   typingHost.clearFor('primary');
-  clearInterval(ticker);
-  ticker = null;
+  runSession.stopClock();
   setRunning(false);
   saveRunCounts();
   // The next passage is prepared with the newest stored preferences, including any from elsewhere. A
@@ -1600,8 +1556,7 @@ function showUnavailableRetest(reason) {
 // A run in progress is dropped, as a restart would drop it; it was never stored.
 function openCompose() {
   if (!composeOpen) {
-    clearInterval(ticker);
-    ticker = null;
+    runSession.stopClock();
 
     if (practice.attempt?.status === 'running') {
       primaryFx.finish();
@@ -1644,18 +1599,7 @@ function focusPractice() {
 
 function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
   if (type === 'primary') {
-    if (practice.startTime !== null) return;
-    practice.startTime = stamp;
-    practice.attempt.status = 'running';
-    practice.attempt.startedAt = 0;
-    ticker = setInterval(() => updateLive(), 100);
-    primaryFx.ghost.run(stamp);
-    ({ counts: learning.profile.runCounts, ticket: runTicket } = runCounter.start(learning.profile.runCounts, dayKey(new Date())));
-    countsUnsaved = true;
-    setRunning(true);
-    // A message left by an abandoned custom length belongs to the row, not to the run.
-    setCustomLengthError('');
-    $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
+    runSession.start(stamp);
   } else if (type === 'online') {
     // The race clock started at the shared start.
     targetAttempt.status = 'running';
@@ -1900,11 +1844,7 @@ const rateShown = (completed) => comparableKind(completed.kind) || completed.sum
 // Where the primary run stands: worked out from the run itself on every call (its duration, and
 // whether its passage is finished or, with quick end off, its last word submitted by space), so no
 // caller states the end conditions by hand.
-function runPosition(replay, elapsedMs) {
-  const submitted = practice.attempt.events.some((event) => event.type === 'submit');
 
-  return { elapsedMs, durationMs: sessionDurationMs(), finished: submitted || passageComplete(practice.attempt, replay.typed) };
-}
 
 function updateLive(reset = false, at = now()) {
   if (!practice.attempt) return;
@@ -1966,14 +1906,7 @@ function storeAttempt(completed) { return recording.store(completed); }
 
 // The end of a run (the timer, the passage end) is a word boundary for the failure
 // policies, so a wrong letter typed just before the timer runs out still fails the run.
-function markEndFailure(target) {
-  if (target.interrupted) return;
-  const failed = failureAtEnd(target.conditions.correctionPolicy, target.text, replayAttempt(target).typed);
 
-  if (!failed) return;
-  target.interrupted = true;
-  target.failed = failed;
-}
 
 const failedDrill = (completed) => completed.kind === 'drill' && Boolean(completed.failed);
 
@@ -1985,29 +1918,12 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
   // the disabled field hear a held accent key let go.
   typingHost.clearFor('primary');
-  clearInterval(ticker);
-  ticker = null;
+  runSession.stopClock();
   const endedAt = forcedElapsed ?? offsetFor();
-  markEndFailure(practice.attempt);
-  const clean = !practice.attempt.interrupted && !practice.attempt.unsupportedInput;
-  const final = completeAttempt(practice.attempt, { endedAt });
-  // A run that reaches its end (its duration or its passage) under a minimum isn't counted either,
-  // so every counted run met them. The tick passes a live stop from the same judgement. A run the
-  // correction policy failed is already interrupted, and says so rather than naming a minimum.
-  const stopped = clean ? stop || minimumStop(practice.attempt.minimums, final.summary, runPosition(final.summary, endedAt)) : null;
-  const valid = clean && !stopped;
-  const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
+  const sealed = runSession.seal(endedAt, stop);
 
-  if (stopped) completed.stopped = stopped;
-  completed.interrupted = practice.attempt.interrupted;
-  completed.unsupportedInput = practice.attempt.unsupportedInput;
-  completed.fresh = practice.attempt.fresh;
-
-  if (practice.attempt.failed) completed.failed = practice.attempt.failed;
-
-  if (valid && runTicket) learning.profile.runCounts = runCounter.finish(learning.profile.runCounts, runTicket);
-  runTicket = null;
-  practice.attempt = completed;
+  if (!sealed) return;
+  const { completed, valid } = sealed;
   $('typing-input').disabled = true;
   primaryFx.finish();
   setRunning(false);
@@ -4543,6 +4459,9 @@ function openAccountDialog(mode) { accounts.open(mode); }
 function showAccountToast(message, tone = 'problem') { accounts.notify(message, tone); announce(message); }
 
 function bindAccount() {
+  runSession.configure({ durationMs: sessionDurationMs, tick: () => updateLive(), startFx: (stamp) => primaryFx.ghost.run(stamp), started() {
+    setRunning(true); setCustomLengthError(''); $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>In progress';
+  } });
   recording.configure(showBest);
   learning.progress.commands.clear = historyClear.open;
   historyClear.configure({ dismissFilters: () => quoteFilters.dismiss(), passageLabel: () => ({ fresh: passage?.fresh, exhausted: passage?.exhausted }), labelPassage,
@@ -5813,7 +5732,7 @@ friendsBoard.configure({
   onShared: repairBoardNow,
 });
 
-onlineRace = createOnlineRace({
+onlineRace.configure({
   rankCard: challenge.rankCard, review: challenge.review, people: challenge.people, quick: challenge.quick,
   getSession: () => accounts.session,
   inbox,
@@ -5822,7 +5741,7 @@ onlineRace = createOnlineRace({
   navigate, renderText, updateCharacterStates, setRunning, announce,
   wireTyping: wireOnlineTyping,
   updateGlide,
-  ownBest: ownBestRun,
+  ownBest: () => Boolean(ownBestRun()),
   raceOwnBest: startOwnGhost,
   raceGhost: startGhostRace,
   // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
@@ -5888,6 +5807,8 @@ return {
     lifetime.dispose();
     stopSequence();
     typingHost.dispose();
+    runSession.dispose();
+    onlineRace.dispose();
     practice.replay.dispose();
     primaryFx.dispose();
     raceFx.dispose();

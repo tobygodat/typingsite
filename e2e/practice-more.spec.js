@@ -36,7 +36,7 @@ test('modes, lengths and punctuation float in separate groups; "more" names the 
   // The gliding pill rests under the renamed summary, as it would under any chosen mode.
   const summary = await page.locator('#mode-more-label').boundingBox();
   await expect.poll(async () => {
-    const pill = await page.locator('.mode-options > .glide-pill').boundingBox();
+    const pill = await rail.locator('.mode-options > .glide-pill').boundingBox();
 
     return Math.abs(pill.x - summary.x) + Math.abs(pill.width - summary.width);
   }).toBeLessThan(2);
