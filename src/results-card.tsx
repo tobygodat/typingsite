@@ -37,7 +37,7 @@ function ResultWords({ result }: { result: ResultView | null }) {
 }
 
 export function ResultsCard({ practice }: { practice: PracticeSession }) {
-  const result = useSyncExternalStore(practice.result.subscribe, practice.result.getSnapshot);
+  const result = useSyncExternalStore(practice.result.subscribe, practice.result.getSnapshot, practice.result.getSnapshot);
   const { commands } = practice;
 
   return <>

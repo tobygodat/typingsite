@@ -69,7 +69,7 @@ import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
-import { aheadCopy, behindCopy, evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
+import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
 import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, bestRun, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
@@ -95,18 +95,22 @@ function copyParts(value) {
   });
 }
 
-export function attachApplication(practice) {
+export function attachApplication(practice, learning) {
+function updateComparison(patch) {
+  flushSync(() => learning.comparison.publish({ ...learning.comparison.getSnapshot(), ...patch }));
+}
+
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
 
 let customOpen = false;
 
 function customPassage() {
-  const text = normalizeCustomText(prefs.customText);
+  const text = normalizeCustomText(learning.preferences.customText);
 
   if (!text) return null;
 
-  return { id: null, text: orderCustomText(text, prefs.customOrder), fresh: false };
+  return { id: null, text: orderCustomText(text, learning.preferences.customOrder), fresh: false };
 }
 
 const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'random words' }[order] || 'as written');
@@ -159,15 +163,16 @@ function loadProfile() {
   try { return normalizeProfile(JSON.parse(cacheText)); } catch { return emptyProfile(); }
 }
 
-let profile = loadProfile();
+const initialProfile = loadProfile();
+learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences));
 
 // The preferences in use. profile.preferences is what is stored and synced (only the settings chosen,
 // never a default filled in: see normalizeProfile); merges change only that, and these follow it where
 // that can't disturb a run (followStoredPreferences).
-let prefs = preferencesInUse(profile.preferences);
+
 
 // prefs as last committed or followed. A difference is an edit made in this tab.
-let livePreferences = JSON.stringify(prefs);
+
 let preferencesWaiting = false;
 let passage = null;
 let ticker = null;
@@ -202,15 +207,15 @@ new ResizeObserver(() => placePreviewGlide({ instant: true })).observe($('settin
 function placePreviewGlide({ instant = false, from = 0 } = {}) {
   const passage = $('settings-preview-passage');
 
-  if (!prefs.wordHighlightSlide || prefs.wordHighlight === 'off' || !$('settings-dialog').open || !passage.offsetWidth) return;
-  const word = (offset) => passage.children[(prefs.wordHighlight === 'next' ? 3 : 2) + offset];
+  if (!learning.preferences.wordHighlightSlide || learning.preferences.wordHighlight === 'off' || !$('settings-dialog').open || !passage.offsetWidth) return;
+  const word = (offset) => passage.children[(learning.preferences.wordHighlight === 'next' ? 3 : 2) + offset];
 
   if (from) previewGlide.follow(word(from), { instant: true });
   previewGlide.follow(word(0), { instant });
 }
 
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
-const sounds = createSounds({ settings: () => ({ mode: prefs.sound, volume: prefs.soundVolume }), running: () => runInProgress() });
+const sounds = createSounds({ settings: () => ({ mode: learning.preferences.sound, volume: learning.preferences.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -220,7 +225,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let wordsPassage = null;
 
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
-const ghostOn = () => prefs.paceCaret !== 'off';
+const ghostOn = () => learning.preferences.paceCaret !== 'off';
 let palette = null;
 let keybindingEditor = null;
 let settingsView = null;
@@ -284,8 +289,8 @@ let heldClears = {};
 
 // The history clears this tab had applied when its training state (baseline, results on show) was last
 // checked against them, and where an older build's clear left history starting (legacyClearedAt).
-let trainingClears = account.clearsApplied(profile);
-let trainingLegacyAt = profile.legacyClearedAt || '';
+let trainingClears = account.clearsApplied(learning.profile);
+let trainingLegacyAt = learning.profile.legacyClearedAt || '';
 
 let race = {
   passage: null,
@@ -312,14 +317,14 @@ const saveRunCounts = () => countsUnsaved && saveProfile();
 function saveProfile() {
   countsUnsaved = false;
   commitPreferences();
-  account.capHistory(profile);
+  account.capHistory(learning.profile);
 
   if (!session || signedOutElsewhere) return true;
   unsynced = true;
   localEdits += 1;
 
   if (cloudChecked) {
-    account.stampProfile(profile);
+    account.stampProfile(learning.profile);
     clearTimeout(syncTimer);
     syncTimer = setTimeout(pushWhenIdle, 1500);
   }
@@ -352,7 +357,7 @@ function storeLocally() {
     } catch {}
   }
 
-  const text = JSON.stringify(account.storedCopy(profile));
+  const text = JSON.stringify(account.storedCopy(learning.profile));
   const saved = account.cacheProfileText(userId, text);
 
   if (saved) cacheText = text;
@@ -365,15 +370,15 @@ function storeLocally() {
 // settings the person just picked: stamped even when the pick matches what is shown, so it outranks a
 // different value from another tab or device that was waiting to apply.
 function commitPreferences(chosen = []) {
-  const json = JSON.stringify(prefs);
+  const json = JSON.stringify(learning.preferences);
 
-  if (json === livePreferences && !chosen.length) return;
-  const before = JSON.parse(livePreferences);
-  const edited = Object.keys(prefs).filter((key) => (key === 'keybindings' ? JSON.stringify(prefs[key]) !== JSON.stringify(before[key]) : prefs[key] !== before[key]) || chosen.includes(key));
-  const stamps = profile.preferencesAt || {};
-  profile.preferences = { ...profile.preferences, ...Object.fromEntries(edited.map((key) => [key, prefs[key]])) };
-  profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
-  livePreferences = json;
+  if (json === learning.livePreferences && !chosen.length) return;
+  const before = JSON.parse(learning.livePreferences);
+  const edited = Object.keys(learning.preferences).filter((key) => (key === 'keybindings' ? JSON.stringify(learning.preferences[key]) !== JSON.stringify(before[key]) : learning.preferences[key] !== before[key]) || chosen.includes(key));
+  const stamps = learning.profile.preferencesAt || {};
+  learning.profile.preferences = { ...learning.profile.preferences, ...Object.fromEntries(edited.map((key) => [key, learning.preferences[key]])) };
+  learning.profile.preferencesAt = { ...stamps, ...Object.fromEntries(edited.map((key) => [key, account.stampAfter(stamps[key])])) };
+  learning.livePreferences = json;
 }
 
 // Saves after the person picks settings, stamping the ones picked (see commitPreferences).
@@ -413,12 +418,12 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
     return;
   }
 
-  const stored = { ...defaultPreferences, ...profile.preferences };
-  const next = { ...prefs };
+  const stored = { ...defaultPreferences, ...learning.profile.preferences };
+  const next = { ...learning.preferences };
   let changedConditions = false;
   preferencesWaiting = false;
 
-  for (const key of new Set([...Object.keys(stored), ...Object.keys(prefs)])) {
+  for (const key of new Set([...Object.keys(stored), ...Object.keys(learning.preferences)])) {
     if (key === 'keybindings' ? JSON.stringify(next[key]) === JSON.stringify(stored[key]) : next[key] === stored[key]) continue;
 
     if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
@@ -433,15 +438,15 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
 
   const json = JSON.stringify(next);
 
-  if (json === livePreferences) return;
-  const before = prefs;
-  prefs = validPreferences(next);
-  livePreferences = JSON.stringify(prefs);
+  if (json === learning.livePreferences) return;
+  const before = learning.preferences;
+  learning.preferences = validPreferences(next);
+  learning.livePreferences = JSON.stringify(learning.preferences);
   applyPreferences();
 
   if (changedConditions) setModeControls();
 
-  if (TRAINING_PREFERENCES.some((key) => prefs[key] !== before[key])) showTraining();
+  if (TRAINING_PREFERENCES.some((key) => learning.preferences[key] !== before[key])) showTraining();
 }
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
@@ -476,34 +481,34 @@ function announce(message) {
 // challenge started while standard is selected still uses them (minus the recipe).
 function settingsConditions(inputClass = 'physical-keyboard') {
   const value = {
-    mode: prefs.mode,
-    duration: prefs.mode === 'time' ? prefs.duration : null,
-    count: prefs.mode === 'words' ? prefs.count : null,
-    punctuation: prefs.mode === 'code' || prefs.mode === 'book' || prefs.punctuation,
-    numbers: ['quote', 'code', 'book'].includes(prefs.mode) ? false : Boolean(prefs.numbers),
-    quoteLength: prefs.mode === 'quote' ? prefs.quoteLength : null,
-    difficulty: prefs.mode === 'quote' ? prefs.difficulty : null,
-    wordList: ['quote', 'code', 'book'].includes(prefs.mode) ? null : prefs.wordList,
+    mode: learning.preferences.mode,
+    duration: learning.preferences.mode === 'time' ? learning.preferences.duration : null,
+    count: learning.preferences.mode === 'words' ? learning.preferences.count : null,
+    punctuation: learning.preferences.mode === 'code' || learning.preferences.mode === 'book' || learning.preferences.punctuation,
+    numbers: ['quote', 'code', 'book'].includes(learning.preferences.mode) ? false : Boolean(learning.preferences.numbers),
+    quoteLength: learning.preferences.mode === 'quote' ? learning.preferences.quoteLength : null,
+    difficulty: learning.preferences.mode === 'quote' ? learning.preferences.difficulty : null,
+    wordList: ['quote', 'code', 'book'].includes(learning.preferences.mode) ? null : learning.preferences.wordList,
   };
 
-  if (prefs.mode === 'code') value.codeLanguage = prefs.codeLanguage;
+  if (learning.preferences.mode === 'code') value.codeLanguage = learning.preferences.codeLanguage;
 
-  if (prefs.mode === 'book') value.book = prefs.book;
+  if (learning.preferences.mode === 'book') value.book = learning.preferences.book;
 
   return Object.assign(value, {
     inputClass,
     layout: inputLayout(inputClass),
-    correctionPolicy: prefs.correction,
-    strictSpace: prefs.strictSpace,
-    quickEnd: prefs.quickEnd,
+    correctionPolicy: learning.preferences.correction,
+    strictSpace: learning.preferences.strictSpace,
+    quickEnd: learning.preferences.quickEnd,
     language: 'en',
-    corpus: prefs.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
+    corpus: learning.preferences.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
   });
 }
 
 function conditions(inputClass = 'physical-keyboard') {
-  return prefs.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
+  return learning.preferences.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
 }
 
 
@@ -528,7 +533,7 @@ function customConditions() {
   const { codeLanguage, book, ...base } = settingsConditions();
 
   return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false, corpus: CORPUS_VERSION,
-    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: prefs.customOrder };
+    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: learning.preferences.customOrder };
 }
 
 function describeConditions(value = conditions(), sets = []) {
@@ -548,12 +553,12 @@ function describeConditions(value = conditions(), sets = []) {
 // has none: it is one fixed measurement, and a personal filter on which of its runs count would lift
 // its score. Code runs have none either: they are never counted, so there is nothing for a minimum to guard.
 function practiceMinimums() {
-  if (prefs.mode === 'standard' || prefs.mode === 'code') return null;
+  if (learning.preferences.mode === 'standard' || learning.preferences.mode === 'code') return null;
   const minimums = {};
 
-  if (prefs.minAccuracy) minimums.accuracy = prefs.minAccuracy;
+  if (learning.preferences.minAccuracy) minimums.accuracy = learning.preferences.minAccuracy;
 
-  if (prefs.minWpm) minimums.wpm = prefs.minWpm;
+  if (learning.preferences.minWpm) minimums.wpm = learning.preferences.minWpm;
 
   return Object.keys(minimums).length ? minimums : null;
 }
@@ -583,7 +588,7 @@ function describeRules(value) {
 // quick end at the default (sessionConditions), so only rules that applied are listed.
 // The layout setting describes a physical keyboard, so touch runs always keep the default key.
 function inputLayout(inputClass) {
-  return inputClass === 'touch' ? DEFAULT_LAYOUT : prefs.layout;
+  return inputClass === 'touch' ? DEFAULT_LAYOUT : learning.preferences.layout;
 }
 
 // The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
@@ -739,7 +744,7 @@ function showBest() {
     return;
   }
 
-  const best = key && profile.bests[key];
+  const best = key && learning.profile.bests[key];
   setParts($('best'), !key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet');
 }
 
@@ -748,26 +753,26 @@ function modeOf(theme) {
   if (DARK_THEMES.includes(theme)) return 'dark';
 
   if (LIGHT_THEMES.includes(theme)) return 'light';
-  const custom = readCustomThemes(prefs.customThemes).find((entry) => entry.id === theme);
+  const custom = readCustomThemes(learning.preferences.customThemes).find((entry) => entry.id === theme);
 
   return custom ? colorsMode(custom.colors) : null;
 }
 
 function themeMode() {
-  return modeOf(prefs.theme) ?? 'system';
+  return modeOf(learning.preferences.theme) ?? 'system';
 }
 
 // A mode's pick: the theme shown, in that mode, else the one saved for it, else the mode's default.
 function themeFor(mode) {
-  if (themeMode() === mode) return prefs.theme;
+  if (themeMode() === mode) return learning.preferences.theme;
 
-  return modeOf(prefs[`${mode}Theme`]) === mode ? prefs[`${mode}Theme`] : mode;
+  return modeOf(learning.preferences[`${mode}Theme`]) === mode ? learning.preferences[`${mode}Theme`] : mode;
 }
 
 function shownTheme() {
   const mode = themeMode();
 
-  return mode === 'system' ? themeFor(prefersLight.matches ? 'light' : 'dark') : prefs.theme;
+  return mode === 'system' ? themeFor(prefersLight.matches ? 'light' : 'dark') : learning.preferences.theme;
 }
 
 // A custom theme (src/custom-themes.js) is worn over dark or light by its colours; without them the theme is built in.
@@ -781,7 +786,7 @@ function wearTheme(colors, theme) {
 
 function applyTheme() {
   // While the editor is open its draft stays on show.
-  const themes = readCustomThemes(prefs.customThemes);
+  const themes = readCustomThemes(learning.preferences.customThemes);
   const theme = shownTheme();
   wearTheme(themeEditor?.draftColors() ?? themes.find((entry) => entry.id === theme)?.colors, theme);
   showThemeOptions(themes, theme);
@@ -794,14 +799,14 @@ function applyTheme() {
 function keepPick() {
   const left = themeMode();
 
-  if (left !== 'system') prefs[`${left}Theme`] = prefs.theme;
+  if (left !== 'system') learning.preferences[`${left}Theme`] = learning.preferences.theme;
 }
 
 // Shows a theme, or 'system'.
 function showTheme(theme) {
   themeEditor?.close({ focus: false });
   keepPick();
-  prefs.theme = theme;
+  learning.preferences.theme = theme;
   applyTheme();
   saveChoice('theme');
 }
@@ -814,7 +819,7 @@ function setThemeMode(mode) {
 function pickTheme(mode, theme) {
   if (themeMode() !== 'system') return showTheme(theme);
   themeEditor?.close({ focus: false });
-  prefs[`${mode}Theme`] = theme;
+  learning.preferences[`${mode}Theme`] = theme;
   applyTheme();
   saveChoice(`${mode}Theme`);
 }
@@ -824,17 +829,17 @@ function pickTheme(mode, theme) {
 function saveCustomThemes(customThemes, saved) {
   const mode = themeMode();
   keepPick();
-  prefs.customThemes = normalizeCustomThemes(customThemes);
+  learning.preferences.customThemes = normalizeCustomThemes(customThemes);
 
-  if (prefs.theme !== 'system' && !modeOf(prefs.theme)) prefs.theme = mode;
+  if (learning.preferences.theme !== 'system' && !modeOf(learning.preferences.theme)) learning.preferences.theme = mode;
 
-  for (const pick of ['dark', 'light']) if (modeOf(prefs[`${pick}Theme`]) !== pick) prefs[`${pick}Theme`] = pick;
+  for (const pick of ['dark', 'light']) if (modeOf(learning.preferences[`${pick}Theme`]) !== pick) learning.preferences[`${pick}Theme`] = pick;
 
   if (saved) {
-    if (themeMode() === 'system') prefs[`${modeOf(saved)}Theme`] = saved;
+    if (themeMode() === 'system') learning.preferences[`${modeOf(saved)}Theme`] = saved;
     else {
       keepPick();
-      prefs.theme = saved;
+      learning.preferences.theme = saved;
     }
   }
 
@@ -879,16 +884,16 @@ function updateGlides(options) {
 
 // The tape is for solo practice. A ghost race keeps three lines, as the other races do, so the
 // friend's caret stays in view however far ahead or behind it is.
-const tapeLayout = () => String(prefs.tape && practice.sessionKind !== 'challenge');
+const tapeLayout = () => String(learning.preferences.tape && practice.sessionKind !== 'challenge');
 
 // The one writer of the passage layout: the text size, and three lines or the tape.
 function syncLayout() {
-  if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(prefs.fontSize)) {
+  if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(learning.preferences.fontSize)) {
     // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
     primaryTextView?.restore();
   }
 
-  document.body.dataset.fontSize = prefs.fontSize;
+  document.body.dataset.fontSize = learning.preferences.fontSize;
   document.body.dataset.tape = tapeLayout();
   primaryFx.relayout();
 }
@@ -911,12 +916,12 @@ function measureTypingBaseline() {
 // A new font changes letter widths, as a resize does, and again once its file arrives.
 function applyFonts() {
   const root = document.documentElement.dataset;
-  selectSetting('typing-font', prefs.typingFont);
-  selectSetting('app-font', prefs.appFont);
+  selectSetting('typing-font', learning.preferences.typingFont);
+  selectSetting('app-font', learning.preferences.appFont);
 
-  if (root.typingFont === prefs.typingFont && root.appFont === prefs.appFont) return;
-  root.typingFont = prefs.typingFont;
-  root.appFont = prefs.appFont;
+  if (root.typingFont === learning.preferences.typingFont && root.appFont === learning.preferences.appFont) return;
+  root.typingFont = learning.preferences.typingFont;
+  root.appFont = learning.preferences.appFont;
   measureTypingBaseline();
   relayoutText();
   onlineRace?.relayout();
@@ -925,57 +930,57 @@ function applyFonts() {
 function applyPreferences() {
   syncLayout();
   applyFonts();
-  document.body.dataset.wordHighlight = prefs.wordHighlight;
-  document.body.dataset.wordHighlightSlide = String(prefs.wordHighlightSlide);
-  document.body.dataset.tapePreference = String(prefs.tape);
-  document.body.dataset.liveMetrics = String(prefs.liveMetrics);
-  document.body.dataset.keyboard = String(prefs.keyboard);
-  document.body.dataset.focusMode = String(prefs.focusMode);
-  selectSetting('font-size', prefs.fontSize);
-  selectSetting('word-highlight', prefs.wordHighlight);
-  selectSetting('word-highlight-slide', prefs.wordHighlightSlide);
-  $('word-highlight-slide').closest('.preference-row').hidden = prefs.wordHighlight === 'off';
+  document.body.dataset.wordHighlight = learning.preferences.wordHighlight;
+  document.body.dataset.wordHighlightSlide = String(learning.preferences.wordHighlightSlide);
+  document.body.dataset.tapePreference = String(learning.preferences.tape);
+  document.body.dataset.liveMetrics = String(learning.preferences.liveMetrics);
+  document.body.dataset.keyboard = String(learning.preferences.keyboard);
+  document.body.dataset.focusMode = String(learning.preferences.focusMode);
+  selectSetting('font-size', learning.preferences.fontSize);
+  selectSetting('word-highlight', learning.preferences.wordHighlight);
+  selectSetting('word-highlight-slide', learning.preferences.wordHighlightSlide);
+  $('word-highlight-slide').closest('.preference-row').hidden = learning.preferences.wordHighlight === 'off';
   placePreviewGlide();
-  selectSetting('live-toggle', prefs.liveMetrics);
-  selectSetting('keyboard-toggle', prefs.keyboard);
+  selectSetting('live-toggle', learning.preferences.liveMetrics);
+  selectSetting('keyboard-toggle', learning.preferences.keyboard);
   syncRules();
-  selectSetting('finger-toggle', prefs.fingerMap);
-  disableSetting('finger-toggle', !prefs.keyboard);
-  selectSetting('correction-select', prefs.correction);
-  selectSetting('focus-toggle', prefs.focusMode);
-  selectSetting('tape-toggle', prefs.tape);
-  $('keyboard').hidden = !prefs.keyboard && practice.sessionKind !== 'lesson';
+  selectSetting('finger-toggle', learning.preferences.fingerMap);
+  disableSetting('finger-toggle', !learning.preferences.keyboard);
+  selectSetting('correction-select', learning.preferences.correction);
+  selectSetting('focus-toggle', learning.preferences.focusMode);
+  selectSetting('tape-toggle', learning.preferences.tape);
+  $('keyboard').hidden = !learning.preferences.keyboard && practice.sessionKind !== 'lesson';
   renderKeyboard();
   applySoundPreferences();
   applyTheme();
-  $('punctuation-toggle').checked = prefs.punctuation;
-  $('adaptive-toggle').checked = prefs.adaptive;
-  selectSetting('numbers-toggle', Boolean(prefs.numbers));
+  $('punctuation-toggle').checked = learning.preferences.punctuation;
+  $('adaptive-toggle').checked = learning.preferences.adaptive;
+  selectSetting('numbers-toggle', Boolean(learning.preferences.numbers));
   quoteFilters.refresh();
-  selectSetting('word-list', prefs.wordList);
+  selectSetting('word-list', learning.preferences.wordList);
   applySpeedUnit();
-  selectSetting('repeat-quotes-toggle', prefs.repeatQuotes);
+  selectSetting('repeat-quotes-toggle', learning.preferences.repeatQuotes);
   keybindingEditor?.refresh();
-  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.restart); });
-  $('restart-button').title = prefs.keybindings.restart ? `Restart test (${bindingLabel(prefs.keybindings.restart)})` : 'Restart test';
-  $('exit-focus-hint').textContent = bindingLabel(prefs.keybindings.exitFocus);
+  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(learning.preferences.keybindings.restart); });
+  $('restart-button').title = learning.preferences.keybindings.restart ? `Restart test (${bindingLabel(learning.preferences.keybindings.restart)})` : 'Restart test';
+  $('exit-focus-hint').textContent = bindingLabel(learning.preferences.keybindings.exitFocus);
 
   for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
-    const shortcuts = ariaShortcuts(prefs.keybindings[action]);
+    const shortcuts = ariaShortcuts(learning.preferences.keybindings[action]);
 
     if (shortcuts) $(id).setAttribute('aria-keyshortcuts', shortcuts);
     else $(id).removeAttribute('aria-keyshortcuts');
   }
 
-  document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(prefs.keybindings.commands); });
-  selectSetting('layout-select', prefs.layout);
-  selectSetting('daily-goal', String(prefs.dailyGoal));
-  selectSetting('train-focus', prefs.trainFocus);
-  selectSetting('drill-length', String(prefs.drillSeconds));
-  selectSetting('retest-toggle', String(prefs.retest));
+  document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(learning.preferences.keybindings.commands); });
+  selectSetting('layout-select', learning.preferences.layout);
+  selectSetting('daily-goal', String(learning.preferences.dailyGoal));
+  selectSetting('train-focus', learning.preferences.trainFocus);
+  selectSetting('drill-length', String(learning.preferences.drillSeconds));
+  selectSetting('retest-toggle', String(learning.preferences.retest));
   syncLockedSettings();
-  selectSetting('min-accuracy', String(prefs.minAccuracy));
-  selectSetting('min-wpm', String(prefs.minWpm));
+  selectSetting('min-accuracy', String(learning.preferences.minAccuracy));
+  selectSetting('min-wpm', String(learning.preferences.minWpm));
   showMinimumNote();
   armPace();
   showBest();
@@ -984,12 +989,12 @@ function applyPreferences() {
 function applySoundPreferences() {
   sounds.sync();
   const volume = $('sound-volume');
-  selectSetting('sound-select', prefs.sound);
-  volume.value = String(prefs.soundVolume);
-  volume.disabled = prefs.sound === 'off';
-  volume.setAttribute('aria-valuetext', `${prefs.soundVolume}%`);
-  volume.style.setProperty('--fill', `${prefs.soundVolume}%`);
-  $('sound-volume-value').textContent = `${prefs.soundVolume}%`;
+  selectSetting('sound-select', learning.preferences.sound);
+  volume.value = String(learning.preferences.soundVolume);
+  volume.disabled = learning.preferences.sound === 'off';
+  volume.setAttribute('aria-valuetext', `${learning.preferences.soundVolume}%`);
+  volume.style.setProperty('--fill', `${learning.preferences.soundVolume}%`);
+  $('sound-volume-value').textContent = `${learning.preferences.soundVolume}%`;
 }
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
@@ -997,8 +1002,8 @@ function applySoundPreferences() {
 // SVG has to be redrawn here, as the words' spoken paces and the two charts are
 // (the pace field follows in showPace).
 function applySpeedUnit() {
-  selectSetting('speed-unit', prefs.speedUnit);
-  const changed = showSpeedUnit(prefs.speedUnit);
+  selectSetting('speed-unit', learning.preferences.speedUnit);
+  const changed = showSpeedUnit(learning.preferences.speedUnit);
 
   if (!changed) return;
   labelWords();
@@ -1042,8 +1047,8 @@ const RULE_NOTES = {
 // tab change, and when a one-keyboard race starts or ends.
 function syncRules() {
   const limits = ruleLimits(ruleSession());
-  selectSetting('strict-space-toggle', prefs.strictSpace);
-  selectSetting('quick-end-toggle', prefs.quickEnd);
+  selectSetting('strict-space-toggle', learning.preferences.strictSpace);
+  selectSetting('quick-end-toggle', learning.preferences.quickEnd);
   disableSetting('quick-end-toggle', Boolean(limits.quickEnd));
 
   for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
@@ -1055,22 +1060,22 @@ function syncRules() {
 // The standard test fixes word list, punctuation, numbers and correction. Their controls show the
 // recipe's values and stay locked while it is selected; the person's own settings are kept for other modes.
 // A custom passage loaded over it uses the person's own settings (customConditions), so they unlock for it.
-const standardLocked = () => prefs.mode === 'standard' && practice.sessionKind !== 'custom';
+const standardLocked = () => learning.preferences.mode === 'standard' && practice.sessionKind !== 'custom';
 
 function syncLockedSettings() {
   const standard = standardLocked();
   // Quotes, code snippets and book pages are fixed text, so these settings don't apply to them.
-  const fixed = ['quote', 'code', 'book'].includes(prefs.mode);
+  const fixed = ['quote', 'code', 'book'].includes(learning.preferences.mode);
   $('punctuation-toggle').disabled = fixed || standard;
-  $('punctuation-toggle').checked = standard || prefs.punctuation;
+  $('punctuation-toggle').checked = standard || learning.preferences.punctuation;
   disableSetting('numbers-toggle', fixed || standard);
-  selectSetting('numbers-toggle', standard || Boolean(prefs.numbers));
+  selectSetting('numbers-toggle', standard || Boolean(learning.preferences.numbers));
   disableSetting('word-list', fixed || standard);
   $('word-list').querySelector('[value="standard"]').closest('label').hidden = !standard;
-  selectSetting('word-list', standard ? 'standard' : prefs.wordList);
-  disableSetting('repeat-quotes-toggle', prefs.mode !== 'quote');
+  selectSetting('word-list', standard ? 'standard' : learning.preferences.wordList);
+  disableSetting('repeat-quotes-toggle', learning.preferences.mode !== 'quote');
   disableSetting('correction-select', standard);
-  selectSetting('correction-select', standard ? 'mandatory' : prefs.correction);
+  selectSetting('correction-select', standard ? 'mandatory' : learning.preferences.correction);
   document.querySelectorAll('.preference-lock').forEach((note) => {
     note.textContent = standard ? 'fixed for standard' : '';
     note.hidden = !standard;
@@ -1086,41 +1091,41 @@ function setModeControls() {
   $('mode-custom').setAttribute('aria-expanded', String(customOpen));
   $('custom-options').hidden = !customOpen;
   document.querySelectorAll('[data-mode]').forEach((button) => {
-    const selected = !custom && !composeOpen && button.dataset.mode === prefs.mode;
+    const selected = !custom && !composeOpen && button.dataset.mode === learning.preferences.mode;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
   $('mode-compose').classList.toggle('is-active', composeOpen);
   $('mode-compose').setAttribute('aria-pressed', String(composeOpen));
-  $('quote-options').hidden = custom || composeOpen || prefs.mode !== 'quote';
-  $('standard-options').hidden = custom || composeOpen || prefs.mode !== 'standard';
+  $('quote-options').hidden = custom || composeOpen || learning.preferences.mode !== 'quote';
+  $('standard-options').hidden = custom || composeOpen || learning.preferences.mode !== 'standard';
   $('standard-recipe').textContent = `${recipeSummary()} · ${correctionLabel(standardConditions().correctionPolicy)}`;
   syncLockedSettings();
-  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code', 'book'].includes(prefs.mode);
-  $('book-options').hidden = custom || composeOpen || prefs.mode !== 'book';
+  $('duration-options').hidden = custom || composeOpen || ['quote', 'standard', 'code', 'book'].includes(learning.preferences.mode);
+  $('book-options').hidden = custom || composeOpen || learning.preferences.mode !== 'book';
   // Custom text and composing hide the code language row, as they do the lengths.
-  $('code-options').hidden = custom || composeOpen || prefs.mode !== 'code';
+  $('code-options').hidden = custom || composeOpen || learning.preferences.mode !== 'code';
   $('code-options').querySelectorAll('[data-language]').forEach((button) => {
-    const selected = button.dataset.language === prefs.codeLanguage;
+    const selected = button.dataset.language === learning.preferences.codeLanguage;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
   document.querySelectorAll('.practice-rail .compact-switch').forEach((toggle) => { toggle.hidden = custom || composeOpen; });
 
   // Adaptive text is drawn word by word, so it only exists for time and words tests.
-  if (!['time', 'words'].includes(prefs.mode)) $('adaptive-switch').hidden = true;
+  if (!['time', 'words'].includes(learning.preferences.mode)) $('adaptive-switch').hidden = true;
   // "more" takes the name of the mode chosen inside it.
   const moreActive = $('mode-more').querySelector('[aria-pressed="true"]');
   $('mode-more-label').textContent = moreActive ? moreActive.textContent : 'more';
   $('mode-more').toggleAttribute('data-active', Boolean(moreActive));
   showMinimumNote();
 
-  if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
+  if (custom || composeOpen || learning.preferences.mode === "standard") closeCustomLength();
   renderLengthOptions();
   flushSync(() => practice.controls.publish({
-    mode: prefs.mode, duration: prefs.duration, count: prefs.count,
-    punctuation: prefs.punctuation, adaptive: prefs.adaptive,
-    custom, customOpen, composing: composeOpen, codeLanguage: prefs.codeLanguage,
+    mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count,
+    punctuation: learning.preferences.punctuation, adaptive: learning.preferences.adaptive,
+    custom, customOpen, composing: composeOpen, codeLanguage: learning.preferences.codeLanguage,
     standardRecipe: recipeSummary() + ' · ' + correctionLabel(standardConditions().correctionPolicy),
   }));
   showBest();
@@ -1131,7 +1136,7 @@ function setModeControls() {
 // lands just as the custom field commits on blur still reaches the button under the pointer.
 function renderLengthOptions() {
   setCustomLengthError('');
-  const spec = LENGTHS[prefs.mode];
+  const spec = LENGTHS[learning.preferences.mode];
 
   if (!spec) {
     closeCustomLength();
@@ -1139,7 +1144,7 @@ function renderLengthOptions() {
     return;
   }
 
-  const current = prefs[spec.key];
+  const current = learning.preferences[spec.key];
   $('duration-options').querySelectorAll('[data-length]').forEach((button, index) => {
     const value = spec.presets[index];
     const selected = value === current;
@@ -1149,14 +1154,14 @@ function renderLengthOptions() {
     button.setAttribute('aria-pressed', String(selected));
     button.setAttribute('aria-label', `${value} ${spec.unit}`);
   });
-  const custom = !isPresetLength(prefs.mode, current);
+  const custom = !isPresetLength(learning.preferences.mode, current);
   const button = $('custom-length');
   button.textContent = custom ? String(current) : 'custom';
   button.classList.toggle('is-active', custom);
   button.setAttribute('aria-pressed', String(custom));
   button.setAttribute('aria-label', custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`);
 
-  if ($('custom-length-form').dataset.lengthMode !== prefs.mode) closeCustomLength();
+  if ($('custom-length-form').dataset.lengthMode !== learning.preferences.mode) closeCustomLength();
 }
 
 // The custom pill turns into a short field in place. Enter, or leaving the field with a valid
@@ -1170,7 +1175,7 @@ function setCustomLengthError(message) {
   if (message || node.textContent) node.textContent = message;
 }
 
-function openCustomLength(mode = prefs.mode) {
+function openCustomLength(mode = learning.preferences.mode) {
   const spec = LENGTHS[mode];
 
   if (!spec) return;
@@ -1181,7 +1186,7 @@ function openCustomLength(mode = prefs.mode) {
   const input = $('custom-length-input');
   form.dataset.lengthMode = mode;
   dropCustomLength = false;
-  input.value = prefs[spec.customKey] ? String(prefs[spec.customKey]) : '';
+  input.value = learning.preferences[spec.customKey] ? String(learning.preferences[spec.customKey]) : '';
   input.dataset.offered = input.value;
   input.placeholder = `${spec.min}–${spec.max}`;
   input.setAttribute('aria-label', `${mode === 'time' ? 'custom time in seconds' : 'custom number of words'}, ${spec.min} to ${spec.max}`);
@@ -1207,7 +1212,7 @@ function closeCustomLength({ focus = false } = {}) {
   updateGlide($('duration-options'), { instant: true });
 
   // Focus mode hides the row again, pill included, so focus goes back to the passage.
-  if (focus) (prefs.focusMode ? $('typing-input') : $('custom-length')).focus({ preventScroll: true });
+  if (focus) (learning.preferences.focusMode ? $('typing-input') : $('custom-length')).focus({ preventScroll: true });
 }
 
 function commitCustomLength({ leaving = false } = {}) {
@@ -1240,7 +1245,7 @@ function commitCustomLength({ leaving = false } = {}) {
 
   closeCustomLength();
 
-  if (prefs.mode === mode && prefs[spec.key] === result.value) {
+  if (learning.preferences.mode === mode && learning.preferences[spec.key] === result.value) {
     saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
 
     if (!leaving) $('typing-input').focus({ preventScroll: true });
@@ -1248,10 +1253,10 @@ function commitCustomLength({ leaving = false } = {}) {
     return;
   }
 
-  prefs.mode = mode;
-  prefs[spec.key] = result.value;
+  learning.preferences.mode = mode;
+  learning.preferences[spec.key] = result.value;
 
-  if (!isPresetLength(mode, result.value)) prefs[spec.customKey] = result.value;
+  if (!isPresetLength(mode, result.value)) learning.preferences[spec.customKey] = result.value;
   setModeControls();
   saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
   // Focus stays wherever the person went when they left the field.
@@ -1261,7 +1266,7 @@ function commitCustomLength({ leaving = false } = {}) {
 function bindCustomLength() {
   const form = $('custom-length-form');
   const input = $('custom-length-input');
-  $('custom-length').addEventListener('click', () => openCustomLength(prefs.mode));
+  $('custom-length').addEventListener('click', () => openCustomLength(learning.preferences.mode));
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     commitCustomLength();
@@ -1284,7 +1289,7 @@ function bindCustomLength() {
     // Switching windows keeps the field open; the browser hands focus back on return.
     if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
     // In focus mode the row hides again as the field closes, so focus bound for it would be lost.
-    const stranded = prefs.focusMode && (!event.relatedTarget || controls.contains(event.relatedTarget));
+    const stranded = learning.preferences.focusMode && (!event.relatedTarget || controls.contains(event.relatedTarget));
 
     if (dropCustomLength) {
       dropCustomLength = false;
@@ -1299,7 +1304,7 @@ function bindCustomLength() {
 // Custom text hides the length row, so from its editor or session this goes through setTestShape too, which
 // closes the editor and starts a test in this mode, as the length buttons do.
 function setCustomLengthFromPalette(mode) {
-  if (prefs.mode !== mode || customOpen || practice.sessionKind === 'custom') setTestShape(mode);
+  if (learning.preferences.mode !== mode || customOpen || practice.sessionKind === 'custom') setTestShape(mode);
   else navigate('practice');
   openCustomLength(mode);
 }
@@ -1321,28 +1326,28 @@ function adaptivePassage() {
     return null;
   }
 
-  if (!prefs.adaptive || !['time', 'words'].includes(prefs.mode)) return null;
+  if (!learning.preferences.adaptive || !['time', 'words'].includes(learning.preferences.mode)) return null;
   const { lean, runs } = trainingRecommendation(conditions());
 
-  return runs && lean.length ? { ...makeAdaptive(lean, { mode: prefs.mode, count: prefs.count, duration: prefs.duration, punctuation: prefs.punctuation,
-    numbers: Boolean(prefs.numbers), wordList: prefs.wordList }), trainFocus: prefs.trainFocus } : null;
+  return runs && lean.length ? { ...makeAdaptive(lean, { mode: learning.preferences.mode, count: learning.preferences.count, duration: learning.preferences.duration, punctuation: learning.preferences.punctuation,
+    numbers: Boolean(learning.preferences.numbers), wordList: learning.preferences.wordList }), trainFocus: learning.preferences.trainFocus } : null;
 }
 
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
-  if (prefs.mode === 'code') return { ...codePassage(prefs.codeLanguage, { seenIds: [...profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
+  if (learning.preferences.mode === 'code') return { ...codePassage(learning.preferences.codeLanguage, { seenIds: [...learning.profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
 
-  if (prefs.mode === 'book') return bookPassage(extraSeen);
+  if (learning.preferences.mode === 'book') return bookPassage(extraSeen);
 
   return selectPassage({
-    mode: prefs.mode,
-    count: prefs.count,
-    duration: prefs.duration,
-    punctuation: prefs.punctuation,
-    numbers: Boolean(prefs.numbers),
-    quoteLength: prefs.quoteLength,
-    difficulty: prefs.difficulty,
-    wordList: prefs.wordList,
-    seenIds: [...profile.seenTextIds, ...extraSeen],
+    mode: learning.preferences.mode,
+    count: learning.preferences.count,
+    duration: learning.preferences.duration,
+    punctuation: learning.preferences.punctuation,
+    numbers: Boolean(learning.preferences.numbers),
+    quoteLength: learning.preferences.quoteLength,
+    difficulty: learning.preferences.difficulty,
+    wordList: learning.preferences.wordList,
+    seenIds: [...learning.profile.seenTextIds, ...extraSeen],
     allowRepeats,
   });
 }
@@ -1351,8 +1356,8 @@ function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
 // page is marked seen when a run on it ends (storeAttempt), not when shown, because showing it again
 // is the only way on. A typed page is the only one there is, so it is never swapped for unseen text.
 function bookPassage(extraSeen = []) {
-  const page = openBook(prefs.book)[bookPlace(profile.runs, prefs.book)];
-  const seen = [...profile.seenTextIds, ...extraSeen].includes(page.id);
+  const page = openBook(learning.preferences.book)[bookPlace(learning.profile.runs, learning.preferences.book)];
+  const seen = [...learning.profile.seenTextIds, ...extraSeen].includes(page.id);
 
   return { ...page, textVersion: `${page.id}@1`, corpus: BOOK_VERSION, difficulty: 'book', fresh: !seen, exhausted: seen };
 }
@@ -1361,7 +1366,7 @@ function bookPassage(extraSeen = []) {
 function repeatedTextNotice() {
   if (practice.sessionKind !== 'practice' || passage?.fresh !== false) return '';
 
-  return passage.exhausted && !prefs.repeatQuotes && prefs.mode === 'quote'
+  return passage.exhausted && !learning.preferences.repeatQuotes && learning.preferences.mode === 'quote'
     ? 'You’ve seen every matching quote. Repeated text doesn’t count toward your best.'
     : 'Repeated text · doesn’t count toward your best.';
 }
@@ -1375,13 +1380,13 @@ function setPassageNotice(text) {
 }
 
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
-const restartKind = () => (practice.sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
+const restartKind = () => (practice.sessionKind === 'custom' && learning.preferences.customText ? 'custom' : 'practice');
 
 // A drill runs the length it started with. That is its context's, or its own once another device's clear
 // has taken the context from under a drill that is waiting or under way. A drill not yet drawn takes the setting.
 const drillLength = () => trainingContext?.drill?.duration
   || (['ready', 'running'].includes(practice.attempt?.status) && practice.attempt.drillSeconds)
-  || prefs.drillSeconds;
+  || learning.preferences.drillSeconds;
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs(kind = practice.sessionKind) {
@@ -1393,9 +1398,9 @@ function sessionDurationMs(kind = practice.sessionKind) {
 
   if (kind === 'custom') return null;
 
-  if (prefs.mode === 'time') return prefs.duration * 1000;
+  if (learning.preferences.mode === 'time') return learning.preferences.duration * 1000;
 
-  if (prefs.mode === 'standard') return STANDARD_SECONDS * 1000;
+  if (learning.preferences.mode === 'standard') return STANDARD_SECONDS * 1000;
 
   return null;
 }
@@ -1476,9 +1481,9 @@ function configureSessionCopy() {
   const setup = document.querySelector('.practice-controls');
 
   if (setup) setup.hidden = practice.sessionKind !== 'practice' && practice.sessionKind !== 'custom';
-  $('quote-options').hidden = practice.sessionKind !== 'practice' || prefs.mode !== 'quote' || composeOpen;
-  $('standard-options').hidden = practice.sessionKind !== 'practice' || prefs.mode !== 'standard' || composeOpen;
-  $('book-page').textContent = `page ${bookPlace(profile.runs, prefs.book) + 1}`;
+  $('quote-options').hidden = practice.sessionKind !== 'practice' || learning.preferences.mode !== 'quote' || composeOpen;
+  $('standard-options').hidden = practice.sessionKind !== 'practice' || learning.preferences.mode !== 'standard' || composeOpen;
+  $('book-page').textContent = `page ${bookPlace(learning.profile.runs, learning.preferences.book) + 1}`;
   // Every new run (resetSession) brings its own settings and input class to the footer best.
   showBest();
 }
@@ -1532,10 +1537,10 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
 
   // Every lesson restart (Esc, the palette, a settings change) lands here: a lesson that is locked again,
   // after history was cleared, gives way to the next open lesson.
-  if (kind === 'lesson' && !lessonUnlocked(profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(profile.lessons);
+  if (kind === 'lesson' && !lessonUnlocked(learning.profile.lessons, lessonIndex)) lessonIndex = nextLessonIndex(learning.profile.lessons);
   passage = selectedPassage || (kind === 'missed' ? wordsPassage : kind === 'daily' ? todayPassage() : kind === 'drill' ? drillPassage()
     : kind === 'lesson' ? lessonPassage(lessonIndex) : kind === 'challenge' ? ghostPassage() : kind === 'custom' ? customPassage()
-      : (kind === 'practice' && adaptivePassage()) || choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && prefs.repeatQuotes }));
+      : (kind === 'practice' && adaptivePassage()) || choosePassage(kind === 'retest' && baselineAttempt ? [baselineAttempt.textId] : [], { allowRepeats: kind === 'practice' && learning.preferences.repeatQuotes }));
 
   if (kind === 'retest' && passage?.fresh === false) {
     showUnavailableRetest('You’ve seen every matching quote. Pick another quote filter or a word test, then run a new baseline.');
@@ -1644,11 +1649,11 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
 function recordSeenOnDisplay(ids) {
   if (!displayedIds) {
     queueMicrotask(() => {
-      const unseen = displayedIds.filter((id) => id && !profile.seenTextIds.includes(id));
+      const unseen = displayedIds.filter((id) => id && !learning.profile.seenTextIds.includes(id));
       displayedIds = null;
 
       if (!unseen.length) return;
-      profile.seenTextIds.push(...unseen);
+      learning.profile.seenTextIds.push(...unseen);
       saveProfile();
     });
   }
@@ -1658,9 +1663,7 @@ function recordSeenOnDisplay(ids) {
 
 function showUnavailableRetest(reason) {
   switchView('train');
-  $('comparison-panel').classList.add('is-uncompared');
-  $('comparison-conditions').textContent = '';
-  $('comparison-caveat').textContent = reason;
+  updateComparison({ compared: false, conditions: '', caveat: reason });
   showComparison('No fair retest available.', 'unavailable', trainingContext?.target || null);
   announce(reason);
 }
@@ -1719,7 +1722,7 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
     practice.attempt.startedAt = 0;
     ticker = setInterval(() => updateLive(), 100);
     primaryFx.ghost.run(stamp);
-    ({ counts: profile.runCounts, ticket: runTicket } = runCounter.start(profile.runCounts, dayKey(new Date())));
+    ({ counts: learning.profile.runCounts, ticket: runTicket } = runCounter.start(learning.profile.runCounts, dayKey(new Date())));
     countsUnsaved = true;
     setRunning(true);
     // A message left by an abandoned custom length belongs to the row, not to the run.
@@ -1917,8 +1920,8 @@ const NOTICES = {
 };
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
-  if (prefs.keybindings.restart !== 'Escape') {
-    const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
+  if (learning.preferences.keybindings.restart !== 'Escape') {
+    const hint = learning.preferences.keybindings.restart ? `${bindingLabel(learning.preferences.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
     message = message.replace('Esc to restart', hint);
   }
 
@@ -2032,7 +2035,7 @@ const typingHost = createTypingHost({
 
 // The pace caret is presentational and never scored. It runs at the personal best, the average of
 // the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
-function ghostPace(mode = prefs.paceCaret) {
+function ghostPace(mode = learning.preferences.paceCaret) {
   // In a lesson the pace line runs at the lesson's speed target, whatever the pace setting.
   if (practice.attempt?.kind === 'lesson') {
     const wpm = LESSONS[lessonIndex].wpm;
@@ -2044,8 +2047,8 @@ function ghostPace(mode = prefs.paceCaret) {
   const key = conditionKey(practice.attempt?.conditions || conditions());
   let wpm = null;
 
-  if (mode === 'custom') wpm = prefs.paceWpm;
-  else if (mode === 'best') wpm = profile.bests[key]?.wpm || null;
+  if (mode === 'custom') wpm = learning.preferences.paceWpm;
+  else if (mode === 'best') wpm = learning.profile.bests[key]?.wpm || null;
   else if (mode === 'average' || mode === 'last') {
     // Only test and retest runs are comparable, as for trends and bests: drills would skew the pace.
     const recent = trendRunsAt(key).slice(mode === 'last' ? -1 : -10);
@@ -2067,7 +2070,7 @@ function showPace() {
   const shown = on && practice.sessionKind !== 'challenge';
   $('pace-label').hidden = !shown;
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
-  selectSetting('pace-select', prefs.paceCaret);
+  selectSetting('pace-select', learning.preferences.paceCaret);
   // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
   // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
   // unit it was typed in, when this redraws (another tab's save taken in, say): setting the field would drop
@@ -2075,9 +2078,9 @@ function showPace() {
   const field = $('pace-wpm');
 
   if (document.activeElement !== field || field.value === field.dataset.shown) {
-    const unit = prefs.speedUnit;
+    const unit = learning.preferences.speedUnit;
     field.dataset.unit = unit;
-    field.dataset.shown = speedValue(prefs.paceWpm, unit);
+    field.dataset.shown = speedValue(learning.preferences.paceWpm, unit);
     field.value = field.dataset.shown;
     field.min = speedValue(PACE_MIN_WPM, unit);
     field.max = speedValue(PACE_MAX_WPM, unit);
@@ -2085,8 +2088,8 @@ function showPace() {
   }
 
   $('pace-range').textContent = `${formatSpeed(PACE_MIN_WPM, { bare: true }, field.dataset.unit)}–${formatSpeed(PACE_MAX_WPM, {}, field.dataset.unit)}`;
-  $('pace-custom').hidden = prefs.paceCaret !== 'custom';
-  setParts($('pace-note'), on && prefs.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
+  $('pace-custom').hidden = learning.preferences.paceCaret !== 'custom';
+  setParts($('pace-note'), on && learning.preferences.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
   document.body.dataset.ghost = on ? 'on' : 'off';
 }
 
@@ -2106,8 +2109,8 @@ function armPace() {
 // typed in (`speed`), or kept by picking custom again. Picking custom from another pace shows a speed
 // nobody chose here, so a speed chosen elsewhere outranks it.
 function setPaceCaret(mode, { speed = false } = {}) {
-  const speedShown = speed || (mode === 'custom' && prefs.paceCaret === 'custom');
-  prefs.paceCaret = mode;
+  const speedShown = speed || (mode === 'custom' && learning.preferences.paceCaret === 'custom');
+  learning.preferences.paceCaret = mode;
   saveChoice('paceCaret', ...(speedShown ? ['paceWpm'] : []));
   armPace();
 }
@@ -2192,23 +2195,23 @@ function storeAttempt(completed) {
   completed.at = new Date().toISOString();
 
   // Shown as the day's first attempt, it is a repeat if another device's earlier attempt arrived since.
-  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...profile.runs, completed]).at(-1).firstDailyAttempt;
+  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...learning.profile.runs, completed]).at(-1).firstDailyAttempt;
   const key = conditionKey(completed.conditions);
   const score = completed.summary.score;
   // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
   // are left as they are, whatever text set them. Code runs are their own condition and never set a best.
   const eligibleBest = bestRun(completed);
-  resultBestBefore = profile.bests[key] || null;
+  resultBestBefore = learning.profile.bests[key] || null;
   // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
-  resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(profile.runs, completed) : null;
+  resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(learning.profile.runs, completed) : null;
 
   // Traces serve baselines and patterns. A custom passage is neither and can run to thousands of characters,
   // so only its summary record is kept; so is a ghost race's, whose trace is sent from the run in memory.
-  if (comparableKind(completed.kind)) profile.attempts.push(completed);
-  profile.runs.push(runRecord(completed));
+  if (comparableKind(completed.kind)) learning.profile.attempts.push(completed);
+  learning.profile.runs.push(runRecord(completed));
 
-  if (eligibleBest && (!profile.bests[key] || score.wpm > profile.bests[key].wpm)) {
-    profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
+  if (eligibleBest && (!learning.profile.bests[key] || score.wpm > learning.profile.bests[key].wpm)) {
+    learning.profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
   }
 
   // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
@@ -2216,7 +2219,7 @@ function storeAttempt(completed) {
   // in an interrupted run or a daily attempt, is marked again.
   if (completed.kind !== 'drill') {
     for (const id of [completed.textId, completed.kind === 'daily' ? dailyChallengeId(completed.challengeDate) : null]) {
-      if (id && !profile.seenTextIds.includes(id)) profile.seenTextIds.push(id);
+      if (id && !learning.profile.seenTextIds.includes(id)) learning.profile.seenTextIds.push(id);
     }
   }
 
@@ -2267,7 +2270,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
 
   if (practice.attempt.failed) completed.failed = practice.attempt.failed;
 
-  if (valid && runTicket) profile.runCounts = runCounter.finish(profile.runCounts, runTicket);
+  if (valid && runTicket) learning.profile.runCounts = runCounter.finish(learning.profile.runCounts, runTicket);
   runTicket = null;
   practice.attempt = completed;
   $('typing-input').disabled = true;
@@ -2389,7 +2392,7 @@ function startWordPractice(words, { recurring = false } = {}) {
 // The words you keep missing across runs. Without a baseline in this tab, the newest retained
 // counted run becomes one (as for a recurring pattern), so a fresh-text retest can follow.
 function practiseRecurringWords() {
-  const { words } = recurringMissedWords(profile.runs);
+  const { words } = recurringMissedWords(learning.profile.runs);
 
   if (words.length < 2) return;
   baselineAttempt ||= retainedBaseline();
@@ -2456,7 +2459,7 @@ function renderResults(completed, saved) {
   const chars = characterBreakdown(completed, replay);
   const errors = replay.firstAttempts.filter((item) => !item.correct).length;
   const recent = trendRun(completed) ? trendRunsAt(conditionKey(completed.conditions)).slice(-10) : [];
-  const best = profile.bests[conditionKey(completed.conditions)]?.wpm;
+  const best = learning.profile.bests[conditionKey(completed.conditions)]?.wpm;
   const mined = evidenceRun(completed);
   const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
   const words = [...missed, ...slow.map((item) => item.word)];
@@ -2506,7 +2509,7 @@ function renderResultDrill(completed) {
     const again = failedDrill(completed) ? trainingContext?.recommendation : null;
     const recommendation = again || trainingRecommendation(completed.conditions, failedDrill(completed) ? null : completed);
     const { target } = recommendation;
-    label = failedDrill(completed) ? 'Try drill again' : target ? 'Drill “' + target + '”' : prefs.retest ? 'Drill and retest' : 'Drill';
+    label = failedDrill(completed) ? 'Try drill again' : target ? 'Drill “' + target + '”' : learning.preferences.retest ? 'Drill and retest' : 'Drill';
     practice.commands.drill = () => startDrill(recommendation);
   }
 
@@ -2527,10 +2530,7 @@ const COMPARISON_HEADINGS = {
 // caveat. `trained` is the unit, or null for a drill that named none; `source` the retest's conditions, or null when no
 // fair retest ran. The path opens the next step at those conditions, as the comparison's Next always did.
 function showComparison(heading, outcome, trained = null, source = null) {
-  const panel = $('comparison-panel');
-  panel.dataset.outcome = outcome;
-  $('comparison-status').textContent = heading;
-  $('comparison-unit').textContent = trained || { adaptive: 'Adaptive', general: 'General drill' }[trainingContext?.recommendationKind] || 'Retest';
+  updateComparison({ heading, outcome, unit: trained || { adaptive: 'Adaptive', general: 'General drill' }[trainingContext?.recommendationKind] || 'Retest' });
   trainAfter = { trained, source };
   renderTrain({ advance: true });
 }
@@ -2538,7 +2538,7 @@ function showComparison(heading, outcome, trained = null, source = null) {
 function renderComparison(before, after, saved) {
   const comparison = compareAttempts(before, after);
   const trainedTarget = trainingContext?.target || selectedTarget;
-  $('comparison-panel').classList.toggle('is-uncompared', !comparison.comparable);
+  updateComparison({ compared: comparison.comparable });
   showComparison(comparison.comparable ? COMPARISON_HEADINGS[comparison.state] : 'Retest complete.', comparison.comparable ? comparison.state : 'unavailable',
     trainedTarget || null, after.conditions);
 
@@ -2547,8 +2547,7 @@ function renderComparison(before, after, saved) {
   // tab or device removed it while this retest was under way.
   if (!comparison.comparable) {
     const reason = before ? comparison.reason : 'Your history was cleared, so there is no baseline to compare with.';
-    $('comparison-conditions').textContent = '';
-    $('comparison-caveat').textContent = `${reason}${saved ? '' : ' Couldn’t save on this device.'}`;
+    updateComparison({ conditions: '', caveat: reason + (saved ? '' : ' Couldn’t save on this device.') });
     renderHistory();
 
     return;
@@ -2566,24 +2565,14 @@ function renderComparison(before, after, saved) {
     ? { target: trainedTarget, was: { slowMs: was.slowMs, timed: was.timed, timedRuns: was.timedRuns, slowRuns: was.slowRuns },
       now: { slowMs: afterPattern.slowdownMs, timed: afterPattern.timings.length } } : null;
 
-  $('comparison-target-row').hidden = was?.basis === 'slow' ? !pace : !now || !was;
+  const target = was?.basis === 'slow' ? pace ? {
+    label: trainedTarget + ' pace', value: paceShift(pace.now.slowMs),
+    was: 'over ' + plural(pace.now.timed, 'interval') + ', was ' + paceShift(pace.was.slowMs) + ' over ' + pace.was.timed,
+  } : null : now && was ? { label: trainedTarget + ' missed', value: missedCopy(now), was: 'was ' + missedCopy(was) } : null;
 
-  if (pace) {
-    $('comparison-target-label').textContent = `${trainedTarget} pace`;
-    $('comparison-target').textContent = paceShift(pace.now.slowMs);
-    $('comparison-target-was').textContent = `over ${plural(pace.now.timed, 'interval')}, was ${paceShift(pace.was.slowMs)} over ${pace.was.timed}`;
-  } else if (now && was) {
-    $('comparison-target-label').textContent = `${trainedTarget} missed`;
-    $('comparison-target').textContent = missedCopy(now);
-    $('comparison-target-was').textContent = `was ${missedCopy(was)}`;
-  }
-
-  $('comparison-accuracy-now').textContent = after.summary.score.accuracy;
-  $('comparison-accuracy').textContent = signed(comparison.accuracyDelta, 'pp');
-  showSpeed($('comparison-wpm-now'), after.summary.score.wpm);
-  showSpeed($('comparison-wpm'), comparison.wpmDelta);
   const parts = conditionParts(after.conditions);
-  $('comparison-conditions').textContent = ['fresh text', parts.language, parts.length].join(' · ');
+  updateComparison({ target, accuracy: after.summary.score.accuracy, accuracyDelta: signed(comparison.accuracyDelta, 'pp'),
+    wpm: after.summary.score.wpm, wpmDelta: comparison.wpmDelta, conditions: ['fresh text', parts.language, parts.length].join(' · ') });
   const enoughTiming = beforePattern?.timings.length >= 10 && afterPattern?.timings.length >= 10;
 
   // A key has no timing of its own.
@@ -2593,7 +2582,7 @@ function renderComparison(before, after, saved) {
   let comparisonSaved = saved;
 
   if (saved) {
-    profile.loops.push({
+    learning.profile.loops.push({
       id: uid(),
       at: new Date().toISOString(),
       beforeAttemptId: before.id,
@@ -2618,7 +2607,7 @@ function renderComparison(before, after, saved) {
     comparisonSaved = saveProfile();
   }
 
-  $('comparison-caveat').textContent = comparisonSaved ? '' : 'Couldn’t save on this device.';
+  updateComparison({ caveat: comparisonSaved ? '' : 'Couldn’t save on this device.' });
   renderHistory();
 }
 
@@ -2645,7 +2634,7 @@ function startAdaptiveRetest() {
 
   baselineAttempt = baseline;
   selectedTarget = null;
-  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: practice.shownResult.trainFocus || prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
+  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: practice.shownResult.trainFocus || learning.preferences.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
   startRetest();
 }
 
@@ -2662,176 +2651,43 @@ function renderTrain({ advance = false, fresh = false } = {}) {
   const after = trainAfter;
   const source = after?.source || conditions();
   const recommendation = trainingRecommendation(source);
-  const keyboard = keyboardOf(source);
-  const path = trainPath({ recommendation, loops: profile.loops, runs: profile.runs, keyboard, after });
+  const path = trainPath({ recommendation, loops: learning.profile.loops, runs: learning.profile.runs, keyboard: keyboardOf(source), after });
   const { current } = path;
   const baseline = baselineFor(source);
   const named = current.kind === 'targeted';
-  const next = after && named;
+  const next = Boolean(after && named);
+  const retests = learning.preferences.retest && baseline && !layoutMismatch(baseline.conditions);
+  learning.commands.next = () => practiceTarget(current.unit, source, recommendation);
+  learning.commands.target = (unit) => practiceTarget(unit, source, recommendation);
+  learning.commands.start = () => {
+    baselineAttempt = baseline;
+    startDrill(after ? { ...recommendation, kind: 'general', target: null, title: current.title, was: null } : recommendation);
+  };
 
-  $('train-heading').textContent = current.title;
-  $('train-unit').textContent = named ? current.unit : current.title;
-  $('comparison-panel').hidden = !after;
-  $('comparison-back').hidden = !after;
-
-  // The open step's one button. Fresh, it drills what the learner names; after a retest, Next drills the next unit
-  // the learner queues, recording the policy and focus that queued it, as the steps ahead do.
-  $('start-drill').hidden = Boolean(next);
-  $('comparison-next').hidden = !next;
-  const retests = prefs.retest && baseline && !layoutMismatch(baseline.conditions);
-
-  if (next) {
-    $('comparison-next').textContent = `Next: “${current.unit}”`;
-    $('comparison-next').onclick = () => practiceTarget(current.unit, source, recommendation);
-  } else {
-    $('start-drill').textContent = named ? `Drill “${current.unit}”` : retests ? 'Drill and retest' : 'Drill';
-    $('start-drill').onclick = () => {
-      baselineAttempt = baseline;
-      startDrill(after ? { ...recommendation, kind: 'general', target: null, title: current.title, was: null } : recommendation);
-    };
-  }
-
-  // What the button starts: the drill's length, then the retest's on fresh text when one follows.
   const length = retests ? conditionParts(baseline.conditions).length : '';
-  $('train-starts').textContent = `${prefs.drillSeconds} s${length ? `, then ${baseline.conditions.mode === 'quote' ? 'a ' : ''}${length} on fresh text` : ''}`;
-
-  // Words with the target that were missed, for a target named for its misses. Where in a word the miss fell isn't
-  // kept, so the target is marked in the text colour, never coral. A pair named for its pace lists none: the words
-  // it turns up in were missed elsewhere, if at all.
-  const words = named && current.was?.basis !== 'slow' ? evidenceWords(current.unit, source) : [];
-  $('train-words').hidden = !words.length;
-  $('train-words').replaceChildren(...words.map((word) => {
-    const span = document.createElement('span');
-    const at = word.indexOf(current.unit);
-    span.append(word.slice(0, at), element('b', current.unit), word.slice(at + current.unit.length));
-
-    return span;
-  }));
-
-  // A target drilled before reads its figure over every run, so it and the before → since line tell one story.
   const since = sinceCopy(current.since);
-  const evidence = named ? evidenceCopy(current.was, { all: Boolean(since) }) : '';
-  showFigures($('train-evidence'), evidence);
-  $('train-evidence').hidden = !evidence;
-  showFigures($('train-last'), since);
-  $('train-last').hidden = !since;
-
-  drawPath(path, { advance, fresh, source, recommendation });
+  const previous = learning.train.getSnapshot();
+  flushSync(() => learning.train.publish({
+    path, named, next, hasComparison: Boolean(after),
+    startLabel: named ? 'Drill “' + current.unit + '”' : retests ? 'Drill and retest' : 'Drill',
+    starts: learning.preferences.drillSeconds + ' s' + (length ? ', then ' + (baseline.conditions.mode === 'quote' ? 'a ' : '') + length + ' on fresh text' : ''),
+    words: named && current.was?.basis !== 'slow' ? evidenceWords(current.unit, source) : [],
+    evidence: named ? evidenceCopy(current.was, { all: Boolean(since) }) : '', since,
+    fresh, advance, revision: (previous?.revision ?? 0) + 1,
+  }));
 }
 
 // A figure keeps its number with its unit, and the first half of a before → after pair keeps its arrow, so the pair
 // breaks only between its halves: "70 ms slower → 20 ms faster" never leaves "ms faster" on a line of its own. The
 // text itself is the copy, unchanged.
-const FIGURE = /(?:\d+(?:%| of \d+)(?: missed)?|\d+ ms (?:slower|faster)|\d+ (?:clean )?intervals?|at your pace)(?: →)?/g;
 
-function showFigures(line, text) {
-  if (line.dataset.text === text) return line;
-  line.dataset.text = text;
-  let at = 0;
-  const parts = [];
 
-  for (const match of text.matchAll(FIGURE)) {
-    parts.push(text.slice(at, match.index), element('span', match[0], 'path-figure'));
-    at = match.index + match[0].length;
-  }
-
-  line.replaceChildren(...parts, text.slice(at));
-
-  return line;
-}
 
 // The steps around the comparison and the open step. Phones show the two newest steps behind you; wider screens
 // scroll the line back through all of them. Progress keeps every drill either way.
-const PHONE_BEHIND = 2;
 
-function drawPath(path, { advance, fresh, source, recommendation }) {
-  const list = $('train-path');
-  // A redraw (history or settings changed under the page) gives keyboard focus back to the step that had it, found by
-  // its unit, or to the open step's button when that step is gone, and keeps the line as far from its end as it was.
-  const had = list.contains(document.activeElement) ? document.activeElement : null;
-  const hadUnit = had?.closest('[data-unit]')?.dataset.unit;
-  const fromEnd = list.scrollWidth - list.scrollLeft;
 
-  const step = (unit, kind, lines = []) => {
-    const item = element('li', '', `path-step is-${kind}`);
-    item.dataset.unit = unit;
-    const head = element('div', '', 'path-head');
-    head.append(element('span', '', 'path-node'), element('span', unit, 'path-unit'));
-    head.firstChild.setAttribute('aria-hidden', 'true');
-    item.append(head, ...lines.map((line) => showFigures(element('p', '', 'path-line'), line)));
 
-    return item;
-  };
-
-  // A step behind you says "drilled" or "fixed" in a status word beside its target, as its ring or disc shows it.
-  const behind = path.behind.map((item, index) => {
-    const node = step(item.unit, `behind is-${item.state}`, behindCopy(item));
-    node.querySelector('.path-unit').append(element('span', ', ', 'sr-only'), element('span', item.state, `path-status status badge-${item.state === 'fixed' ? 'success' : 'neutral'}`));
-
-    if (path.behind.length - index > PHONE_BEHIND - (path.just ? 1 : 0)) node.dataset.early = '';
-
-    return node;
-  });
-
-  // A step ahead drills its unit when chosen, through the same path as the comparison's Next. Its name reads
-  // "Drill an, 5 of 40 missed".
-  const ahead = path.ahead.map(({ unit, was }) => {
-    const item = element('li', '', 'path-step is-ahead');
-    item.dataset.unit = unit;
-    const button = element('button', '', 'path-choose');
-    button.type = 'button';
-    button.setAttribute('aria-label', `Drill ${unit}, ${aheadCopy(was)}`);
-    const head = element('span', '', 'path-head');
-    head.append(element('span', '', 'path-node'), element('span', unit, 'path-unit'));
-    head.firstChild.setAttribute('aria-hidden', 'true');
-    button.append(head, showFigures(element('span', '', 'path-line'), aheadCopy(was)));
-    button.addEventListener('click', () => practiceTarget(unit, source, recommendation));
-    item.append(button);
-
-    return item;
-  });
-
-  // A general drill names nothing ahead of it, so the line runs on past it to empty places, as the path to come.
-  const places = path.current.kind === 'general' ? Array.from({ length: 3 }, () => {
-    const item = element('li', '', 'path-step is-ahead is-place');
-    item.setAttribute('aria-hidden', 'true');
-    item.append(element('div', '', 'path-head'));
-    item.firstChild.append(element('span', '', 'path-node'));
-
-    return item;
-  }) : [];
-
-  list.replaceChildren(...behind, $('comparison-panel'), $('train-current'), ...ahead, ...places);
-
-  // From 901px the steps sit in columns, six to a screen and the tail of the step before them; the comparison takes
-  // two. The open step's details run from its column to the end, and the line opens scrolled to its end, so the open
-  // step and those ahead are in view.
-  const before = behind.length + (path.just ? 2 : 0);
-  list.style.setProperty('--open', String(before + 1));
-  list.style.setProperty('--columns', String(Math.max(6, before + 1 + ahead.length + places.length)));
-  list.scrollLeft = fresh || advance ? list.scrollWidth : list.scrollWidth - fromEnd;
-  scrollablePath();
-
-  // Down the page, up to 900px, the path opens with the open step's button in view in the same way, clear of a dock
-  // at the foot: the page's scroll padding holds the dock's height (TOB-448). On a short phone the steps behind you
-  // once pushed it under the dock.
-  if (fresh && matchMedia('(max-width: 900px)').matches) list.querySelector('#train-current .train-actions').scrollIntoView({ block: 'nearest', behavior: 'instant' });
-
-  if (had) {
-    const open = $(path.just && path.current.kind === 'targeted' ? 'comparison-next' : 'start-drill');
-    const same = hadUnit ? list.querySelector(`[data-unit="${CSS.escape(hadUnit)}"] .path-choose`) : had;
-    const back = same?.isConnected && same.getClientRects().length && (same !== list || list.tabIndex === 0) ? same : open;
-    back.focus({ preventScroll: true });
-  }
-
-  if (!advance) list.classList.remove('is-advancing');
-  else {
-    list.style.setProperty('--advance', `${parseFloat(getComputedStyle(list).gridTemplateColumns)}px`);
-    list.classList.remove('is-advancing');
-    void list.offsetWidth;
-    list.classList.add('is-advancing');
-  }
-}
 
 // The line takes keyboard focus only while it scrolls, so its arrow keys reach the steps that don't fit. An edge fades
 // while more of the line lies past it, so steps behind you scrolled off the start show there are more.
@@ -2855,7 +2711,7 @@ function evidenceWords(target, source) {
   const keyboard = keyboardOf(source);
   const words = [];
 
-  for (const run of [...profile.runs].reverse()) {
+  for (const run of [...learning.profile.runs].reverse()) {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) continue;
 
     for (const word of run.missedWords || []) {
@@ -2882,16 +2738,16 @@ function startDrill(recommendation) {
   if (source) restoreConditions(source);
   trainingContext = { recommendation, target: selectedTarget, recommendationKind: recommendation.kind, policy: recommendation.policy || null,
     focus: recommendation.focus || null, baselineAttemptId: baselineAttempt?.id || null, drillCompleted: false, was: recommendation.was || null,
-    retest: prefs.retest };
+    retest: learning.preferences.retest };
   const drill = drillPassage();
-  trainingContext.drill = { target: selectedTarget, duration: prefs.drillSeconds, wordList: prefs.wordList, textVersion: drill.textVersion };
+  trainingContext.drill = { target: selectedTarget, duration: learning.preferences.drillSeconds, wordList: learning.preferences.wordList, textVersion: drill.textVersion };
 
   if (drill.lean) trainingContext.drill.lean = drill.lean;
   showManualTarget(false);
   resetSession('drill', { focus: true });
 
   // With no baseline, or the retest off, nothing follows the drill, so it says so where the drill describes itself.
-  if (!baselineAttempt || !prefs.retest) $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
+  if (!baselineAttempt || !learning.preferences.retest) $('session-description').textContent = learning.preferences.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
 }
 
 function startRetest() {
@@ -2915,7 +2771,7 @@ function startRetest() {
 function layoutMismatch(source) {
   const layout = normalizeLayout(source?.layout);
 
-  if (source?.inputClass === 'touch' || layout === prefs.layout) return '';
+  if (source?.inputClass === 'touch' || layout === learning.preferences.layout) return '';
 
   return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
 }
@@ -2931,23 +2787,23 @@ function restoreConditions(source) {
   const prose = !['quote', 'code', 'book'].includes(source.mode);
 
   // The standard recipe carries its own settings; restoring it must not overwrite the person's.
-  if (source.mode === 'standard') prefs = { ...prefs, mode: 'standard' };
-  else prefs = {
-    ...prefs,
+  if (source.mode === 'standard') learning.preferences = { ...learning.preferences, mode: 'standard' };
+  else learning.preferences = {
+    ...learning.preferences,
     mode: source.mode,
-    duration: source.duration || prefs.duration,
-    count: source.count || prefs.count,
-    punctuation: fixedPunctuation ? prefs.punctuation : Boolean(source.punctuation),
-    numbers: prose ? Boolean(source.numbers) : prefs.numbers,
-    quoteLength: source.quoteLength || prefs.quoteLength,
-    difficulty: source.difficulty || prefs.difficulty,
-    wordList: source.wordList || prefs.wordList,
-    codeLanguage: source.codeLanguage || prefs.codeLanguage,
-    book: source.book || prefs.book,
+    duration: source.duration || learning.preferences.duration,
+    count: source.count || learning.preferences.count,
+    punctuation: fixedPunctuation ? learning.preferences.punctuation : Boolean(source.punctuation),
+    numbers: prose ? Boolean(source.numbers) : learning.preferences.numbers,
+    quoteLength: source.quoteLength || learning.preferences.quoteLength,
+    difficulty: source.difficulty || learning.preferences.difficulty,
+    wordList: source.wordList || learning.preferences.wordList,
+    codeLanguage: source.codeLanguage || learning.preferences.codeLanguage,
+    book: source.book || learning.preferences.book,
     correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
     stopOnError: source.correctionPolicy === 'mandatory',
   };
-  livePreferences = JSON.stringify(prefs);
+  learning.livePreferences = JSON.stringify(learning.preferences);
   applyPreferences();
   setModeControls();
 }
@@ -3079,7 +2935,7 @@ function conditionOptions(select, sources, fallback = null) {
 // Counted runs on fresh text at one set of conditions, oldest first: what the pace caret and the run
 // card average.
 function trendRunsAt(key) {
-  return filterRuns(profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
+  return filterRuns(learning.profile.runs.filter(trendRun), key).filter((run) => run.score?.wpm);
 }
 
 function meanWpm(runs) {
@@ -3145,7 +3001,7 @@ function targetButton(target, source, ranked) {
 // The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
 // Older corpus or standard recipe versions need a new baseline; a code run is never one.
 function retainedBaseline(source = null) {
-  return [...profile.attempts].reverse().find((a) => {
+  return [...learning.profile.attempts].reverse().find((a) => {
     const wanted = source || a.conditions;
 
     return a.status === 'complete' && !a.interrupted && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
@@ -3168,15 +3024,15 @@ function practiceTarget(target, source, ranked = null) {
 // The recommender's pick for `source` conditions. The run just finished always counts toward its own
 // recommendation: its summary is saved even when its trace was too large to keep (the counting rule reads traces).
 function trainingRecommendation(source, current = null) {
-  const traces = current && !profile.attempts.includes(current) ? [...profile.attempts, current] : profile.attempts;
+  const traces = current && !learning.profile.attempts.includes(current) ? [...learning.profile.attempts, current] : learning.profile.attempts;
 
-  return recommendFor(DEFAULT_POLICY, { runs: profile.runs, loops: profile.loops, traces, source, now: Date.now(), focus: prefs.trainFocus });
+  return recommendFor(DEFAULT_POLICY, { runs: learning.profile.runs, loops: learning.profile.loops, traces, source, now: Date.now(), focus: learning.preferences.trainFocus });
 }
 
 // A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
 function drillPassage() {
-  return makeDrill(selectedTarget, prefs.wordList, trainingContext?.recommendation?.lean || []);
+  return makeDrill(selectedTarget, learning.preferences.wordList, trainingContext?.recommendation?.lean || []);
 }
 
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
@@ -3186,7 +3042,7 @@ function renderTraining() {
   const list = $('training-targets');
   const hadUnit = list.contains(document.activeElement) ? document.activeElement.closest('[data-unit]')?.dataset.unit : undefined;
 
-  const source = conditionOptions($('training-conditions'), profile.runs.filter((r) => validRun(r)
+  const source = conditionOptions($('training-conditions'), learning.profile.runs.filter((r) => validRun(r)
     && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
 
   const recommendation = trainingRecommendation(source);
@@ -3197,7 +3053,7 @@ function renderTraining() {
     row.dataset.unit = unit;
     const copy = document.createElement('div');
     copy.append(element('h3', `Practice “${unit}”`), element('p', evidenceCopy(was)));
-    const loop = [...profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
+    const loop = [...learning.profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
 
     if (loop) copy.append(element('p', `Last practiced ${dateCopy(loop.at)}. Last retest: ${loop.comparison.state}.`));
     row.append(copy, targetButton(unit, source, recommendation));
@@ -3216,7 +3072,7 @@ function renderStandardScore() {
   const scoreFor = (inputClass) => {
     const key = conditionKey({ ...standardConditions(inputClass), layout: inputLayout(inputClass) });
 
-    return standardScore(profile.runs, key, profile.bests[key]?.wpm ?? null);
+    return standardScore(learning.profile.runs, key, learning.profile.bests[key]?.wpm ?? null);
   };
 
   const keyboard = scoreFor('physical-keyboard');
@@ -3236,7 +3092,7 @@ function renderStandardScore() {
   // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
   // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
   const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
-  const keptBest = standardScore(profile.runs, conditionKey(source)).best;
+  const keptBest = standardScore(learning.profile.runs, conditionKey(source)).best;
   const olderBest = score.total && score.best > keptBest ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
   let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
 
@@ -3427,12 +3283,12 @@ const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
 
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
-  const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
   const coarse = matchMedia('(any-pointer: coarse)').matches;
   const picker = $('goal-day-select');
   const selectedDay = picker.value || goalDay;
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
-  const goal = prefs.dailyGoal;
+  const goal = learning.preferences.dailyGoal;
   const weeks = calendarWeeks();
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
   const cells = [];
@@ -3604,7 +3460,7 @@ function renderTestPills(shapes) {
 function progressLanding() {
   if ($('progress-screen').dataset.detail) return $('progress-detail-heading');
 
-  return profile.runs.some(practiceRun) || profile.loops.length ? $('lead-figure') : $('progress-empty-title');
+  return learning.profile.runs.some(practiceRun) || learning.profile.loops.length ? $('lead-figure') : $('progress-empty-title');
 }
 
 // Whether the person's last input was a key. Where the page moves focus for them, each engine guesses differently
@@ -3637,7 +3493,7 @@ function runRow(run) {
   const detail = element('div', '', 'run-detail');
   detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
     element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
-  const trace = profile.attempts.find((a) => a.id === run.id);
+  const trace = learning.profile.attempts.find((a) => a.id === run.id);
 
   if (trace) {
     const passageDetails = document.createElement('details');
@@ -3657,7 +3513,7 @@ function renderHistory() {
   renderStandardScore();
   renderTraining();
   renderGoal(date);
-  renderKeys(source ? filterRuns(profile.runs, key, span) : []);
+  renderKeys(source ? filterRuns(learning.profile.runs, key, span) : []);
   listedRuns = [...runRows].reverse();
   renderRunRows();
   renderLoops(loops);
@@ -3670,17 +3526,17 @@ function renderHistory() {
 // wait for renderHistory, so a row someone has open there stays open.
 function renderOverview(date) {
   historyDay = dayKey(date);
-  const listed = profile.runs.filter(practiceRun);
-  const hasProgress = listed.length > 0 || profile.loops.length > 0;
+  const listed = learning.profile.runs.filter(practiceRun);
+  const hasProgress = listed.length > 0 || learning.profile.loops.length > 0;
   const hasHistory = hasAnyHistory();
   // Conditions never mix: the lead, the charts and every list read one exact condition set. A length opens on its
   // most used set; with no choice yet, on the length of the newest run.
-  const shapes = testShapes([...listed, ...profile.loops]);
+  const shapes = testShapes([...listed, ...learning.profile.loops]);
   const variants = shapes.flatMap((shape) => shape.variants);
 
   // An emptied history keeps the choice, so undoing a clear comes back to the conditions that were showing.
   if (variants.length && !variants.some((variant) => variant.key === progressState.key)) {
-    const newest = listed.at(-1) || profile.loops.at(-1);
+    const newest = listed.at(-1) || learning.profile.loops.at(-1);
     progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
     progressState.allRuns = false;
   }
@@ -3695,8 +3551,8 @@ function renderOverview(date) {
   $('progress-filters').hidden = !source;
   $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
 
-  const week = weekChange({ runs: profile.runs, loops: profile.loops, practiceDays: profile.practiceDays, key, conditions: source || null,
-    focus: prefs.trainFocus, goal: prefs.dailyGoal, period, now: date.getTime() });
+  const week = weekChange({ runs: learning.profile.runs, loops: learning.profile.loops, practiceDays: learning.profile.practiceDays, key, conditions: source || null,
+    focus: learning.preferences.trainFocus, goal: learning.preferences.dailyGoal, period, now: date.getTime() });
 
   progressWeek = week;
   $('progress-empty').hidden = hasProgress;
@@ -3717,9 +3573,9 @@ function renderOverview(date) {
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
 
   // Everything else, one step away.
-  const byDay = minutesByDay(profile.runs, profile.practiceDays);
-  const loops = source ? filterRuns(profile.loops, key, span).reverse() : [];
-  const links = { runs: hasProgress, keys: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: profile.compositions.length > 0 };
+  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
+  const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
+  const links = { runs: hasProgress, keys: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
 
   for (const link of $('progress-more').querySelectorAll('[data-progress-open]')) link.hidden = !links[link.dataset.progressOpen];
   $('open-runs').textContent = runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs';
@@ -3906,70 +3762,52 @@ function practiceRow(practice) {
 }
 
 function renderLoops(loops) {
-  $('history-list').hidden = !loops.length;
-  $('history-empty').hidden = Boolean(loops.length);
-  const template = $('history-row-template');
+  learning.commands.loopTarget = (id) => {
+    const loop = learning.profile.loops.find((item) => item.id === id);
+
+    if (loop?.target) practiceTarget(loop.target, loop.conditions);
+  };
 
   const rows = loops.map((loop) => {
-    const row = template.content.firstElementChild.cloneNode(true);
-    row.querySelector('.history-date').textContent = new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    // A drill interrupted part way still went on to its retest: the loop is its drill and retest here, as Train calls
-    // its target drilled (TOB-448). Only a loop with no drill at all (an adaptive run's, or one saved before every
-    // retest followed a drill) is a fresh-text check.
     const drilled = loop.drillCompleted || Boolean(loop.drill);
-    row.querySelector('.history-target').textContent = drilled
-      ? loop.target ? `“${loop.target}” drill and retest` : 'General drill and retest'
-      : 'Fresh-text check';
-    row.querySelector('.history-conditions').textContent = describeConditions(loop.conditions);
-
-    // Progress reads back what the comparison did: a pair drilled for its slowness, its pace; any other target,
-    // its misses. Loops saved before either was recorded fall back to a pair's clean intervals.
+    let conditions = describeConditions(loop.conditions);
     const pace = loop.targetPace;
     const timing = loop.targetTiming?.target && loop.targetTiming.beforeCount + loop.targetTiming.afterCount > 0 ? loop.targetTiming : null;
     const misses = loop.targetMisses;
 
-    if (pace) {
-      row.querySelector('.history-conditions').textContent += ` · ${pace.target} ${paceShift(pace.now.slowMs)} over ${plural(pace.now.timed, 'interval')}, was ${paceShift(pace.was.slowMs)} over ${pace.was.timed}`;
-    } else if (misses) row.querySelector('.history-conditions').textContent += ` · ${misses.target} missed ${missedCopy(misses.now)}, was ${missedCopy(misses.was)}`;
-    else if (timing) row.querySelector('.history-conditions').textContent += ` · ${timing.target} · ${timing.beforeCount} before · ${timing.afterCount} after`;
+    if (pace) conditions += ' · ' + pace.target + ' ' + paceShift(pace.now.slowMs) + ' over ' + plural(pace.now.timed, 'interval') + ', was ' + paceShift(pace.was.slowMs) + ' over ' + pace.was.timed;
+    else if (misses) conditions += ' · ' + misses.target + ' missed ' + missedCopy(misses.now) + ', was ' + missedCopy(misses.was);
+    else if (timing) conditions += ' · ' + timing.target + ' · ' + timing.beforeCount + ' before · ' + timing.afterCount + ' after';
+    const notes = [];
 
-    row.querySelector('.history-accuracy').textContent = signed(loop.comparison.accuracyDelta, 'pp');
-    const measures = row.querySelectorAll('.history-measure span');
+    if (timing) notes.push('“' + timing.target + '” clean intervals: ' + timing.beforeCount + ' before / ' + timing.afterCount + ' after. ' + (timing.deltaMs === null ? 'Too few samples to call a timing change.' : signed(timing.deltaMs, 'ms') + ' median timing change.'));
+    notes.push(loop.comparison.reason || 'One retest is feedback, not proof.');
 
-    if (measures[1]) measures[1].replaceChildren(unitLabel('Corrected {unit}'));
-    row.querySelector('.history-timing').replaceChildren(speedFigure(loop.comparison.wpmDelta, { signed: true }));
-    const status = row.querySelector('.history-status');
-    status.textContent = loop.comparison.state;
-    status.className = `history-status badge ${loop.comparison.state === 'improved' ? 'badge-success' : loop.comparison.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`;
-    const detail = row.querySelector('.history-detail');
-    detail.append(scoreFacts([
-      ['before', loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ` · ${loop.comparison.before.accuracy}%`] : 'Not retained in this older comparison'],
-      ['after', loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ` · ${loop.comparison.after.accuracy}%`] : 'Not retained in this older comparison'],
-      // Loops saved without a drill length come from when every drill ran 60 s.
-      ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : drilled ? `interrupted · ${loop.target || 'general'}` : 'Skipped'],
-    ]));
+    if (loop.beforeAttemptId && loop.afterAttemptId) notes.push('Baseline ' + loop.beforeAttemptId + ' · retest ' + loop.afterAttemptId + '. Open their run entries above for saved details.');
 
-    if (timing) detail.append(element('p', `“${timing.target}” clean intervals: ${timing.beforeCount} before / ${timing.afterCount} after. ${timing.deltaMs === null ? 'Too few samples to call a timing change.' : `${signed(timing.deltaMs, 'ms')} median timing change.`}`));
-    detail.append(element('p', loop.comparison.reason || 'One retest is feedback, not proof.'));
-
-    if (loop.beforeAttemptId && loop.afterAttemptId) detail.append(element('p', `Baseline ${loop.beforeAttemptId} · retest ${loop.afterAttemptId}. Open their run entries above for saved details.`));
-
-    if (loop.target) detail.append(targetButton(loop.target, loop.conditions));
-
-    return row;
+    return {
+      id: loop.id, date: new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      title: drilled ? loop.target ? '“' + loop.target + '” drill and retest' : 'General drill and retest' : 'Fresh-text check',
+      conditions, accuracy: signed(loop.comparison.accuracyDelta, 'pp'), delta: loop.comparison.wpmDelta, state: loop.comparison.state,
+      facts: [
+        { label: 'before', parts: copyParts(loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ' · ' + loop.comparison.before.accuracy + '%'] : 'Not retained in this older comparison') },
+        { label: 'after', parts: copyParts(loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ' · ' + loop.comparison.after.accuracy + '%'] : 'Not retained in this older comparison') },
+        { label: 'drill', parts: [loop.drillCompleted ? (loop.drill?.duration || 60) + ' s · ' + (loop.target || 'general') : drilled ? 'interrupted · ' + (loop.target || 'general') : 'Skipped'] },
+      ], notes, target: loop.target || null,
+    };
   });
 
-  $('history-list').replaceChildren(...rows);
+  flushSync(() => learning.loops.publish(rows));
 }
 
 // Practice over the period, whatever the test: days practised, the longest and current streaks (days meeting
 // the goal, or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
 function renderPracticeStats(period, date = new Date()) {
-  const byDay = minutesByDay(profile.runs, profile.practiceDays);
+  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
   const first = Object.keys(byDay).sort()[0] || null;
   const days = periodDays(period, date, first);
-  const goal = prefs.dailyGoal;
-  const stats = practiceStats(byDay, profile.runs, days, goal);
+  const goal = learning.preferences.dailyGoal;
+  const stats = practiceStats(byDay, learning.profile.runs, days, goal);
   practicePerDay = stats.runsPerDay;
   const runs = stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0);
   const current = practiceStreak(byDay, goal, date);
@@ -3985,7 +3823,7 @@ function renderPracticeStats(period, date = new Date()) {
 
   const daysWord = (n) => (n === 1 ? 'day' : 'days');
   const runDays = stats.runsPerDay.filter((d) => d.runs).length;
-  const counted = runCountTotals(profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
+  const counted = runCountTotals(learning.profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
   $('practice-stats').replaceChildren(
     figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${plural(Number((runs / runDays).toFixed(1)), 'run')} a day when you practise` : 'no runs in this period'),
     figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
@@ -4111,13 +3949,13 @@ function moveProgressTab(event) {
 }
 
 function hasAnyHistory() {
-  return profile.runs.length > 0 || profile.attempts.length > 0 || profile.loops.length > 0 || profile.compositions.length > 0
-    || lessonsStarted(profile.lessons) || Object.keys(profile.practiceDays).length > 0 || Object.keys(profile.runCounts).length > 0;
+  return learning.profile.runs.length > 0 || learning.profile.attempts.length > 0 || learning.profile.loops.length > 0 || learning.profile.compositions.length > 0
+    || lessonsStarted(learning.profile.lessons) || Object.keys(learning.profile.practiceDays).length > 0 || Object.keys(learning.profile.runCounts).length > 0;
 }
 
 // Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
 function renderComposeHistory() {
-  const list = profile.compositions;
+  const list = learning.profile.compositions;
   $('compose-history').hidden = !list.length;
 
   if (!list.length) return;
@@ -4145,7 +3983,7 @@ function todayPassage() {
   const daily = dailyPassage();
 
   return { ...daily, id: daily.sourceTextId, challengeId: daily.id, corpus: CORPUS_VERSION,
-    firstDailyAttempt: !profile.seenTextIds.includes(daily.id), fresh: !profile.seenTextIds.includes(daily.sourceTextId) };
+    firstDailyAttempt: !learning.profile.seenTextIds.includes(daily.id), fresh: !learning.profile.seenTextIds.includes(daily.sourceTextId) };
 }
 
 function startDaily() {
@@ -4160,10 +3998,10 @@ function startDaily() {
 function renderDaily() {
   const daily = dailyPassage();
   $('daily-date').textContent = `${daily.day} · english · resets 00:00 UTC`;
-  const completed = profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
+  const completed = learning.profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
   const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
   const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
-  const layout = isDefaultLayout(prefs.layout) ? '' : ` in ${layoutLabel(prefs.layout)}`;
+  const layout = isDefaultLayout(learning.preferences.layout) ? '' : ` in ${layoutLabel(learning.preferences.layout)}`;
   setParts($('daily-status'), best
     ? ['Today’s best: ', speedFigure(best.score.wpm), ` · ${best.score.accuracy}% accuracy${layout}.`]
     : `No completed physical-keyboard attempt${layout} today.`);
@@ -4179,7 +4017,7 @@ function renderDaily() {
 
 // ── Lessons ───────────────────────────────────────────────────────────────
 
-const handoffCopy = () => `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${prefs.drillSeconds}-second drill from your own mistakes once there’s enough evidence${prefs.retest ? ', then retests you on fresh text' : ''}.`;
+const handoffCopy = () => `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${learning.preferences.drillSeconds}-second drill from your own mistakes once there’s enough evidence${learning.preferences.retest ? ', then retests you on fresh text' : ''}.`;
 let lessonActions = { primary: null, secondary: null };
 
 function lessonCopy(index, current = null) {
@@ -4198,14 +4036,14 @@ function fingerNames(lesson) {
 
 function lessonMeta(index) {
   const lesson = LESSONS[index];
-  const tries = profile.lessons[lesson.id]?.tries;
+  const tries = learning.profile.lessons[lesson.id]?.tries;
 
   return [`${lessonFingers(lesson)} · pass at ${LESSON_ACCURACY}% accuracy and `, speedFigure(lesson.wpm), ` in one run${tries ? ` · ${tries} ${tries === 1 ? 'try' : 'tries'} so far` : ''}`];
 }
 
 // Like every run, a lesson is classed by the press that started it (resetSession reads activationInput).
 function startLesson(index) {
-  if (!lessonUnlocked(profile.lessons, index)) return;
+  if (!lessonUnlocked(learning.profile.lessons, index)) return;
 
   if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
@@ -4238,15 +4076,15 @@ function finishLesson(completed, valid) {
   const at = new Date().toISOString();
 
   if (valid) {
-    const run = recordLessonRun(profile.lessons, lessonIndex, score, at, completed.conditions.inputClass);
+    const run = recordLessonRun(learning.profile.lessons, lessonIndex, score, at, completed.conditions.inputClass);
     // A lesson that was locked when it finished saves nothing, but still shows its numbers.
     outcome = run.outcome || lessonOutcome(lessonIndex, score);
     firstPass = run.firstPass;
     recorded = run.recorded;
 
     if (recorded) {
-      profile.lessons = run.progress;
-      profile.practiceDays = recordPracticeTime(profile.practiceDays, at, elapsedMs);
+      learning.profile.lessons = run.progress;
+      learning.profile.practiceDays = recordPracticeTime(learning.profile.practiceDays, at, elapsedMs);
       saved = saveProfile();
     }
   }
@@ -4278,7 +4116,7 @@ function lessonHeadline(result) {
   if (!result.recorded) return `Lesson ${n} is locked · not counted`;
 
   if (result.touch) return `Lesson ${n} on touch input · doesn’t unlock`;
-  const next = nextLessonIndex(profile.lessons);
+  const next = nextLessonIndex(learning.profile.lessons);
 
   if (result.outcome?.passed) {
     if (!result.firstPass) return `Lesson ${n} passed again.`;
@@ -4327,7 +4165,7 @@ function lessonFacts(result) {
 }
 
 function renderLessons() {
-  const progress = profile.lessons;
+  const progress = learning.profile.lessons;
   const next = nextLessonIndex(progress);
   const complete = next >= LESSONS.length;
   const result = lessonResult;
@@ -4413,7 +4251,7 @@ function renderLessons() {
   const fresh = complete ? [] : LESSONS[next].keys;
   renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
   $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = isDefaultLayout(prefs.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons.';
+  $('lesson-save-note').textContent = isDefaultLayout(learning.preferences.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons.';
 
   $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
@@ -4476,7 +4314,7 @@ function ghostConditions() {
 function ghostPassage() {
   const id = challengeTextId(ghostRace.passage, ghostRace.conditions);
 
-  return { id, text: ghostRace.passage, fresh: !profile.seenTextIds.includes(id) };
+  return { id, text: ghostRace.passage, fresh: !learning.profile.seenTextIds.includes(id) };
 }
 
 // An open online room keeps the surface: a ghost race never starts over it.
@@ -4570,7 +4408,7 @@ async function startGhostRace(id) {
 function ownBestRun() {
   let best = null;
 
-  for (const run of profile.attempts) {
+  for (const run of learning.profile.attempts) {
     const c = run.conditions || {};
 
     if (run.adaptive || c.mode !== 'time' || c.duration !== 30 || c.punctuation || c.numbers || (c.wordList || DEFAULT_WORD_LIST) !== '200'
@@ -4787,19 +4625,19 @@ async function sendGhost(event) {
 // The legend follows the chosen layout; typed characters are never remapped. The optional finger
 // map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
 function buildKeyboard() {
-  const signature = `${prefs.layout}:${prefs.fingerMap}`;
+  const signature = `${learning.preferences.layout}:${learning.preferences.fingerMap}`;
 
   if (signature === keyboardBuilt) return;
   keyboardBuilt = signature;
   const keyboard = $('keyboard');
-  keyboard.dataset.layout = prefs.layout;
-  keyboard.dataset.fingers = String(prefs.fingerMap);
+  keyboard.dataset.layout = learning.preferences.layout;
+  keyboard.dataset.fingers = String(learning.preferences.fingerMap);
   keyboard.classList.remove("finger-map");
   keyboard.removeAttribute("role");
   keyboard.setAttribute("aria-label", "On-screen keyboard");
   const fragment = document.createDocumentFragment();
 
-  for (const keys of keyboardRows(prefs.layout)) {
+  for (const keys of keyboardRows(learning.preferences.layout)) {
     const row = document.createElement('div');
     row.className = 'key-row';
 
@@ -4812,7 +4650,7 @@ function buildKeyboard() {
       key.dataset.column = String(column);
       const label = letter === ' ' ? 'space' : letter;
 
-      if (prefs.fingerMap) {
+      if (learning.preferences.fingerMap) {
         // The initial and band are hidden from screen readers, so each key says its finger in words,
         // as one phrase ("f, left index"); the printed cap is unchanged.
         const cap = element('span', label);
@@ -4825,7 +4663,7 @@ function buildKeyboard() {
     fragment.append(row);
   }
 
-  if (prefs.fingerMap) {
+  if (learning.preferences.fingerMap) {
     const legend = document.createElement('p');
     legend.className = 'finger-legend';
     legend.append(...FINGERS.map((finger) => {
@@ -4897,7 +4735,7 @@ function renderKeyboard() {
   if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
   else { if ($('keyboard').classList.contains('finger-map')) keyboardBuilt = ''; buildKeyboard(); }
 
-  $('keyboard').hidden = !prefs.keyboard && !lesson;
+  $('keyboard').hidden = !learning.preferences.keyboard && !lesson;
 }
 
 // A one-keyboard race is a quote under the current settings, whatever the practice test shape.
@@ -4924,8 +4762,8 @@ function startRace() {
     notice: '',
   };
 
-  if (race.passage?.id && !profile.seenTextIds.includes(race.passage.id)) {
-    profile.seenTextIds.push(race.passage.id);
+  if (race.passage?.id && !learning.profile.seenTextIds.includes(race.passage.id)) {
+    learning.profile.seenTextIds.push(race.passage.id);
     saveProfile();
   }
 
@@ -4957,7 +4795,7 @@ function setupRacePlayer() {
 
 // A key hint: hidden on touch-only devices (.key-hint in styles.css), where there is no restart key.
 function showRaceRestartHint() {
-  const hint = prefs.keybindings.restart ? `${bindingLabel(prefs.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
+  const hint = learning.preferences.keybindings.restart ? `${bindingLabel(learning.preferences.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
   $('race-help').replaceChildren(element('span', hint, 'key-hint'));
 }
 
@@ -5064,7 +4902,7 @@ function forgetTraining() {
   // A retest nobody has started compares with the baseline just forgotten, so a practice test takes its place; a
   // drill nobody has started stands alone now, with no retest after it, and says so (TOB-448).
   if (practice.attempt?.status === 'ready' && practice.sessionKind === 'retest') resetSession('practice', { show: false });
-  else if (practice.attempt?.status === 'ready' && practice.sessionKind === 'drill') $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
+  else if (practice.attempt?.status === 'ready' && practice.sessionKind === 'drill') $('session-description').textContent = learning.preferences.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
 
   if (document.body.dataset.view === 'train') renderTrain();
 }
@@ -5072,7 +4910,7 @@ function forgetTraining() {
 // Empties history in memory and on the results screen once the account is deleted, when there is
 // nothing left to save to (clear history keeps its marker and Undo; see clearHistory).
 function wipeHistory() {
-  profile = emptyProfile();
+  learning.profile = emptyProfile();
   progressState.allRuns = false;
   forgetTraining();
 }
@@ -5088,18 +4926,18 @@ function wipeHistory() {
 // retest makes no comparison with the cleared run.
 function forgetClearedTraining() {
   if (runInProgress()) return false;
-  const marker = profile.historyClearedAt || null;
+  const marker = learning.profile.historyClearedAt || null;
   const arrived = marker && !trainingClears.has(marker) ? marker : null;
-  trainingClears = account.clearsApplied(profile);
-  const legacyStart = profile.legacyClearedAt || '';
+  trainingClears = account.clearsApplied(learning.profile);
+  const legacyStart = learning.profile.legacyClearedAt || '';
   const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
   trainingLegacyAt = legacyStart;
 
   if (!baselineAttempt && !practice.shownResult) return false;
-  const named = account.clearedIds(profile);
+  const named = account.clearedIds(learning.profile);
 
   const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
-    && !profile.runs.some((run) => run.id === record.id);
+    && !learning.profile.runs.some((run) => run.id === record.id);
 
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
     || takenByLegacy(record));
@@ -5127,7 +4965,7 @@ function followHistory() {
 }
 
 function clearHistory() {
-  clearSnapshot = JSON.stringify(profile);
+  clearSnapshot = JSON.stringify(learning.profile);
   // An unstarted practice passage outlives the clear (Practice keeps it), so it is the first text the cleared
   // history shows: fresh, and recorded as seen, however it was labelled before. Clearing happens on Progress,
   // so no run is under way.
@@ -5135,14 +4973,14 @@ function clearHistory() {
   clearedPassage = queued && { attemptId: queued.id, fresh: passage.fresh, exhausted: passage.exhausted };
   // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
   // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
-  profile = account.clearProfile(profile);
+  learning.profile = account.clearProfile(learning.profile);
 
-  if (queued?.textId) profile.seenTextIds = [queued.textId];
+  if (queued?.textId) learning.profile.seenTextIds = [queued.textId];
 
   if (queued && passage.fresh === false) labelPassage(true, false);
-  clearedAt = profile.historyClearedAt;
+  clearedAt = learning.profile.historyClearedAt;
   heldClears = account.joinHolds(heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
-  trainingClears = account.clearsApplied(profile);
+  trainingClears = account.clearsApplied(learning.profile);
   forgetTraining();
   const saved = saveProfile();
   $('clear-dialog').close();
@@ -5169,7 +5007,7 @@ function undoClear() {
   // Restores the history even if the clear has already synced, keeping anything added since: this tab's
   // own copy from just before it, and whatever the clear removed from the account row or another tab as
   // they merged here (held for it), as far as clears still in force allow.
-  ({ merged: profile, holds: heldClears } = account.undoClearHere(heldClears, profile, clearedAt, snapshot));
+  ({ merged: learning.profile, holds: heldClears } = account.undoClearHere(heldClears, learning.profile, clearedAt, snapshot));
   // The passage that waited through the clear gets its old label back while it is still unstarted. A run on it
   // already under way is left alone (still run): it started as fresh text, and stays that way.
   const queued = clearedPassage;
@@ -5242,9 +5080,9 @@ function signedInAs(userId) {
 // Only stored data changes here; showMerged() brings the screen up to date. Returns whether it changed.
 function absorb(data) {
   if (data?.version !== 2) return false;
-  const before = account.syncSignature(profile);
-  ({ merged: profile, holds: heldClears } = account.mergeAndHold(heldClears, profile, normalizeProfile(data)));
-  const changed = account.syncSignature(profile) !== before;
+  const before = account.syncSignature(learning.profile);
+  ({ merged: learning.profile, holds: heldClears } = account.mergeAndHold(heldClears, learning.profile, normalizeProfile(data)));
+  const changed = account.syncSignature(learning.profile) !== before;
 
   if (changed) progressState.allRuns = false;
 
@@ -5299,7 +5137,7 @@ function absorbCache() {
     const own = cacheText;
     cacheText = text;
 
-    if (data?.version === 2 && !account.sameProfile(profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
+    if (data?.version === 2 && !account.sameProfile(learning.profile, normalizeProfile(data)) && !storeLocally()) cacheText = own;
 
     return changed;
   } catch {
@@ -5368,7 +5206,7 @@ async function pushOnce({ cloud: known } = {}) {
 
       const edits = localEdits;
       const theirs = cloud?.data?.version === 2 ? normalizeProfile(cloud.data) : null;
-      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, profile, theirs) : { merged: profile, holds: heldClears };
+      const { merged, holds: pushHolds } = theirs ? account.mergeAndHold(heldClears, learning.profile, theirs) : { merged: learning.profile, holds: heldClears };
       let written;
 
       if (theirs && account.sameRow(merged, theirs)) written = cloud.updated_at;
@@ -5389,7 +5227,7 @@ async function pushOnce({ cloud: known } = {}) {
 
         // Done unless this tab saved again, or took in another tab's save, while the write was out:
         // that goes up with the next push.
-        if (edits === localEdits && account.sameProfile(profile, merged)) {
+        if (edits === localEdits && account.sameProfile(learning.profile, merged)) {
           unsynced = false;
           sentText = kept ? cacheText : null;
         } else if (!syncTimer) syncTimer = setTimeout(pushWhenIdle, 1500);
@@ -5448,7 +5286,7 @@ async function pullProfile({ force = false } = {}) {
 
     // A tab can hold what the row lacks without saving anything itself: another tab's save taken in from
     // the device cache, whose own push failed or never ran. It goes up from here, as on load.
-    if (unsynced || !account.sameRow(profile, normalizeProfile(cloud.data))) {
+    if (unsynced || !account.sameRow(learning.profile, normalizeProfile(cloud.data))) {
       unsynced = true;
       await pushProfile({ cloud });
     } else setSyncState('synced');
@@ -5458,10 +5296,10 @@ async function pullProfile({ force = false } = {}) {
 }
 
 function adoptProfile(data) {
-  profile = normalizeProfile(data);
+  learning.profile = normalizeProfile(data);
   progressState.allRuns = false;
-  prefs = preferencesInUse(profile.preferences);
-  livePreferences = JSON.stringify(prefs);
+  learning.preferences = preferencesInUse(learning.profile.preferences);
+  learning.livePreferences = JSON.stringify(learning.preferences);
   storeLocally();
   applyPreferences();
   setModeControls();
@@ -5477,9 +5315,9 @@ function adoptProfile(data) {
 // learn screen is redrawn even while in use, so it never shows a pass the progress no longer holds; focus
 // on a lesson row comes back to that row (or to the lesson button, if the row has no button now).
 function followLessonProgress() {
-  if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
+  if (lessonResult && !lessonResultHeld(lessonResult, learning.profile.lessons)) lessonResult = null;
 
-  if (practice.sessionKind === 'lesson' && practice.attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  if (practice.sessionKind === 'lesson' && practice.attempt?.status !== 'running' && !lessonUnlocked(learning.profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
   redrawLessons();
 }
 
@@ -5512,15 +5350,15 @@ async function syncOnLoad() {
       const legacy = account.takeLegacyProfile();
 
       if (legacy?.version === 2) {
-        profile = account.mergeProfiles(profile, normalizeProfile(legacy));
-        prefs = preferencesInUse(profile.preferences);
+        learning.profile = account.mergeProfiles(learning.profile, normalizeProfile(legacy));
+        learning.preferences = preferencesInUse(learning.profile.preferences);
       }
 
       // Stored and sent before anything re-renders, so the import can't be left half done.
       saveProfile();
       await pushProfile();
 
-      if (legacy?.version === 2) adoptProfile(profile);
+      if (legacy?.version === 2) adoptProfile(learning.profile);
     } else {
       absorb(cloud.data);
       noteCloudAt(cloud.updated_at);
@@ -5529,7 +5367,7 @@ async function syncOnLoad() {
 
       // Edits made here before the check (usually the passage marked seen), or kept on this device
       // since an earlier visit, go up; otherwise the row already holds everything.
-      if (unsynced || !account.sameRow(profile, normalizeProfile(cloud.data))) {
+      if (unsynced || !account.sameRow(learning.profile, normalizeProfile(cloud.data))) {
         unsynced = true;
         await pushProfile({ cloud });
       } else {
@@ -5650,7 +5488,7 @@ function closeAccountMenu() {
 
 // Saves this device's copy of the profile as a file. Nothing is sent anywhere: the browser builds the file.
 function exportData() {
-  const file = account.exportCopy(profile);
+  const file = account.exportCopy(learning.profile);
   const url = URL.createObjectURL(new Blob([file.text], { type: 'application/json' }));
   const link = Object.assign(document.createElement('a'), { href: url, download: file.name });
   link.click();
@@ -6055,7 +5893,7 @@ function importSettings(event) {
 
   const keys = Object.keys(result.preferences);
   const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
-  prefs = validPreferences({ ...prefs, ...result.preferences });
+  learning.preferences = validPreferences({ ...learning.preferences, ...result.preferences });
 
   if (keys.includes('mode')) customOpen = false;
   applyPreferences();
@@ -6188,33 +6026,33 @@ function bindEvents() {
   Object.assign(practice.choices, {
     chooseMode(mode) {
       customOpen = false;
-      prefs.mode = mode;
+      learning.preferences.mode = mode;
       setModeControls();
       saveChoice('mode');
       resetSession('practice', { focus: true, leaveCompose: true });
     },
     chooseLanguage(language) {
-      prefs.codeLanguage = language;
+      learning.preferences.codeLanguage = language;
       setModeControls();
       saveChoice('mode', 'codeLanguage');
       resetSession('practice', { focus: true });
     },
     chooseLength(length) {
-      if (prefs.mode === 'time') prefs.duration = length;
-      else prefs.count = length;
+      if (learning.preferences.mode === 'time') learning.preferences.duration = length;
+      else learning.preferences.count = length;
       setModeControls();
-      saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
+      saveChoice('mode', learning.preferences.mode === 'time' ? 'duration' : 'count');
       resetSession('practice', { focus: true });
     },
-    punctuation(on) { prefs.punctuation = on; saveProfile(); resetSession('practice', { focus: true }); },
-    adaptive(on) { prefs.adaptive = on; saveProfile(); resetSession('practice', { focus: true }); },
+    punctuation(on) { learning.preferences.punctuation = on; saveProfile(); resetSession('practice', { focus: true }); },
+    adaptive(on) { learning.preferences.adaptive = on; saveProfile(); resetSession('practice', { focus: true }); },
     compose: openCompose,
     custom: () => openCustom(!customOpen),
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   onSetting('numbers-toggle', (value) => {
-    const changed = Boolean(prefs.numbers) !== (value === 'true');
-    prefs.numbers = value === 'true';
+    const changed = Boolean(learning.preferences.numbers) !== (value === 'true');
+    learning.preferences.numbers = value === 'true';
     saveChoice('numbers');
 
     if (!changed) return;
@@ -6224,7 +6062,7 @@ function bindEvents() {
   });
   onSetting('word-list', (value) => setWordList(value));
   onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
-  onSetting('daily-goal', (value) => { prefs.dailyGoal = Number(value); saveChoice('dailyGoal'); renderGoal(); });
+  onSetting('daily-goal', (value) => { learning.preferences.dailyGoal = Number(value); saveChoice('dailyGoal'); renderGoal(); });
   onSetting('train-focus', (value) => setTraining('trainFocus', value));
   onSetting('drill-length', (value) => setTraining('drillSeconds', Number(value)));
   onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
@@ -6240,22 +6078,22 @@ function bindEvents() {
   $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
   $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
   $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
-  onSetting('font-size', (value) => { prefs.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
-  onSetting('typing-font', (value) => { prefs.typingFont = value; applyFonts(); saveChoice('typingFont'); });
-  onSetting('app-font', (value) => { prefs.appFont = value; applyFonts(); saveChoice('appFont'); });
+  onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
+  onSetting('typing-font', (value) => { learning.preferences.typingFont = value; applyFonts(); saveChoice('typingFont'); });
+  onSetting('app-font', (value) => { learning.preferences.appFont = value; applyFonts(); saveChoice('appFont'); });
   onSetting('speed-unit', (value) => setSpeedUnit(value));
   onSetting('word-highlight', (value) => setWordHighlight(value));
   onSetting('word-highlight-slide', (value) => setWordHighlightSlide(value === 'true'));
   keybindingEditor = createKeybindingEditor({
-    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => prefs.keybindings,
-    onSave: (bindings) => { prefs.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
+    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => learning.preferences.keybindings,
+    onSave: (bindings) => { learning.preferences.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
   createWallpaper({ layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
   settingsView = createSettingsView({ dialog: $('settings-dialog'), trigger: $('settings-trigger'), fallback: $('exit-focus'), stopRecording: () => keybindingEditor.stopRecording() });
-  onSetting('live-toggle', (value) => { prefs.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
-  onSetting('keyboard-toggle', (value) => { prefs.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
-  onSetting('finger-toggle', (value) => { prefs.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
+  onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
+  onSetting('keyboard-toggle', (value) => { learning.preferences.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
+  onSetting('finger-toggle', (value) => { learning.preferences.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
   onSetting('layout-select', (value) => setLayout(value));
   onSetting('correction-select', (value) => setCorrection(value));
   onSetting('strict-space-toggle', (value) => setInputRule('strictSpace', value === 'true'));
@@ -6266,7 +6104,7 @@ function bindEvents() {
   onSetting('dark-theme', (value) => pickTheme('dark', value));
   onSetting('light-theme', (value) => pickTheme('light', value));
   themeEditor = createThemeEditor({
-    themes: () => readCustomThemes(prefs.customThemes),
+    themes: () => readCustomThemes(learning.preferences.customThemes),
     currentTheme: shownTheme,
     preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
     save: saveCustomThemes,
@@ -6275,24 +6113,24 @@ function bindEvents() {
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
   });
   $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }));
-  prefersLight.addEventListener('change', () => { if (prefs.theme === 'system') applyTheme(); });
+  prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); });
   onSetting('pace-select', (value) => setPaceCaret(value));
   $('pace-wpm').addEventListener('change', (event) => {
     const field = event.target;
-    prefs.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
+    learning.preferences.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
     field.dataset.shown = field.value;
     setPaceCaret('custom', { speed: true });
   });
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
   $('pace-wpm').addEventListener('blur', showPace);
-  onSetting('focus-toggle', (value) => { prefs.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
-  onSetting('tape-toggle', (value) => { prefs.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
+  onSetting('focus-toggle', (value) => { learning.preferences.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
+  onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
   onSetting('sound-select', (value) => setSound(value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
   $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
   $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'));
   $('exit-focus').addEventListener('click', () => {
-    prefs.focusMode = false;
+    learning.preferences.focusMode = false;
     applyPreferences();
     saveProfile();
     focusPractice();
@@ -6357,7 +6195,7 @@ function bindEvents() {
   practice.commands.headingKeyDown = (event) => {
     const held = heldAfterStop();
 
-    if (event.key !== 'Enter' || matchesAppBinding(event, prefs.keybindings.restart)) return;
+    if (event.key !== 'Enter' || matchesAppBinding(event, learning.preferences.keybindings.restart)) return;
     event.preventDefault();
 
     if (!held && !event.repeat) runAgain();
@@ -6413,7 +6251,7 @@ function bindEvents() {
   $('train-path').addEventListener('scroll', pathEdges, { passive: true });
   $('start-daily').addEventListener('click', startDaily);
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
-  $('comparison-back').addEventListener('click', () => {
+  learning.commands.back = () => {
     if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
       navigate('practice');
 
@@ -6425,7 +6263,8 @@ function bindEvents() {
     // Its Drill action is drawn again too: a training setting may have changed while the comparison showed.
     renderResultDrill(practice.shownResult);
     focusResult($('run-again'));
-  });
+  };
+
   $('mode-drill').addEventListener('click', toggleManualTarget);
   $('manual-target').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -6514,7 +6353,7 @@ function bindEvents() {
     }
 
     if (event.target.closest('#quote-options [role="combobox"]')) {
-      if (!matchesAppBinding(event, prefs.keybindings.commands)) return;
+      if (!matchesAppBinding(event, learning.preferences.keybindings.commands)) return;
       quoteFilters.dismiss();
     }
 
@@ -6534,11 +6373,11 @@ function bindEvents() {
 
       if ($('settings-dialog').open && !keybindingEditor.isRecording()
         && !document.activeElement?.closest('input, textarea, select, [contenteditable]')
-        && matchesAppBinding(event, prefs.keybindings.commands)) {
+        && matchesAppBinding(event, learning.preferences.keybindings.commands)) {
         event.preventDefault();
 
         if (!event.repeat) palette.open();
-      } else if ($('palette').open && matchesAppBinding(event, prefs.keybindings.commands)) {
+      } else if ($('palette').open && matchesAppBinding(event, learning.preferences.keybindings.commands)) {
         event.preventDefault();
 
         // Open, it closes; fading out, it opens again.
@@ -6563,7 +6402,7 @@ function bindEvents() {
     const onTypingSurface = ['typing-input', 'race-input', 'online-input', 'compose-input'].includes(active?.id);
     const editable = active?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
 
-    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.commands)) {
+    if (!keybindingEditor.isRecording() && (!editable || onTypingSurface) && matchesAppBinding(event, learning.preferences.keybindings.commands)) {
       event.preventDefault();
 
       if (!event.repeat) palette.open();
@@ -6573,11 +6412,11 @@ function bindEvents() {
 
     if (menuOpen) return;
 
-    if (prefs.focusMode && (!editable || onTypingSurface) && matchesAppBinding(event, prefs.keybindings.exitFocus)) {
+    if (learning.preferences.focusMode && (!editable || onTypingSurface) && matchesAppBinding(event, learning.preferences.keybindings.exitFocus)) {
       event.preventDefault();
 
       if (!event.repeat) {
-        prefs.focusMode = false;
+        learning.preferences.focusMode = false;
         applyPreferences();
         saveProfile();
         focusPractice();
@@ -6586,7 +6425,7 @@ function bindEvents() {
       return;
     }
 
-    if (composeOpen && active === $('compose-input') && matchesAppBinding(event, prefs.keybindings.restart)
+    if (composeOpen && active === $('compose-input') && matchesAppBinding(event, learning.preferences.keybindings.restart)
       && !(event.key === 'Enter' && compose.isRunning())) {
       event.preventDefault();
 
@@ -6655,8 +6494,8 @@ function openCustom(open = true) {
   customOpen = open;
 
   if (open) {
-    if (!$('custom-text').value) $('custom-text').value = prefs.customText || '';
-    $('custom-order').value = prefs.customOrder;
+    if (!$('custom-text').value) $('custom-text').value = learning.preferences.customText || '';
+    $('custom-order').value = learning.preferences.customOrder;
     updateCustomState();
   }
 
@@ -6691,8 +6530,8 @@ function useCustomText() {
     return;
   }
 
-  prefs.customText = text;
-  prefs.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
+  learning.preferences.customText = text;
+  learning.preferences.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
   saveChoice('customText', 'customOrder');
   customOpen = false;
   resetSession('custom', { focus: true });
@@ -6701,18 +6540,18 @@ function useCustomText() {
 
 function setTestShape(mode, length) {
   customOpen = false;
-  prefs.mode = mode;
+  learning.preferences.mode = mode;
 
-  if (mode === 'time' && length) prefs.duration = length;
+  if (mode === 'time' && length) learning.preferences.duration = length;
 
-  if (mode === 'words' && length) prefs.count = length;
+  if (mode === 'words' && length) learning.preferences.count = length;
   setModeControls();
   saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
   resetSession('practice', { focus: true, leaveCompose: true });
 }
 
 function togglePreference(key) {
-  prefs[key] = !prefs[key];
+  learning.preferences[key] = !learning.preferences[key];
   applyPreferences();
   saveProfile();
 
@@ -6722,9 +6561,9 @@ function togglePreference(key) {
 function setCorrection(policy) {
   if (standardLocked()) return;
   const next = correctionPreference({ correction: policy });
-  const changed = prefs.correction !== next;
-  prefs.correction = next;
-  prefs.stopOnError = prefs.correction === 'mandatory';
+  const changed = learning.preferences.correction !== next;
+  learning.preferences.correction = next;
+  learning.preferences.stopOnError = learning.preferences.correction === 'mandatory';
   saveChoice('correction', 'stopOnError');
 
   if (!changed) return;
@@ -6735,14 +6574,14 @@ function setCorrection(policy) {
 }
 
 function setSound(mode) {
-  prefs.sound = normalizeSoundMode(mode);
+  learning.preferences.sound = normalizeSoundMode(mode);
   applySoundPreferences();
   sounds.prepare();
   saveChoice('sound');
 }
 
 function setSoundVolume(volume, { save = true } = {}) {
-  prefs.soundVolume = normalizeSoundVolume(volume);
+  learning.preferences.soundVolume = normalizeSoundVolume(volume);
   applySoundPreferences();
   sounds.prepare();
 
@@ -6751,7 +6590,7 @@ function setSoundVolume(volume, { save = true } = {}) {
 
 // Display only: bests, comparisons and condition keys stay in wpm, so nothing is reset or re-keyed.
 function setSpeedUnit(unit) {
-  prefs.speedUnit = unit;
+  learning.preferences.speedUnit = unit;
   applyPreferences();
   saveChoice('speedUnit');
 }
@@ -6762,8 +6601,8 @@ function setSpeedUnit(unit) {
 // to; the switch's note says why. Other screens stay put, and a practice passage left waiting there
 // is rebuilt when practice is shown again (navigate).
 function setInputRule(key, enabled) {
-  const changed = prefs[key] !== enabled;
-  prefs[key] = enabled;
+  const changed = learning.preferences[key] !== enabled;
+  learning.preferences[key] = enabled;
   applyPreferences();
   saveChoice(key);
 
@@ -6786,7 +6625,7 @@ function matchesAppBinding(event, binding) {
 // Restart only owns the typing surfaces, bare practice/results page, run-again and the result heading.
 // Controls retain their native activation and Tab navigation; online rooms cannot restart.
 function quickRestart(event) {
-  if (!matchesAppBinding(event, prefs.keybindings.restart)) return false;
+  if (!matchesAppBinding(event, learning.preferences.keybindings.restart)) return false;
   const view = document.body.dataset.view;
   const active = document.activeElement;
   const onInput = active === $('typing-input');
@@ -6823,13 +6662,13 @@ function runAgain() {
 // The key that restarts from where focus sits. On the result card that is the focused run-again
 // button (the palette hands focus back to it), which tab moves past and enter activates.
 function restartHint() {
-  return document.body.dataset.view === 'results' && prefs.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(prefs.keybindings.restart);
+  return document.body.dataset.view === 'results' && learning.preferences.keybindings.restart === 'Tab' ? 'enter' : bindingLabel(learning.preferences.keybindings.restart);
 }
 
 // How Train trains. A drill or retest under way keeps what it started with; what Train would drill next follows at
 // once, and so does an adaptive passage nobody has started, as one drawn next would.
 function setTraining(key, value) {
-  prefs[key] = value;
+  learning.preferences[key] = value;
   applyPreferences();
   saveChoice(key);
   showTraining();
@@ -6858,8 +6697,8 @@ function showTraining() {
 
 // Repeat quotes changes only open practice's next quote, so a custom passage (or any other session) is kept.
 function setRepeatQuotes(enabled) {
-  const changed = prefs.repeatQuotes !== enabled;
-  prefs.repeatQuotes = enabled;
+  const changed = learning.preferences.repeatQuotes !== enabled;
+  learning.preferences.repeatQuotes = enabled;
   saveChoice('repeatQuotes');
 
   if (!changed) return;
@@ -6886,17 +6725,17 @@ function labelPassage(fresh, exhausted) {
 // An adaptive passage nobody has started, whose words another focus chose. It is drawn again on the practice
 // screen, or on the way back to it, like a waiting repeat that repeats-off would replace.
 function staleAdaptive() {
-  return untouchedPractice() && Boolean(passage?.adaptive) && passage.trainFocus !== prefs.trainFocus;
+  return untouchedPractice() && Boolean(passage?.adaptive) && passage.trainFocus !== learning.preferences.trainFocus;
 }
 
 function staleRepeat() {
-  return !prefs.repeatQuotes && practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
+  return !learning.preferences.repeatQuotes && practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
 }
 
 // A ready practice run takes a new minimum in place; one already under way restarts with it.
 function setMinimum(key, value) {
-  const changed = prefs[key] !== value;
-  prefs[key] = value;
+  const changed = learning.preferences[key] !== value;
+  learning.preferences[key] = value;
   saveChoice(key);
 
   if (!changed) return;
@@ -6912,14 +6751,14 @@ function setMinimum(key, value) {
 
 // A display preference like text size: it never restarts the run or enters the test conditions.
 function setWordHighlight(mode) {
-  prefs.wordHighlight = normalizeWordHighlight(mode);
+  learning.preferences.wordHighlight = normalizeWordHighlight(mode);
   applyPreferences();
   saveChoice('wordHighlight');
 }
 
 function setWordHighlightSlide(on) {
-  const turnedOn = on && !prefs.wordHighlightSlide;
-  prefs.wordHighlightSlide = on;
+  const turnedOn = on && !learning.preferences.wordHighlightSlide;
+  learning.preferences.wordHighlightSlide = on;
   applyPreferences();
 
   // The preview shows what was turned on: its highlight slides in from the word before.
@@ -6938,8 +6777,8 @@ function resetForCondition(kind) {
 
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
-  const changed = prefs.wordList !== id;
-  prefs.wordList = id;
+  const changed = learning.preferences.wordList !== id;
+  learning.preferences.wordList = id;
   saveChoice('wordList');
 
   if (!changed) return;
@@ -6957,8 +6796,8 @@ function inPractice(change) {
 function customLengthCommand(mode) {
   const spec = LENGTHS[mode];
   // As for the presets, no length is current during a custom text session.
-  const current = comparableKind(practice.sessionKind) && prefs.mode === mode && !isPresetLength(mode, prefs[spec.key]);
-  const value = current ? prefs[spec.key] : prefs[spec.customKey];
+  const current = comparableKind(practice.sessionKind) && learning.preferences.mode === mode && !isPresetLength(mode, learning.preferences[spec.key]);
+  const value = current ? learning.preferences[spec.key] : learning.preferences[spec.customKey];
 
   return {
     group: 'test',
@@ -6974,8 +6813,8 @@ function customLengthCommand(mode) {
 // it keeps a custom passage: custom runs are never compared, so their key never names a layout.
 function setLayout(id, kind = restartKind()) {
   const next = normalizeLayout(id);
-  const changed = prefs.layout !== next;
-  prefs.layout = next;
+  const changed = learning.preferences.layout !== next;
+  learning.preferences.layout = next;
   applyPreferences();
   saveChoice('layout');
 
@@ -6984,10 +6823,10 @@ function setLayout(id, kind = restartKind()) {
 
 // The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
 function toggleFingerMap() {
-  const show = !(prefs.keyboard && prefs.fingerMap);
-  prefs.fingerMap = show;
+  const show = !(learning.preferences.keyboard && learning.preferences.fingerMap);
+  learning.preferences.fingerMap = show;
 
-  if (show) prefs.keyboard = true;
+  if (show) learning.preferences.keyboard = true;
   applyPreferences();
   saveChoice('fingerMap', ...(show ? ['keyboard'] : []));
 
@@ -7012,13 +6851,13 @@ function jumpTo(view) {
 
 function paletteCommands(query) {
   const onOff = (value) => (value ? 'on' : 'off');
-  const missedWords = recurringMissedWords(profile.runs).words.length;
+  const missedWords = recurringMissedWords(learning.profile.runs).words.length;
   // The friends board's switch: on, off, or null (no hint) before this device has read the board.
   const shared = friendsBoard?.sharing ?? null;
   // During a custom session, a ghost race or composing no test shape is current (a custom session marks "custom text").
-  const shape = (mode, length) => !composeOpen && comparableKind(practice.sessionKind) && prefs.mode === mode && (['quote', 'standard', 'book'].includes(mode) || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => !composeOpen && comparableKind(practice.sessionKind) && learning.preferences.mode === mode && (['quote', 'standard', 'book'].includes(mode) || (mode === 'time' ? learning.preferences.duration : learning.preferences.count) === length);
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
-  const fixedText = ['quote', 'code', 'book'].includes(prefs.mode) || standardLocked();
+  const fixedText = ['quote', 'code', 'book'].includes(learning.preferences.mode) || standardLocked();
 
   const commands = [
     ...[['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']].map(([view, label]) => ({
@@ -7032,7 +6871,7 @@ function paletteCommands(query) {
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
-    ...(lessonsComplete(profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(profile.lessons)) }]),
+    ...(lessonsComplete(learning.profile.lessons) ? [] : [{ group: 'test', label: `next lesson · ${LESSONS[nextLessonIndex(learning.profile.lessons)].keys.join(' ')}`, keywords: 'learn to type beginner keys fingers', run: () => startLesson(nextLessonIndex(learning.profile.lessons)) }]),
     { group: 'test', label: 'practice words you keep missing', keywords: 'missed words mistakes errors practise recurring list', hint: `${missedWords} words`, disabled: missedWords < 2, run: practiseRecurringWords },
     ...LENGTHS.time.presets.map((length) => ({ group: 'test', label: `time · ${length} seconds`, keywords: `timed ${length}s`, hint: shape('time', length) ? 'current' : '', on: shape('time', length), run: () => setTestShape('time', length) })),
     customLengthCommand('time'),
@@ -7044,41 +6883,41 @@ function paletteCommands(query) {
     { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
     { group: 'test', label: 'another prompt', keywords: 'compose composing writing new different prompt skip', disabled: !composeOpen, run: () => { switchView('practice'); compose.another(); } },
     { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
-    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(prefs.punctuation), on: prefs.punctuation, disabled: fixedText, run: () => { prefs.punctuation = !prefs.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
-    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(prefs.numbers), on: Boolean(prefs.numbers), disabled: fixedText, run: () => { prefs.numbers = !prefs.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
-    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: prefs.wordList === id ? 'current' : '', on: prefs.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
-    ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: prefs.layout === id ? 'current' : '', on: prefs.layout === id, run: () => setLayout(id) })),
+    { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(learning.preferences.punctuation), on: learning.preferences.punctuation, disabled: fixedText, run: () => { learning.preferences.punctuation = !learning.preferences.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(learning.preferences.numbers), on: Boolean(learning.preferences.numbers), disabled: fixedText, run: () => { learning.preferences.numbers = !learning.preferences.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
+    ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: learning.preferences.wordList === id ? 'current' : '', on: learning.preferences.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
+    ...layoutIds.map((id) => ({ group: 'test', label: `layout · ${layoutLabel(id)}`, keywords: 'keyboard alternative remap', hint: learning.preferences.layout === id ? 'current' : '', on: learning.preferences.layout === id, run: () => setLayout(id) })),
     ...[['off', 'off'], ['best', 'personal best'], ['average', 'average'], ['last', 'last run'], ['custom', 'custom']].map(([mode, name]) => (
-      { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: prefs.paceCaret === mode ? 'on' : '', on: prefs.paceCaret === mode, run: () => setPaceCaret(mode) })),
-    ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: prefs.correction === policy ? 'current' : '', on: prefs.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
-    { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(prefs.repeatQuotes), on: prefs.repeatQuotes, disabled: prefs.mode !== 'quote', run: () => setRepeatQuotes(!prefs.repeatQuotes) },
-    { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(prefs.strictSpace), on: prefs.strictSpace, run: () => setInputRule('strictSpace', !prefs.strictSpace) },
-    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(prefs.quickEnd), on: prefs.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !prefs.quickEnd) },
-    ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: prefs.minAccuracy === value ? 'current' : '', on: prefs.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
-    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: prefs.minWpm === value ? 'current' : '', on: prefs.minWpm === value, run: () => setMinimum('minWpm', value) })),
-    ...FOCUSES.map((focus) => ({ group: 'train', label: `train focus · ${focus}`, keywords: `training drill target weak pairs ${FOCUS_KEYWORDS[focus]}`, hint: prefs.trainFocus === focus ? 'current' : '', on: prefs.trainFocus === focus, run: () => setTraining('trainFocus', focus) })),
-    ...DRILL_LENGTHS.map((seconds) => ({ group: 'train', label: `drill length · ${seconds} seconds`, keywords: 'training drill time duration session long short', hint: prefs.drillSeconds === seconds ? 'current' : '', on: prefs.drillSeconds === seconds, run: () => setTraining('drillSeconds', seconds) })),
-    { group: 'train', label: 'retest after drill', keywords: 'training drill retest fresh text compare comparison', hint: onOff(prefs.retest), on: prefs.retest, run: () => setTraining('retest', !prefs.retest) },
+      { group: 'test', label: `pace caret: ${name}`, keywords: 'ghost pacer pace caret', hint: learning.preferences.paceCaret === mode ? 'on' : '', on: learning.preferences.paceCaret === mode, run: () => setPaceCaret(mode) })),
+    ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: learning.preferences.correction === policy ? 'current' : '', on: learning.preferences.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
+    { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(learning.preferences.repeatQuotes), on: learning.preferences.repeatQuotes, disabled: learning.preferences.mode !== 'quote', run: () => setRepeatQuotes(!learning.preferences.repeatQuotes) },
+    { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(learning.preferences.strictSpace), on: learning.preferences.strictSpace, run: () => setInputRule('strictSpace', !learning.preferences.strictSpace) },
+    { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(learning.preferences.quickEnd), on: learning.preferences.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !learning.preferences.quickEnd) },
+    ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: learning.preferences.minAccuracy === value ? 'current' : '', on: learning.preferences.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
+    ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: learning.preferences.minWpm === value ? 'current' : '', on: learning.preferences.minWpm === value, run: () => setMinimum('minWpm', value) })),
+    ...FOCUSES.map((focus) => ({ group: 'train', label: `train focus · ${focus}`, keywords: `training drill target weak pairs ${FOCUS_KEYWORDS[focus]}`, hint: learning.preferences.trainFocus === focus ? 'current' : '', on: learning.preferences.trainFocus === focus, run: () => setTraining('trainFocus', focus) })),
+    ...DRILL_LENGTHS.map((seconds) => ({ group: 'train', label: `drill length · ${seconds} seconds`, keywords: 'training drill time duration session long short', hint: learning.preferences.drillSeconds === seconds ? 'current' : '', on: learning.preferences.drillSeconds === seconds, run: () => setTraining('drillSeconds', seconds) })),
+    { group: 'train', label: 'retest after drill', keywords: 'training drill retest fresh text compare comparison', hint: onOff(learning.preferences.retest), on: learning.preferences.retest, run: () => setTraining('retest', !learning.preferences.retest) },
     ...['system', 'dark', 'light'].map((mode) => ({ group: 'display', label: `theme · ${mode}`, keywords: 'colour color mode appearance', hint: themeMode() === mode ? 'current' : '', on: themeMode() === mode, run: () => setThemeMode(mode) })),
     ...[['dark', DARK_THEMES], ['light', LIGHT_THEMES]].flatMap(([mode, themes]) => [
       ...themes.map((theme) => [theme, theme]),
-      ...readCustomThemes(prefs.customThemes).filter((custom) => colorsMode(custom.colors) === mode).map((custom) => [custom.id, custom.name]),
+      ...readCustomThemes(learning.preferences.customThemes).filter((custom) => colorsMode(custom.colors) === mode).map((custom) => [custom.id, custom.name]),
     ].map(([theme, name]) => ({ group: 'display', label: `${mode} theme · ${name}`, keywords: 'colour color appearance', hint: themeFor(mode) === theme ? 'current' : '', on: themeFor(mode) === theme, run: () => pickTheme(mode, theme) }))),
-    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: prefs.fontSize === size ? 'current' : '', on: prefs.fontSize === size, run: () => { prefs.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
-    ...TYPING_FONTS.map((font) => ({ group: 'display', label: `typing font · ${fontName(font)}`, keywords: 'typeface passage monospace serif sans', hint: prefs.typingFont === font ? 'current' : '', on: prefs.typingFont === font, run: () => { prefs.typingFont = font; applyFonts(); saveChoice('typingFont'); } })),
-    ...APP_FONTS.map((font) => ({ group: 'display', label: `app font · ${fontName(font)}`, keywords: 'typeface interface serif sans', hint: prefs.appFont === font ? 'current' : '', on: prefs.appFont === font, run: () => { prefs.appFont = font; applyFonts(); saveChoice('appFont'); } })),
+    ...[['22', 'small'], ['28', 'medium'], ['36', 'large']].map(([size, name]) => ({ group: 'display', label: `text size · ${name}`, keywords: 'font passage bigger smaller', hint: learning.preferences.fontSize === size ? 'current' : '', on: learning.preferences.fontSize === size, run: () => { learning.preferences.fontSize = size; applyPreferences(); saveChoice('fontSize'); } })),
+    ...TYPING_FONTS.map((font) => ({ group: 'display', label: `typing font · ${fontName(font)}`, keywords: 'typeface passage monospace serif sans', hint: learning.preferences.typingFont === font ? 'current' : '', on: learning.preferences.typingFont === font, run: () => { learning.preferences.typingFont = font; applyFonts(); saveChoice('typingFont'); } })),
+    ...APP_FONTS.map((font) => ({ group: 'display', label: `app font · ${fontName(font)}`, keywords: 'typeface interface serif sans', hint: learning.preferences.appFont === font ? 'current' : '', on: learning.preferences.appFont === font, run: () => { learning.preferences.appFont = font; applyFonts(); saveChoice('appFont'); } })),
     // Named "this word" / "next word" so no mode reads like the palette's "current" hint.
-    ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: prefs.wordHighlight === mode ? 'current' : '', on: prefs.wordHighlight === mode, run: () => setWordHighlight(mode) })),
-    { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(prefs.wordHighlightSlide), on: prefs.wordHighlightSlide, disabled: prefs.wordHighlight === 'off', run: () => setWordHighlightSlide(!prefs.wordHighlightSlide) },
-    { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(prefs.tape), on: prefs.tape, run: () => togglePreference('tape') },
-    ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: prefs.speedUnit === unit ? 'current' : '', on: prefs.speedUnit === unit, run: () => setSpeedUnit(unit) })),
-    { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
-    { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
-    { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
-    { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice', { keep: true }); togglePreference('focusMode'); } },
+    ...[['off', 'off'], ['current', 'this word'], ['next', 'next word']].map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: learning.preferences.wordHighlight === mode ? 'current' : '', on: learning.preferences.wordHighlight === mode, run: () => setWordHighlight(mode) })),
+    { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(learning.preferences.wordHighlightSlide), on: learning.preferences.wordHighlightSlide, disabled: learning.preferences.wordHighlight === 'off', run: () => setWordHighlightSlide(!learning.preferences.wordHighlightSlide) },
+    { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(learning.preferences.tape), on: learning.preferences.tape, run: () => togglePreference('tape') },
+    ...[['wpm', 'words'], ['cpm', 'characters']].map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: learning.preferences.speedUnit === unit ? 'current' : '', on: learning.preferences.speedUnit === unit, run: () => setSpeedUnit(unit) })),
+    { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(learning.preferences.liveMetrics), on: learning.preferences.liveMetrics, run: () => togglePreference('liveMetrics') },
+    { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(learning.preferences.keyboard), on: learning.preferences.keyboard, run: () => togglePreference('keyboard') },
+    { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(learning.preferences.keyboard && learning.preferences.fingerMap), on: learning.preferences.keyboard && learning.preferences.fingerMap, run: toggleFingerMap },
+    { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(learning.preferences.focusMode), on: learning.preferences.focusMode, run: () => { navigate('practice', { keep: true }); togglePreference('focusMode'); } },
     { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
-    ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
-    ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
+    ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: learning.preferences.sound === mode ? 'current' : '', on: learning.preferences.sound === mode, run: () => setSound(mode) })),
+    ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: learning.preferences.soundVolume === volume ? 'current' : '', on: learning.preferences.soundVolume === volume, disabled: learning.preferences.sound === 'off', run: () => setSoundVolume(volume) })),
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'account', label: 'export my data', keywords: 'download backup json history runs take out privacy', run: exportData },
     ...(session
@@ -7204,8 +7043,8 @@ compose = createCompose({
   setRunning, announce, uid,
   signedIn: () => Boolean(session),
   save(record) {
-    profile.compositions.push(record);
-    profile.practiceDays = recordPracticeTime(profile.practiceDays, record.at, record.activeMs);
+    learning.profile.compositions.push(record);
+    learning.profile.practiceDays = recordPracticeTime(learning.profile.practiceDays, record.at, record.activeMs);
 
     return saveProfile();
   },
@@ -7216,9 +7055,9 @@ const quoteFilters = createQuoteFilters({
     ...QUOTE_FILTERS.map((filter) => ({ ...filter, root: $('quote-options') })),
     { root: $('book-options'), key: 'book', id: 'book-select', label: 'book', values: bookIds, names: Object.fromEntries(BOOKS.map((book) => [book.id, book.name])) },
   ],
-  read: () => prefs,
+  read: () => learning.preferences,
   commit(key, value, { focus, trigger }) {
-    prefs[key] = value;
+    learning.preferences[key] = value;
     saveChoice(key);
     resetSession('practice', { focus });
 
@@ -7282,7 +7121,7 @@ friendsBoard = createFriendsBoard({
   getSession: () => session,
   dailyKey,
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
-  runs: () => profile.runs,
+  runs: () => learning.profile.runs,
   signIn: () => openAccountDialog('signin'),
   // The button that asks for this goes with the board, so Add a friend opens with its email field focused.
   openOnline: () => onlineRace.openAdd(),
@@ -7302,14 +7141,14 @@ onlineRace = createOnlineRace({
   raceGhost: startGhostRace,
   // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
   // are practice's own, so a race falls back to its default).
-  practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,
-    numbers: prefs.numbers, wordList: prefs.wordList, quoteLength: prefs.quoteLength, difficulty: prefs.difficulty, adaptive: prefs.adaptive,
+  practice: () => ({ mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count, punctuation: learning.preferences.punctuation,
+    numbers: learning.preferences.numbers, wordList: learning.preferences.wordList, quoteLength: learning.preferences.quoteLength, difficulty: learning.preferences.difficulty, adaptive: learning.preferences.adaptive,
     session: composeOpen ? 'compose' : customOpen || practice.sessionKind === 'custom' ? 'custom' : practice.sessionKind === 'drill' ? 'drill' : 'practice' }),
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {
-    if (!id || profile.seenTextIds.includes(id)) return;
-    profile.seenTextIds.push(id);
+    if (!id || learning.profile.seenTextIds.includes(id)) return;
+    learning.profile.seenTextIds.push(id);
     saveProfile();
   },
 });

@@ -1,0 +1,27 @@
+import { useSyncExternalStore } from 'react';
+import type { LearningStore } from './learning-store.js';
+import { Copy } from './results-card.js';
+import { formatSpeed, unitText } from './units.js';
+
+export function HistoryLoops({ learning }: { learning: LearningStore }) {
+  const loops = useSyncExternalStore(learning.loops.subscribe, learning.loops.getSnapshot, learning.loops.getSnapshot);
+
+  return <>
+    <p id="history-empty" className="result-note" hidden={Boolean(loops.length)}>None in this period.</p>
+    <div id="history-list" className="history-list" aria-live="polite" hidden={!loops.length}>
+      {loops.map((loop) => <details key={loop.id} className="history-row">
+        <summary className="history-summary">
+          <div className="history-main"><span className="history-date">{loop.date}</span><strong className="history-target">{loop.title}</strong><small className="history-conditions">{loop.conditions}</small></div>
+          <div className="history-measure"><span>Accuracy</span><strong className="history-accuracy num">{loop.accuracy}</strong></div>
+          <div className="history-measure"><span><span data-speed-unit="Corrected {unit}">{unitText('Corrected {unit}')}</span></span><strong className="history-timing num"><data value={loop.delta} data-wpm={loop.delta} data-signed="">{formatSpeed(loop.delta, { signed: true })}</data></strong></div>
+          <span className={`history-status badge ${loop.state === 'improved' ? 'badge-success' : loop.state === 'regressed' ? 'badge-danger' : 'badge-neutral'}`}>{loop.state}</span>
+        </summary>
+        <div className="history-detail">
+          <dl>{loop.facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd className="num"><Copy parts={fact.parts} /></dd></div>)}</dl>
+          {loop.notes.map((note, index) => <p key={index}>{note}</p>)}
+          {loop.target && <button type="button" className="btn btn-secondary" onClick={() => learning.commands.loopTarget(loop.id)}>Practice “{loop.target}” again</button>}
+        </div>
+      </details>)}
+    </div>
+  </>;
+}
