@@ -17,11 +17,13 @@ export interface QueuePlayer { user: string; rating: number; seenAt: number; joi
 
 export type QueueState = { phase: 'idle' | 'joining'; ticket: number } | { phase: 'waiting' | 'lonely'; ticket: number; since: number } | { phase: 'paired'; ticket: number; roomId: string } | { phase: 'failed' | 'unavailable'; ticket: number; message: string };
 
-export type QueueReply = { state: 'paired'; roomId: string; seat?: number; token?: string } | { state: 'waiting' };
+export interface PairedQueueReply { state: 'paired'; roomId: string; seat?: number; token?: string }
 
-export type QueueEvent = { type: 'press' | 'leave' | 'race-best' | 'entered' } | { type: 'keep-waiting' | 'tick'; now: number } | { type: 'reply'; ticket: number; result?: QueueReply; now: number } | { type: 'fail'; ticket: number; unavailable?: boolean; message: string };
+export type QueueReply<Paired extends PairedQueueReply = PairedQueueReply> = Paired | { state: 'waiting' };
 
-export type QueueEffect = { send: 'queue' | 'unqueue'; ticket: number } | { raceBest: true } | { poll: number; ticket: number } | { enter: Extract<QueueReply, { state: 'paired' }> };
+export type QueueEvent<Paired extends PairedQueueReply = PairedQueueReply> = { type: 'press' | 'leave' | 'race-best' | 'entered' } | { type: 'keep-waiting' | 'tick'; now: number } | { type: 'reply'; ticket: number; result?: QueueReply<Paired>; now: number } | { type: 'fail'; ticket: number; unavailable?: boolean; message: string };
+
+export type QueueEffect<Paired extends PairedQueueReply = PairedQueueReply> = { send: 'queue' | 'unqueue'; ticket: number } | { raceBest: true } | { poll: number; ticket: number } | { enter: Paired };
 
 // Quick match: a signed-in player waits for another at a close race rating, and the service turns the
 // pair into an ordinary two-player race room on the standard setup. The service pairs, checks the traces
@@ -286,9 +288,9 @@ export const QUEUE_IDLE = Object.freeze<QueueState>({ phase: 'idle', ticket: 0 }
 const QUEUED = new Set(['joining', 'waiting', 'lonely']);
 export const queued = (state: QueueState) => QUEUED.has(state.phase);
 
-export function queueStep(state: QueueState, event: QueueEvent) {
-  const same = (next: QueueState, effects: QueueEffect[] = []) => ({ state: next, effects });
-  const stop = (extra: QueueEffect[] = []) => same({ phase: 'idle', ticket: state.ticket + 1 }, [{ send: 'unqueue', ticket: state.ticket + 1 }, ...extra]);
+export function queueStep<Paired extends PairedQueueReply = PairedQueueReply>(state: QueueState, event: QueueEvent<Paired>) {
+  const same = (next: QueueState, effects: QueueEffect<Paired>[] = []) => ({ state: next, effects });
+  const stop = (extra: QueueEffect<Paired>[] = []) => same({ phase: 'idle', ticket: state.ticket + 1 }, [{ send: 'unqueue', ticket: state.ticket + 1 }, ...extra]);
 
   switch (event.type) {
     case 'press':

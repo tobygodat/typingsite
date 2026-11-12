@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { QUEUE_IDLE, queueStep, queued, ratingChangeLine, ratingLine } from './quick-match.js';
-import type { QueueEvent, QueueReply, QueueState, Rating } from './quick-match.js';
+import type { QueueEvent as DomainQueueEvent, QueueState, Rating } from './quick-match.js';
 import { quickMatch } from './multiplayer.js';
 import type { QuickMatchReply } from './multiplayer.js';
 import type { Session } from './network.js';
@@ -9,6 +9,10 @@ import { createStore } from './store.js';
 
 const TOLD = 'stilltype-quick-match-told:';
 const SEEN = 'stilltype-quick-match-seen:';
+
+type PairedRoomReply = Extract<QuickMatchReply, { state: 'paired' }>;
+
+type QueueEvent = DomainQueueEvent<PairedRoomReply>;
 
 type LastRating = Extract<QuickMatchReply, { last?: object }>;
 
@@ -20,7 +24,7 @@ interface QuickMatchOptions {
   getSession(): Session | null;
   signIn(): void;
   racerName(): string;
-  enterRoom(result: Extract<QueueReply, { state: 'paired' }>): void;
+  enterRoom(result: PairedRoomReply): void;
   busyElsewhere(): boolean;
   ownBest(): boolean;
   raceOwnBest(): void;
@@ -107,7 +111,7 @@ export function createQuickMatch() {
   function dispatch(event: DispatchEvent) {
     if (disposed) return;
     const timed = { now: Date.now(), ...event };
-    const step = queueStep(state, timed);
+    const step = queueStep<PairedRoomReply>(state, timed);
     state = step.state;
 
     for (const effect of step.effects) {

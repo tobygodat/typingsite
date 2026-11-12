@@ -249,7 +249,7 @@ export function parseRaceLink(href: string) {
   const hash = new URLSearchParams(new URL(href).hash.slice(1));
   const roomId = hash.get('race'); const inviteToken = hash.get('invite');
 
-  return UUID.test(roomId || '') && TOKEN.test(inviteToken || '') ? { roomId, inviteToken } : null;
+  return typeof roomId === 'string' && typeof inviteToken === 'string' && UUID.test(roomId) && TOKEN.test(inviteToken) ? { roomId, inviteToken } : null;
 }
 
 export function clearRaceLink(href: string) {
