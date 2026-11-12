@@ -1,4 +1,4 @@
-# 0020. React screens, typed domain owners and Effect lifetimes
+# 0021. React screens, typed domain owners and Effect lifetimes
 
 Status: Accepted, 2026-11-12. Supersedes the native-stack decision in [0001](0001-native-browser-stack-and-learning-loop.md).
 

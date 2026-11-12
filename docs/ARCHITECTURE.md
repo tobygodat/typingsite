@@ -2,22 +2,22 @@
 
 ## Overview
 
-Stilltype is a static web app: native HTML, CSS and JavaScript modules with no runtime dependencies and no bundler ([ADR 0001](adr/0001-native-browser-stack-and-learning-loop.md)).
+Stilltype is a static web app built with React, strict TypeScript and Effect. Vite compiles its browser modules ([ADR 0021](adr/0021-react-typescript-effect.md)).
 
-- **Client.** `index.html` holds all markup, and `src/` holds the modules. `sw.js` is the network-first offline shell.
-- **Hosting.** The Cloudflare Worker `stilltype` serves `dist/`, a copy of the served files made by `scripts/build-static.mjs` (`wrangler.jsonc`). Locally, `server.mjs` serves the checkout itself.
+- **Client.** `index.html` holds the document shell. `src/prepaint.ts` is bundled inline before CSS to apply saved appearance. `src/main.tsx` mounts React; screen components subscribe to typed stores. `src/sw.ts` builds the network-first offline shell.
+- **Hosting.** The Cloudflare Worker `stilltype` serves `dist/`, emitted by `scripts/build-static.mjs` (`wrangler.jsonc`). Locally, `server.mjs` serves that same compiled artifact through its build inventory. Source modules are not served.
 - **Backend.** Supabase handles auth, the profile row, online races, ghost challenges, the friends board, feature suggestions and theme-generation quotas. The client calls it over `fetch` (REST and RPC), with no SDK. Guests save nothing beyond the tab.
 - **Edge Functions.** `supabase/functions/delete-account` deletes an account. `supabase/functions/generate-theme` asks Claude Haiku for a theme. Each keeps its logic in `handler.ts`, which Node tests, and its Deno wiring in `index.ts`.
 
 ## What the app does, by screen
 
-- **Practice.** Time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Time and words text is generated like Monkeytype's English (`drawnPassage` in `src/typing.js`): no word equals either of the two before it, punctuation is sentence-aware at Monkeytype's rates, and 1 word in 10 is a number. Adaptive mode (time and words) leans the text toward the learner's top few units, weighted by the time each loses. Its runs are drill-kind, so never a best, trend point or baseline.
+- **Practice.** Time, words (presets or custom) and quote, with punctuation, numbers and four word lists. Time and words text is generated like Monkeytype's English (`drawnPassage` in `src/typing.ts`): no word equals either of the two before it, punctuation is sentence-aware at Monkeytype's rates, and 1 word in 10 is a number. Adaptive mode (time and words) leans the text toward the learner's top few units, weighted by the time each loses. Its runs are drill-kind, so never a best, trend point or baseline.
 - **More.** Code (js, python, go, rust), a standard 60 s test, book pages, compose, custom text, and a 1–8 letter manual drill.
 - **Learn to type.** 14 lessons. Only physical-keyboard runs unlock the next one.
 - **Results.** Shown on Practice in place of the passage (`body[data-view=results]`). One run card (Paper "Stilltype · Results card", V10): wpm; accuracy, time and consistency; average and best at these conditions; the speed trace; the typed words; practice missed words. Then Run again, Drill "pair" and Watch replay, beside the conditions line.
-- **Train** (the path, TOB-420). One line of steps: the targets you have drilled behind you, the one to drill now, and the next three the learner queues, built by `trainPath` (`src/train-path.js`) as a pure function of runs, loops and the recommendation. The learner (`src/learner.js`, [ADR 0013](adr/0013-learning-core.md)) ranks letter pairs and keys by the time each loses, from misses and slowness, over every measured run on this keyboard, older runs fading. The open step is the highest-ranked unit whose observed counts, or for a slow pair its observed timing past 20 ms, can be stated, else a general drill. Either way the drill's text leans toward the top units. Its evidence line, missed words and "since you drilled it" line all read those runs. Its button runs a drill of the chosen length, then a fresh retest at the current settings; the comparison then becomes the newest step behind you and the next queued unit opens. A step ahead can be chosen to drill it. A step behind you is "drilled" after its retest and "fixed" only when the learner no longer queues it and two or more runs since its drill hold 20 observations of the kind it was drilled for, with no first-try miss among them or a mean slowdown of 20 ms or less. The learner holds a drilled target long (34 to 111 clean runs, TOB-419); a variant that lets one go on the evidence since its drill failed [ADR 0019](adr/0019-learner-lets-go.md)'s rule, so this is unchanged. Three practice settings shape it, saved and synced as preferences and never test conditions: the train focus (balanced, the evaluated policy; accuracy, ranked by misses only; speed, by slowness only), the drill length (15, 30, 60 or 120 s) and the retest after the drill (off: the drill ends on its own result, nothing is compared and no loop is saved). The counting rule it replaced stays as the labelled baseline policy. Its Back to practice opens the retest's run card. "Patterns across runs" in Progress's keys view lists the same queue, and "words you keep missing" is a palette command.
-- **Progress** (what changed, TOB-420). The overview is one value built by `weekChange` (`src/week-change.js`) from runs, loops, practice days, the chosen condition key, the train focus and `now`: the lead (this week's median speed against the week before's, each from at least three runs, at one condition key), what moved it (the pairs and keys fixed since the week began, by Train's own rule, ranked by the learner's change in gain, and the practice row), and two small charts over the period. The conditions line under the lead is the control that picks the key. Runs and drills, the full speed, accuracy and consistency charts, keys (heat map, pairs, Patterns across runs), the practice calendar with the daily goal and streaks and runs started, the standard score and composing each open in a detail view one step away.
-- **Challenge** (the people you race, TOB-420). No visible heading. Quick match on top: Find a race pairs you with another waiting player near your race rating, on the standard setup (30 seconds of the 200 words), with a race rating that only quick matches move ([ADR 0014](adr/0014-quick-match-and-race-rating.md)) and, from 10 rated races, a named rank read from it ([ADR 0016](adr/0016-race-rank.md)), with a rank card for each rated result; with nobody waiting, it offers your own best recorded run as a ghost race. Then one row per person you race, built by `peopleRows` (`src/challenge-people.js`) as a pure function of your friend list, open invitations, ghost challenges, the service's links between them (`public.race_people`) and the invitations dismissed on this device: the newest thing between you, the pair's tally, and one action (Join, Race the ghost or Race). Quiet links at the foot open views one step away: Add a friend (and Remove), Copy a race link, Race setup (the race name, and the mode, length and punctuation races use until Match practice), Daily passage (with the friends board) and One keyboard. A race uses the race setup; practice-only setups fall back to a medium quote on 60 s. A finished online race shows both results side by side, with the pair's lasting tally (accounts only), a Rematch pick under each result (when both pick, the next race starts on its own), and a Graph / Replay of both racers drawn from their keystroke traces. See `docs/online-races.md`.
+- **Train** (the path, TOB-420). One line of steps: the targets you have drilled behind you, the one to drill now, and the next three the learner queues, built by `trainPath` (`src/train-path.ts`) as a pure function of runs, loops and the recommendation. The learner (`src/learner.ts`, [ADR 0013](adr/0013-learning-core.md)) ranks letter pairs and keys by the time each loses, from misses and slowness, over every measured run on this keyboard, older runs fading. The open step is the highest-ranked unit whose observed counts, or for a slow pair its observed timing past 20 ms, can be stated, else a general drill. Either way the drill's text leans toward the top units. Its evidence line, missed words and "since you drilled it" line all read those runs. Its button runs a drill of the chosen length, then a fresh retest at the current settings; the comparison then becomes the newest step behind you and the next queued unit opens. A step ahead can be chosen to drill it. A step behind you is "drilled" after its retest and "fixed" only when the learner no longer queues it and two or more runs since its drill hold 20 observations of the kind it was drilled for, with no first-try miss among them or a mean slowdown of 20 ms or less. The learner holds a drilled target long (34 to 111 clean runs, TOB-419); a variant that lets one go on the evidence since its drill failed [ADR 0019](adr/0019-learner-lets-go.md)'s rule, so this is unchanged. Three practice settings shape it, saved and synced as preferences and never test conditions: the train focus (balanced, the evaluated policy; accuracy, ranked by misses only; speed, by slowness only), the drill length (15, 30, 60 or 120 s) and the retest after the drill (off: the drill ends on its own result, nothing is compared and no loop is saved). The counting rule it replaced stays as the labelled baseline policy. Its Back to practice opens the retest's run card. "Patterns across runs" in Progress's keys view lists the same queue, and "words you keep missing" is a palette command.
+- **Progress** (what changed, TOB-420). The overview is one value built by `weekChange` (`src/week-change.ts`) from runs, loops, practice days, the chosen condition key, the train focus and `now`: the lead (this week's median speed against the week before's, each from at least three runs, at one condition key), what moved it (the pairs and keys fixed since the week began, by Train's own rule, ranked by the learner's change in gain, and the practice row), and two small charts over the period. The conditions line under the lead is the control that picks the key. Runs and drills, the full speed, accuracy and consistency charts, keys (heat map, pairs, Patterns across runs), the practice calendar with the daily goal and streaks and runs started, the standard score and composing each open in a detail view one step away.
+- **Challenge** (the people you race, TOB-420). No visible heading. Quick match on top: Find a race pairs you with another waiting player near your race rating, on the standard setup (30 seconds of the 200 words), with a race rating that only quick matches move ([ADR 0014](adr/0014-quick-match-and-race-rating.md)) and, from 10 rated races, a named rank read from it ([ADR 0016](adr/0016-race-rank.md)), with a rank card for each rated result; with nobody waiting, it offers your own best recorded run as a ghost race. Then one row per person you race, built by `peopleRows` (`src/challenge-people.ts`) as a pure function of your friend list, open invitations, ghost challenges, the service's links between them (`public.race_people`) and the invitations dismissed on this device: the newest thing between you, the pair's tally, and one action (Join, Race the ghost or Race). Quiet links at the foot open views one step away: Add a friend (and Remove), Copy a race link, Race setup (the race name, and the mode, length and punctuation races use until Match practice), Daily passage (with the friends board) and One keyboard. A race uses the race setup; practice-only setups fall back to a medium quote on 60 s. A finished online race shows both results side by side, with the pair's lasting tally (accounts only), a Rematch pick under each result (when both pick, the next race starts on its own), and a Graph / Replay of both racers drawn from their keystroke traces. See `docs/online-races.md`.
 - **Ghost races.** A friend races your recorded run within seven days.
 - **Inbox and toast.** Invitations and challenges.
 - **Settings and palette.** The settings dialog, and the ⌘K / Ctrl-K palette. Each palette group is listed once, in the order of its first command. Monkeytype import.
@@ -32,49 +32,54 @@ Stilltype is a static web app: native HTML, CSS and JavaScript modules with no r
 
 In `src/`:
 
-- `app.js`: orchestration: screens, input, preferences, history, palette commands.
-- `typing.js`: the engine: passages, replay, metrics, correction rules, `conditionKey`, and the metric versions.
-- `corpus.js`, `words.js`: original quotes and drill words; the word lists.
-- `code-snippets.js`: code mode's snippets.
-- `books.js`, `book-texts.js`: pagination and place. The text is generated by `scripts/build-book-texts.mjs`.
-- `lengths.js`: test lengths.
-- `quote-filters.js`: quote and book dropdowns.
-- `lessons.js`: the beginner path.
-- `insights.js`: run summaries (with their timed corrections), retention, patterns, filters, the counting rule's recurring targets, daily text.
-- `train-path.js`: Train's path: the steps behind you, open and ahead from the recommendation and the saved loops, the rule for "fixed", and each step's evidence copy.
-- `learner.js`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, the training focus, and the recommendation policies, the person's own miss cost and letting go of drilled targets (`letGo`, a sequential test on the evidence since a drill) among the named variants ([ADR 0013](adr/0013-learning-core.md), [ADR 0015](adr/0015-learner-2.md), [ADR 0019](adr/0019-learner-lets-go.md)).
-- `run-counts.js`: runs started and finished.
-- `week-change.js`: Progress's overview: the week against the week before, what moved it and the practice row, as one value. Train's `isFixed` decides "fixed" on both pages.
-- `progress-view.js`: Progress charts, the overview's two small ones included.
-- `graph.js`: the speed graph.
+- `main.tsx`, `app.tsx`: application mounting and the React screen tree.
+- `store.ts`, `practice-session.ts`, `learning-store.ts`, `challenge-store.ts`: cached view subscriptions and long-lived session, profile and Challenge ownership.
+- `typing-host.ts`, `passage-view.ts`, `typing-surface.tsx`: synchronous native input and passage hosts. Input records timestamps and paints before publishing a React view.
+- `settings-dialog.tsx`, `release-dialog.tsx`, `results-card.tsx`, `practice-controls.tsx`: actual dialog, result and control markup.
+- `async-runtime.ts`, `network.ts`, `network-race.ts`: scoped Effect execution, cancellable HTTP and decoded RPC contracts.
+- `profile-copy.ts`, `profile-types.ts`, `domain-history.ts`: raw storage codecs, current versus hydrated profile contracts, and historical-record guards.
+- `typing.ts`: the engine: passages, replay, metrics, correction rules, `conditionKey`, and the metric versions.
+- `corpus.ts`, `words.ts`: original quotes and drill words; the word lists.
+- `code-snippets.ts`: code mode's snippets.
+- `books.ts`, `book-texts.ts`: pagination and place. The text is generated by `scripts/build-book-texts.mjs`.
+- `lengths.ts`: test lengths.
+- `quote-filters.tsx`: quote and book dropdowns.
+- `lessons.ts`: the beginner path.
+- `insights.ts`: run summaries (with their timed corrections), retention, patterns, filters, the counting rule's recurring targets, daily text.
+- `train-path.ts`: Train's path: the steps behind you, open and ahead from the recommendation and the saved loops, the rule for "fixed", and each step's evidence copy.
+- `learner.ts`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, the training focus, and the recommendation policies, the person's own miss cost and letting go of drilled targets (`letGo`, a sequential test on the evidence since a drill) among the named variants ([ADR 0013](adr/0013-learning-core.md), [ADR 0015](adr/0015-learner-2.md), [ADR 0019](adr/0019-learner-lets-go.md)).
+- `run-counts.ts`: runs started and finished.
+- `week-change.ts`: Progress's overview: the week against the week before, what moved it and the practice row, as one value. Train's `isFixed` decides "fixed" on both pages.
+- `progress-view.ts`: Progress charts, the overview's two small ones included.
+- `graph.ts`: the speed graph.
 - `replay-view.js`: watch replay.
-- `motion.js`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
-- `tape.js`: one-line tape geometry.
-- `word-highlight.js`: word highlight.
-- `fonts.js`: typing and app font choices. `index.html` applies an account's fonts before first paint.
-- `wallpaper.js`: the background image, its look, the dither mask and gradient wash, where its fade ends, the halo, and its settings rows.
-- `units.js`: wpm and cpm display.
-- `layouts.js`: layout legends and the finger map.
-- `sound.js`: typing sounds.
-- `keybindings.js`: shortcuts.
-- `settings.js`: the settings dialog.
-- `custom-themes.js`, `theme-editor.js`: custom themes (tokens, contrast, storage) and their editor.
-- `palette.js`: the command palette.
-- `monkeytype.js`: Monkeytype import.
-- `compose.js`, `compose-view.js`, `compose-caret.js`: composing practice.
-- `profile.js`: profile defaults and `normalizeProfile`.
-- `account.js`: auth, the profile row, `mergeSynced`, `HISTORY`.
-- `online-race.js`, `multiplayer.js`: Challenge's views, online races and their RPCs. `challenge-people.js`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.js`: draws it, keeping rows that don't change and keyboard focus. `quick-match.js`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.js`: the quick match control. `rank-card.js`: the rated result card, its colours and its wind. Presentational only. `race-review.js`: a finished race's graph and two-caret replay. `race-options.js`: what a race is set up as, and its passage.
-- `ghost-race.js`: ghost challenges.
-- `inbox.js`, `race-result.js`: the inbox, toast and race results.
+- `motion.ts`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
+- `tape.ts`: one-line tape geometry.
+- `word-highlight.ts`: word highlight.
+- `fonts.ts`: typing and app font choices. `prepaint.ts` applies an account's fonts before first paint.
+- `wallpaper.ts`: the background image, its look, the dither mask and gradient wash, where its fade ends, the halo, and its settings rows.
+- `units.ts`: wpm and cpm display.
+- `layouts.ts`: layout legends and the finger map.
+- `sound.ts`: typing sounds.
+- `keybindings.ts`: shortcuts.
+- `settings.ts`: the settings dialog.
+- `custom-themes.ts`, `theme-editor.tsx`: custom themes (tokens, contrast, storage) and their editor.
+- `palette.tsx`: the command palette.
+- `monkeytype.ts`: Monkeytype import.
+- `compose.ts`, `compose-view.tsx`, `compose-caret.ts`: composing practice.
+- `profile.ts`: profile defaults and `normalizeProfile`.
+- `account.ts`: auth, the profile row, `mergeSynced`, `HISTORY`.
+- `online-race.js`, `multiplayer.ts`: Challenge's views, online races and their RPCs. `challenge-people.ts`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.tsx`: draws it, keeping rows that don't change and keyboard focus. `quick-match.ts`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.tsx`: the quick match control. `rank-card.tsx`: the rated result card, its colours and its wind. Presentational only. `race-review.js`: a finished race's graph and two-caret replay. `race-options.ts`: what a race is set up as, and its passage.
+- `ghost-race.ts`: ghost challenges.
+- `inbox.js`, `race-result.ts`: the inbox, toast and race results.
 - `friends-board.js`: the friends board and sharing.
-- `egg.js`: ↑↑↓↓←→←→ b a.
+- `egg.ts`: ↑↑↓↓←→←→ b a.
 - `styles.css`, `fonts/`: theme tokens, then layout; the self-hosted fonts.
 
 Elsewhere:
 
-- `index.html`, `sw.js`, `manifest.webmanifest`, `icons/`: markup, offline shell and install files.
-- `server.mjs`: the local server. It serves only what the build copies.
+- `index.html`, `src/sw.ts`, `manifest.webmanifest`, `icons/`: document shell, offline worker and install files.
+- `server.mjs`: the local server. It serves only files in the generated build inventory.
 - `scripts/`: `build-static.mjs` (the build), `build-book-texts.mjs`, `measure-latency.mjs`, `measure-profile.mjs`, `measure-fixed-floor.mjs` (how often Train reads "fixed" with and without a per-run floor, on simulated seasons; `docs/verification/2026-11-12-fixed-floor.md`) and `evaluate-learner.mjs` (`npm run evaluate:learner`: the policies on simulated typists, and ADR 0013's rule v2 that picks the default; `-- --rule 0015` for ADR 0015's; `-- --rule 0019` for ADR 0019's, which runs `evaluate-let-go.mjs` on worker threads; or a stored profile).
 - `tests/`: Node unit tests. `e2e/`: Playwright specs with a fake Supabase (`e2e/fake-supabase.js`).
 - `supabase/`: migrations, Edge Functions and SQL tests.

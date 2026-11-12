@@ -2,18 +2,21 @@
 
 ## Run, test, deploy
 
-Node.js 20 or newer (CI uses 24). The app has no runtime dependencies. `npm install` brings in only Playwright and oxlint.
+Use Node.js 24, as CI does, or a supported newer release. Run `npm ci` to install the pinned React, Effect, TypeScript and Vite stack, Playwright and oxlint.
 
 ```sh
-npm run dev           # http://localhost:5173, served straight from the checkout
-npm test              # unit tests in tests/ (node --test)
+npm run dev           # build, then serve dist/ at http://localhost:5173
+npm test              # build, then unit tests in tests/ through tsx
+npm run typecheck     # strict client and worker checks
 npm run lint          # oxlint with the anti-slop plugin, warnings fail
-npm run build         # copies the served files into dist/
+npm run build         # strict typecheck, then compile and precache dist/
 npm run test:e2e:quick    # the core practice loop, layout and chrome specs, in a few minutes
 npm run test:e2e:changed  # the specs your branch changed against origin/master
 npm run test:e2e:compat   # selected Firefox and WebKit input/rendering cases
 npm run test:e2e          # all of Chromium; CI runs this at every PR head, so run it only when CI can't
 ```
+
+`npm run dev` builds once before starting the server. After changing source, restart it to rebuild. `npm start` serves an existing build. Playwright builds its own artifact before starting its server.
 
 ### Browser tests
 
@@ -47,16 +50,19 @@ Batch all findings into that proof. Demonstrated in-scope correctness, security 
 ### Deploy
 
 - **App.** Every push to master deploys from a hosted runner after the unit job passes (`ci.yml` "Deploy to Cloudflare", repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). The site is https://stilltype.tobygodat.workers.dev (the Cloudflare Worker `stilltype`, `wrangler.jsonc`).
-- **By hand, if CI can't deploy.** On tobylaptop in `~/Projects/typingsite`, run `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`. Then check that live `/`, `src/app.js` and `src/styles.css` match `dist/`.
+- **By hand, if CI can't deploy.** On tobylaptop in `~/Projects/typingsite`, run `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`. Then check that live `/` and its emitted script and stylesheet URLs match the files in `dist/`.
 - **Database.** Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --remote=bicbyljexprkaedakofa --yes -f <file>`), not with `db push`. Deploy the frontend only after its migration is applied.
 - **Edge Functions.** `supabase functions deploy delete-account` deploys account deletion, with the default JWT verification. Until it is deployed, Delete my account reports that deletion isn't switched on and deletes nothing. `supabase functions deploy generate-theme` deploys theme generation, which needs the `ANTHROPIC_API_KEY` secret.
 - **Vercel.** It is retired. `vercel.json` only turns its deploys off (TOB-221).
-- **Release.** Bump the version in `package.json`, its lock and `index.html` (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
+- **Release.** Bump the version in `package.json`, its lock and the React footer (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
 
 ## Layout and naming
 
-- `docs/ARCHITECTURE.md` has the code map. One module per concern in `src/`, named in kebab case. A module that grows a view gets a `-view.js` sibling (`compose.js`, `compose-view.js`).
-- Markup lives in `index.html`.
+- `docs/ARCHITECTURE.md` has the code map. One module per concern in `src/`, named in kebab case. Browser modules use `.ts`; React components use `.tsx`. Keep `.js` import specifiers so Vite and the Node tsx loader resolve the same graph. View components use the screen or feature name (`compose.ts`, `compose-view.tsx`).
+- React owns screen, list, control and dialog markup. Native typing, graph and canvas hosts own only their ref subtrees. Never clear or replace React children imperatively.
+- `index.html` contains the document shell and the prepaint marker. The build inlines checked `src/prepaint.ts` before CSS.
+- Keep keystroke recording and immediate input feedback synchronous. Publish cached view snapshots afterward. Effects own async lifetimes and release native leases; cleanup does not finish a run.
+- Raw JSON enters as `unknown`. Hydrated profiles retain incomplete historical records; narrow at their consumer instead of inventing current records.
 - Design values come from the tokens at the top of `src/styles.css` (`DESIGN.md`).
 - Feature detail lives in each module's comments and its tests, not in separate docs.
 - "Shape" means a test's mode and length (`testShapes`, `shapeOf`).
@@ -64,13 +70,14 @@ Batch all findings into that proof. Demonstrated in-scope correctness, security 
 ## Errors
 
 - Parse at the boundary. Stored profiles go through `normalizeProfile`, server replies through the module that called them, and the model's theme through `cleanTheme`. Inside, trust the shape.
-- A request that stalls fails as unreachable after 15 s (`request` in `src/account.js`). Edits stay on the device, as when offline.
+- A request that stalls fails as unreachable after 15 s (`request` in `src/network.ts`). Edits stay on the device, as when offline.
 - A slow reply never acts over what the person did since it was sent (`raceContext`).
 - A destructive action, like account deletion, changes nothing when it fails, and says so.
 
 ## Tests
 
-- Unit tests go in `tests/<module>.test.js` and run in Node with no DOM. Scoring, replay, sync and storage logic belong there.
+- Unit tests go in `tests/<module>.test.js` and run in Node through `tsx`, with no DOM. Scoring, replay, sync and storage logic belong there.
 - Browser behaviour goes in `e2e/<feature>.spec.js`. Specs fake Supabase through `e2e/fake-supabase.js` and its siblings, and never touch the real project.
+- The worker precache is generated from emitted assets, including required chunks and default fonts.
 - Contrast, the service worker, releases and condition keys have guard tests (`contrast`, `sw`, `release`, `typing`). Keep them passing; don't loosen them.
 - A flaky spec gets a Linear issue in the Stilltype project, with its engine and failure rate.
