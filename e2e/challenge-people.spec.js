@@ -1,5 +1,7 @@
 // Challenge's people list (TOB-420): one row per person, built only from what the service holds, following the
 // records as they change here and in another tab, and reaching everything Challenge can do.
+import { peopleRows } from '../src/challenge-people.js';
+import { usePeopleFixture } from './people-fixture.js';
 import { test, expect, openApp, openView, signInWithEmail, phone } from './fixtures.js';
 
 test.setTimeout(90000);
@@ -159,23 +161,30 @@ test('opening Challenge with 50 friends, 10 invitations and 10 ghosts draws in a
   await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(10);
   await expect(page.locator('#people-list [data-state="ghost"]')).toHaveCount(10);
 
-  // Drawing the whole list again from the same records, as every poll does, and once from nothing.
-  // A dismissal in another tab redraws the list from its records at once, so a storage event times the draw itself.
-  const timings = await page.evaluate(async (userId) => {
-    const list = document.getElementById('people-list');
+  // Keep the real app's service/list proof above. Measure fresh React mounts in a compiled harness,
+  // using the same service records and production projection, without mutating React-owned DOM.
+  const friends = supabase.races.friendList(toby.id);
+  const invites = [...supabase.races.rooms.values()].map((room) => ({ id: room.id, hostName: room.players[0].name, createdAt: room.createdAt, expiresAt: room.expiresAt }));
+  const challenges = [...supabase.challenges.rows.values()].map((row) => supabase.challenges.view(row, toby.id));
+  const modeled = peopleRows({ friends, invites, challenges, links: supabase.races.people(toby.id, supabase.challenges), dismissed: new Set(), now: Date.now() });
+  await usePeopleFixture(page, modeled);
+  await page.reload();
+  await page.locator('#fixture-draw').click();
+  await expect(rows(page)).toHaveCount(50);
 
-    const measure = async (prepare) => {
-      prepare();
+  const timings = await page.evaluate(async () => {
+    const measure = async (fresh) => {
+      if (fresh) document.getElementById('fixture-clear').click();
       const start = performance.now();
-      dispatchEvent(new StorageEvent('storage', { key: `stilltype-dismissed-invites-v1:${userId}` }));
+      document.getElementById('fixture-draw').click();
       const drawn = performance.now() - start;
       await new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); });
 
       return { drawn, painted: performance.now() - start };
     };
 
-    return { again: await measure(() => {}), fresh: await measure(() => list.replaceChildren()) };
-  }, toby.id);
+    return { again: await measure(false), fresh: await measure(true) };
+  });
 
   testInfo.annotations.push({ type: 'render', description: JSON.stringify(timings) });
   console.log(`people list redraw: ${JSON.stringify(timings)}`);

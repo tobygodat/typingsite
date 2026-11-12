@@ -12,6 +12,7 @@ export function createApplicationLifetime() {
       const timer = window.setTimeout(() => { timeouts.delete(timer);
 
  if (!disposed) callback(); }, delay);
+
       timeouts.add(timer);
 
       return timer;
@@ -28,6 +29,7 @@ export function createApplicationLifetime() {
       const frame = requestAnimationFrame((stamp) => { frames.delete(frame);
 
  if (!disposed) callback(stamp); });
+
       frames.add(frame);
 
       return frame;

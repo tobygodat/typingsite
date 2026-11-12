@@ -13,9 +13,10 @@ function ModeButton({ mode, view, practice }: { mode: Preferences['mode']; view:
 
 export function PracticeControls({ practice, quoteFilters }: { practice: PracticeSession; quoteFilters: QuoteFiltersController }) {
   const view = useSyncExternalStore(practice.controls.subscribe, practice.controls.getSnapshot, practice.controls.getSnapshot);
-  const spec = view.mode === 'time' || view.mode === 'words' ? LENGTHS[view.mode] : undefined;
-  const current = view.mode === 'time' ? view.duration : view.count;
-  const customLength = spec ? !isPresetLength(view.mode, current) : false;
+  const spec = LENGTHS[view.lengthMode];
+  const hasLength = view.mode === 'time' || view.mode === 'words';
+  const current = view.lengthValue;
+  const customLength = !isPresetLength(view.lengthMode, current);
   const special = view.custom || view.composing;
   const moreLabel = view.composing ? 'compose' : view.custom ? 'custom' : ['code', 'standard', 'book'].includes(view.mode) ? view.mode : 'more';
 
@@ -44,9 +45,9 @@ export function PracticeControls({ practice, quoteFilters }: { practice: Practic
               <div id="standard-options" className="standard-options" hidden={special || view.mode !== 'standard'}>
                 <p id="standard-recipe" className="condition-copy">{view.standardRecipe}</p>
               </div>
-              <div id="duration-options" className="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed" hidden={special || !spec}>
-                {(spec?.presets ?? []).map((length, index) => <button key={index} type="button" data-length={length} aria-pressed={length === current} aria-label={`${length} ${spec?.unit}`} className={length === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(length)}>{length}</button>)}
-                <button id="custom-length" type="button" className={customLength ? 'is-active' : ''} aria-pressed={customLength} aria-label={customLength ? `custom ${spec?.noun}, ${current} ${spec?.unit}` : `custom ${spec?.noun}`}>{customLength ? current : 'custom'}</button>
+              <div id="duration-options" className="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed" hidden={special || !hasLength}>
+                {spec.presets.map((length, index) => <button key={index} type="button" data-length={length} aria-pressed={length === current} aria-label={`${length} ${spec.unit}`} className={length === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(length)}>{length}</button>)}
+                <button id="custom-length" type="button" className={customLength ? 'is-active' : ''} aria-pressed={customLength} aria-label={customLength ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`}>{customLength ? current : 'custom'}</button>
                 <form id="custom-length-form" className="custom-length" noValidate hidden>
                   <input id="custom-length-input" className="custom-length-input" type="text" inputMode="numeric" enterKeyHint="done" maxLength={12} autoComplete="off" spellCheck={false} placeholder="5–600" aria-label="custom time in seconds, 5 to 600" aria-describedby="custom-length-error" />
                 </form>

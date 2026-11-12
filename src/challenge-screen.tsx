@@ -1,3 +1,5 @@
+import { QuickMatch } from './quick-match-view.js';
+import { ChallengePeople } from './challenge-people-view.js';
 import { RankCard } from './rank-card.js';
 import type { ChallengeStore } from './challenge-store.js';
 
@@ -8,20 +10,8 @@ export function ChallengeScreen({ challenge }: { challenge: ChallengeStore }) {
         <p id="online-error" className="field-error" role="alert"></p>
 
         <div id="challenge-people" className="people">
-          <section id="quick-match" className="quick-match" aria-labelledby="quick-match-heading">
-            <div className="quick-match-head">
-              <h2 id="quick-match-heading" tabIndex={-1}>Quick match</h2>
-              <p className="quick-match-rating num" data-quick-part="rating" hidden></p>
-              <p className="quick-match-rating" data-guest="">Sign in to be matched.</p>
-            </div>
-            <button className="btn btn-primary quick-match-go" type="button" data-quick="toggle" data-quick-part="toggle">Find a race</button>
-            <p className="online-copy quick-match-status" role="status" data-quick-part="status"></p>
-            <div className="online-actions quick-match-lonely" data-quick-part="lonely" hidden>
-              <button className="btn btn-ghost btn-sm" type="button" data-quick="keep">Keep waiting</button>
-              <button className="btn btn-ghost btn-sm" type="button" data-quick="best" data-quick-part="best">Race your best run</button>
-            </div>
-          </section>
-          <ul id="people-list" className="people-list" aria-label="People you race"></ul>
+          <QuickMatch controller={challenge.quick} />
+          <ChallengePeople controller={challenge.people} />
           <p id="people-status" className="online-copy people-status" role="status"></p>
           <div className="people-foot">
             <div className="people-foot-group">

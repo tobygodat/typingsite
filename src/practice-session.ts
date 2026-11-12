@@ -44,6 +44,8 @@ export interface ResultView {
 
 export interface PracticeControlsView {
   mode: Preferences['mode'];
+  lengthMode: 'time' | 'words';
+  lengthValue: number;
   duration: number;
   count: number;
   punctuation: boolean;
@@ -86,7 +88,7 @@ export function createPracticeSession() {
   let purpose: SessionKind = 'practice';
   let displayed: SealedRun | null = null;
   const result = createStore<ResultView | null>(null);
-  const controls = createStore<PracticeControlsView>({ mode: 'time', duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
+  const controls = createStore<PracticeControlsView>({ mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
   const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {} };
 
   const commands: ResultCommands = {

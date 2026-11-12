@@ -1146,6 +1146,8 @@ function setModeControls() {
   renderLengthOptions();
   flushSync(() => practice.controls.publish({
     mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count,
+    lengthMode: ['time', 'words'].includes(learning.preferences.mode) ? learning.preferences.mode : practice.controls.getSnapshot().lengthMode,
+    lengthValue: learning.preferences.mode === 'time' ? learning.preferences.duration : learning.preferences.mode === 'words' ? learning.preferences.count : practice.controls.getSnapshot().lengthValue,
     punctuation: learning.preferences.punctuation, adaptive: learning.preferences.adaptive,
     custom, customOpen, composing: composeOpen, codeLanguage: learning.preferences.codeLanguage,
     standardRecipe: recipeSummary() + ' · ' + correctionLabel(standardConditions().correctionPolicy),
@@ -7090,7 +7092,7 @@ friendsBoard = createFriendsBoard({
 });
 
 onlineRace = createOnlineRace({
-  rankCard: challenge.rankCard,
+  rankCard: challenge.rankCard, people: challenge.people, quick: challenge.quick,
   getSession: () => session,
   inbox,
   board: friendsBoard,
@@ -7168,6 +7170,8 @@ return {
     raceFx.dispose();
     sounds.dispose();
     compose.dispose();
+    challenge.quick.dispose();
+    challenge.rankCard.clear();
     palette.dispose();
     await disposePageWork();
   },

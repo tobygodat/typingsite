@@ -9,9 +9,7 @@ import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } f
 import { redrawList } from './inbox.js';
 import { createRaceReview } from './race-review.js';
 import { cardOutcome, ratingResult } from './quick-match.js';
-import { createQuickMatch } from './quick-match-view.js';
 import { peopleRows } from './challenge-people.js';
-import { drawPeople } from './challenge-people-view.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
@@ -64,7 +62,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ rankCard, getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
+export function createOnlineRace({ rankCard, people, quick, getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -151,8 +149,8 @@ export function createOnlineRace({ rankCard, getSession, signIn, navigate, rende
   // The settled result the card shows, so a room update that doesn't change it never replays it.
   let shownResult = '';
 
-  const quick = createQuickMatch({ root: $('quick-match'), getSession, signIn, racerName: strangerName,
-    enterRoom: (result) => enterRoom(result), busyElsewhere: () => busy || Boolean(room && !terminal(room)), ownBest, raceOwnBest });
+  quick.configure({ getSession, signIn, racerName: strangerName,
+    enterRoom: (result) => enterRoom(result), busyElsewhere: () => busy || Boolean(room && !terminal(room)), ownBest: () => Boolean(ownBest()), raceOwnBest });
 
   const fx = createTypingFx($('online-stage').querySelector('.online-typing-wrap'), $('online-text-display'), { ensureCharacters: (index) => textView?.ensureForward(index) });
 
@@ -244,11 +242,7 @@ export function createOnlineRace({ rankCard, getSession, signIn, navigate, rende
     // With nobody to list yet, the list offers the race anyone can join, and the foot leaves it out.
     if (signedIn && !rows.length && friendsLoaded) rows.push({ key: 'link', kind: 'link', state: 'link', name: 'A friend', line: null, tally: null });
     $('people-race-link').hidden = !signedIn || rows.some((row) => row.kind === 'link');
-    $('people-list').hidden = !rows.length;
-    // With no row left (the friend list not read yet, so no "A friend" row), focus goes to Quick match's heading,
-    // not its Find a race: a second press of the key that emptied the list starts nothing.
-    drawPeople($('people-list'), rows, { fallback: $('quick-match-heading'),
-      decorate: (button) => { if (button.matches(RACE_CONTROLS)) markBusy(button); } });
+    people.update(rows);
     const message = signedIn ? (friendsFailure || invitesFailure)?.message || '' : '';
 
     if ($('people-status').textContent !== message) $('people-status').textContent = message;
@@ -615,6 +609,8 @@ export function createOnlineRace({ rankCard, getSession, signIn, navigate, rende
   }
 
   function renderBusy() {
+    people.setBusy(busy);
+
     for (const control of $('compete-screen').querySelectorAll(`${RACE_CONTROLS}, ${FRIEND_CONTROLS}`)) markBusy(control);
     inbox.wait(busy ? ['invite', 'result'] : []);
   }
@@ -1272,19 +1268,11 @@ export function createOnlineRace({ rankCard, getSession, signIn, navigate, rende
   });
   // A row has focus in place of its action, so Space there is a press that presses nothing. The browser would take it
   // as a scroll, and carry the row (and focus) off the screen; it stays put. Space anywhere else scrolls as ever.
-  $('people-list').addEventListener('keydown', (event) => {
-    if (event.key === ' ' && event.target.matches('.people-row')) event.preventDefault();
-  });
-  $('people-list').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-people-action]');
-
-    if (!button || button.getAttribute('aria-disabled') === 'true') return;
-    const { peopleAction: action } = button.dataset;
-
-    if (action === 'join') joinInvite(button.dataset.acceptInvite);
-    else if (action === 'dismiss') dismissInvite(button.dataset.dismissInvite);
-    else if (action === 'ghost') raceGhost?.(button.dataset.raceGhost);
-    else if (action === 'race') raceFriend(button.dataset.raceFriend);
+  people.configure((action, target) => {
+    if (action === 'join') joinInvite(target);
+    else if (action === 'dismiss') dismissInvite(target);
+    else if (action === 'ghost') raceGhost?.(target);
+    else if (action === 'race') raceFriend(target);
     else if (action === 'link') raceLink();
   });
   // Add a friend: saved to the list, where their row offers Race. Race once invites the same account without saving.
