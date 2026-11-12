@@ -1,8 +1,10 @@
+import { HistoryClearDialog, HistoryToast } from './history-clear.js';
+import { ImportDialog } from './import-dialog.js';
 import { SuggestionDialog, SuggestionToast } from './suggestion-dialog.js';
 import { Inbox, ChallengeToast } from './inbox-view.js';
 import { DeleteAccountDialog } from './account-deletion.js';
 import type { Application } from './application.js';
-import { AccountMenu, AccountDialog, AccountGuestNote } from './account-view.js';
+import { AccountMenu, AccountDialog, AccountGuestNote, AccountToast } from './account-view.js';
 import { ReplayDialog } from './replay-view.js';
 import { ComposeSurface } from './compose-view.js';
 import { Palette } from './palette.js';
@@ -16,7 +18,7 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear }: Application) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -188,7 +190,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
       <AccountGuestNote controller={accounts} />
       <span className="footer-links">
         <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog" onClick={() => suggestion.open()}>suggest a feature</button>
-        <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0">v0.5.0</button>
+        <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0" onClick={() => release.open()}>v0.5.0</button>
       </span>
     </footer>
   </div>
@@ -199,21 +201,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <ReplayDialog controller={practice.replay} />
 
-  <dialog id="clear-dialog" aria-labelledby="clear-dialog-title">
-    <form method="dialog" className="dialog-content">
-      <div>
-        <h2 id="clear-dialog-title">Clear your practice history?</h2>
-        <p>Runs, drills, comparisons, composing numbers and lesson progress will be removed.</p>
-      </div>
-      <label htmlFor="confirm-clear-input">Type <strong>clear</strong> to confirm
-        <input id="confirm-clear-input" className="input" type="text" autoComplete="off" />
-      </label>
-      <div className="dialog-actions">
-        <button id="cancel-clear" className="btn btn-ghost" defaultValue="cancel">Cancel</button>
-        <button id="confirm-clear" className="btn btn-danger" type="button" disabled>Clear history</button>
-      </div>
-    </form>
-  </dialog>
+  <HistoryClearDialog controller={historyClear} />
 
   <DeleteAccountDialog controller={deletion} />
 
@@ -221,58 +209,15 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <SuggestionDialog controller={suggestion} />
 
-  <ReleaseDialog />
+  <ReleaseDialog controller={release} />
 
-  <SettingsDialog controller={settings} themeEditor={themeEditor} wallpaper={wallpaper} accounts={accounts} />
+  <SettingsDialog controller={settings} themeEditor={themeEditor} wallpaper={wallpaper} accounts={accounts} importing={importing} />
 
-  <dialog id="import-dialog" aria-labelledby="import-dialog-title">
-    <form id="import-form" className="dialog-content" noValidate>
-      <div>
-        <h2 id="import-dialog-title">Import Monkeytype settings</h2>
-        <p>In Monkeytype: settings → danger zone → import/export settings → export. Paste it here or choose its file.</p>
-      </div>
-      <label htmlFor="import-text">Monkeytype settings
-        <textarea id="import-text" className="input textarea import-text" rows={6} spellCheck={false} autoComplete="off" autoCapitalize="off" placeholder="{ &quot;mode&quot;: &quot;time&quot;, &quot;time&quot;: 30, … }" aria-describedby="import-error"></textarea>
-      </label>
-      <div className="import-meta">
-        <p id="import-error" className="field-error" role="alert"></p>
-        <button id="import-choose" className="btn btn-ghost btn-sm" type="button">Choose a file</button>
-        <input id="import-file" type="file" accept=".json,.txt,application/json,text/plain" hidden />
-      </div>
-      <div className="dialog-actions">
-        <button id="cancel-import" className="btn btn-ghost" type="button">Cancel</button>
-        <button id="confirm-import" className="btn btn-primary" type="submit" disabled>Import settings</button>
-      </div>
-    </form>
-    <div id="import-report" className="dialog-content" hidden>
-      <div>
-        <h2 id="import-report-title" tabIndex={-1}>Settings imported</h2>
-        <p id="import-summary"></p>
-      </div>
-      <section className="import-group" aria-labelledby="import-mapped-title">
-        <h3 id="import-mapped-title" className="account-kicker">brought over</h3>
-        <ul id="import-mapped" className="import-rows"></ul>
-      </section>
-      <section id="import-skipped-group" className="import-group" aria-labelledby="import-skipped-title">
-        <h3 id="import-skipped-title" className="account-kicker">left as they were</h3>
-        <ul id="import-skipped" className="import-rows"></ul>
-      </section>
-      <div className="dialog-actions">
-        <button id="import-done" className="btn btn-primary" type="button">Done</button>
-      </div>
-    </div>
-  </dialog>
+  <ImportDialog controller={importing} />
 
-  <div id="history-toast" className="toast" role="status" hidden>
-    <span className="status-dot" aria-hidden="true"></span>
-    <span id="history-feedback">Local history cleared.</span>
-    <button id="undo-clear" className="btn btn-ghost btn-sm" type="button">Undo</button>
-  </div>
+  <HistoryToast controller={historyClear} />
 
-  <div id="account-toast" className="toast account-toast" role="status" hidden>
-    <span className="status-dot" aria-hidden="true"></span>
-    <span id="account-feedback"></span>
-  </div>
+  <AccountToast controller={accounts} />
 
   <div id="egg-toast" className="toast egg-toast" role="status" hidden>
     <span className="ghost-mark" aria-hidden="true"></span>

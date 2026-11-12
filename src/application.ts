@@ -1,3 +1,7 @@
+import { createPracticeRecording } from './practice-recording.js';
+import { createHistoryClear } from './history-clear.js';
+import { createReleaseDialog } from './release-dialog.js';
+import { createSettingsImport } from './import-dialog.js';
 import { createSuggestion } from './suggestion-dialog.js';
 import { createInbox } from './inbox.js';
 import { createFriendsBoard } from './friends-board.js';
@@ -19,14 +23,16 @@ export function createApplication() {
   startPageWork();
   const accounts = createAccountSession();
   const learning = createLearningStore();
+  const practice = createPracticeSession();
+  const sync = createProfileSync(learning, accounts);
 
   return {
-    accounts, learning,
+    accounts, learning, practice, sync,
+    historyClear: createHistoryClear(learning, practice, sync),
+    recording: createPracticeRecording(learning, sync),
     inbox: createInbox(),
     friendsBoard: createFriendsBoard(),
     deletion: createAccountDeletion(accounts),
-    sync: createProfileSync(learning, accounts),
-    practice: createPracticeSession(),
     themeEditor: createThemeEditor(),
     wallpaper: createWallpaper(),
     challenge: createChallengeStore(),
@@ -35,6 +41,8 @@ export function createApplication() {
     settings: createSettings(),
     palette: createPalette(),
     suggestion: createSuggestion(),
+    importing: createSettingsImport(),
+    release: createReleaseDialog(),
   };
 }
 

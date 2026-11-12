@@ -44,7 +44,7 @@ export interface ResultView {
 }
 
 export interface PracticeControlsView {
-  mode: Preferences['mode'];
+  mode: unknown;
   lengthMode: 'time' | 'words';
   lengthValue: number;
   duration: number;

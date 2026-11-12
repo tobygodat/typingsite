@@ -7,9 +7,9 @@ import type { CopyPart } from './practice-session.js';
 import { Copy } from './results-card.js';
 import { formatSpeed, unitText } from './units.js';
 
-export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: string; textNote: string; passage?: string }
+export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: CopyPart[]; textNote: string; passage?: string }
 
-export interface CompositionRowView { id: string; wpm: number; backspaceRate: number; prompt: string; detail: string }
+export interface CompositionRowView { id: string; wpm: number | null; backspaceRate: number | null; prompt: string; detail: string }
 
 export interface StandardView { best: number | null; median: number | null; medianLabel: string; conditions: string; empty: boolean; note: CopyPart[] }
 
@@ -23,9 +23,10 @@ export function createProgressSections() {
   const standard = createStore<StandardView>({ best: null, median: null, medianLabel: 'median', conditions: '', empty: true, note: [] });
   const lead = createStore<LeadView>({ figure: null, spoken: '', sentence: [], sample: '', note: '', state: 'none', tone: 'none' });
   const movers = createStore<{ rows: MoverView[]; open: boolean; extra: number; shown: number }>({ rows: [], open: false, extra: 0, shown: 0 });
-  const commands = { showAll() {}, calendar() {} };
+  const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, keys: false, calendar: false, standard: false, compose: false }, runsLabel: 'All runs' });
+  const commands = { showAll() {}, calendar() {}, clear() {} };
 
-  return { filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
+  return { overview, filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
 }
 
 export type ProgressSections = ReturnType<typeof createProgressSections>;
@@ -33,13 +34,13 @@ export type ProgressSections = ReturnType<typeof createProgressSections>;
 export function ProgressRunRows({ progress }: { progress: ProgressSections }) {
   const view = useSyncExternalStore(progress.runs.subscribe, progress.runs.getSnapshot, progress.runs.getSnapshot);
 
-  return <><div id="run-history" className="run-history">{view.rows.map((run, index) => <details key={`${view.revision}:${run.id ?? index}`} className="run-row" data-run-id={run.id}><summary className="run-summary"><strong className="num"><Copy parts={[{ kind: 'speed', wpm: run.wpm }, ` · ${run.accuracy}%`]} /></strong><span>{run.date}</span></summary><div className="run-detail"><dl><div><dt>first-try errors</dt><dd className="num">{run.errors}</dd></div><div><dt>time</dt><dd className="num">{run.time}</dd></div></dl><p>{run.description}</p><p>{run.textNote}</p>{run.passage !== undefined && <details><summary>View passage</summary><p>{run.passage}</p></details>}</div></details>)}</div><button id="show-all-runs" className="btn btn-secondary btn-sm show-all-runs" type="button" hidden={view.rows.length === view.total} onClick={() => progress.commands.showAll()}>Show all {view.total} runs</button></>;
+  return <><div id="run-history" className="run-history">{view.rows.map((run, index) => <details key={`${view.revision}:${run.id ?? index}`} className="run-row" data-run-id={run.id}><summary className="run-summary"><strong className="num"><Copy parts={[{ kind: 'speed', wpm: run.wpm }, ` · ${run.accuracy}%`]} /></strong><span>{run.date}</span></summary><div className="run-detail"><dl><div><dt>first-try errors</dt><dd className="num">{run.errors}</dd></div><div><dt>time</dt><dd className="num">{run.time}</dd></div></dl><p><Copy parts={run.description} /></p><p>{run.textNote}</p>{run.passage !== undefined && <details><summary>View passage</summary><p>{run.passage}</p></details>}</div></details>)}</div><button id="show-all-runs" className="btn btn-secondary btn-sm show-all-runs" type="button" hidden={view.rows.length === view.total} onClick={() => progress.commands.showAll()}>Show all {view.total} runs</button></>;
 }
 
 export function ProgressCompositions({ progress }: { progress: ProgressSections }) {
   const view = useSyncExternalStore(progress.composing.subscribe, progress.composing.getSnapshot, progress.composing.getSnapshot);
 
-  return <><p id="compose-history-note" className="result-note">{view.note}</p><div id="compose-history-list">{view.rows.map((item) => <article key={item.id} className="compose-row"><div className="compose-row-main"><strong className="num"><Copy parts={[{ kind: 'speed', wpm: item.wpm }]} /></strong><span className="num">{item.backspaceRate}% backspace rate</span></div><p>{item.prompt}</p><p className="condition-copy">{item.detail}</p></article>)}</div></>;
+  return <><p id="compose-history-note" className="result-note">{view.note}</p><div id="compose-history-list">{view.rows.map((item) => <article key={item.id} className="compose-row"><div className="compose-row-main"><strong className="num">{item.wpm === null ? <data value="">—</data> : <Copy parts={[{ kind: 'speed', wpm: item.wpm }]} />}</strong><span className="num">{String(item.backspaceRate)}% backspace rate</span></div><p>{item.prompt}</p><p className="condition-copy">{item.detail}</p></article>)}</div></>;
 }
 
 export function ProgressStandard({ progress }: { progress: ProgressSections }) {
@@ -68,4 +69,10 @@ export function ProgressMovers({ progress }: { progress: ProgressSections }) {
   const view = useSyncExternalStore(progress.movers.subscribe, progress.movers.getSnapshot, progress.movers.getSnapshot);
 
   return <ol id="week-movers" className="week-movers" aria-label="What changed since last week">{view.rows.map((row, index) => <li key={row.unit ?? 'practice'} className={`mover ${row.practice ? 'is-practice' : 'is-fixed'}`} data-unit={row.unit} hidden={!row.practice && index >= view.shown && !view.open}>{row.practice ? <button type="button" className="mover-unit mover-link" aria-label="practice calendar" onClick={() => progress.commands.calendar()}>practice</button> : <span className="mover-unit">{row.unit}</span>}<p className="mover-change num" title={row.title}><span className="mover-before">{row.before}</span><span className="mover-arrow" aria-hidden="true"> → </span><span className="sr-only"> to </span><span className="mover-after">{row.after}</span>{row.tail && <span className="mover-tail"> {row.tail}</span>}</p><span className={`status mover-status badge-${row.practice ? 'neutral' : 'success'}`}><span className="status-dot" aria-hidden="true"></span>{row.status}</span></li>)}</ol>;
+}
+
+export function ProgressMore({ progress }: { progress: ProgressSections }) {
+  const view = useSyncExternalStore(progress.overview.subscribe, progress.overview.getSnapshot, progress.overview.getSnapshot);
+
+  return <nav id="progress-more" className="progress-more" aria-label="More progress"><button id="open-runs" className="btn btn-ghost" type="button" data-progress-open="runs" hidden={!view.links.runs}>{view.runsLabel}</button><button className="btn btn-ghost" type="button" data-progress-open="keys" hidden={!view.links.keys}>Keys</button><button className="btn btn-ghost" type="button" data-progress-open="calendar" hidden={!view.links.calendar}>Practice calendar</button><button className="btn btn-ghost" type="button" data-progress-open="standard" hidden={!view.links.standard}>Standard score</button><button className="btn btn-ghost" type="button" data-progress-open="compose" hidden={!view.links.compose}>Composing</button><button id="clear-history" className="btn btn-ghost danger-text clear-history" type="button" disabled={!view.hasHistory} hidden={!view.hasHistory} onClick={() => progress.commands.clear()}>Clear history</button></nav>;
 }

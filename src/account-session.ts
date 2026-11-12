@@ -27,6 +27,8 @@ export function createAccountSession() {
   let disposed = false;
   let host: AccountHost | null = null;
   let callbacks: AccountCallbacks | null = null;
+  let feedbackTimer = 0;
+  const feedback = createStore({ message: '', tone: 'problem', visible: false });
   const view = createStore<AccountView>({ email: '', signedIn: false, sync: 'guest', googleBusy: false });
   const auth = createStore<AuthView>({ mode: 'create', busy: false, error: '', confirm: null });
   const publish = (next: AuthView) => { if (!disposed) flushSync(() => auth.publish(next)); };
@@ -61,7 +63,12 @@ export function createAccountSession() {
   }
 
   return {
-    view, auth, replaceIdentity, fresh, open,
+    view, auth, feedback, replaceIdentity, fresh, open,
+    notify(message: string, tone = 'problem') {
+      flushSync(() => feedback.publish({ message, tone, visible: true }));
+      clearTimeout(feedbackTimer);
+      feedbackTimer = window.setTimeout(() => { if (!disposed) flushSync(() => feedback.publish({ ...feedback.getSnapshot(), visible: false })); }, 5000);
+    },
     get session() { return session; },
     set session(next: Session | null) { session = next; },
     configure(next: AccountCallbacks) { callbacks = next; },
@@ -121,7 +128,7 @@ export function createAccountSession() {
         else callbacks?.toast(message);
       }
     },
-    dispose() { disposed = true; identityEpoch += 1; },
+    dispose() { disposed = true; identityEpoch += 1; clearTimeout(feedbackTimer); },
   };
 }
 

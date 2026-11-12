@@ -46,3 +46,9 @@ export function AccountGuestNote({ controller }: { controller: AccountSession })
 
   return <span id="guest-note" className="guest-note" hidden={view.signedIn}>guest · runs aren’t saved</span>;
 }
+
+export function AccountToast({ controller }: { controller: AccountSession }) {
+  const view = useSyncExternalStore(controller.feedback.subscribe, controller.feedback.getSnapshot, controller.feedback.getSnapshot);
+
+  return <div id="account-toast" className="toast account-toast" role="status" data-tone={view.tone} hidden={!view.visible}><span className="status-dot" aria-hidden="true"></span><span id="account-feedback">{view.message}</span></div>;
+}

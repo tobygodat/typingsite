@@ -2,7 +2,8 @@ import { FINGER_ROWS, FINGER_COLUMNS, fingerMapLabel } from './finger-map.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
-import { createTypingHost } from './typing-host.js';
+import { createInputController } from './input.js';
+import { NOTICES } from './input-notices.js';
 import { renderText, updateCharacterStates } from './passage-view.js';
 import {
   CHARS_PER_WORD,
@@ -16,7 +17,6 @@ import {
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
-  carriedKey,
   compareAttempts,
   completeAttempt,
   conditionKey,
@@ -32,11 +32,7 @@ import {
   orderCustomText,
   passageComplete,
   correctionPreference,
-  blocksOnError,
-  allowsBackspace,
-  failureFor,
   failureAtEnd,
-  refusesSpace,
   replayAttempt,
   selectPassage,
   standardConditions,
@@ -54,7 +50,7 @@ import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layo
 import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
-import { KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
+import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
 import { showThemeOptions, wearColors } from './theme-editor.js';
 import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
@@ -68,12 +64,11 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, bestRun, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, firstTriesAt, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
 import { promptText } from './compose.js';
-import { readMonkeytypeSettings } from './monkeytype.js';
 import {
   LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
@@ -91,7 +86,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -184,7 +179,7 @@ const STOP_HOLD_MS = 600;
 
 // An online race's typing surface (src/online-race.js), which takes keys through this same path as type
 // 'online': { attempt, origin (the shared start), view, accepting(at), notice(message), changed(), finish() }.
-let online = null;
+
 
 // Whether the practice passage is on one line. Read from the body, as the stylesheet does, so trimming and
 // measuring always follow the layout on screen (see tapeLayout).
@@ -229,15 +224,13 @@ let onlineRace = null;
 let baselineAttempt = null;
 let selectedTarget = null;
 let trainingContext = null;
-let resultBestBefore = null;
-let resultPassageBefore = null;
+
+
 let displayedIds = null;
-let clearSnapshot = null;
+
 
 // The label of the practice passage waiting when history was cleared, which undo gives back.
-let clearedPassage = null;
-let clearedAt = null;
-let clearTimer = null;
+
 let keyboardBuilt = '';
 let keyboardTarget = null;
 
@@ -1059,7 +1052,7 @@ function setModeControls() {
     mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count,
     lengthMode: ['time', 'words'].includes(learning.preferences.mode) ? learning.preferences.mode : practice.controls.getSnapshot().lengthMode,
     lengthValue: learning.preferences.mode === 'time' ? learning.preferences.duration : learning.preferences.mode === 'words' ? learning.preferences.count : practice.controls.getSnapshot().lengthValue,
-    punctuation: learning.preferences.punctuation, adaptive: learning.preferences.adaptive,
+    punctuation: Boolean(learning.preferences.punctuation), adaptive: learning.preferences.adaptive,
     custom, customOpen, composing: composeOpen, codeLanguage: learning.preferences.codeLanguage,
     standardRecipe: recipeSummary() + ' · ' + correctionLabel(standardConditions().correctionPolicy),
   }));
@@ -1675,187 +1668,39 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
   }
 }
 
-function offsetFor(type = 'primary', at = now()) {
-  const origin = type === 'primary' ? practice.startTime : type === 'online' ? online?.origin ?? null : race.startTime;
-
-  return origin === null ? 0 : Math.max(0, at - origin);
-}
-
-function currentReplay(type = 'primary') {
-  return replayAttempt(inputAttempt(type));
-}
-
 // carried: a later key of an accent commit (the h of "h). One the passage has no place left for was pressed
 // while its last letter was still to come, so it is a mistake against that letter, or nothing if it is that
 // letter (carriedKey).
-function pushInsert(char, type = 'primary', at = now(), carried = false) {
-  const targetAttempt = inputAttempt(type);
-  startAttempt(targetAttempt, type, at);
-  const replay = replayAttempt(targetAttempt);
-  const offsetMs = offsetFor(type, at);
-  const position = replay.typed.length;
-
-  const unresolved = blocksOnError(targetAttempt.conditions.correctionPolicy)
-    && replay.typed.length > 0
-    && replay.typed.at(-1) !== targetAttempt.text[replay.typed.length - 1];
-
-  if (unresolved) {
-    targetAttempt.events.push({ type: 'blocked-insert', text: char, position: position - 1, offsetMs: offsetMs });
-
-    return { previousLength: position, blocked: 'unresolved' };
-  }
-
-  // The passage is typed but its last word has a mistake: space finishes the run as it stands.
-  // Other keys have no position left to land on, so they are not recorded.
-  if (awaitingSubmit(targetAttempt, replay.typed)) {
-    if (char !== ' ') return { previousLength: position, blocked: 'submit' };
-    targetAttempt.events.push({ type: 'submit', offsetMs: offsetMs });
-
-    return { previousLength: position, blocked: false, submit: true };
-  }
-
-  if (refusesSpace(targetAttempt.conditions, targetAttempt.text, position, char)) {
-    targetAttempt.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs: offsetMs });
-
-    return { previousLength: position, blocked: 'space', correct: false, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
-  }
-
-  let event = { type: 'insert', text: char, position, accepted: true, offsetMs };
-
-  if (carried && position >= targetAttempt.text.length) event = carriedKey(targetAttempt, char, offsetMs);
-
-  if (event) targetAttempt.events.push(event);
-  const correct = !event || (event.accepted && char === targetAttempt.text[position]);
-
-  return { previousLength: position, blocked: false, correct, failed: failureFor(targetAttempt.conditions.correctionPolicy, targetAttempt.text, replay.typed, char) };
-}
-
-function pushDelete(type = 'primary') {
-  const targetAttempt = inputAttempt(type);
-  const replay = replayAttempt(targetAttempt);
-
-  if (!replay.typed.length) return replay.typed.length;
-  targetAttempt.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
-
-  return replay.typed.length;
-}
-
-const inputAttempt = (type) => (type === 'primary' ? practice.attempt : type === 'online' ? online?.attempt ?? null : race.attempt);
 
 // A timed run's clock has run out by this time (by default, now).
-const timeUp = (at = now()) => practice.startTime !== null && Boolean(sessionDurationMs()) && at - practice.startTime >= sessionDurationMs();
-const inTime = (type, at) => (type === 'online' ? online?.accepting(at) ?? false : !timeUp(at));
 
 // An accent commit made before the limit and still waiting for the key that ended it, or (Windows) a mark
 // typed before the limit and waiting for its key's input.
-const commitInTime = (type = 'primary') => typingHost.pending(type);
+
 
 // A timed run ends at its limit, once nothing typed before the limit is still to be scored.
-function finishIfTimeUp(at = now()) {
-  if (practice.attempt?.status === 'running' && timeUp(at) && !commitInTime()) finishPrimary(sessionDurationMs());
-}
+
 
 // The checks every typed key passes first; false means the input is ignored (it may finish a timed run).
 // at is when the key was typed: a commit made before the limit counts, though it is scored after it.
-function acceptingInput(type, at = now()) {
-  const target = inputAttempt(type);
 
-  if (!target || ['complete', 'interrupted'].includes(target.status)) return false;
-
-  if (type === 'online') return online?.accepting(at) ?? false;
-
-  if (type === 'primary' && timeUp(at)) {
-    finishPrimary(sessionDurationMs());
-
-    return false;
-  }
-
-  return true;
-}
 
 // IME text isn't keyboard input: the run stops counting, as before. An online race goes on without it.
-function refuseComposition(type) {
-  if (type === 'online') {
-    showInputNotice(type, NOTICES.onlineComposition);
 
-    return;
-  }
-
-  const target = inputAttempt(type);
-
-  if (type === 'primary' && target.status === 'ready') startAttempt(target);
-  target.unsupportedInput = true;
-  target.interrupted = true;
-  target.events.push({ type: 'composition', offsetMs: offsetFor(type) });
-  showInputNotice(type, NOTICES.composition, { sticky: true });
-}
 
 // Each key takes the same path as a key press, so replay can't tell them apart. A mark and letter
 // committed together arrive with the second key press, and share its time. Every key of a commit is
 // recorded before the passage can finish: on the last letter, "h counts the h too (see pushInsert).
-function typeKeys(keys, type, at = now()) {
-  if (!keys.length || !acceptingInput(type, at)) return;
-  const room = inputAttempt(type).text.length - currentReplay(type).typed.length;
-  const target = inputAttempt(type);
-  const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
-  // One sound for the whole key, before a submit or a failure can end the run.
-  sounds.play(keyOutcome(changes));
-  const failure = changes.find((change) => change.failed)?.failed;
-
-  if (changes.some((change) => change.submit)) {
-    finishTyping(type);
-
-    return;
-  }
-
-  if (failure) { target.interrupted = true; target.failed = failure; }
-
-  refreshAfterInput(type, changes[0].previousLength, changes.at(-1).blocked, at);
-
-  if (failure && target.status === 'running') finishTyping(type);
-}
-
-const finishTyping = (type) => (type === 'primary' ? finishPrimary() : type === 'online' ? online?.finish() : finishRacePlayer());
 
 // An online race types through the practice path (see online). pending: a commit typed before the race's
 // limit is still to be scored, so the race waits for it before it finishes. keydown: the race's own keydown
 // passes each key it lets through, for a Backspace in an empty field (see backspaceInEmptyField).
-function wireOnlineTyping(input, surface) {
-  online = surface;
-  const detach = typingHost.attach(input, 'online');
 
-  return { pending: () => commitInTime('online'), keydown: (event) => typingHost.keydown(event, 'online', input),
-    dispose() { detach();
-
- if (online === surface) online = null; } }; 
-}
 
 // Everything the typing surface says, kept short. The focus-lost and composition
 // notices stay until restart because the run no longer counts. Accent (dead) keys are
 // typed characters; only IME text (any composition no accent key opened) is refused.
-const NOTICES = {
-  blocked: 'Fix the underlined letter.',
-  strictSpace: 'Strict space is on. Type the next letter.',
-  submit: 'The last word has a mistake. Fix it, or press space to finish.',
-  paste: 'Paste is off. Type the passage.',
-  composition: 'IME input isn’t scored. Esc to restart.',
-  multiCharacter: 'One key at a time. Esc to restart.',
-  repeat: 'Key repeat ignored.',
-  focusLost: 'Focus lost. This run won’t count. Esc to restart.',
-  leftSurface: 'You left mid-run, so it won’t count.',
-  paletteOpened: 'Commands opened mid-run, so it won’t count.',
-  suggestOpened: 'Suggestions opened mid-run, so it won’t count.',
-  importOpened: 'Settings import opened mid-run, so it won’t count.',
-  composeFocusLost: 'Focus lost, so this one won’t be saved. Esc to start over.',
-  composeLeft: 'You left mid-way, so this one wasn’t saved.',
-  composePalette: 'Commands opened mid-way, so this one won’t be saved.',
-  composeSuggest: 'Suggestions opened mid-way, so this one won’t be saved.',
-  composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
-  deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
-  raceFocusLost: 'Focus lost. Esc to restart this turn.',
-  onlineBlocked: 'Correct the mistyped letter before continuing.',
-  onlineComposition: 'IME input isn’t supported in races. Use direct keyboard input.',
-};
+
 
 function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
   if (learning.preferences.keybindings.restart !== 'Escape') {
@@ -1867,7 +1712,7 @@ function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
     $('input-help').textContent = message;
 
     if (sticky) primaryNotice = message;
-  } else if (type === 'online') online.notice(message);
+  } else if (type === 'online') typingHost.online.notice(message);
   else {
     $('race-help').textContent = message;
 
@@ -1882,10 +1727,6 @@ function withRule(sticky, rule) {
   return sticky ? `${sticky} ${rule}` : rule;
 }
 
-function refusePaste(type) {
-  showInputNotice(type, NOTICES.paste);
-}
-
 // at is when the key was typed, so a commit scored after a timed run's limit can't end the run between
 // its mark and its letter (scoreCommit ends it once both are in).
 function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
@@ -1893,7 +1734,7 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   const targetAttempt = inputAttempt(type);
   const replay = replayAttempt(targetAttempt);
 
-  const view = type === 'online' ? online?.view
+  const view = type === 'online' ? typingHost.online?.view
     : isPrimary ? { input: $('typing-input'), characters: primaryCharacters, textView: primaryTextView, fx: primaryFx }
       : { input: $('race-input'), characters: race.characters, textView: race.textView, fx: raceFx };
 
@@ -1931,10 +1772,10 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
 
     if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
   } else if (type === 'online') {
-    online.notice(rule || (blocked ? NOTICES.onlineBlocked : ''));
-    online.changed();
+    typingHost.online.notice(rule || (blocked ? NOTICES.onlineBlocked : ''));
+    typingHost.online.changed();
 
-    if (passageComplete(targetAttempt, replay.typed)) online.finish();
+    if (passageComplete(targetAttempt, replay.typed)) typingHost.online.finish();
   } else {
     const help = $('race-help');
 
@@ -1950,29 +1791,18 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   }
 }
 
-const typingHost = createTypingHost({
-  attempt: inputAttempt,
-  typed: (type) => inputAttempt(type) ? replayAttempt(inputAttempt(type)).typed : '',
-  accepting: acceptingInput,
-  inTime,
-  typeKeys,
-  deleteKey(type) {
-    if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
-    const previousLength = pushDelete(type);
-    sounds.play(KEY_OUTCOME.delete);
-    refreshAfterInput(type, previousLength);
-  },
-  refuseComposition,
-  unsupported(type) {
-    const target = inputAttempt(type);
-    target.unsupportedInput = true;
-    target.interrupted = true;
-    showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
-  },
-  refusePaste,
-  showRepeat: (type) => showInputNotice(type, NOTICES.repeat, { speak: false }),
-  finishIfTimeUp,
+const typingHost = createInputController({
+  attempt: (type) => type === 'primary' ? practice.attempt : race.attempt,
+  origin: (type) => type === 'primary' ? practice.startTime : race.startTime,
+  durationMs: sessionDurationMs, start: startAttempt,
+  finish: (type, elapsed) => type === 'primary' ? finishPrimary(elapsed) : type === 'online' ? typingHost.online?.finish() : finishRacePlayer(),
+  refresh: refreshAfterInput, notice: showInputNotice, play: (outcome) => sounds.play(outcome),
 });
+
+const inputAttempt = typingHost.attempt;
+const offsetFor = typingHost.offsetFor;
+const finishIfTimeUp = typingHost.finishIfTimeUp;
+const wireOnlineTyping = typingHost.wireOnlineTyping;
 
 // The pace caret is presentational and never scored. It runs at the personal best, the average of
 // the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
@@ -2132,43 +1962,7 @@ function updateLive(reset = false, at = now()) {
   finishIfTimeUp(at);
 }
 
-function storeAttempt(completed) {
-  completed.at = new Date().toISOString();
-
-  // Shown as the day's first attempt, it is a repeat if another device's earlier attempt arrived since.
-  if (completed.kind === 'daily') completed.firstDailyAttempt = settleDailyFirsts([...learning.profile.runs, completed]).at(-1).firstDailyAttempt;
-  const key = conditionKey(completed.conditions);
-  const score = completed.summary.score;
-  // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
-  // are left as they are, whatever text set them. Code runs are their own condition and never set a best.
-  const eligibleBest = bestRun(completed);
-  resultBestBefore = learning.profile.bests[key] || null;
-  // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
-  resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(learning.profile.runs, completed) : null;
-
-  // Traces serve baselines and patterns. A custom passage is neither and can run to thousands of characters,
-  // so only its summary record is kept; so is a ghost race's, whose trace is sent from the run in memory.
-  if (comparableKind(completed.kind)) learning.profile.attempts.push(completed);
-  learning.profile.runs.push(runRecord(completed));
-
-  if (eligibleBest && (!learning.profile.bests[key] || score.wpm > learning.profile.bests[key].wpm)) {
-    learning.profile.bests[key] = { wpm: score.wpm, attemptId: completed.id, at: new Date().toISOString() };
-  }
-
-  // The passage was marked seen when shown (resetSession). A merge with a copy that had cleared history
-  // can drop marks it can't date, as it does for a passage only shown; one that was then typed, even
-  // in an interrupted run or a daily attempt, is marked again.
-  if (completed.kind !== 'drill') {
-    for (const id of [completed.textId, completed.kind === 'daily' ? dailyChallengeId(completed.challengeDate) : null]) {
-      if (id && !learning.profile.seenTextIds.includes(id)) learning.profile.seenTextIds.push(id);
-    }
-  }
-
-  const saved = saveProfile();
-  showBest();
-
-  return saved;
-}
+function storeAttempt(completed) { return recording.store(completed); }
 
 // The end of a run (the timer, the passage end) is a word boundary for the failure
 // policies, so a wrong letter typed just before the timer runs out still fails the run.
@@ -2361,20 +2155,20 @@ function resultHeadline(completed) {
 
   if (completed.fresh === false) {
     // A repeat chases its own passage, never the personal best.
-    if (!resultPassageBefore) return 'Repeated text · not counted toward your best';
-    const before = resultPassageBefore.score.wpm;
+    if (!recording.passageBefore) return 'Repeated text · not counted toward your best';
+    const before = recording.passageBefore.score.wpm;
     const change = completed.summary.score.wpm - before;
 
     return change === 0 ? ['Repeated text · matched your best of ', speedFigure(before), ' on this passage']
       : ['Repeated text · ', speedFigure(change, { bare: true, signed: true }), ' vs your best of ', speedFigure(before), ' on this passage'];
   }
 
-  if (!resultBestBefore) return 'First run at these settings';
-  const delta = completed.summary.score.wpm - resultBestBefore.wpm;
+  if (!recording.bestBefore) return 'First run at these settings';
+  const delta = completed.summary.score.wpm - recording.bestBefore.wpm;
 
-  if (delta === 0) return ['Matched your best of ', speedFigure(resultBestBefore.wpm)];
+  if (delta === 0) return ['Matched your best of ', speedFigure(recording.bestBefore.wpm)];
 
-  return [speedFigure(delta, { bare: true, signed: true }), ' vs your best of ', speedFigure(resultBestBefore.wpm)];
+  return [speedFigure(delta, { bare: true, signed: true }), ' vs your best of ', speedFigure(recording.bestBefore.wpm)];
 }
 
 // Code runs never become retest baselines, so a drill at code settings always stands alone.
@@ -3179,7 +2973,7 @@ function runRow(run) {
 
   return { id: run.id, wpm: run.score.wpm, accuracy: run.score.accuracy,
     date: dateCopy(run.at) + (run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : '') + (run.fresh === false ? ' · repeated text' : ''),
-    errors: run.errors, time: (run.elapsedMs / 1000).toFixed(1) + ' s', description: describeRun(run),
+    errors: run.errors, time: (run.elapsedMs / 1000).toFixed(1) + ' s', description: copyParts(describeRun(run)),
     textNote: 'Text: ' + run.textId + ' · ' + (run.fresh === false ? 'previously displayed' : 'fresh when displayed'), passage: trace?.text };
 }
 
@@ -3252,10 +3046,8 @@ function renderOverview(date) {
   const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
   const links = { runs: hasProgress, keys: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
 
-  for (const link of $('progress-more').querySelectorAll('[data-progress-open]')) link.hidden = !links[link.dataset.progressOpen];
-  $('open-runs').textContent = runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs';
-  $('clear-history').hidden = !hasHistory;
-  $('clear-history').disabled = !hasHistory;
+  flushSync(() => learning.progress.overview.publish({ hasHistory, hasProgress, links,
+    runsLabel: runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs' }));
 
   // The full charts are opened from a small chart, not a link, and stay open through their own filters.
   if (progressState.detail && !{ ...links, trends: hasProgress }[progressState.detail]) progressState.detail = '';
@@ -4501,71 +4293,6 @@ function followHistory() {
   showTraining();
 }
 
-function clearHistory() {
-  clearSnapshot = JSON.stringify(learning.profile);
-  // An unstarted practice passage outlives the clear (Practice keeps it), so it is the first text the cleared
-  // history shows: fresh, and recorded as seen, however it was labelled before. Clearing happens on Progress,
-  // so no run is under way.
-  const queued = practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' ? practice.attempt : null;
-  clearedPassage = queued && { attemptId: queued.id, fresh: passage.fresh, exhausted: passage.exhausted };
-  // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
-  // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
-  learning.profile = account.clearProfile(learning.profile);
-
-  if (queued?.textId) learning.profile.seenTextIds = [queued.textId];
-
-  if (queued && passage.fresh === false) labelPassage(true, false);
-  clearedAt = learning.profile.historyClearedAt;
-  sync.state.heldClears = account.joinHolds(sync.state.heldClears, { [clearedAt]: [normalizeProfile(JSON.parse(clearSnapshot))] });
-  trainingClears = account.clearsApplied(learning.profile);
-  forgetTraining();
-  const saved = saveProfile();
-  $('clear-dialog').close();
-  $('history-toast').hidden = false;
-  $('history-feedback').textContent = saved ? 'History cleared.' : 'Cleared in this tab, but storage is unavailable.';
-  $('undo-clear').hidden = false;
-  $('undo-clear').focus();
-  clearTimeout(clearTimer);
-  clearTimer = setTimeout(() => { $('history-toast').hidden = true; clearSnapshot = null; clearedPassage = null; }, 5000);
-  renderHistory();
-  followHistory();
-  renderDaily();
-  followLessonProgress();
-  showBest();
-  armPace();
-}
-
-function undoClear() {
-  if (!clearSnapshot) return;
-  let snapshot;
-
-  try { snapshot = normalizeProfile(JSON.parse(clearSnapshot)); } catch { return; }
-
-  // Restores the history even if the clear has already synced, keeping anything added since: this tab's
-  // own copy from just before it, and whatever the clear removed from the account row or another tab as
-  // they merged here (held for it), as far as clears still in force allow.
-  ({ merged: learning.profile, holds: sync.state.heldClears } = account.undoClearHere(sync.state.heldClears, learning.profile, clearedAt, snapshot));
-  // The passage that waited through the clear gets its old label back while it is still unstarted. A run on it
-  // already under way is left alone (still run): it started as fresh text, and stays that way.
-  const queued = clearedPassage;
-
-  if (queued && practice.attempt?.id === queued.attemptId && practice.attempt.status === 'ready') labelPassage(queued.fresh, queued.exhausted);
-  clearedPassage = null;
-  saveProfile();
-  clearSnapshot = null;
-  clearTimeout(clearTimer);
-  $('history-feedback').textContent = 'History restored.';
-  $('undo-clear').hidden = true;
-  followStoredPreferences();
-  showBest();
-  armPace();
-  renderHistory();
-  followHistory();
-  renderDaily();
-  followLessonProgress();
-  clearTimer = setTimeout(() => { $('history-toast').hidden = true; }, 1600);
-}
-
 // ── Accounts ──────────────────────────────────────────────────────────────
 
 
@@ -4813,16 +4540,20 @@ function noticeDeletedAccount() {
 function openAccountDialog(mode) { accounts.open(mode); }
 
 // tone 'done' marks a completed action; the default marks a problem.
-function showAccountToast(message, tone = 'problem') {
-  $('account-toast').dataset.tone = tone;
-  $('account-feedback').textContent = message;
-  $('account-toast').hidden = false;
-  clearTimeout(showAccountToast.timer);
-  showAccountToast.timer = setTimeout(() => { $('account-toast').hidden = true; }, 5000);
-  announce(message);
-}
+function showAccountToast(message, tone = 'problem') { accounts.notify(message, tone); announce(message); }
 
 function bindAccount() {
+  recording.configure(showBest);
+  learning.progress.commands.clear = historyClear.open;
+  historyClear.configure({ dismissFilters: () => quoteFilters.dismiss(), passageLabel: () => ({ fresh: passage?.fresh, exhausted: passage?.exhausted }), labelPassage,
+    forgetTraining() { trainingClears = account.clearsApplied(learning.profile); forgetTraining(); },
+    afterClear() { renderHistory(); followHistory(); renderDaily(); followLessonProgress(); showBest(); armPace(); },
+    afterUndo() { followStoredPreferences(); showBest(); armPace(); renderHistory(); followHistory(); renderDaily(); followLessonProgress(); },
+  });
+  release.configure(() => { markInterrupted(NOTICES.focusLost); compose.interrupt(NOTICES.composeFocusLost); markRaceInterrupted(); });
+  importing.configure({ beforeOpen() {
+    quoteFilters.dismiss(); settingsView.close(); markInterrupted(NOTICES.importOpened); compose.interrupt(NOTICES.composeImport); markRaceInterrupted();
+  }, apply: importSettings, member: () => Boolean(accounts.session), announce });
   suggestion.configure({ beforeOpen() {
     quoteFilters.dismiss(); settingsView.close(); markInterrupted(NOTICES.suggestOpened); compose.interrupt(NOTICES.composeSuggest); markRaceInterrupted();
   }, screen: () => document.body.dataset.view || '' });
@@ -4977,81 +4708,9 @@ async function completeAuthRedirect() {
 // Import from Monkeytype: its exported settings JSON, pasted or from a file, mapped by src/monkeytype.js.
 // Each setting brought over is applied as a pick of it here (saveChoice), so it syncs to the account and
 // outranks an older value from another device, as choosing it in settings would.
-function openImport() {
-  quoteFilters.dismiss();
-  settingsView?.close();
-  markInterrupted(NOTICES.importOpened);
-  compose.interrupt(NOTICES.composeImport);
-  markRaceInterrupted();
-  $('import-form').hidden = false;
-  $('import-report').hidden = true;
-  $('import-error').textContent = '';
-  $('import-file').value = '';
-  updateImportButton();
-  $('import-dialog').showModal();
-  $('import-text').focus();
-}
+function openImport() { importing.open(); }
 
-function updateImportButton() {
-  $('confirm-import').disabled = !$('import-text').value.trim();
-}
-
-async function readImportFile() {
-  const file = $('import-file').files?.[0];
-
-  if (!file) return;
-
-  try {
-    $('import-text').value = await file.text();
-    $('import-error').textContent = '';
-  } catch {
-    $('import-error').textContent = 'That file couldn’t be read. Try pasting its text instead.';
-  }
-
-  updateImportButton();
-  $('import-text').focus();
-}
-
-function importRow({ setting, value, from, reason }) {
-  const row = document.createElement('li');
-  const name = document.createElement('span');
-  name.className = 'import-setting';
-  name.textContent = setting;
-  row.append(name);
-
-  if (value !== undefined) {
-    const shown = document.createElement('span');
-    shown.className = 'import-value';
-    shown.textContent = value;
-    row.append(shown);
-  }
-
-  if (reason) {
-    const why = document.createElement('span');
-    why.className = 'import-reason';
-    why.textContent = reason;
-    row.append(why);
-  }
-
-  const source = document.createElement('small');
-  source.className = 'import-from';
-  source.textContent = `monkeytype ${from}`;
-  row.append(source);
-
-  return row;
-}
-
-function importSettings(event) {
-  event.preventDefault();
-  const result = readMonkeytypeSettings($('import-text').value);
-
-  if (result.error) {
-    $('import-error').textContent = result.error;
-    $('import-text').focus();
-
-    return;
-  }
-
+function importSettings(result) {
   const keys = Object.keys(result.preferences);
   const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
   learning.preferences = validPreferences({ ...learning.preferences, ...result.preferences });
@@ -5064,18 +4723,6 @@ function importSettings(event) {
 
   if (conditions && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
 
-  const count = result.mapped.length;
-  setText($('import-summary'), `${count} ${count === 1 ? 'setting' : 'settings'} brought over. ${accounts.session
-    ? 'They’re saved to your account and sync to your other devices.'
-    : 'Guest mode keeps them for this visit only; sign in to keep them.'}`);
-  $('import-mapped').replaceChildren(...result.mapped.map(importRow));
-  $('import-skipped').replaceChildren(...result.skipped.map(importRow));
-  $('import-skipped-group').hidden = !result.skipped.length;
-  $('import-text').value = '';
-  $('import-form').hidden = true;
-  $('import-report').hidden = false;
-  $('import-report-title').focus();
-  announce(`${count} Monkeytype ${count === 1 ? 'setting' : 'settings'} imported.`);
 }
 
 // Feature suggestions go straight to Supabase (account.sendSuggestion), never linked to an account.
@@ -5387,38 +5034,8 @@ function bindEvents() {
   }, { signal: lifetime.signal });
   $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); }, { signal: lifetime.signal });
 
-  $('clear-history').addEventListener('click', () => { quoteFilters.dismiss(); $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); }, { signal: lifetime.signal });
-  $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; }, { signal: lifetime.signal });
-  $('confirm-clear').addEventListener('click', clearHistory, { signal: lifetime.signal });
-  $('cancel-clear').addEventListener('click', () => $('clear-dialog').close(), { signal: lifetime.signal });
-  $('undo-clear').addEventListener('click', undoClear, { signal: lifetime.signal });
-
-  $('release-trigger').addEventListener('click', () => {
-    markInterrupted(NOTICES.focusLost);
-    compose.interrupt(NOTICES.composeFocusLost);
-    markRaceInterrupted();
-    $('release-dialog').showModal();
-  }, { signal: lifetime.signal });
-
   // Focus goes back to the version in the same task that closes the panel. The close event comes a task
   // later, when focus may already be back in the passage, and would take it from the keys being typed.
-  const closeRelease = () => {
-    $('release-dialog').close();
-    $('release-trigger').focus({ preventScroll: true });
-  };
-
-  $('release-close').addEventListener('click', closeRelease, { signal: lifetime.signal });
-  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) closeRelease(); }, { signal: lifetime.signal });
-  $('release-dialog').addEventListener('cancel', (event) => { event.preventDefault(); closeRelease(); }, { signal: lifetime.signal });
-
-  $('import-trigger').addEventListener('click', openImport, { signal: lifetime.signal });
-  $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); }, { signal: lifetime.signal });
-  $('import-choose').addEventListener('click', () => $('import-file').click(), { signal: lifetime.signal });
-  $('import-file').addEventListener('change', readImportFile, { signal: lifetime.signal });
-  $('import-form').addEventListener('submit', importSettings, { signal: lifetime.signal });
-  $('cancel-import').addEventListener('click', () => $('import-dialog').close(), { signal: lifetime.signal });
-  $('import-done').addEventListener('click', () => $('import-dialog').close(), { signal: lifetime.signal });
-  $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); }, { signal: lifetime.signal });
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented) return;
@@ -6287,6 +5904,8 @@ return {
     sync.dispose();
     deletion.dispose();
     suggestion.dispose();
+    importing.dispose();
+    historyClear.dispose();
     inbox.dispose();
     friendsBoard.dispose();
     await disposePageWork();

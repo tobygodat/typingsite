@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
 import { ProgressKeys } from './progress-keys.js';
 import { ProgressCalendar, ProgressPracticeFigures } from './progress-calendar.js';
-import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers } from './progress-sections.js';
+import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 
@@ -54,14 +54,7 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
             </div>
           </div>
 
-          <nav id="progress-more" className="progress-more" aria-label="More progress">
-            <button id="open-runs" className="btn btn-ghost" type="button" data-progress-open="runs" hidden>All runs</button>
-            <button className="btn btn-ghost" type="button" data-progress-open="keys" hidden>Keys</button>
-            <button className="btn btn-ghost" type="button" data-progress-open="calendar" hidden>Practice calendar</button>
-            <button className="btn btn-ghost" type="button" data-progress-open="standard">Standard score</button>
-            <button className="btn btn-ghost" type="button" data-progress-open="compose" hidden>Composing</button>
-            <button id="clear-history" className="btn btn-ghost danger-text clear-history" type="button" disabled hidden>Clear history</button>
-          </nav>
+          <ProgressMore progress={learning.progress} />
         </div>
 
         <div id="progress-detail" className="progress-detail" hidden>

@@ -13,12 +13,13 @@ function ModeButton({ mode, view, practice }: { mode: Preferences['mode']; view:
 
 export function PracticeControls({ practice, quoteFilters }: { practice: PracticeSession; quoteFilters: QuoteFiltersController }) {
   const view = useSyncExternalStore(practice.controls.subscribe, practice.controls.getSnapshot, practice.controls.getSnapshot);
+  const mode = typeof view.mode === 'string' ? view.mode : '';
   const spec = LENGTHS[view.lengthMode];
   const hasLength = view.mode === 'time' || view.mode === 'words';
   const current = view.lengthValue;
   const customLength = !isPresetLength(view.lengthMode, current);
   const special = view.custom || view.composing;
-  const moreLabel = view.composing ? 'compose' : view.custom ? 'custom' : ['code', 'standard', 'book'].includes(view.mode) ? view.mode : 'more';
+  const moreLabel = view.composing ? 'compose' : view.custom ? 'custom' : ['code', 'standard', 'book'].includes(mode) ? mode : 'more';
 
   return (
         <div className="practice-controls" aria-label="Practice setup">
@@ -64,10 +65,10 @@ export function PracticeControls({ practice, quoteFilters }: { practice: Practic
               </div>
             </div>
             <label id="punctuation-switch" className="compact-switch" htmlFor="punctuation-toggle" hidden={special}>
-              <input id="punctuation-toggle" className="switch" type="checkbox" checked={view.mode === 'standard' || view.punctuation} disabled={['quote', 'code', 'book', 'standard'].includes(view.mode)} onChange={(event) => practice.choices.punctuation(event.currentTarget.checked)} />
+              <input id="punctuation-toggle" className="switch" type="checkbox" checked={view.mode === 'standard' || view.punctuation} disabled={['quote', 'code', 'book', 'standard'].includes(mode)} onChange={(event) => practice.choices.punctuation(event.currentTarget.checked)} />
               <span>punctuation</span>
             </label>
-            <label id="adaptive-switch" className="compact-switch" htmlFor="adaptive-toggle" hidden={special || !['time', 'words'].includes(view.mode)}>
+            <label id="adaptive-switch" className="compact-switch" htmlFor="adaptive-toggle" hidden={special || !['time', 'words'].includes(mode)}>
               <input id="adaptive-toggle" className="switch" type="checkbox" checked={view.adaptive} onChange={(event) => practice.choices.adaptive(event.currentTarget.checked)} />
               <span>adaptive</span>
             </label>

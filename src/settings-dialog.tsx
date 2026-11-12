@@ -1,3 +1,4 @@
+import type { SettingsImport } from './import-dialog.js';
 import { AccountSaved } from './account-view.js';
 import type { AccountSession } from './account-session.js';
 import { createThemeEditor, ThemeSettings } from './theme-editor.js';
@@ -13,7 +14,7 @@ import type { InputHTMLAttributes, MouseEvent } from 'react';
 import { createSettings } from './settings.js';
 import type { SettingId, SettingsController } from './settings.js';
 
-export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper, accounts }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController; accounts?: AccountSession } = {}) {
+export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper, accounts, importing }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController; accounts?: AccountSession; importing?: SettingsImport } = {}) {
   const [localTheme] = useState(createThemeEditor);
   const [localWallpaper] = useState(createWallpaper);
   const themeEditor = providedTheme ?? localTheme;
@@ -67,7 +68,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
         <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard" aria-current={view.category === 'keyboard' ? 'true' : undefined} onClick={() => settings.category('keyboard')}>keyboard</button>
         <button type="button" data-settings-category="sound" aria-controls="settings-sound" aria-current={view.category === 'sound' ? 'true' : undefined} onClick={() => settings.category('sound')}>sound</button>
         <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts" aria-current={view.category === 'shortcuts' ? 'true' : undefined} onClick={() => settings.category('shortcuts')}>shortcuts</button>
-        <button id="import-trigger" className="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog">Import Monkeytype settings</button>
+        <button id="import-trigger" className="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog" onClick={() => importing?.open()}>Import Monkeytype settings</button>
       </nav>
       <div className="settings-content">
         <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-title" hidden={view.category !== 'appearance'}>
