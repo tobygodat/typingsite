@@ -393,7 +393,7 @@ async function deleteBefore(session: Session | null, signal: AbortSignal) {
   let current;
 
   try {
-    current = await freshSession(session, { signal, timeoutMs: DELETE_TIMEOUT_MS });
+    current = await freshSession(session, { signal });
   } catch (cause) {
     const error = errorDetails(cause);
     // A rejected refresh token means the session is over; anything else is the service or the network.
