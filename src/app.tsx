@@ -1,3 +1,4 @@
+import type { QuoteFiltersController } from './quote-filters.js';
 import { ComposeSurface } from './compose-view.js';
 import type { ComposeController } from './compose-view.js';
 import type { SettingsController } from './settings.js';
@@ -15,7 +16,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController }) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -86,7 +87,7 @@ export function App({ practice, learning, palette, settings, compose }: { practi
 
     <main id="main-content">
       <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
-        <PracticeControls practice={practice} />
+        <PracticeControls practice={practice} quoteFilters={quoteFilters} />
 
         <div id="custom-options" className="custom-options" role="group" aria-label="Custom text" hidden>
           <label htmlFor="custom-text" className="custom-label">your text

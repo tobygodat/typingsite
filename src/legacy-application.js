@@ -4,7 +4,6 @@ import { startPageWork, replaceAccountLifetime, disposePageWork, WorkCancelled }
 import { flushSync } from 'react-dom';
 import { createTypingHost } from './typing-host.js';
 import { renderText, updateCharacterStates } from './passage-view.js';
-import { QUOTE_FILTERS, createQuoteFilters } from './quote-filters.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
@@ -49,7 +48,7 @@ import {
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
-import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook } from './books.js';
+import { BOOKS, BOOK_VERSION, bookName, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight } from './word-highlight.js';
@@ -95,7 +94,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose) {
+export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -7017,11 +7016,7 @@ compose.configure({
   },
 });
 
-const quoteFilters = createQuoteFilters({
-  filters: [
-    ...QUOTE_FILTERS.map((filter) => ({ ...filter, root: $('quote-options') })),
-    { root: $('book-options'), key: 'book', id: 'book-select', label: 'book', values: bookIds, names: Object.fromEntries(BOOKS.map((book) => [book.id, book.name])) },
-  ],
+quoteFilters.configure({
   read: () => learning.preferences,
   commit(key, value, { focus, trigger }) {
     learning.preferences[key] = value;
@@ -7040,7 +7035,6 @@ $('quote-options').addEventListener('click', () => { $('mode-more').open = false
 
 $('book-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
 
-$('book-options').append($('book-page'));
 
 buildKeyboard();
 

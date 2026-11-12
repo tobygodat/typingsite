@@ -1,3 +1,5 @@
+import { QuoteFilters } from './quote-filters.js';
+import type { QuoteFiltersController } from './quote-filters.js';
 import { useSyncExternalStore } from 'react';
 import type { PracticeControlsView, PracticeSession } from './practice-session.js';
 import type { Preferences } from './profile-types.js';
@@ -9,7 +11,7 @@ function ModeButton({ mode, view, practice }: { mode: Preferences['mode']; view:
   return <button id={`mode-${mode}`} type="button" data-mode={mode} aria-pressed={selected} className={selected ? 'is-active' : ''} onClick={() => practice.choices.chooseMode(mode)}>{mode}</button>;
 }
 
-export function PracticeControls({ practice }: { practice: PracticeSession }) {
+export function PracticeControls({ practice, quoteFilters }: { practice: PracticeSession; quoteFilters: QuoteFiltersController }) {
   const view = useSyncExternalStore(practice.controls.subscribe, practice.controls.getSnapshot, practice.controls.getSnapshot);
   const spec = view.mode === 'time' || view.mode === 'words' ? LENGTHS[view.mode] : undefined;
   const current = view.mode === 'time' ? view.duration : view.count;
@@ -50,8 +52,10 @@ export function PracticeControls({ practice }: { practice: PracticeSession }) {
                 </form>
               </div>
               <div id="quote-options" className="segmented quote-options" role="group" aria-label="Quote filters" hidden={special || view.mode !== 'quote'}>
+                <QuoteFilters controller={quoteFilters} />
               </div>
               <div id="book-options" className="segmented quote-options book-options" role="group" aria-label="Book" hidden={special || view.mode !== 'book'}>
+                <QuoteFilters controller={quoteFilters} books />
                 <span id="book-page" className="book-page"></span>
               </div>
               <div id="code-options" className="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden={special || view.mode !== 'code'}>

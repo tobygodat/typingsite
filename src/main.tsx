@@ -1,3 +1,4 @@
+import { createQuoteFilters } from './quote-filters.js';
 import { createCompose } from './compose-view.js';
 import { createSettings } from './settings.js';
 import { createPalette } from './palette.js';
@@ -18,11 +19,12 @@ const learning = createLearningStore();
 const palette = createPalette();
 const settings = createSettings();
 const compose = createCompose();
+const quoteFilters = createQuoteFilters();
 const root = createRoot(container);
 
-flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} /></StrictMode>));
+flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} quoteFilters={quoteFilters} /></StrictMode>));
 
-const lifecycle = await attachApplication(practice, learning, palette, settings, compose);
+const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters);
 
 function pagehide(event: PageTransitionEvent) {
   if (!event.persisted) void lifecycle.dispose();
