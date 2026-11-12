@@ -481,6 +481,7 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
     const slow = e.slowdown === null || gone.includes('slow') ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / missCost;
 
     if (gone.length) e.letGo = gone;
+
     return { ...e,
       gain: e.frequency * (focus === 'speed' ? slow : focus === 'accuracy' ? missed : missed + slow),
       basis: focus === 'speed' || (focus !== 'accuracy' && slow > missed) ? 'slow' : 'errors',
