@@ -62,8 +62,7 @@ import { matchesBinding, bindingLabel, ariaShortcuts } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
-import { createInbox } from './inbox.js';
-import { boardColumn, boardCurrent, createFriendsBoard, optOutPending } from './friends-board.js';
+import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
@@ -92,7 +91,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -227,8 +226,6 @@ const ghostOn = () => learning.preferences.paceCaret !== 'off';
 let keybindingEditor = null;
 let detachWallpaper = null;
 let onlineRace = null;
-let inbox = null;
-let friendsBoard = null;
 let baselineAttempt = null;
 let selectedTarget = null;
 let trainingContext = null;
@@ -1679,7 +1676,7 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
 }
 
 function offsetFor(type = 'primary', at = now()) {
-  const origin = type === 'primary' ? practice.startTime : type === 'online' ? online.origin : race.startTime;
+  const origin = type === 'primary' ? practice.startTime : type === 'online' ? online?.origin ?? null : race.startTime;
 
   return origin === null ? 0 : Math.max(0, at - origin);
 }
@@ -1743,11 +1740,11 @@ function pushDelete(type = 'primary') {
   return replay.typed.length;
 }
 
-const inputAttempt = (type) => (type === 'primary' ? practice.attempt : type === 'online' ? online.attempt : race.attempt);
+const inputAttempt = (type) => (type === 'primary' ? practice.attempt : type === 'online' ? online?.attempt ?? null : race.attempt);
 
 // A timed run's clock has run out by this time (by default, now).
 const timeUp = (at = now()) => practice.startTime !== null && Boolean(sessionDurationMs()) && at - practice.startTime >= sessionDurationMs();
-const inTime = (type, at) => (type === 'online' ? online.accepting(at) : !timeUp(at));
+const inTime = (type, at) => (type === 'online' ? online?.accepting(at) ?? false : !timeUp(at));
 
 // An accent commit made before the limit and still waiting for the key that ended it, or (Windows) a mark
 // typed before the limit and waiting for its key's input.
@@ -1765,7 +1762,7 @@ function acceptingInput(type, at = now()) {
 
   if (!target || ['complete', 'interrupted'].includes(target.status)) return false;
 
-  if (type === 'online') return online.accepting(at);
+  if (type === 'online') return online?.accepting(at) ?? false;
 
   if (type === 'primary' && timeUp(at)) {
     finishPrimary(sessionDurationMs());
@@ -1818,16 +1815,19 @@ function typeKeys(keys, type, at = now()) {
   if (failure && target.status === 'running') finishTyping(type);
 }
 
-const finishTyping = (type) => (type === 'primary' ? finishPrimary() : type === 'online' ? online.finish() : finishRacePlayer());
+const finishTyping = (type) => (type === 'primary' ? finishPrimary() : type === 'online' ? online?.finish() : finishRacePlayer());
 
 // An online race types through the practice path (see online). pending: a commit typed before the race's
 // limit is still to be scored, so the race waits for it before it finishes. keydown: the race's own keydown
 // passes each key it lets through, for a Backspace in an empty field (see backspaceInEmptyField).
 function wireOnlineTyping(input, surface) {
   online = surface;
-  typingHost.attach(input, 'online');
+  const detach = typingHost.attach(input, 'online');
 
-  return { pending: () => commitInTime('online'), keydown: (event) => typingHost.keydown(event, 'online', input) };
+  return { pending: () => commitInTime('online'), keydown: (event) => typingHost.keydown(event, 'online', input),
+    dispose() { detach();
+
+ if (online === surface) online = null; } }; 
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
@@ -1893,9 +1893,12 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   const targetAttempt = inputAttempt(type);
   const replay = replayAttempt(targetAttempt);
 
-  const { input, characters, textView, fx } = type === 'online' ? online.view
+  const view = type === 'online' ? online?.view
     : isPrimary ? { input: $('typing-input'), characters: primaryCharacters, textView: primaryTextView, fx: primaryFx }
       : { input: $('race-input'), characters: race.characters, textView: race.textView, fx: raceFx };
+
+  if (!view) return;
+  const { input, characters, textView, fx } = view;
 
   input.value = replay.typed;
   input.setSelectionRange(replay.typed.length, replay.typed.length);
@@ -4565,7 +4568,6 @@ function undoClear() {
 
 // ── Accounts ──────────────────────────────────────────────────────────────
 
-function setSyncState(state) { accounts.sync(state); }
 
 function renderAccount() { accounts.render(); }
 
@@ -4790,75 +4792,11 @@ function exportData() {
 
 // Account deletion. The server deletes first (account.deleteAccount); only a confirmed deletion
 // signs this device out and clears it. Any failure leaves the session, cache and history untouched.
-const DELETE_WORD = 'delete';
+
 const DELETED_NOTICE = 'stilltype-account-deleted';
-let deletingAccount = false;
 
-function openDeleteAccount() {
-  quoteFilters.dismiss();
 
-  if (!accounts.session) return;
-
-  // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
-  if ($('account').contains(document.activeElement)) $('account-trigger').focus();
-  closeAccountMenu();
-  // Typing the confirmation word must never land in, or time, a run.
-  markInterrupted(NOTICES.deleteOpened);
-  markRaceInterrupted();
-  $('confirm-delete-input').value = '';
-  $('confirm-delete-account').disabled = true;
-  $('delete-account-error').textContent = '';
-  $('delete-account-dialog').showModal();
-  $('confirm-delete-input').focus();
-}
-
-function setDeleting(pending) {
-  deletingAccount = pending;
-
-  // Focus waits on the read-only input, so disabling the button doesn't drop it to the page.
-  if (pending) $('confirm-delete-input').focus();
-  $('delete-account-form').setAttribute('aria-busy', String(pending));
-  $('delete-account-status').textContent = pending ? 'Deleting your account…' : '';
-  $('confirm-delete-account').textContent = pending ? 'Deleting…' : 'Delete account';
-  $('confirm-delete-account').disabled = pending || $('confirm-delete-input').value !== DELETE_WORD;
-  $('confirm-delete-input').readOnly = pending;
-  $('cancel-delete-account').disabled = pending;
-}
-
-async function deleteAccountNow() {
-  if (!accounts.session || deletingAccount || $('confirm-delete-input').value !== DELETE_WORD) return;
-  $('delete-account-error').textContent = '';
-  setDeleting(true);
-
-  try {
-    await account.deleteAccount(accounts.session);
-  } catch (error) {
-    setDeleting(false);
-    $('delete-account-error').textContent = error.message;
-
-    if (!account.loadSession()) setSyncState('expired');
-    $('confirm-delete-input').focus();
-
-    return;
-  }
-
-  // The account is gone, so nothing may be saved or sent for it again. The inbox finds its device
-  // entries through the session, so it forgets before the session goes.
-  clearTimeout(sync.state.syncTimer);
-  sync.state.syncTimer = 0;
-  sync.state.unsynced = false;
-  inbox?.forget();
-  forgetRace();
-  friendsBoard?.forget();
-  const deleted = accounts.session;
-  accounts.session = null;
-  account.forgetAccount(deleted);
-  wipeHistory();
-
-  try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
-
-  location.reload();
-}
+function openDeleteAccount() { deletion.open(); }
 
 // Shown once, after the reload that follows a deletion. Nothing else about the account remains.
 function noticeDeletedAccount() {
@@ -4885,16 +4823,25 @@ function showAccountToast(message, tone = 'problem') {
 }
 
 function bindAccount() {
+  suggestion.configure({ beforeOpen() {
+    quoteFilters.dismiss(); settingsView.close(); markInterrupted(NOTICES.suggestOpened); compose.interrupt(NOTICES.composeSuggest); markRaceInterrupted();
+  }, screen: () => document.body.dataset.view || '' });
+  deletion.configure({ dismissFilters: () => quoteFilters.dismiss(), beforeOpen() {
+    if ($('account').contains(document.activeElement)) $('account-trigger').focus();
+    closeAccountMenu(); markInterrupted(NOTICES.deleteOpened); markRaceInterrupted();
+  }, confirmed(deleted) {
+    clearTimeout(sync.state.syncTimer); sync.state.syncTimer = 0; sync.state.unsynced = false;
+    inbox?.forget(); forgetRace(); friendsBoard?.forget(); accounts.session = null; account.forgetAccount(deleted); wipeHistory();
+
+    try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
+
+    location.reload();
+  } });
   accounts.configure({ beforeOpen: () => quoteFilters.dismiss(), enter: enterAccount, signOut: signOutAccount, exportData, deleteAccount: openDeleteAccount, toast: showAccountToast });
   const menu = $('account');
 
-  $('confirm-delete-input').addEventListener('input', (event) => {
-    if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
-  }, { signal: lifetime.signal });
-  $('delete-account-form').addEventListener('submit', (event) => { event.preventDefault(); deleteAccountNow(); }, { signal: lifetime.signal });
-  $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close(), { signal: lifetime.signal });
   // While the request is out, the dialog stays: its answer decides what happens next.
-  $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); }, { signal: lifetime.signal });
+  
 
   document.addEventListener('pointerdown', (event) => {
     if (menu.open && !menu.contains(event.target)) closeAccountMenu();
@@ -5132,59 +5079,9 @@ function importSettings(event) {
 }
 
 // Feature suggestions go straight to Supabase (account.sendSuggestion), never linked to an account.
-let suggestToastTimer;
 
-function openSuggest() {
-  quoteFilters.dismiss();
-  settingsView?.close();
-  markInterrupted(NOTICES.suggestOpened);
-  compose.interrupt(NOTICES.composeSuggest);
-  markRaceInterrupted();
-  $('suggest-error').textContent = '';
-  updateSuggestCount();
-  $('suggest-dialog').showModal();
-  $('suggest-text').focus();
-}
 
-function updateSuggestCount() {
-  const length = $('suggest-text').value.length;
-  setText($('suggest-count'), `${length} / ${account.MAX_SUGGESTION}`);
-  $('send-suggest').disabled = !$('suggest-text').value.trim();
-}
-
-async function sendSuggestion(event) {
-  event.preventDefault();
-  const text = $('suggest-text').value;
-  const invalid = account.suggestionRow(text).error;
-
-  if (invalid) {
-    $('suggest-error').textContent = invalid;
-
-    return;
-  }
-
-  const button = $('send-suggest');
-  button.disabled = true;
-  button.textContent = 'Sending…';
-  $('suggest-error').textContent = '';
-
-  try {
-    // Anything that fills the hidden field is a bot: act as if it worked and send nothing.
-    if (!$('suggest-website').value) await account.sendSuggestion(text, document.body.dataset.view);
-    $('suggest-text').value = '';
-    $('suggest-dialog').close();
-    $('suggest-toast').hidden = false;
-    clearTimeout(suggestToastTimer);
-    suggestToastTimer = setTimeout(() => { $('suggest-toast').hidden = true; }, 4000);
-  } catch (error) {
-    $('suggest-error').textContent = error.status
-      ? 'The suggestion couldn’t be saved. Your text is still here; try again later.'
-      : 'Can’t reach the server. Your text is still here; try again when you’re connected.';
-  } finally {
-    button.textContent = 'Send suggestion';
-    updateSuggestCount();
-  }
-}
+function openSuggest() { suggestion.open(); }
 
 function bindEvents() {
   document.addEventListener('click', (event) => {
@@ -5496,11 +5393,6 @@ function bindEvents() {
   $('cancel-clear').addEventListener('click', () => $('clear-dialog').close(), { signal: lifetime.signal });
   $('undo-clear').addEventListener('click', undoClear, { signal: lifetime.signal });
 
-  $('suggest-trigger').addEventListener('click', openSuggest, { signal: lifetime.signal });
-  $('suggest-text').addEventListener('input', updateSuggestCount, { signal: lifetime.signal });
-  $('suggest-form').addEventListener('submit', sendSuggestion, { signal: lifetime.signal });
-  $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close(), { signal: lifetime.signal });
-  $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); }, { signal: lifetime.signal });
   $('release-trigger').addEventListener('click', () => {
     markInterrupted(NOTICES.focusLost);
     compose.interrupt(NOTICES.composeFocusLost);
@@ -6114,7 +6006,7 @@ function paletteCommands(query) {
       : [
         { group: 'account', label: 'create account…', keywords: 'sign up register save login', run: () => openAccountDialog('create') },
         { group: 'account', label: 'sign in…', keywords: 'log in login account', run: () => openAccountDialog('signin') },
-        { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: continueWithGoogle },
+        { group: 'account', label: 'continue with Google', keywords: 'sign in log in login google', run: () => accounts.google() },
       ]),
     { group: 'help', label: 'keybindings…', keywords: 'settings shortcuts restart keyboard', run: () => { settingsView.open('shortcuts', $('palette-trigger')); $('keybinding-restart').focus(); } },
     { group: 'help', label: 'suggest a feature…', keywords: 'feedback idea request feature', run: openSuggest },
@@ -6277,7 +6169,7 @@ renderDaily();
 
 resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)').matches });
 
-inbox = createInbox({
+inbox.configure({
   isRunning: runInProgress,
   getSession: () => accounts.session,
   listInvites: listRaceInvites,
@@ -6293,7 +6185,7 @@ inbox = createInbox({
 
 // The board only reads: each account's numbers ride its own profile saves (pushProfile, repairBoard).
 // Whether the account shares is the board's own to know, from the service, not a synced preference.
-friendsBoard = createFriendsBoard({
+friendsBoard.configure({
   getSession: () => accounts.session,
   dailyKey,
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
@@ -6393,6 +6285,10 @@ return {
     themeEditor.dispose();
     accounts.dispose();
     sync.dispose();
+    deletion.dispose();
+    suggestion.dispose();
+    inbox.dispose();
+    friendsBoard.dispose();
     await disposePageWork();
   },
 };

@@ -1,16 +1,11 @@
+import { SuggestionDialog, SuggestionToast } from './suggestion-dialog.js';
+import { Inbox, ChallengeToast } from './inbox-view.js';
+import { DeleteAccountDialog } from './account-deletion.js';
+import type { Application } from './application.js';
 import { AccountMenu, AccountDialog, AccountGuestNote } from './account-view.js';
-import type { AccountSession } from './account-session.js';
-import type { ThemeEditorController } from './theme-editor.js';
-import type { WallpaperController } from './wallpaper.js';
 import { ReplayDialog } from './replay-view.js';
-import type { ChallengeStore } from './challenge-store.js';
-import type { QuoteFiltersController } from './quote-filters.js';
 import { ComposeSurface } from './compose-view.js';
-import type { ComposeController } from './compose-view.js';
-import type { SettingsController } from './settings.js';
 import { Palette } from './palette.js';
-import type { PaletteController } from './palette.js';
-import type { LearningStore } from './learning-store.js';
 import { TrainScreen } from './train-screen.js';
 import { LearnScreen } from './learn-screen.js';
 import { ProgressScreen } from './progress-screen.js';
@@ -19,10 +14,9 @@ import { ReleaseDialog } from './release-dialog.js';
 import { SettingsDialog } from './settings-dialog.js';
 import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
-import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore; themeEditor: ThemeEditorController; wallpaper: WallpaperController; accounts: AccountSession }) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion }: Application) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -54,17 +48,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </header>
 
     <div className="corner">
-      <details id="inbox" className="inbox" hidden>
-        <summary id="inbox-trigger" className="corner-trigger" aria-label="Inbox">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7 7.5 6 7.5-6" /></svg>
-          <span id="inbox-count" className="inbox-count num" hidden></span>
-        </summary>
-        <div className="corner-popover inbox-popover">
-          <div className="inbox-heading"><p className="account-kicker">inbox</p><button id="inbox-clear" className="btn btn-ghost btn-sm" type="button" hidden>Clear</button></div>
-          <p id="inbox-empty" className="account-lede">Nothing here yet.</p>
-          <ul id="inbox-list" className="inbox-list"></ul>
-        </div>
-      </details>
+      <Inbox controller={inbox} />
       <AccountMenu controller={accounts} />
     </div>
 
@@ -196,14 +180,14 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
       <ProgressScreen learning={learning} />
 
-      <ChallengeScreen challenge={challenge} />
+      <ChallengeScreen challenge={challenge} friendsBoard={friendsBoard} />
     </main>
 
     <footer className="site-footer">
       <span id="best" className="personal-best num">No best yet</span>
       <AccountGuestNote controller={accounts} />
       <span className="footer-links">
-        <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog">suggest a feature</button>
+        <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog" onClick={() => suggestion.open()}>suggest a feature</button>
         <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0">v0.5.0</button>
       </span>
     </footer>
@@ -231,51 +215,11 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </form>
   </dialog>
 
-  <dialog id="delete-account-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-copy">
-    <form id="delete-account-form" className="dialog-content" noValidate>
-      <div>
-        <h2 id="delete-account-title">Delete your account?</h2>
-        <p id="delete-account-copy">This deletes your account for good, with everything saved to it: settings, runs and progress, daily results, your friend list and your online races. You can’t undo it.</p>
-      </div>
-      <div className="account-fields">
-        <label htmlFor="confirm-delete-input"><span>Type <strong>delete</strong> to confirm</span>
-          <input id="confirm-delete-input" className="input" type="text" autoComplete="off" spellCheck={false} autoCapitalize="off" aria-describedby="delete-account-error" />
-        </label>
-        <p id="delete-account-error" className="field-error" role="alert"></p>
-        <p id="delete-account-status" className="sr-only" role="status"></p>
-      </div>
-      <div className="dialog-actions">
-        <button id="cancel-delete-account" className="btn btn-ghost" type="button">Cancel</button>
-        <button id="confirm-delete-account" className="btn btn-danger" type="submit" disabled>Delete account</button>
-      </div>
-    </form>
-  </dialog>
+  <DeleteAccountDialog controller={deletion} />
 
   <AccountDialog controller={accounts} />
 
-  <dialog id="suggest-dialog" aria-labelledby="suggest-dialog-title">
-    <form id="suggest-form" className="dialog-content" noValidate>
-      <div>
-        <h2 id="suggest-dialog-title">Suggest a feature</h2>
-        <p>Only your words and the screen you sent them from are saved.</p>
-      </div>
-      <label htmlFor="suggest-text">Your suggestion
-        <textarea id="suggest-text" className="input textarea" rows={5} maxLength={1000} aria-describedby="suggest-count suggest-error"></textarea>
-      </label>
-      <div className="suggest-meta">
-        <p id="suggest-error" className="field-error" role="alert"></p>
-        <span id="suggest-count" className="suggest-count">0 / 1000</span>
-      </div>
-      <div className="suggest-trap" aria-hidden="true">
-        <label htmlFor="suggest-website">Leave this empty</label>
-        <input id="suggest-website" type="text" tabIndex={-1} autoComplete="off" />
-      </div>
-      <div className="dialog-actions">
-        <button id="cancel-suggest" className="btn btn-ghost" type="button">Cancel</button>
-        <button id="send-suggest" className="btn btn-primary" type="submit" disabled>Send suggestion</button>
-      </div>
-    </form>
-  </dialog>
+  <SuggestionDialog controller={suggestion} />
 
   <ReleaseDialog />
 
@@ -335,19 +279,9 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     <span id="egg-feedback"></span>
   </div>
 
-  <div id="suggest-toast" className="toast" role="status" hidden>
-    <span className="status-dot" aria-hidden="true"></span>
-    <span>Suggestion sent. Thank you.</span>
-  </div>
+  <SuggestionToast controller={suggestion} />
 
-  <aside id="challenge-toast" className="toast challenge-toast" aria-label="Race notification" hidden>
-    <span className="status-dot" aria-hidden="true"></span>
-    <span id="challenge-toast-text"></span>
-    <button id="challenge-toast-action" className="btn btn-secondary btn-sm" type="button">Join</button>
-    <button id="challenge-toast-close" className="btn btn-ghost btn-sm toast-close" type="button" aria-label="Dismiss">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" /></svg>
-    </button>
-  </aside>
+  <ChallengeToast controller={inbox} />
 
   <div id="announcement" className="sr-only" role="status" aria-live="polite"></div>
 

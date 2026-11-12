@@ -1,18 +1,7 @@
-import { createProfileSync } from './profile-sync.js';
-import { createAccountSession } from './account-session.js';
-import { startPageWork } from './async-runtime.js';
-import { createThemeEditor } from './theme-editor.js';
-import { createWallpaper } from './wallpaper.js';
-import { createChallengeStore } from './challenge-store.js';
-import { createQuoteFilters } from './quote-filters.js';
-import { createCompose } from './compose-view.js';
-import { createSettings } from './settings.js';
-import { createPalette } from './palette.js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { createLearningStore } from './learning-store.js';
-import { createPracticeSession } from './practice-session.js';
+import { createApplication } from './application.js';
 import { App } from './app.js';
 import { attachApplication } from './legacy-application.js';
 
@@ -20,24 +9,12 @@ const container = document.getElementById('app');
 
 if (!container) throw new Error('Missing application root');
 
-startPageWork();
-
-const accounts = createAccountSession();
-const themeEditor = createThemeEditor();
-const wallpaper = createWallpaper();
-const practice = createPracticeSession();
-const learning = createLearningStore();
-const sync = createProfileSync(learning, accounts);
-const palette = createPalette();
-const settings = createSettings();
-const compose = createCompose();
-const quoteFilters = createQuoteFilters();
-const challenge = createChallengeStore();
+const application = createApplication();
 const root = createRoot(container);
 
-flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} quoteFilters={quoteFilters} challenge={challenge} themeEditor={themeEditor} wallpaper={wallpaper} accounts={accounts} /></StrictMode>));
+flushSync(() => root.render(<StrictMode><App {...application} /></StrictMode>));
 
-const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync);
+const lifecycle = await attachApplication(application);
 
 function pagehide(event: PageTransitionEvent) {
   if (!event.persisted) void lifecycle.dispose();

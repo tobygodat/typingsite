@@ -1,10 +1,12 @@
+import { FriendsBoard } from './friends-board-view.js';
+import type { FriendsBoardController } from './friends-board.js';
 import { RaceReview } from './race-review.js';
 import { QuickMatch } from './quick-match-view.js';
 import { ChallengePeople } from './challenge-people-view.js';
 import { RankCard } from './rank-card.js';
 import type { ChallengeStore } from './challenge-store.js';
 
-export function ChallengeScreen({ challenge }: { challenge: ChallengeStore }) {
+export function ChallengeScreen({ challenge, friendsBoard }: { challenge: ChallengeStore; friendsBoard: FriendsBoardController }) {
   return (
 <section id="compete-screen" className="screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
         <h1 id="compete-heading" className="sr-only" tabIndex={-1}>Challenge</h1>
@@ -130,47 +132,7 @@ export function ChallengeScreen({ challenge }: { challenge: ChallengeStore }) {
           <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
         </section>
 
-        <section id="friends-board" className="friends-board" aria-labelledby="friends-board-heading">
-          <div className="online-section-heading">
-            <h2 id="friends-board-heading" tabIndex={-1}>Friends board</h2>
-            <button id="refresh-friends-board" className="btn btn-ghost btn-sm" type="button" hidden>Refresh</button>
-          </div>
-          <div id="friends-board-guest" className="friends-board-guest">
-            <button id="friends-board-signin" className="btn btn-secondary" type="button">Sign in</button>
-          </div>
-          <div id="friends-board-share" className="friends-board-share" hidden>
-            <label className="compact-switch" htmlFor="share-board">
-              <input id="share-board" className="switch" type="checkbox" />
-              <span>share on friends board</span>
-            </label>
-            <p id="friends-board-off" className="friends-board-off">Share to see friends’ rows. Only friends who added you back see yours.</p>
-          </div>
-          <p id="friends-board-status" className="online-copy" role="status"></p>
-          <div id="friends-board-lists" className="friends-board-lists" hidden>
-            <section className="board-column" aria-labelledby="board-daily-heading">
-              <h3 id="board-daily-heading">Today’s daily</h3>
-              <p id="board-daily-meta" className="condition-copy"></p>
-              <ol id="board-daily" className="board-list" role="list"></ol>
-            </section>
-            <section className="board-column" aria-labelledby="board-week-heading">
-              <h3 id="board-week-heading">This week’s practice</h3>
-              <ol id="board-week" className="board-list" role="list"></ol>
-            </section>
-            <section className="board-column board-bests" aria-labelledby="board-bests-heading">
-              <h3 id="board-bests-heading">Bests</h3>
-              <div id="board-shape-field" className="filter-field board-shape">
-                <select id="board-shape" className="input select" aria-label="Test conditions"></select>
-              </div>
-              <p id="board-bests-meta" className="condition-copy"></p>
-              <ol id="board-bests" className="board-list" role="list"></ol>
-              <p id="board-bests-none" className="friends-board-note" hidden>No bests yet.</p>
-            </section>
-          </div>
-          <div id="friends-board-empty" className="friends-board-empty" hidden>
-            <p>Nobody else yet. Friends appear once you’ve added each other.</p>
-            <button id="friends-board-online" className="btn btn-secondary btn-sm" type="button">Add a friend</button>
-          </div>
-        </section>
+        <FriendsBoard controller={friendsBoard} />
 
         </section>
 

@@ -1,3 +1,6 @@
+import type { Attempt } from './typing.js';
+import type { renderText } from './passage-view.js';
+import type { createTypingFx } from './motion.js';
 import { accentComposition, composedKeys, deadMark } from './typing.js';
 
 export type InputSurface = 'primary' | 'race' | 'online';
@@ -32,6 +35,18 @@ interface AccentPair<A> {
   at: number;
   repeated: boolean;
 }
+
+export interface OnlineTypingSurface {
+  readonly attempt: Attempt | null;
+  readonly origin: number | null;
+  readonly view: { input: HTMLTextAreaElement; characters: HTMLSpanElement[]; textView: ReturnType<typeof renderText>; fx: ReturnType<typeof createTypingFx> } | null;
+  accepting(at: number): boolean;
+  notice(message: string): void;
+  changed(): void;
+  finish(): void;
+}
+
+export interface OnlineTypingLease { pending(): boolean; keydown(event: KeyboardEvent): void; dispose(): void }
 
 export interface TypingPort<A> {
   attempt(type: InputSurface): A | null;
