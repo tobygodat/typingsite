@@ -15,6 +15,9 @@ const engines = {
   webkit: devices['Desktop Safari'],
   chromium: {
     ...devices['Desktop Chrome'],
+    // The full build, not the headless shell, which rounds text runs to whole pixels and so lays out
+    // a few pixels wider than a real browser.
+    channel: 'chromium',
     launchOptions: process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {},
   },
   firefox: devices['Desktop Firefox'],
