@@ -1,3 +1,10 @@
+import { at, isRecord } from './domain-values.js';
+import type { RunCounts } from './profile-types.js';
+
+export type { RunCounts } from './profile-types.js';
+
+export interface RunTicket { counter: string; day: string }
+
 // Runs started and finished, for the Practice figures on Progress. A run starts with the key that sets
 // body[data-running] (practice, custom, daily, drills, retests, lessons and ghost races alike) and is
 // finished when it reaches its end as a counted run; a restart, an abandoned run or one a correction rule
@@ -11,10 +18,10 @@
 import { MAX_PRACTICE_DAYS } from './insights.js';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const count = (value) => (Number.isInteger(value) && value > 0 ? value : 0);
+const count = (value: unknown) => (typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : 0);
 
-export function validRunCounts(value) {
-  const counts = {};
+export function validRunCounts(value: unknown) {
+  const counts: RunCounts = {};
 
   if (!value || typeof value !== 'object' || Array.isArray(value)) return counts;
 
@@ -23,7 +30,8 @@ export function validRunCounts(value) {
 
     for (const [day, pair] of Object.entries(days)) {
       if (!DAY.test(day) || !Array.isArray(pair)) continue;
-      const [started, finished] = [count(pair[0]), count(pair[1])];
+      const started = count(pair[0]);
+      const finished = count(pair[1]);
 
       if (started || finished) (counts[counter] ||= {})[day] = [started, finished];
     }
@@ -34,20 +42,20 @@ export function validRunCounts(value) {
 
 // Only the newest MAX_PRACTICE_DAYS counted days are kept, as for the practice archive. The days kept
 // depend only on the days held, so copies that merge drop the same ones and settle.
-export function retainRunCounts(value) {
+export function retainRunCounts(value: unknown) {
   const counts = validRunCounts(value);
   const days = [...new Set(Object.values(counts).flatMap(Object.keys))].sort();
 
   if (days.length <= MAX_PRACTICE_DAYS) return counts;
-  const oldest = days.at(-MAX_PRACTICE_DAYS);
+  const oldest = at(days, days.length - MAX_PRACTICE_DAYS);
 
   return keepDays(counts, (day) => day >= oldest);
 }
 
 // The counts on the days `keep` accepts: a clear takes the days through its own from a copy that hadn't
 // applied it, as it does archived practice time.
-export function keepDays(value, keep) {
-  const counts = {};
+export function keepDays(value: unknown, keep: (day: string) => boolean) {
+  const counts: RunCounts = {};
 
   for (const [counter, days] of Object.entries(validRunCounts(value))) {
     const kept = Object.entries(days).filter(([day]) => keep(day));
@@ -58,7 +66,7 @@ export function keepDays(value, keep) {
   return counts;
 }
 
-export function mergeRunCounts(a, b) {
+export function mergeRunCounts(a: unknown, b: unknown) {
   const merged = validRunCounts(a);
 
   for (const [counter, days] of Object.entries(validRunCounts(b))) {
@@ -72,8 +80,9 @@ export function mergeRunCounts(a, b) {
 }
 
 // Totals from `from` to `to` (local days, either open).
-export function runCountTotals(value, { from = null, to = null } = {}) {
-  let [started, finished] = [0, 0];
+export function runCountTotals(value: unknown, { from = null, to = null }: { from?: string | null; to?: string | null } = {}) {
+  let started = 0;
+  let finished = 0;
 
   for (const days of Object.values(validRunCounts(value))) {
     for (const [day, [s, f]] of Object.entries(days)) {
@@ -100,13 +109,13 @@ const mintCounter = () => {
 // the run's ticket for finish(). A finish whose start a clear has taken counts the start again with it, as
 // the clear left the run itself in place.
 export function createRunCounter(mint = mintCounter) {
-  let counter = null;
-  let written = {};
+  let counter: string | null = null;
+  let written: Record<string, [number, number]> = {};
 
-  const intact = (counts) => counter !== null && Object.entries(written)
-    .every(([day, [s, f]]) => (counts[counter]?.[day]?.[0] ?? 0) >= s && (counts[counter]?.[day]?.[1] ?? 0) >= f);
+  const intact = (counts: RunCounts) => counter !== null && Object.entries(written)
+    .every(([day, [s, f]]) => (counts[counter ?? '']?.[day]?.[0] ?? 0) >= s && (counts[counter ?? '']?.[day]?.[1] ?? 0) >= f);
 
-  const add = (value, day, started, finished) => {
+  const add = (value: unknown, day: string, started: number, finished: number) => {
     const counts = validRunCounts(value);
 
     if (!intact(counts)) {
@@ -114,19 +123,21 @@ export function createRunCounter(mint = mintCounter) {
       written = {};
     }
 
-    const [s, f] = counts[counter]?.[day] || [0, 0];
+    const id = counter ?? mint();
+    counter = id;
+    const [s, f] = counts[id]?.[day] || [0, 0];
     written[day] = [s + started, f + finished];
 
-    return { ...counts, [counter]: { ...counts[counter], [day]: written[day] } };
+    return { ...counts, [id]: { ...counts[id], [day]: written[day] } };
   };
 
   return {
-    start(value, day) {
+    start(value: unknown, day: string) {
       const counts = add(value, day, 1, 0);
 
-      return { counts, ticket: { counter, day } };
+      return { counts, ticket: { counter: counter ?? '', day } };
     },
-    finish(value, ticket) {
+    finish(value: unknown, ticket: RunTicket) {
       const kept = ticket.counter === counter && intact(validRunCounts(value));
 
       return add(value, ticket.day, kept ? 0 : 1, 1);

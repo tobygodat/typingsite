@@ -1,26 +1,29 @@
+import type { Preferences } from './profile-types.js';
 // Test lengths: the preset pills, and the bounds for a custom time or word count.
 // A custom length is stored as an ordinary duration or count, so it enters the test conditions
 // (and conditionKey) exactly as a preset does: 45 s gets its own bests and retests, and the keys
 // for the presets stay byte for byte what they were.
 
-export const LENGTHS = {
+interface LengthSpec { presets: number[]; min: number; max: number; fallback: number; key: 'duration' | 'count'; customKey: 'customDuration' | 'customCount'; unit: string; noun: string }
+
+export const LENGTHS: Record<string, LengthSpec> = {
   time: { presets: [15, 30, 60, 120], min: 5, max: 600, fallback: 30, key: 'duration', customKey: 'customDuration', unit: 'seconds', noun: 'time' },
   words: { presets: [10, 25, 50, 100], min: 5, max: 500, fallback: 25, key: 'count', customKey: 'customCount', unit: 'words', noun: 'word count' },
 };
 
-export function isPresetLength(mode, value) {
-  return Boolean(LENGTHS[mode]?.presets.includes(value));
+export function isPresetLength(mode: string, value: unknown) {
+  return Boolean(typeof value === 'number' && LENGTHS[mode]?.presets.includes(value));
 }
 
-export function isValidLength(mode, value) {
+export function isValidLength(mode: string, value: unknown): value is number {
   const spec = LENGTHS[mode];
 
-  return Boolean(spec) && Number.isInteger(value) && value >= spec.min && value <= spec.max;
+  return Boolean(spec) && typeof value === 'number' && Number.isInteger(value) && value >= (spec?.min ?? Infinity) && value <= (spec?.max ?? -Infinity);
 }
 
 // What someone typed into the custom field: { ok: true, value } or { ok: false, message }.
 // Whole numbers only; a trailing unit ("45 s", "75 words") is forgiven.
-export function parseCustomLength(mode, raw) {
+export function parseCustomLength(mode: string, raw: unknown) {
   const spec = LENGTHS[mode];
 
   if (!spec) return { ok: false, message: 'Quotes have no custom length.' };
@@ -42,11 +45,14 @@ export function parseCustomLength(mode, raw) {
 
 // Old profiles have no custom fields, and anything out of bounds falls back to the default
 // length. The remembered custom value is never a preset, and always matches a current custom one.
-export function normalizeLengthPreferences(preferences) {
+export function normalizeLengthPreferences<T extends Pick<Preferences, 'duration' | 'count' | 'customDuration' | 'customCount'>>(preferences: T): T {
   const next = { ...preferences };
 
   for (const mode of Object.keys(LENGTHS)) {
-    const { key, customKey, fallback } = LENGTHS[mode];
+    const spec = LENGTHS[mode];
+
+    if (!spec) continue;
+    const { key, customKey, fallback } = spec;
 
     if (!isValidLength(mode, next[key])) next[key] = fallback;
 

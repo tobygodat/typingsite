@@ -1,8 +1,13 @@
 import { at } from './domain-values.js';
+
 export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
+
 export type AttemptKind = 'test' | 'drill' | 'missed' | 'race' | 'lesson' | 'challenge' | 'retest' | 'daily' | 'custom';
+
 export type InputClass = 'physical-keyboard' | 'touch';
+
 export type CorrectionPolicy = 'relaxed' | 'mandatory' | 'no-backspace' | 'fail-word' | 'fail-any';
+
 export interface Conditions {
   mode?: TestMode; duration?: number | null; count?: number | null; punctuation?: boolean; numbers?: boolean;
   quoteLength?: string | null; difficulty?: string | null; wordList?: string | null;
@@ -10,14 +15,20 @@ export interface Conditions {
   metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: string; book?: string;
   strictSpace?: boolean; quickEnd?: boolean;
 }
+
 export type AttemptEvent =
   | { type: 'insert' | 'blocked-insert'; text: string; offsetMs: number; position?: number; accepted?: boolean }
   | { type: 'delete'; count?: number; offsetMs: number }
   | { type: 'focus-lost' | 'composition' | 'focus' | 'focus-returned'; offsetMs: number };
+
 export interface FirstAttempt { position: number; expected: string | undefined; actual: string; correct: boolean; offsetMs: number }
+
 export interface PairTiming { pair: string; durationMs: number; position: number }
+
 export interface Score { wpm: number; accuracy: number }
+
 export interface Replay { typed: string; insertions: number; correctInsertions: number; mistakes: number; elapsedMs: number; score: Score; firstAttempts: FirstAttempt[]; pairTimings: PairTiming[] }
+
 export interface Attempt {
   id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string;
   conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
@@ -25,14 +36,23 @@ export interface Attempt {
   summary?: Replay; fresh?: boolean; at?: string | null; stopped?: unknown; dailyDate?: string; dailyFirst?: boolean;
   textVersion?: string; target?: string | null; minimums?: Minimums; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
 }
+
 export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
+
 export interface CurrentConditions extends Conditions { mode: TestMode; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
+
 export type HistoricalAttempt = Partial<Omit<Attempt, 'text' | 'events'>> & Pick<Attempt, 'text' | 'events'>;
+
 export interface WeightedUnit { unit: string; weight: number }
+
 export interface Minimums { accuracy?: number; wpm?: number }
+
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
+
 export interface PassageOptions { mode?: TestMode; count?: number; duration?: number; punctuation?: boolean; numbers?: boolean; quoteLength?: string; difficulty?: string; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
+
 interface PatternPair { pair: string; observations: number; errors: number; timings: number[] }
+
 interface WeightedWords { words: string[]; weight: number }
 
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
@@ -348,6 +368,7 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
     for (let i = 0; i < 12 && (!passage || seen.has(passage.id)); i += 1) passage = standardPassage(Math.floor(random() * 4294967296));
 
     if (!passage) return null;
+
     return seen.has(passage.id) ? { ...passage, fresh: false, exhausted: true } : passage;
   }
 

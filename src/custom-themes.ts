@@ -1,3 +1,8 @@
+import { at, isRecord } from './domain-values.js';
+
+export interface CustomTheme { id: string; name: string; colors: Record<string, string> }
+
+export type ThemeColors = Record<string, string> & { ground: string; danger: string };
 // Custom themes: a name and a hex for each colour token, worn over the dark or light token set by the
 // background's luminance. The stylesheet derives the tints (`:root[data-theme][data-custom]` in
 // src/styles.css) and the surfaces from the colours they follow, so a derived token is stored only once
@@ -6,7 +11,7 @@
 export const MAX_CUSTOM_THEMES = 5;
 export const MAX_THEME_NAME = 40;
 export const CUSTOM_PREFIX = 'custom-';
-export const isCustomId = (value) => typeof value === 'string' && value.startsWith(CUSTOM_PREFIX);
+export const isCustomId = (value: unknown): value is string => typeof value === 'string' && value.startsWith(CUSTOM_PREFIX);
 
 // Every colour token a built-in theme defines, in the editor's order. `key` ones are shown up front;
 // `derived` ones follow their source in the stylesheet until overridden. The edge function
@@ -48,41 +53,43 @@ const TOKEN_NAMES = new Set(THEME_TOKENS.map((token) => token.name));
 
 const HEX = /^#[0-9a-f]{6}$/;
 
-export const normalizeHex = (value) => {
+export const normalizeHex = (value: unknown) => {
   const text = typeof value === 'string' ? value.trim().toLowerCase() : '';
   const hex = text.startsWith('#') ? text : `#${text}`;
 
   return HEX.test(hex) ? hex : null;
 };
 
-const channels = (hex) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
 
-const linear = (value) => {
+const linear = (value: number) => {
   const s = value / 255;
 
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 };
 
-export const luminance = (hex) => {
-  const [r, g, b] = channels(hex).map(linear);
+export const luminance = (hex: string) => {
+  const rgb = channels(hex).map(linear);
+  const [r, g, b] = [at(rgb, 0), at(rgb, 1), at(rgb, 2)];
 
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 };
 
-export const contrast = (a, b) => {
-  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+export const contrast = (a: string, b: string) => {
+  const levels = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  const [hi, lo] = [at(levels, 0), at(levels, 1)];
 
   return (hi + 0.05) / (lo + 0.05);
 };
 
-const toHex = (rgb) => `#${rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
+const toHex = (rgb: number[]) => `#${rgb.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
 
 // `top` at `alpha` over `under`, as the stylesheet's color-mix(in srgb, top N%, transparent) paints it.
-export const mix = (top, under, alpha) => toHex(channels(top).map((v, i) => v * alpha + channels(under)[i] * (1 - alpha)));
+export const mix = (top: string, under: string, alpha: number) => toHex(channels(top).map((v, i) => v * alpha + at(channels(under), i) * (1 - alpha)));
 
 // Dark or light: whichever of black or white text contrasts more with the background (0.179 is where
 // the two are equal).
-export const themeMode = (colors) => (luminance(colors.ground) > 0.179 ? 'light' : 'dark');
+export const themeMode = (colors: ThemeColors) => (luminance(colors.ground) > 0.179 ? 'light' : 'dark');
 
 // What has to stay readable on the background: passage text (typed and untyped) and the coral of a
 // mistyped letter on its tint need 4.5:1 (WCAG AA for text), the caret 3:1 (AA for non-text).
@@ -94,13 +101,13 @@ export const READABLE = [
   { name: 'danger', min: 4.5 },
 ];
 
-export function contrastIssues(colors) {
-  const issues = {};
+export function contrastIssues(colors: ThemeColors) {
+  const issues: Record<string, number> = {};
   const tint = colors['danger-soft'] || mix(colors.danger, colors.ground, themeMode(colors) === 'light' ? 0.12 : 0.16);
 
   for (const { name, min } of READABLE) {
     const under = name === 'danger' ? tint : colors.ground;
-    const ratio = contrast(colors[name], under);
+    const ratio = contrast(colors[name] ?? '', under);
 
     if (ratio < min) issues[name] = Math.floor(ratio * 10) / 10;
   }
@@ -108,16 +115,16 @@ export function contrastIssues(colors) {
   return issues;
 }
 
-export const cleanThemeName = (value) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');
+export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');
 
 // A stored theme as this build uses it: hex colours for every base token and any derived ones
 // overridden, nothing else. Anything short of that is dropped, as are repeats and any past the cap.
-function normalizeTheme(raw) {
-  if (!raw || typeof raw !== 'object' || !isCustomId(raw.id)) return null;
+function normalizeTheme(raw: unknown): CustomTheme | null {
+  if (!isRecord(raw) || !isCustomId(raw.id)) return null;
   const name = cleanThemeName(raw.name);
-  const colors = {};
+  const colors: Record<string, string> = {};
 
-  for (const [token, value] of Object.entries(raw.colors && typeof raw.colors === 'object' ? raw.colors : {})) {
+  for (const [token, value] of Object.entries(isRecord(raw.colors) ? raw.colors : {})) {
     const hex = TOKEN_NAMES.has(token) && normalizeHex(value);
 
     if (hex) colors[token] = hex;
@@ -130,14 +137,14 @@ function normalizeTheme(raw) {
 
 // Stored as JSON text, not an array: older builds compare settings with ===, and would take an array
 // for a fresh change on every save and stamp their copy over newer themes from elsewhere.
-function themeList(value) {
+function themeList(value: unknown) {
   let list = value;
 
   if (typeof value === 'string') {
     try { list = JSON.parse(value); } catch { list = []; }
   }
 
-  const themes = [];
+  const themes: CustomTheme[] = [];
 
   for (const theme of (Array.isArray(list) ? list : []).map(normalizeTheme)) {
     if (theme && !themes.some((kept) => kept.id === theme.id) && themes.length < MAX_CUSTOM_THEMES) themes.push(theme);
@@ -146,13 +153,13 @@ function themeList(value) {
   return themes;
 }
 
-export const normalizeCustomThemes = (value) => JSON.stringify(themeList(value));
+export const normalizeCustomThemes = (value: unknown) => JSON.stringify(themeList(value));
 
 // The saved themes in a `customThemes` preference, already normalized.
-let lastText = null;
-let lastList = [];
+let lastText: string | null = null;
+let lastList: CustomTheme[] = [];
 
-export function readCustomThemes(text) {
+export function readCustomThemes(text: string) {
   if (text !== lastText) [lastText, lastList] = [text, themeList(text)];
 
   return lastList;

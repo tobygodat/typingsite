@@ -8,5 +8,5 @@ export const DEFAULT_FONT = 'literata';
 export const TYPING_FONTS = ['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'];
 export const APP_FONTS = ['literata', 'source-serif', 'inter'];
 
-export const fontName = (id) => id.replaceAll('-', ' ');
-export const normalizeFont = (value, fonts) => (fonts.includes(value) ? value : DEFAULT_FONT);
+export const fontName = (id: string) => id.replaceAll('-', ' ');
+export const normalizeFont = (value: unknown, fonts: readonly string[]) => (typeof value === 'string' && fonts.includes(value) ? value : DEFAULT_FONT);

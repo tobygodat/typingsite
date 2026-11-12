@@ -1,3 +1,20 @@
+function isCompositionRecord(item: unknown): item is CompositionRecord {
+  if (!isRecord(item) || typeof item.id !== 'string') return false;
+
+  return COUNTS.every((key) => typeof item[key] === 'number' && Number.isFinite(item[key]) && item[key] >= 0);
+}
+
+import { at, isRecord } from './domain-values.js';
+
+export interface ComposeKey { type: 'insert' | 'delete'; at: number }
+
+interface Edit { inputType?: string; data?: string | null; selectionStart?: number; selectionEnd?: number }
+
+export type CompositionSummary = ReturnType<typeof composeSummary>;
+
+import type { CompositionRecord } from './profile-types.js';
+
+export type { CompositionRecord } from './profile-types.js';
 // Composing practice: a short prompt, a free-typing field and no target text.
 // It measures free-typing speed and backspace rate as numbers of their own. They are never
 // compared with copy tests, never a best, and the words themselves are never stored.
@@ -29,21 +46,21 @@ export const COMPOSE_PROMPTS = [
   { id: 'fold', text: 'Explain how to fold a shirt or a sheet of paper neatly.' },
 ];
 
-export function promptText(id) {
+export function promptText(id: unknown) {
   return COMPOSE_PROMPTS.find((prompt) => prompt.id === id)?.text || null;
 }
 
 // Every prompt once, in a random order, before any repeats. `avoid` never comes first, so a new
 // deck can't hand back the prompt that was just on screen.
-export function promptDeck(random = Math.random, avoid = null) {
+export function promptDeck(random = Math.random, avoid: string | null = null) {
   const ids = COMPOSE_PROMPTS.map((prompt) => prompt.id);
 
   for (let i = ids.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1));
-    [ids[i], ids[j]] = [ids[j], ids[i]];
+    [ids[i], ids[j]] = [at(ids, j), at(ids, i)];
   }
 
-  if (ids.length > 1 && ids[0] === avoid) [ids[0], ids[1]] = [ids[1], ids[0]];
+  if (ids.length > 1 && ids[0] === avoid) [ids[0], ids[1]] = [at(ids, 1), at(ids, 0)];
 
   return ids;
 }
@@ -51,11 +68,11 @@ export function promptDeck(random = Math.random, avoid = null) {
 // Invisible format characters (zero-width spaces, bidi marks, soft hyphens) are not counted.
 const FORMAT = /\p{Cf}/gu;
 
-export function countCharacters(text) {
+export function countCharacters(text: unknown) {
   return [...String(text).replace(FORMAT, '')].length;
 }
 
-export function countWords(text) {
+export function countWords(text: unknown) {
   return String(text).replace(FORMAT, '').trim().split(/\s+/u).filter(Boolean).length;
 }
 
@@ -67,7 +84,7 @@ const KEYED_DELETES = new Set(['deleteContentBackward', 'deleteContentForward', 
 // Line deletes (⌘+Backspace, Ctrl+Shift+Backspace) are keys too, but one can clear the whole field.
 const LINE_DELETE = /^delete(?:(?:Soft|Hard)Line(?:Backward|Forward)|EntireSoftLine)$/;
 
-export function keyedEdit(inputType) {
+export function keyedEdit(inputType: string) {
   if (KEYED_INSERTS.has(inputType)) return 'insert';
 
   return KEYED_DELETES.has(inputType) ? 'delete' : null;
@@ -77,7 +94,7 @@ export function keyedEdit(inputType) {
 // more than one character without a counted key is refused: paste, cut, drop, undo and redo,
 // transpose, autocorrect and spellcheck replacement, line deletes, multi-character inserts, and
 // any key typed or deleted over a selection (it would silently replace the whole selection).
-export function refusedEdit({ inputType = '', data = null, selectionStart = 0, selectionEnd = 0 } = {}) {
+export function refusedEdit({ inputType = '', data = null, selectionStart = 0, selectionEnd = 0 }: Edit = {}) {
   if (inputType === 'insertFromPaste' || inputType === 'insertFromPasteAsQuotation') return 'paste';
 
   if (LINE_DELETE.test(inputType)) return 'lineDelete';
@@ -97,7 +114,7 @@ const GRAPHEMES = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'func
 
 // Characters as a reader sees them (an accented letter or a flag is one), or code points, where a
 // surrogate pair is one, when the browser can't segment graphemes.
-export function graphemeCount(text, segmenter = GRAPHEMES) {
+export function graphemeCount(text: unknown, segmenter = GRAPHEMES) {
   return segmenter ? [...segmenter.segment(String(text))].length : [...String(text)].length;
 }
 
@@ -108,7 +125,7 @@ export function graphemeCount(text, segmenter = GRAPHEMES) {
 // one), and only Ctrl/⌥ word deletes may remove up to a word. Anything else changed the text some
 // other way, such as autocorrect, assistive text or an edit the browser applied after it was
 // refused, and is never counted.
-export function keyedChange(before, after, { inputType = '', data = null } = {}) {
+export function keyedChange(before: string, after: string, { inputType = '', data = null }: Edit = {}) {
   const kind = keyedEdit(inputType);
 
   if (!kind) return null;
@@ -138,13 +155,13 @@ export function keyedChange(before, after, { inputType = '', data = null } = {})
 // cut-off (thinking, not typing) counts as the average of the shorter gaps. Dropping long gaps
 // outright would leave the key after each pause with no time of its own and overstate the speed
 // of anyone who writes in bursts. Times are milliseconds from the first key.
-export function activeTime(times, pauseMs = COMPOSE_PAUSE_MS) {
+export function activeTime(times: number[], pauseMs = COMPOSE_PAUSE_MS) {
   let typing = 0;
   let gaps = 0;
   let pauses = 0;
 
   for (let i = 1; i < times.length; i += 1) {
-    const gap = times[i] - times[i - 1];
+    const gap = at(times, i) - at(times, i - 1);
 
     if (gap < 0) continue;
 
@@ -162,7 +179,7 @@ export function activeTime(times, pauseMs = COMPOSE_PAUSE_MS) {
 // - wpm: characters ÷ 5 per minute of active time, or null when there is too little typing to say.
 // - backspaceRate: backspace and delete keystrokes (each auto-repeat of a held key included, and a
 //   word deleted with Ctrl/⌥ counted once) as a share of all keystrokes, in whole percent.
-export function composeSummary({ keys = [], text = '', elapsedMs = 0 } = {}) {
+export function composeSummary({ keys = [], text = '', elapsedMs = 0 }: { keys?: ComposeKey[]; text?: string; elapsedMs?: number } = {}) {
   const inserts = keys.filter((key) => key.type === 'insert').length;
   const backspaces = keys.filter((key) => key.type === 'delete').length;
   const keystrokes = inserts + backspaces;
@@ -184,32 +201,30 @@ export function composeSummary({ keys = [], text = '', elapsedMs = 0 } = {}) {
   };
 }
 
-const COUNTS = ['characters', 'words', 'keystrokes', 'backspaces', 'activeMs', 'elapsedMs', 'wpm', 'backspaceRate'];
+const COUNTS: (keyof Pick<CompositionRecord, 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>)[] = ['characters', 'words', 'keystrokes', 'backspaces', 'activeMs', 'elapsedMs', 'wpm', 'backspaceRate'];
 
 // The stored record: numbers and labels only. There is no field that could carry the writing.
-export function compositionRecord(summary, { id, at, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }) {
-  const record = { id: String(id), at: typeof at === 'string' ? at : null,
+export function compositionRecord(summary: Pick<CompositionRecord, 'version' | 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>, { id, at, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }: { id: unknown; at?: unknown; promptId?: string | null; inputClass?: string; endedBy?: string }) {
+  const record: CompositionRecord = { characters: summary.characters, words: summary.words, keystrokes: summary.keystrokes, backspaces: summary.backspaces, activeMs: summary.activeMs, elapsedMs: summary.elapsedMs, wpm: summary.wpm, backspaceRate: summary.backspaceRate, id: String(id), at: typeof at === 'string' ? at : null,
     version: typeof summary.version === 'string' ? summary.version : COMPOSE_VERSION,
-    promptId: promptText(promptId) ? promptId : null,
+    promptId: typeof promptId === 'string' && promptText(promptId) ? promptId : null,
     inputClass: inputClass === 'touch' ? 'touch' : 'physical-keyboard',
     endedBy: endedBy === 'time' ? 'time' : 'done' };
 
-  for (const key of COUNTS) record[key] = summary[key];
 
   return record;
 }
 
 // Loading keeps only well-formed records, rebuilt from known fields, so nothing else rides along.
-export function normalizeCompositions(list) {
+export function normalizeCompositions(list: unknown) {
   if (!Array.isArray(list)) return [];
 
   return list
-    .filter((item) => item && typeof item === 'object' && typeof item.id === 'string'
-      && COUNTS.every((key) => Number.isFinite(item[key]) && item[key] >= 0))
+    .filter(isCompositionRecord)
     .map((item) => compositionRecord(item, item))
     .slice(-MAX_COMPOSITIONS);
 }
 
-export function retainCompositions(list) {
+export function retainCompositions<T>(list: readonly T[]) {
   return list.slice(-MAX_COMPOSITIONS);
 }

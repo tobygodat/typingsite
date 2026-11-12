@@ -28,7 +28,9 @@ export const TAPE_BACK = 0.5;
  * realign  the layout changed (resize, text size, switching to tape): keep the current scroll
  *          if the caret is still comfortably in view, otherwise line its word up again
  */
-export function tapeOffset({ offset = 0, caret = 0, word = null, width = 0, margin = 0, fade = 0, realign = false }) {
+export interface TapeGeometry { offset?: number; caret?: number; word?: { left: number; right: number } | null; width?: number; margin?: number; fade?: number; realign?: boolean }
+
+export function tapeOffset({ offset = 0, caret = 0, word = null, width = 0, margin = 0, fade = 0, realign = false }: TapeGeometry) {
   if (!(width > 0) || !Number.isFinite(caret)) return 0;
   // In glyphs as well as width, so a narrow screen with large text still works. Backspacing steps
   // back before the letter left of the caret reaches the fade (guard), and a stepped word lands far
