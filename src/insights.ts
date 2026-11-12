@@ -2,6 +2,8 @@ import { at as indexed, entry, isRecord } from './domain-values.js';
 
 interface RetentionRun { kind?: string; status?: string; interrupted?: boolean; fresh?: boolean; patterns?: unknown[]; keys?: unknown[]; corrections?: unknown; missedWords?: unknown }
 
+export interface PracticeRecord extends RetentionRun { id?: unknown; at?: string | null; day?: string | null; elapsedMs?: number }
+
 interface DailyRecord { kind?: string; at?: string | null; id?: unknown; challengeDate?: string | null; firstDailyAttempt?: boolean }
 
 interface Window { from?: string | null; to?: string | null }
@@ -611,7 +613,7 @@ export function dayKey(value: string | number | Date) {
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 // The day recorded with the run; older summaries without one fall back to their timestamp here.
-export function runDay(run: Pick<RunRecord, 'day' | 'at'>) {
+export function runDay(run: { day?: string | null; at?: string | null }) {
   if (run.day && DAY.test(run.day)) return run.day;
   const key = run.at ? dayKey(run.at) : '';
 
@@ -619,12 +621,12 @@ export function runDay(run: Pick<RunRecord, 'day' | 'at'>) {
 }
 
 // Interrupted runs keep their clock going after focus is lost, so only valid runs count as practice.
-function addRunTime(totals: Record<string, number>, runs: RunRecord[]) {
+function addRunTime(totals: Record<string, number>, runs: PracticeRecord[]) {
   for (const run of runs) {
     const key = runDay(run);
 
-    if (!validRun(run) || !key || !(run.elapsedMs > 0)) continue;
-    totals[key] = (totals[key] || 0) + run.elapsedMs;
+    if (!validRun(run) || !key || !((run.elapsedMs ?? 0) > 0)) continue;
+    totals[key] = (totals[key] || 0) + (run.elapsedMs ?? 0);
   }
 
   return totals;
@@ -642,7 +644,7 @@ export function validPracticeDays(value: unknown) {
 
 // Custom runs are real practice, so their time counts toward the goal like any other kind (it is a time total,
 // not a comparison), and a custom run that falls outside its own 50-run budget leaves its time here too.
-export function retainHistory(runs: RunRecord[], practiceDays: Record<string, number> = {}) {
+export function retainHistory<T extends PracticeRecord>(runs: T[], practiceDays: Record<string, number> = {}) {
   const keptRuns = retainRuns(runs);
   const retainedIds = new Set(keptRuns.map((run) => run.id));
   const days = addRunTime({ ...practiceDays }, runs.filter((run) => !retainedIds.has(run.id)));
@@ -671,9 +673,9 @@ export function recordPracticeTime(practiceDays: unknown, at: string, elapsedMs:
 // largest of those, so no run counts twice; its archive is that total less the merged runs' time, which the
 // calendar adds back. An empty copy (a new account) takes the other's archive as it is. The trade-off:
 // different runs that two copies never shared, archived on the same day, count as the larger day, not the sum.
-export function mergePracticeDays(a: { practiceDays?: unknown; runs?: RunRecord[] }, b: { practiceDays?: unknown; runs?: RunRecord[] }, runs: RunRecord[]) {
+export function mergePracticeDays(a: { practiceDays?: unknown; runs?: PracticeRecord[] }, b: { practiceDays?: unknown; runs?: PracticeRecord[] }, runs: PracticeRecord[]) {
   const own = (side: { practiceDays?: unknown }) => validPracticeDays(side.practiceDays);
-  const total = (side: { practiceDays?: unknown; runs?: RunRecord[] }) => addRunTime(own(side), Array.isArray(side.runs) ? side.runs : []);
+  const total = (side: { practiceDays?: unknown; runs?: PracticeRecord[] }) => addRunTime(own(side), Array.isArray(side.runs) ? side.runs : []);
   const [first, second, merged] = [total(a), total(b), addRunTime({}, runs)];
   const days: Record<string, number> = {};
 
