@@ -177,6 +177,24 @@ test('a held Enter on Dismiss dismisses once and presses nothing else', async ({
   await expect(page.locator('#online-room')).toBeVisible();
 });
 
+test('a held Enter on Race setup’s Done returns to the list and does not reopen the view', async ({ page, supabase }) => {
+  supabase.addUser('toby@stilltype.test');
+  await signedIn(page);
+  await page.getByRole('button', { name: /^Race setup/ }).click();
+  await expect(page.locator('#online-setup-done')).toBeVisible();
+  await page.locator('#online-setup-done').focus();
+  await page.keyboard.down('Enter');
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.waitForTimeout(40);
+    await page.keyboard.down('Enter');
+  }
+
+  await page.keyboard.up('Enter');
+  await expect(page.locator('#online-setup-done')).toBeHidden();
+  await expect(page.getByRole('button', { name: /^Race setup/ })).toBeFocused();
+});
+
 test('the last invitation dismissed hands focus to the list’s first control, never a Dismiss', async ({ page, supabase }) => {
   const toby = supabase.addUser('toby@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');

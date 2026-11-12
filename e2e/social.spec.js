@@ -321,7 +321,7 @@ test('a finished race still being watched leaves a practice run alone', async ({
   await signInWithEmail(page, 'host@stilltype.test');
   await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   const link = await createGuestRace(page);
   const context = await browser.newContext();
   const guest = await context.newPage();
@@ -362,7 +362,7 @@ test('when the other racer leaves mid-race, this racer is told the race ended an
   await signInWithEmail(page, 'host@stilltype.test');
   await page.locator('#mode-quote').click();
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   const link = await createGuestRace(page);
   const context = await browser.newContext();
   const guest = await context.newPage();

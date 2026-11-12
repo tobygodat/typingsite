@@ -1125,9 +1125,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
   for (const back of document.querySelectorAll('[data-challenge-back]')) back.addEventListener('click', () => show('people', { focus: true }));
   // A key held down repeats. After Dismiss, focus moves to another row's action, and the repeat would press that
-  // too: join a race, or send an invitation. So a repeat presses nothing in the list.
-  $('people-list').addEventListener('keydown', (event) => {
-    if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault();
+  // too: join a race, or send an invitation. After Done, it would press the link that opened the view. So a repeat
+  // presses no button or link anywhere on Challenge. Fields are left alone: the race's own typing rules hold there.
+  $('compete-screen').addEventListener('keydown', (event) => {
+    const pressing = event.key === 'Enter' || event.key === ' ';
+
+    if (event.repeat && pressing && event.target.closest('button, a[href], summary')) event.preventDefault();
   });
   $('people-list').addEventListener('click', (event) => {
     const button = event.target.closest('[data-people-action]');
