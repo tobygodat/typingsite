@@ -16,7 +16,7 @@ export interface RunRecord {
   id: string; at: string | null; kind: Attempt['kind']; status: Attempt['status']; conditions: Conditions; textId: string;
   day?: string | null; fresh?: boolean; interrupted: boolean; score: Score; elapsedMs: number; errors: number;
   target: string | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
-  minimums?: Minimums; stopped?: unknown; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
+  minimums?: Minimums | null; stopped?: NonNullable<ReturnType<typeof import('./typing.js').minimumStop>>; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
   corrections?: [number, number | null]; missedWords?: string[];
 }
 
@@ -35,7 +35,7 @@ export interface Preferences {
   drillSeconds: number; retest: boolean;
 }
 
-export interface Best extends Score { attemptId: string; at: string | null; conditions?: Conditions }
+export interface Best { wpm: number; accuracy?: number; attemptId: string; at: string | null; conditions?: Conditions }
 
 export interface TargetCounts { errors: number; observations: number }
 
@@ -54,6 +54,7 @@ export interface Profile {
   version: 2; profileId: string; preferences: Partial<Preferences>; preferencesAt?: Record<string, string>;
   attempts: Attempt[]; runs: RunRecord[]; practiceDays: Record<string, number>; runCounts: RunCounts;
   loops: TrainingLoop[]; seenTextIds: string[]; bests: Record<string, Best>; lessons: LessonProgress;
+  historyClearedAt?: string; appliedClears?: string[]; heardClears?: string[]; historyClearedIds?: [string, string][]; undoneClears?: string[]; legacyClearedAt?: string; mergeStamp?: string;
   compositions: CompositionRecord[]; updatedAt?: string; clearedAt?: string; resetAt?: string;
 }
 
@@ -70,3 +71,25 @@ export interface ProfileCopy {
 export interface StoredProfileCopy extends ProfileCopy { conditionSets?: unknown }
 
 export type CloudProfileData = Omit<Profile, 'attempts'>;
+
+export interface HistoricalRecord { [key: string]: unknown }
+export type HistoricalTrace = Attempt | HistoricalRecord;
+export type HistoricalRun = RunRecord | HistoricalRecord;
+export type HistoricalLoop = TrainingLoop | HistoricalRecord;
+export type HistoricalBest = Best | (HistoricalRecord & { wpm: number });
+export interface HydratedProfile {
+  [key: string]: unknown;
+  version: 2;
+  profileId: unknown;
+  preferences: Partial<Preferences> | HistoricalRecord;
+  preferencesAt?: Record<string, unknown>;
+  attempts: HistoricalTrace[];
+  runs: HistoricalRun[];
+  practiceDays: Record<string, number>;
+  runCounts: RunCounts;
+  loops: HistoricalLoop[];
+  seenTextIds: string[];
+  bests: Record<string, HistoricalBest>;
+  lessons: LessonProgress;
+  compositions: CompositionRecord[];
+}

@@ -13,13 +13,13 @@ export interface Conditions {
   quoteLength?: string | null; difficulty?: string | null; wordList?: string | null;
   inputClass?: InputClass; correctionPolicy?: CorrectionPolicy; language?: string; corpus?: string;
   metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: string; book?: string;
-  strictSpace?: boolean; quickEnd?: boolean;
+  strictSpace?: boolean; quickEnd?: boolean; customOrder?: string; lesson?: string; onlineRace?: boolean;
 }
 
 export type AttemptEvent =
   | { type: 'insert' | 'blocked-insert'; text: string; offsetMs: number; position?: number; accepted?: boolean }
   | { type: 'delete'; count?: number; offsetMs: number }
-  | { type: 'focus-lost' | 'composition' | 'focus' | 'focus-returned'; offsetMs: number };
+  | { type: 'focus-lost' | 'composition' | 'focus' | 'focus-returned' | 'submit'; offsetMs: number };
 
 export interface FirstAttempt { position: number; expected: string | undefined; actual: string; correct: boolean; offsetMs: number }
 
@@ -33,8 +33,8 @@ export interface Attempt {
   id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string;
   conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
   typed: string; startedAt: number | null; endedAt: number | null; interrupted: boolean; unsupportedInput: boolean;
-  summary?: Replay; fresh?: boolean; at?: string | null; stopped?: unknown; dailyDate?: string; dailyFirst?: boolean;
-  textVersion?: string; target?: string | null; minimums?: Minimums; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
+  summary?: Replay; fresh?: boolean; at?: string | null; stopped?: NonNullable<ReturnType<typeof minimumStop>>; failed?: string | null; lesson?: { id: string; index: number; pairs: number; words: number }; challengeId?: string; trainFocus?: string; dailyDate?: string; dailyFirst?: boolean;
+  textVersion?: string; target?: string | null; minimums?: Minimums | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
 }
 
 export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
