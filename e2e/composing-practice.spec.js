@@ -1,6 +1,6 @@
 // Composing practice: a prompt, a free-typing field, free-typing speed and backspace rate,
 // kept apart from copy tests and stored as numbers only.
-import { test, expect, openApp, openSettings, openView, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings, insertPlainText, phone } from './fixtures.js';
+import { test, expect, openApp, openSettings, openView, openProgressDetail, passageText, signInWithEmail, storageKeys, chooseMore, chooseSetting, closeSettings, insertPlainText, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -125,6 +125,8 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   // Progress lists it apart from copy-test charts; there is still no copy-test run or best.
   await openView(page, 'Progress');
   await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#clear-history')).toBeVisible();
+  await openProgressDetail(page, 'compose');
   await expect(page.locator('#compose-history')).toBeVisible();
   await expect(page.locator('#compose-history .compose-row')).toHaveCount(1);
   await expect(page.locator('#compose-history .compose-row-main')).toContainText(`${want.wpm} wpm`);
@@ -133,7 +135,6 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#compose-history .compose-row')).toContainText(`${want.text.length} characters · ${want.backspaces} backspaces in ${want.keys} keystrokes`);
   await expect(page.locator('#compose-history .compose-row')).toHaveCount(1);
   await expect(page.locator('#compose-history')).not.toContainText('quiet, so I read');
-  await expect(page.locator('#clear-history')).toBeVisible();
 
   // The practice tab returns to composing; choosing a test shape returns to the passage.
   await openView(page, 'Practice');
@@ -647,8 +648,8 @@ test('composing screenshots, dark and light', async ({ page }, testInfo) => {
   await page.screenshot({ path: shot(testInfo, 'result-light') });
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'compose');
   await page.clock.runFor(400);
-  await page.locator('#compose-history').scrollIntoViewIfNeeded();
   await page.screenshot({ path: shot(testInfo, 'progress-light') });
 });
 

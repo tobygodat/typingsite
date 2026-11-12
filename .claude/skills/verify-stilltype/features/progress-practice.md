@@ -1,6 +1,6 @@
 # Progress practice figures
 
-Progress → Practice shows the practice calendar and, under it, the practice figures: active days, longest
+Progress → Practice calendar shows the practice calendar and, under it, the practice figures: active days, longest
 streak, current streak, time typing and runs started (with how many finished beside the numeral).
 
 ## Sub-features
@@ -11,7 +11,8 @@ streak, current streak, time typing and runs started (with how many finished bes
 
 ## How to get to it (user POV)
 
-- Dock → progress → Practice tab (the only view while there are no practice runs but some practice time).
+- Dock → progress → "Practice calendar" at the foot of the overview, or the "practice" label on the practice row.
+- Ctrl+K → "practice calendar".
 
 ## Driving it with verify.mjs
 
@@ -26,6 +27,6 @@ Preconditions: `$V doctor` exits 0.
 
 ## Gotchas
 
-- The Practice panel is hidden until there is some practice time, so a fresh guest needs at least one
+- The "Practice calendar" link is hidden until there is some practice time, so a fresh guest needs at least one
   finished or interrupted run before the figures show.
 - A guest's counts last for the tab only; reloading starts again from zero.

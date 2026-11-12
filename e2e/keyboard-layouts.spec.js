@@ -1,6 +1,6 @@
 // Keyboard layouts: the on-screen legend, the optional finger map, and the layout as a test condition.
 import { conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, finishDrill, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, openSettings, chooseWords, completePassage, finishDrill, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, closeSettings } from './fixtures.js';
 
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/keyboard-layouts/${name}.png` : testInfo.outputPath(`${name}.png`));
 const row = (page, index) => page.locator(`#keyboard .key-row:nth-child(${index}) .key`);
@@ -257,6 +257,7 @@ test.describe('on a touch screen', () => {
 
     // Practising that target again from Progress finds the touch baseline too.
     await openView(page, 'Progress');
+    await openProgressDetail(page, 'runs');
     await expect(page.locator('#progress-conditions')).toContainText('touch input');
     await page.locator('#history-list details summary').first().click();
     await page.getByRole('button', { name: 'Practice “th” again' }).click();

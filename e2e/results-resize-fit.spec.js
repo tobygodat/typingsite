@@ -1,6 +1,6 @@
 // Narrowing the window after a run: results and Progress fit the new width, and the charts redraw at
 // their new pixel size instead of holding the page at the desktop width.
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords } from './fixtures.js';
+import { test, expect, openProgressView, openApp, openView, passageText, typeInto, chooseWords } from './fixtures.js';
 
 // Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/results-resize/${name}` : testInfo.outputPath(name));
@@ -60,6 +60,7 @@ for (const [from, to] of [[{ width: 1280, height: 800 }, { width: 320, height: 5
 
     // Progress opened at the desktop width, then narrowed: its trend charts follow the window down.
     await openView(page, 'Progress');
+    await openProgressView(page, 'Speed');
     await expect(page.locator('#progress-trend svg')).toHaveCount(1);
     await resize(page, to);
     expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);
@@ -96,6 +97,7 @@ test('screenshots', async ({ page }, testInfo) => {
   await resize(page, { width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: 'dark' });
   await openView(page, 'Progress');
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   await resize(page, { width: 320, height: 568 });
   expect(await overflow(page), 'Progress').toBeLessThanOrEqual(0);

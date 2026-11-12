@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -65,6 +65,7 @@ test('baseline, manual drill and fresh retest land in progress', async ({ page }
   await expect(panel).toHaveAttribute('data-outcome', /^(improved|mixed|regressed|steady)$/);
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#progress-empty')).toBeHidden();
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('.history-target')).toHaveText('“br” drill and retest');
@@ -184,11 +185,13 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await signInWithEmail(page, user.email);
   // The summaries arrive, so the learner's target does too; the recordings stay where they were made.
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
   await expect(page.locator('#run-history')).not.toContainText('View passage');
 });
@@ -209,6 +212,7 @@ test('a drill started from saved history, left once, is retested against that hi
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
 
   // A recurring target, left mid-drill for Progress.
@@ -216,6 +220,7 @@ test('a drill started from saved history, left once, is retested against that hi
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 8));
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   await expect.poll(() => profile()?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'test complete', 'drill interrupted']);
   // The same pattern again finds the saved baseline: its drill runs its 30 seconds, then the retest.
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
@@ -235,6 +240,7 @@ test('a drill started from saved history, left once, is retested against that hi
   await page.reload();
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await page.locator('.history-summary').click();
   await page.locator('.history-detail').getByRole('button', { name: 'Practice “th” again' }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
@@ -365,9 +371,11 @@ test('clearing history needs the typed word and can be undone', async ({ page })
   expect(retest).not.toBe(baseline);
   await expect(page.locator('#comparison-caveat')).not.toContainText('Couldn’t save');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('.history-target')).toHaveText('General drill and retest');
 
+  await page.locator('#progress-back').click();
   await page.locator('#clear-history').click();
   await expect(page.locator('#clear-dialog')).toBeVisible();
   await page.locator('#confirm-clear-input').fill('clea');

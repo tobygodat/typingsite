@@ -2,7 +2,7 @@
 // confirmation, the one server step and the rows that go with the account, and failures that leave
 // this device exactly as it was.
 import { randomUUID } from 'node:crypto';
-import { test, expect, openApp, chooseWords, passageText, typeInto, openView, signInWithEmail, storageKeys } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, chooseWords, passageText, typeInto, openView, signInWithEmail, storageKeys } from './fixtures.js';
 
 const ADA = 'ada@stilltype.test';
 const BOB = 'bob@stilltype.test';
@@ -199,6 +199,7 @@ test('a failed deletion says why and changes nothing on this device', async ({ p
   expect(supabase.profileFor(ADA).runs).toHaveLength(1);
   await page.locator('#cancel-delete-account').click();
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
 
   // Once the function works, the same dialog finishes the job.

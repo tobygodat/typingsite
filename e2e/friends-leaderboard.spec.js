@@ -596,6 +596,7 @@ test('F1: a stale device saving after a clear brings no cleared run back, a cloc
     await page.reload();
     await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
     await openView(page, 'Progress');
+    await expect(page.locator('#progress-empty')).toBeVisible();
     await expect(page.locator('#run-history .run-row')).toHaveCount(0);
     await openBoard(page);
     await expect(page.locator('#board-week')).toContainText('You — nothing yet this week');

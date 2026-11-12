@@ -9,7 +9,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.openApp();
   await h.signIn(user.email);
   await h.openView('Progress');
-  // With practice time but no runs, Practice is the only view and its tabs are hidden.
+  await page.locator('[data-progress-open="calendar"]').click();
   await page.locator('#practice-stats .progress-figure').first().waitFor();
   await h.settle();
   const layout = await page.locator('#practice-stats').evaluate((list) => ({

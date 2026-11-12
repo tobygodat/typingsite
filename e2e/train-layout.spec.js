@@ -3,7 +3,7 @@
 // targets drilled behind you, the open one, and the next three the learner queues; a retest's comparison is the
 // newest step behind you.
 import { DEFAULT_POLICY } from '../src/learner.js';
-import { test, expect, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, phone } from './fixtures.js';
 import { withHistory, units, behindUnits } from './train-fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
@@ -280,6 +280,7 @@ test('with history the path shows each drill behind you, the learner’s target 
 
   // Progress's Patterns across runs lists the same queue: its first row is open here, the next three ahead.
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   const rows = await page.locator('#training-targets .training-target h3').allTextContents();
   expect(rows.slice(0, 4)).toEqual(['th', ...ahead].map((unit) => `Practice “${unit}”`));
   expect(await overflow(page)).toBeLessThanOrEqual(0);
