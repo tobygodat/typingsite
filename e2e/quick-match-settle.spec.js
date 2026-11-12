@@ -1,6 +1,6 @@
 // How a quick match settles, seen from both racers: a slow link, a run that can't be checked, a racer who closes
 // the page or leaves, and a pair racing too often. Each racer's winner mark, tally and rating line must agree.
-import { test, expect, openApp, openView, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, setRaceName } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -16,7 +16,7 @@ async function racer(browser, supabase, email, name) {
   await openApp(page);
   await signInWithEmail(page, email);
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill(name);
+  await setRaceName(page, name);
 
   return { context, page };
 }

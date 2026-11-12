@@ -54,7 +54,8 @@ proof.
 - [Theme and settings](./theme-and-settings.md): the settings dialog, the theme and font radios, custom themes and generating one, following the system theme, and the background image.
 - [Command palette](./command-palette.md): Ctrl+K, filtering, and running a command such as `theme · light`.
 - [Accounts](./accounts.md): guest mode, signing in with email against the fake Supabase, and the account menu.
-- [Challenge tabs, dock labels and key hints](./challenge-and-chrome-labels.md): one selected challenge tab, label-in-name for the dock's short verbs at 320px, and key hints hidden on touch-only devices.
+- [Challenge: the people you race](./challenge-people.md): quick match, one row per person with its line, tally and action, an invitation arriving, the empty and guest pages, and the foot links' views.
+- [Challenge views, dock labels and key hints](./challenge-and-chrome-labels.md): the daily and One keyboard views and Back, label-in-name for the dock's short verbs at 320px, and key hints hidden on touch-only devices.
 - [Train's path](./train-path.md): the steps behind you, the open step and those ahead, choosing a step ahead, and the comparison as the newest step behind you.
 - [Progress: what changed](./progress-week.md): the lead figure, what moved it, the small charts, the conditions control, each view one step away, and Clear history and Undo.
 - [Progress practice figures](./progress-practice.md): the practice calendar's figures, runs started included.

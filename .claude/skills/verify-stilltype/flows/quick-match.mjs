@@ -16,7 +16,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await h.openApp();
     await h.signIn('toby@stilltype.test');
     await h.openView('Challenge');
+    await page.locator('#people-setup').click();
     await page.locator('#online-name').fill('Toby');
+    await page.locator('#online-setup-done').click();
     await page.locator('#quick-match [data-quick-part="rating"]:not([hidden])').waitFor();
     note('rating', await h.text('#quick-match [data-quick-part="rating"]'));
     await shot('idle');
@@ -34,7 +36,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await Promise.all([mara.waitForEvent('load'), mara.locator('#account-submit').click()]);
     await mara.locator('#account[data-state="member"]').waitFor();
     await mara.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+    await mara.locator('#people-setup').click();
     await mara.locator('#online-name').fill('Mara');
+    await mara.locator('#online-setup-done').click();
     await mara.locator('#quick-match [data-quick="toggle"]').click();
     await page.locator('#online-room-status', { hasText: 'Matched with Mara.' }).waitFor({ timeout: 5000 });
     await mara.locator('#online-room-status', { hasText: 'Matched with Toby.' }).waitFor();
@@ -60,7 +64,7 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await page.locator('#online-befriend').click();
     await page.locator('#online-befriend').waitFor({ state: 'hidden' });
     await page.locator('#online-leave').click();
-    await page.locator('#online-friend-list', { hasText: 'Mara' }).waitFor();
+    await page.locator('#people-list', { hasText: 'Mara' }).waitFor();
     await page.locator('#quick-match [data-quick-part="rating"]', { hasText: '1520' }).waitFor();
     await h.settle();
     await shot('after');

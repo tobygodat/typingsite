@@ -167,7 +167,7 @@ const rowTexts = (page, list) => page.locator(`#${list} .board-row`).evaluateAll
 
 async function openBoard(page) {
   await openView(page, 'Challenge');
-  await page.locator('#challenge-friends').click();
+  await page.locator('#open-daily').click();
 }
 
 // Refresh does nothing while a read is on its way (a quiet one after a save, say), so it waits for that.
@@ -188,8 +188,8 @@ async function clearHistory(page) {
 test('guests see a sign-in prompt, and the board is in the palette', async ({ page, supabase }) => {
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-friends').click();
-  await expect(page.locator('#challenge-friends')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#open-daily').click();
+  await expect(page.locator('#challenge-daily-view')).toBeVisible();
   await expect(page.locator('#friends-board-guest')).toBeVisible();
   await expect(page.locator('#friends-board-lists')).toBeHidden();
   await expect(page.locator('#refresh-friends-board')).toBeHidden();
@@ -245,7 +245,7 @@ test('a daily run reaches the board with the profile save, and only mutual frien
   expect(supabase.board.members.has(ada.id)).toBe(true);
   await expect(page.locator('#board-week')).toContainText('24 runs');
 
-  await page.locator('#challenge-daily').click();
+  // The daily passage sits with the board.
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   // A human pace, 120 ms a key on the paused page clock, with two corrected slips, so the result reads
@@ -389,9 +389,9 @@ test('practice time reaches the board with the profile save, and a board not yet
   // Alone on the board: how friends get here, and a way to them.
   await expect(page.locator('#friends-board-empty')).toBeVisible();
   await page.locator('#friends-board-online').click();
-  await expect(page.locator('#online-challenge')).toBeVisible();
+  await expect(page.locator('#people-add-view')).toBeVisible();
   await expect(page.locator('#friends-board')).toBeHidden();
-  await expect(page.locator('#challenge-online')).toBeFocused();
+  await expect(page.locator('#online-invite-email')).toBeFocused();
 });
 
 test('a save without the summary (an older build) hides it until a load repairs it, and a repair for a row that moved changes nothing', async ({ page, supabase }) => {

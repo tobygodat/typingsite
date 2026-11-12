@@ -49,7 +49,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await Promise.all([other.waitForEvent('load'), other.locator('#account-submit').click()]);
     await other.locator('#account[data-state="member"]').waitFor();
     await other.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+    await other.locator('#people-setup').click();
     await other.locator('#online-name').fill(name[0].toUpperCase() + name.slice(1));
+    await other.locator('#online-setup-done').click();
 
     return other;
   }
@@ -59,7 +61,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await h.openApp();
     await h.signIn('toby@stilltype.test');
     await h.openView('Challenge');
+    await page.locator('#people-setup').click();
     await page.locator('#online-name').fill('Toby');
+    await page.locator('#online-setup-done').click();
     await page.locator(`${rating}:not([hidden])`).waitFor();
     note('rating before', await h.text(rating));
     check(plain(await h.text(rating)) === 'Gust I · 1795 · 20 rated races', 'the rating line leads with the rank');

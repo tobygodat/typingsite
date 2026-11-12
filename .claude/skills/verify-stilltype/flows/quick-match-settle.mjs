@@ -34,7 +34,9 @@ export default async ({ page, shot, note, check, fake, url }) => {
     await Promise.all([other.waitForEvent('load'), other.locator('#account-submit').click()]);
     await other.locator('#account[data-state="member"]').waitFor();
     await other.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+    await other.locator('#people-setup').click();
     await other.locator('#online-name').fill(name);
+    await other.locator('#online-setup-done').click();
 
     return { name, context, page: other };
   }

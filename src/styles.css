@@ -3303,40 +3303,76 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-.challenge-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); }
-.challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-/* Online opens under the same rule as Daily, Friends and One keyboard, so the tabs never lose their floor. */
-#online-challenge { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+/* Challenge is the people you race: quick match on top, one row per person, quiet links at the foot. The dock names
+   the page, so it has no visible heading. A race, a guest's invitation or a foot link's view takes the list's place. */
 .online-copy { color: var(--muted); font-size: var(--text-small); }
-/* Quick match sits above hosting, on the same rules-and-space footing, and moves as one element. */
-.quick-match { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
-.quick-match > .online-actions:first-child { margin-top: 0; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.quick-match { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2) var(--space-6); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
+.quick-match-head { min-width: 0; display: grid; gap: var(--space-1); }
+.quick-match-head h2 { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
 .quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.quick-match-status, .quick-match-lonely { grid-column: 1 / -1; }
+.quick-match-status { margin: var(--space-2) 0 0; }
+.quick-match-lonely { margin-top: 0; flex-wrap: wrap; }
 .quick-match [data-quick-part="status"]:empty { display: none; }
-.quick-match [data-quick-part="lonely"] { margin-top: var(--space-3); flex-wrap: wrap; }
-.quick-match [data-quick-part="lonely"][hidden], .quick-match [hidden] { display: none; }
-.online-optional { font-size: var(--text-fine); }
-.online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
-.online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
-/* Customize opens the practice row's own controls under the buttons, for this race only. */
-#online-customize[aria-expanded="true"] { color: var(--text); background: var(--raised-2); }
-.online-customize-chevron { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur-quick) var(--ease-out); }
-#online-customize[aria-expanded="true"] .online-customize-chevron { transform: rotate(180deg); }
-.online-options { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
-.online-options[hidden] { display: none; }
+
+.people-list { list-style: none; margin: 0; padding: 0; }
+.people-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4) var(--space-6);
+  padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+/* A person who arrives eases in; a row redrawn in place doesn't arrive again. */
+@starting-style {
+  .people-row:not([data-settled]) { opacity: 0; transform: translateY(var(--space-1)); }
+}
+.people-who { min-width: 0; display: grid; gap: var(--space-1); }
+.people-name { margin: 0; font-size: var(--text-lead); line-height: 1.3; overflow-wrap: anywhere; }
+.people-line { margin: 0; color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+.people-line:empty { display: none; }
+/* Something waiting for you reads in the text colour; history stays muted. */
+.people-row:is([data-state="invited"], [data-state="ghost"]) .people-line { color: var(--text); }
+.people-side { flex: none; display: flex; align-items: center; gap: var(--space-6); }
+.people-tally { margin: 0; font-size: var(--text-lead); line-height: 1; white-space: nowrap; }
+.people-actions { display: flex; align-items: center; gap: var(--space-2); }
+.people-status { margin: var(--space-4) 0 0; }
+.people-status:empty { display: none; }
+.people-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-6); padding-top: var(--space-4); }
+.people-foot-group { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.people-link {
+  min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: var(--text-body); cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.people-link:hover { color: var(--text); }
+/* Race setup carries what a one-press Race uses, as a conditions line. */
+.people-setup-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; align-content: center; justify-content: flex-start; column-gap: var(--space-2); text-align: start; }
+.people-conditions { font: var(--text-mono)/1.5 var(--font-mono); letter-spacing: 0.01em; }
+.people-conditions:empty { display: none; }
+.people-detail { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+#online-room-conditions { margin-top: var(--space-2); }
+#online-room-conditions:empty { display: none; }
+.people-link:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius-sm); }
+
+/* Add a friend, Race setup, the daily passage with the friends board, and One keyboard: one step from the list. */
+.challenge-view > h2 { margin: var(--space-4) 0 var(--space-6); font-size: var(--text-title); font-weight: 400; }
+.challenge-view h2[tabindex="-1"]:focus { outline: 0; }
+.challenge-back { margin-left: calc(var(--space-3) * -1); }
+.challenge-view > .challenge-back + .daily-challenge { border-top: 0; padding-top: var(--space-4); }
+.challenge-view > .online-actions { margin-top: var(--space-8); }
+.online-name-field { max-width: calc(var(--content-max) / 2); margin-bottom: var(--space-6); }
+.online-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-4) var(--space-6); max-width: calc(var(--content-max) * 0.75); }
+.online-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.online-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 .online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
-.online-inbox, .online-friends, .online-room, .online-join { border-top: 1px solid var(--hairline); padding-top: var(--space-8); margin-top: var(--space-8); }
 .online-join .player-field { max-width: calc(var(--content-max) / 2); }
 .online-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
-.online-invite-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
-.online-invite-row p { margin: 0; }
-.online-friend-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
-.online-friend-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.online-friend-list { list-style: none; margin: var(--space-8) 0 0; padding: 0; }
+.online-friend-list:not(:empty) { border-top: 1px solid var(--hairline); }
+.online-friend-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
 .online-friend-name { min-width: 0; display: grid; gap: 2px; }
 .online-friend-name strong { font-weight: 400; overflow-wrap: anywhere; }
 .online-friend-name span { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
-.online-friend-row .online-actions { margin: 0; flex: none; gap: var(--space-2); }
 .online-after { margin-top: var(--space-6); }
 .online-after > p { margin: 0 0 var(--space-3); }
 .online-after .online-actions { margin-top: 0; flex-wrap: wrap; }
@@ -3489,6 +3525,12 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 760px) {
   .online-setup, .online-players { grid-template-columns: 1fr; }
+  .quick-match { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-4); padding-bottom: var(--space-6); }
+  .quick-match-head h2 { font-size: var(--text-title); }
+  .people-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-3) var(--space-4); }
+  .people-side { display: contents; }
+  .people-tally { grid-column: 2; grid-row: 1; align-self: start; padding-top: var(--space-1); }
+  .people-actions { grid-column: 1 / -1; grid-row: 2; }
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
   .online-section-heading { flex-wrap: wrap; }

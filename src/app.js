@@ -3485,6 +3485,7 @@ function restoreConditions(source) {
 // "results" is the practice screen showing a finished run in place of the passage.
 function switchView(view) {
   quoteFilters.dismiss();
+  const previous = document.body.dataset.view;
 
   // Progress opens on its overview whenever it is opened from elsewhere.
   if (view === 'progress' && document.body.dataset.view !== 'progress') Object.assign(progressState, { detail: '', moversOpen: false });
@@ -3504,7 +3505,8 @@ function switchView(view) {
   updateGlides();
 
   if (view === 'progress') renderHistory();
-  onlineRace?.onViewChange(view);
+  // Challenge opens on its people list, unless a one-keyboard race is being typed there.
+  onlineRace?.onViewChange(view, { keep: previous === 'compete' && raceUnderWay() });
 
   // Opened from anywhere, Train draws the path afresh; a retest's comparison draws it once more as it opens.
   if (view === 'train') {
@@ -5151,9 +5153,11 @@ function renderGhostResult() {
   const mine = ghost.result || (ghost.trace ? scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' }) : null);
   const match = { duration: ghost.duration, sender: ghost.sender, result: mine };
   const leader = mine ? challengeOutcome(match) : null;
+  // Your own recording goes nowhere, so a run that can't be scored against it is not compared, never "not sent".
+  const kept = ghost.own ? 'compared' : 'sent';
   $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? (ghost.own ? 'Interrupted.' : 'Interrupted, so not sent.')
-    : ghost.state === 'other-input' ? 'A different kind of input, so not sent.'
-      : ghost.state === 'unreplayable' ? 'A character a ghost race can’t replay, so not sent.' : !mine ? 'Too long to send.'
+    : ghost.state === 'other-input' ? `A different kind of input, so not ${kept}.`
+      : ghost.state === 'unreplayable' ? `A character a ghost race can’t replay, so not ${kept}.` : !mine ? (ghost.own ? 'Too long to replay.' : 'Too long to send.')
         : leader === 'tie' ? 'A tie.' : `${leader === 'recipient' ? 'You' : ghost.name} ${leadVerb(match, leader)}.`;
   const rows = [...(mine ? [{ name: 'You', score: mine }] : []), { name: ghost.name, score: ghost.sender }];
 
@@ -5175,7 +5179,7 @@ function renderGhostResult() {
     failed: `Not sent. ${ghost.error?.message || ''}`,
     unsendable: 'Race again with fewer corrections.',
     unreplayable: 'Race again without emoji.',
-    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to send a run.`,
+    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to ${ghost.own ? 'compare' : 'send a run'}.`,
     own: 'The ghost was your own recording.',
   }[ghost.state] || '';
   const again = RACE_AGAIN.includes(ghost.state);
@@ -7017,7 +7021,7 @@ function bindEvents() {
 
   $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); });
   $('ghost-offer-form').addEventListener('submit', sendGhost);
-  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.open());
+  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd());
   $('ghost-result-action').addEventListener('click', () => {
     if (ghostRace?.state === 'failed') submitGhostRun();
     else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
@@ -7607,7 +7611,7 @@ function paletteCommands(query) {
       group: 'go to', label, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
       run: () => { navigate('progress'); openProgressDetail(detail); },
     })),
-    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $('compete-heading').focus(); } },
+    { group: 'go to', label: 'friends board', keywords: 'leaderboard compare daily week practice minutes friends bests personal best', disabled: Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); $(onlineRace.mode === 'daily' ? 'friends-board-heading' : 'compete-heading').focus(); } },
     { group: 'go to', label: 'learn to type', keywords: 'lessons beginner keys fingers home row', hint: document.body.dataset.view === 'learn' ? 'here' : '', on: document.body.dataset.view === 'learn', run: openLessons },
     { group: 'test', label: 'restart test', keywords: 'reset again new passage', hint: restartHint(), run: restartTest },
     { group: 'test', label: 'daily challenge', keywords: 'today shared passage daily quote', run: startDaily },
@@ -7863,8 +7867,8 @@ friendsBoard = createFriendsBoard({
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
   runs: () => profile.runs,
   signIn: () => openAccountDialog('signin'),
-  // The button that asks for this disappears with the board, so focus lands on the Online selector.
-  openOnline: () => { onlineRace.open(); $('challenge-online').focus(); },
+  // The button that asks for this goes with the board, so Add a friend opens with its email field focused.
+  openOnline: () => onlineRace.openAdd(),
   onShared: repairBoardNow,
 });
 
@@ -7878,6 +7882,7 @@ onlineRace = createOnlineRace({
   updateGlide,
   ownBest: ownBestRun,
   raceOwnBest: startOwnGhost,
+  raceGhost: startGhostRace,
   // What plain Challenge races: the practice setup, and the session it is in (custom text, compose or a drill
   // are practice's own, so a race falls back to its default).
   practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,
@@ -7921,7 +7926,7 @@ const refreshGoalDay = () => {
 };
 
 setInterval(() => {
-  if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); }
+  if (document.body.dataset.view === 'compete') { renderDaily(); friendsBoard.rollover(); onlineRace.tick(); }
 
   if (document.body.dataset.view === 'progress') refreshGoalDay();
 }, 30000);

@@ -70,6 +70,64 @@ export class FakeRaces {
     return () => release();
   }
 
+  // As race_private.people (supabase/migrations/20261111120000_race_people.sql): the caller's account friends with
+  // the pair's tally, and the friend row each open invitation and ghost challenge of theirs belongs to. Friends
+  // saved by typed email are never matched to an account.
+  people(caller, challenges) {
+    const list = this.friends.get(caller) || [];
+    const rowFor = (userId) => list.find((friend) => friend.friendId && friend.friendId === userId)?.id;
+
+    const friends = list.filter((friend) => friend.friendId).flatMap((friend) => {
+      const key = [caller, friend.friendId].sort().join(':');
+      const wins = this.tallies.get(key);
+
+      return wins ? [{ id: friend.id, tally: key.startsWith(caller) ? [...wins] : [wins[1], wins[0]] }] : [];
+    });
+
+    const invites = [...this.rooms.values()].filter((room) => room.invitedUser === caller && room.status === 'waiting'
+      && Date.parse(room.expiresAt) > Date.now() && !room.players.some((p) => p.userId === caller && p.lastSeen > 0))
+      .flatMap((room) => {
+        const friendId = rowFor(room.players.find((p) => p.userId !== caller)?.userId);
+
+        return friendId ? [{ id: room.id, friendId }] : [];
+      });
+
+    const linked = [...challenges.rows.values()].filter((row) => row.senderId === caller || row.recipientId === caller)
+      .flatMap((row) => {
+        const friendId = rowFor(row.senderId === caller ? row.recipientId : row.senderId);
+
+        return friendId ? [{ id: row.id, friendId }] : [];
+      });
+
+    return { friends, invites, challenges: linked };
+  }
+
+  // Test setup: a friend on `owner`'s list, saved from a race (`friendId`, an account) or by typed `email`.
+  addFriend(owner, { name, friendId = null, email = null }) {
+    const friend = { id: randomUUID(), name };
+
+    if (friendId) friend.friendId = friendId;
+    else friend.email = email;
+    this.friends.set(owner, [...(this.friends.get(owner) || []), friend]);
+
+    return friend;
+  }
+
+  // Test setup: `host` invites `invited` to a waiting race, as a create from their friend list would, made `ageMs` ago.
+  invite(host, invited, { name, ageMs = 0, passage = 'The quick brown fox jumps over the lazy dog.' }) {
+    const createdAt = Date.now() - ageMs;
+
+    const room = {
+      id: randomUUID(), passage, conditions: { mode: 'quote' }, duration: 60, status: 'waiting', startAt: null,
+      createdAt: new Date(createdAt).toISOString(), expiresAt: new Date(createdAt + 15 * 60000).toISOString(),
+      invitedUser: invited, inviteKind: 'account', inviteToken: null, players: [this.player(1, name, host)],
+    };
+
+    this.rooms.set(room.id, room);
+
+    return room;
+  }
+
   friendList(owner) {
     return (this.friends.get(owner) || []).map(({ id, name, email, friendId }) => {
       const friend = { id, name, account: Boolean(friendId) };

@@ -4,6 +4,7 @@
 // the same on both sides without a shared seed.
 import { CORPUS_VERSION, METRIC_VERSION, selectPassage } from './typing.js';
 import { LENGTHS } from './lengths.js';
+import { conditionParts } from './insights.js';
 
 // Today's race, and what a practice-only setup falls back to: a medium quote on a 60-second clock.
 export const RACE_FALLBACK = Object.freeze({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', duration: 60 });
@@ -42,6 +43,14 @@ export function raceOptions(practice = {}) {
 export function raceConditions(options) {
   return { ...options, duration: options.duration ?? PASSAGE_CLOCK, correctionPolicy: 'mandatory', onlineRace: true, language: 'en',
     inputClass: 'physical-keyboard', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION };
+}
+
+// A race's setup as a conditions line, in the words the run card's line uses: "english 200 · 10 words · plain",
+// "english · any quote · any difficulty".
+export function raceSetupText(conditions) {
+  const { language, length, text } = conditionParts(conditions);
+
+  return [language, length, text].filter(Boolean).join(' · ');
 }
 
 // A fresh passage for these conditions, never one in seenIds where another can be had. A timed passage is

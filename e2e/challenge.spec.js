@@ -6,7 +6,7 @@ test('two players type the same hidden-then-revealed passage', async ({ page }) 
   await closeSettings(page);
   await chooseSetting(page, 'correction-select', 'mandatory');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
 
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');

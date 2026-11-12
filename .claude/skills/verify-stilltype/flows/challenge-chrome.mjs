@@ -1,6 +1,6 @@
-// Challenge tabs, the one-keyboard race and its results, the settings dialog and the dock labels.
-// Run at 1280 and 320 (--width 320 --height 568 --mobile), both schemes, with --delay 5 so both
-// turns finish quickly. Notes which tabs look selected, the dock's visible words against their
+// Challenge's foot links (the daily passage with the friends board, and One keyboard), the one-keyboard race and
+// its results, the settings dialog and the dock labels. Run at 1280 and 320 (--width 320 --height 568 --mobile),
+// both schemes, with --delay 5 so both turns finish quickly. Notes the dock's visible words against their
 // accessible names, and whether the key hints ("esc restarts.", "esc" on settings close) show.
 export default async ({ page, h, shot, note, check }) => {
   await h.openApp();
@@ -16,17 +16,15 @@ export default async ({ page, h, shot, note, check }) => {
   }
   note('dock', navs);
 
-  const looksSelected = () => page.locator('.challenge-modes button').evaluateAll((buttons) => buttons
-    .filter((button) => getComputedStyle(button).borderTopColor !== 'rgba(0, 0, 0, 0)')
-    .map((button) => button.textContent.trim()));
-
   await h.openView('Challenge');
-  await page.locator('#challenge-friends').click();
+  await page.locator('#open-daily').click();
+  await page.locator('#challenge-daily-view').waitFor();
   await h.settle();
-  note('bordered tabs (friends)', await looksSelected());
-  await shot('tabs-friends');
+  await shot('daily');
+  await page.locator('#challenge-daily-view [data-challenge-back]').click();
+  check(await page.locator('#open-daily').evaluate((node) => node === document.activeElement), 'Back returns focus to the link');
 
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Bo');
   await page.locator('#start-local-race').click();

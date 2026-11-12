@@ -306,7 +306,7 @@
               <p class="ghost-offer-copy">They race your keystrokes on this text within 7 days.</p>
               <div id="ghost-offer-empty" hidden>
                 <p class="ghost-offer-copy">Your friend list is empty.</p>
-                <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Open online races</button>
+                <button id="ghost-offer-friends" class="btn btn-ghost btn-sm" type="button">Add a friend</button>
               </div>
               <form id="ghost-offer-form" class="ghost-offer-form" novalidate>
                 <label class="filter-field" for="ghost-friend">Friend
@@ -643,66 +643,70 @@
       </section>
 
       <section id="compete-screen" class="screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
-        <header class="section-heading page-heading">
-          <div>
-            <h1 id="compete-heading" tabindex="-1">Challenge</h1>
-          </div>
-        </header>
+        <h1 id="compete-heading" class="sr-only" tabindex="-1">Challenge</h1>
+        <p id="online-error" class="field-error" role="alert"></p>
 
-        <div class="challenge-modes" role="group" aria-label="Challenge type">
-          <button id="challenge-online" class="btn btn-ghost btn-sm" type="button" aria-pressed="true">Online</button>
-          <button id="challenge-daily" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Daily</button>
-          <button id="challenge-friends" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">Friends</button>
-          <button id="challenge-local" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">One keyboard</button>
+        <div id="challenge-people" class="people">
+          <section id="quick-match" class="quick-match" aria-labelledby="quick-match-heading">
+            <div class="quick-match-head">
+              <h2 id="quick-match-heading">Quick match</h2>
+              <p class="quick-match-rating num" data-quick-part="rating" hidden></p>
+              <p class="quick-match-rating" data-guest>Sign in to be matched.</p>
+            </div>
+            <button class="btn btn-primary quick-match-go" type="button" data-quick="toggle" data-quick-part="toggle">Find a race</button>
+            <p class="online-copy quick-match-status" role="status" data-quick-part="status"></p>
+            <div class="online-actions quick-match-lonely" data-quick-part="lonely" hidden>
+              <button class="btn btn-ghost btn-sm" type="button" data-quick="keep">Keep waiting</button>
+              <button class="btn btn-ghost btn-sm" type="button" data-quick="best" data-quick-part="best">Race your best run</button>
+            </div>
+          </section>
+          <ul id="people-list" class="people-list" aria-label="People you race"></ul>
+          <p id="people-status" class="online-copy people-status" role="status"></p>
+          <div class="people-foot">
+            <div class="people-foot-group">
+              <button id="people-add" class="people-link" type="button" data-signed-in>Add a friend</button>
+              <button id="people-race-link" class="people-link" type="button" data-signed-in>Copy a race link</button>
+              <button id="people-setup" class="people-link people-setup-link" type="button" data-signed-in>Race setup <span id="people-setup-conditions" class="people-conditions"></span></button>
+              <button id="online-signin" class="people-link" type="button" data-guest>Sign in to keep friends</button>
+            </div>
+            <div class="people-foot-group">
+              <button id="open-daily" class="people-link" type="button">Daily passage</button>
+              <button id="open-local" class="people-link" type="button">One keyboard</button>
+            </div>
+          </div>
         </div>
 
-        <div id="online-challenge">
-          <p id="online-error" class="field-error" role="alert"></p>
-          <div id="online-host">
-            <section id="quick-match" class="quick-match" aria-label="Quick match">
-              <div class="online-actions">
-                <button class="btn btn-secondary" type="button" data-quick="toggle" data-quick-part="toggle">Quick match</button>
-                <p class="quick-match-rating num" data-quick-part="rating" hidden></p>
-              </div>
-              <p class="online-copy" role="status" data-quick-part="status"></p>
-              <div class="online-actions" data-quick-part="lonely" hidden>
-                <button class="btn btn-ghost btn-sm" type="button" data-quick="keep">Keep waiting</button>
-                <button class="btn btn-ghost btn-sm" type="button" data-quick="best" data-quick-part="best">Race your best run</button>
-              </div>
-            </section>
-            <div id="online-account-required">
-              <button id="online-signin" class="btn btn-primary" type="button">Sign in to host</button>
+        <section id="people-add-view" class="challenge-view" aria-labelledby="people-add-heading" hidden>
+          <button class="btn btn-ghost btn-sm challenge-back" type="button" data-challenge-back aria-label="Back to challenge">Back</button>
+          <h2 id="people-add-heading" tabindex="-1">Add a friend</h2>
+          <form id="online-setup" class="online-setup">
+            <div class="player-field">
+              <label for="online-invite-email">Their account email</label>
+              <input id="online-invite-email" class="input" type="email" maxlength="254" required autocomplete="off" placeholder="name@example.com">
             </div>
-            <form id="online-setup" class="online-setup" hidden>
-              <div class="player-field">
-                <label for="online-name">Your race name</label>
-                <input id="online-name" class="input" type="text" maxlength="24" required autocomplete="nickname" placeholder="Name">
-              </div>
-              <div class="player-field">
-                <label for="online-invite-email">Account to invite <span class="online-optional">optional</span></label>
-                <input id="online-invite-email" class="input" type="email" maxlength="254" autocomplete="off" placeholder="Their account email">
-              </div>
-              <div class="online-setup-actions">
-                <button id="create-online-race" class="btn btn-primary" type="submit">Challenge</button>
-                <button id="online-customize" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="online-options">Customize<svg class="online-customize-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 6.5l3.5 3.5 3.5-3.5"/></svg></button>
-                <label id="online-save-friend-row" class="compact-switch" for="online-save-friend" hidden>
-                  <input id="online-save-friend" class="switch" type="checkbox" checked>
-                  <span>save to friends</span>
-                </label>
-              </div>
-              <div id="online-options" class="online-options" role="group" aria-label="Race options" hidden></div>
-            </form>
-            <section id="online-friends" class="online-friends" aria-labelledby="online-friends-heading" hidden>
-              <div class="online-section-heading"><h2 id="online-friends-heading">Friends</h2></div>
-              <p id="online-friends-empty" class="online-copy">Save a friend when you invite them or after a race.</p>
-              <ul id="online-friend-list" class="online-friend-list"></ul>
-            </section>
-            <section id="online-inbox" class="online-inbox" aria-labelledby="online-inbox-heading" hidden>
-              <div class="online-section-heading"><h2 id="online-inbox-heading">Race invitations</h2><button id="refresh-race-invites" class="btn btn-ghost btn-sm" type="button">Refresh</button></div>
-              <p id="online-invites-empty" class="online-copy">No invitations yet.</p>
-              <div id="online-invites"></div>
-            </section>
+            <div class="online-setup-actions">
+              <button id="add-friend" class="btn btn-primary" type="submit">Add friend</button>
+              <button id="create-online-race" class="btn btn-ghost" type="button">Race once</button>
+            </div>
+          </form>
+          <ul id="online-friend-list" class="online-friend-list" aria-label="Your friends"></ul>
+        </section>
+
+        <section id="people-setup-view" class="challenge-view" aria-labelledby="people-setup-heading" hidden>
+          <button class="btn btn-ghost btn-sm challenge-back" type="button" data-challenge-back aria-label="Back to challenge">Back</button>
+          <h2 id="people-setup-heading" tabindex="-1">Race setup</h2>
+          <div class="player-field online-name-field">
+            <label for="online-name">Your race name</label>
+            <input id="online-name" class="input" type="text" maxlength="24" autocomplete="nickname" placeholder="Name">
           </div>
+          <div id="online-options" class="online-options" role="group" aria-label="Race options"></div>
+          <div class="online-actions">
+            <button id="online-setup-done" class="btn btn-primary" type="button">Done</button>
+            <button id="online-customize-reset" class="btn btn-ghost" type="button" hidden>Match practice</button>
+          </div>
+        </section>
+
+        <div id="online-challenge">
           <form id="online-guest-join" class="online-join" hidden>
             <h2>You’re invited to race.</h2>
             <div class="player-field"><label for="online-guest-name">Your race name</label><input id="online-guest-name" class="input" type="text" maxlength="24" required autocomplete="nickname" placeholder="Name"></div>
@@ -710,6 +714,7 @@
           </form>
           <section id="online-room" class="online-room" aria-labelledby="online-room-heading" hidden>
             <div class="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" class="btn btn-ghost btn-sm" type="button">Leave race</button></div>
+            <p id="online-room-conditions" class="condition-copy"></p>
             <p id="online-room-status" class="online-copy" role="status"></p>
             <p id="online-rating-change" class="online-copy" role="status" hidden></p>
             <div id="online-rank-card" class="rank-card-slot" aria-hidden="true" hidden></div>
@@ -798,22 +803,24 @@
           </section>
         </div>
 
-        <section id="daily-challenge" class="daily-challenge" hidden aria-labelledby="daily-heading">
+        <section id="challenge-daily-view" class="challenge-view" aria-label="Daily passage" hidden>
+          <button class="btn btn-ghost btn-sm challenge-back" type="button" data-challenge-back aria-label="Back to challenge">Back</button>
+        <section id="daily-challenge" class="daily-challenge" aria-labelledby="daily-heading">
           <div class="daily-heading">
-            <div><h2 id="daily-heading">Daily passage</h2><p id="daily-date" class="condition-copy"></p></div>
+            <div><h2 id="daily-heading" tabindex="-1">Daily passage</h2><p id="daily-date" class="condition-copy"></p></div>
             <button id="start-daily" class="btn btn-primary" type="button">Start daily challenge</button>
           </div>
           <p id="daily-status" class="result-note" aria-live="polite"></p>
           <details id="daily-history-panel" hidden><summary>Your daily results</summary><div id="daily-history"></div></details>
         </section>
 
-        <section id="friends-board" class="friends-board" hidden aria-labelledby="friends-board-heading">
+        <section id="friends-board" class="friends-board" aria-labelledby="friends-board-heading">
           <div class="online-section-heading">
-            <h2 id="friends-board-heading">Friends board</h2>
+            <h2 id="friends-board-heading" tabindex="-1">Friends board</h2>
             <button id="refresh-friends-board" class="btn btn-ghost btn-sm" type="button" hidden>Refresh</button>
           </div>
           <div id="friends-board-guest" class="friends-board-guest">
-            <button id="friends-board-signin" class="btn btn-primary" type="button">Sign in</button>
+            <button id="friends-board-signin" class="btn btn-secondary" type="button">Sign in</button>
           </div>
           <div id="friends-board-share" class="friends-board-share" hidden>
             <label class="compact-switch" for="share-board">
@@ -845,11 +852,16 @@
           </div>
           <div id="friends-board-empty" class="friends-board-empty" hidden>
             <p>Nobody else yet. Friends appear once you’ve added each other.</p>
-            <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Go to online races</button>
+            <button id="friends-board-online" class="btn btn-secondary btn-sm" type="button">Add a friend</button>
           </div>
         </section>
 
-        <div id="local-challenge" hidden>
+        </section>
+
+        <section id="challenge-local-view" class="challenge-view" aria-labelledby="local-heading" hidden>
+          <button class="btn btn-ghost btn-sm challenge-back" type="button" data-challenge-back aria-label="Back to challenge">Back</button>
+          <h2 id="local-heading" tabindex="-1">One keyboard</h2>
+        <div id="local-challenge">
         <form id="compete-setup" class="challenge-setup">
           <div class="player-field">
             <label for="player-one-name">Player 1</label>
@@ -894,6 +906,7 @@
           <p>Not counted in your progress.</p>
         </div>
         </div>
+        </section>
       </section>
     </main>
 

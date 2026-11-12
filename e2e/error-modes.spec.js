@@ -55,7 +55,7 @@ test('fail on any error ends a local challenge turn as failed', async ({ page })
   await openApp(page);
   await chooseCorrection(page, 'fail-any');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#start-local-race').click();
   const text = await page.locator('#race-accessible-passage').textContent();
   await typeInto(page, text.slice(0, 5) + (text[5] === 'x' ? 'z' : 'x'), '#race-input');

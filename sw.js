@@ -19,6 +19,8 @@ const SHELL = [
   '/src/app.js',
   '/src/book-texts.js',
   '/src/books.js',
+  '/src/challenge-people-view.js',
+  '/src/challenge-people.js',
   '/src/code-snippets.js',
   '/src/compose-caret.js',
   '/src/compose-view.js',
