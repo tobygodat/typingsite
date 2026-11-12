@@ -353,6 +353,37 @@ test('a finished race still being watched leaves a practice run alone', async ({
   } finally { await context.close(); }
 });
 
+test('when the other racer leaves mid-race, this racer is told the race ended and stops sending', async ({ page, browser, supabase }) => {
+  supabase.addUser('host@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await page.locator('#mode-quote').click();
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  const link = await createGuestRace(page);
+  const context = await browser.newContext();
+  const guest = await context.newPage();
+  await supabase.attach(guest);
+
+  try {
+    await guest.goto(link);
+    await guest.locator('#online-guest-name').fill('Lin');
+    await guest.locator('#join-online-race').click();
+    await page.locator('#online-ready').click();
+    await guest.locator('#online-ready').click();
+    await expect(page.locator('#online-input')).toBeEnabled({ timeout: 12000 });
+    await expect(guest.locator('#online-input')).toBeEnabled();
+    const passage = await page.locator('#online-accessible-passage').textContent();
+    await typeInto(page, passage.slice(0, 10), '#online-input');
+
+    // Lin leaves a friendly race mid-race, which cancels it. Ada's next keys are progress the service refuses.
+    await guest.locator('#online-leave').click();
+    await typeInto(page, passage.slice(10, 20), '#online-input');
+    await expect(page.locator('#online-room-status')).toHaveText('This race ended because a player left.', { timeout: 5000 });
+    await expect(page.locator('#online-connection')).toHaveText('');
+  } finally { await context.close(); }
+});
+
 // Seeds a friend list entry as the service would keep it after a save.
 const saveFriend = (supabase, owner, email) => new Promise((resolve) => {
   supabase.races.handle(owner.id, { p_action: 'befriend', p_data: { email } }, resolve);
