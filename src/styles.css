@@ -3136,7 +3136,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .week-chart-value { fill: var(--text); font: var(--text-lead) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
 .week-chart-unit { fill: var(--muted); font-size: var(--text-small); }
 .week-chart-runs { fill: var(--muted); font: var(--text-label) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-/* Speed draws in the accent, accuracy in the text colour, as DESIGN.md's Progress charts say. */
+/* Speed draws in the accent, accuracy in the text colour, so the two small charts read apart at a glance. */
 .trend-line.trend-accuracy, .week-chart-end.trend-accuracy, .trend-dot.trend-accuracy { stroke: var(--text); }
 .trend-dot.trend-accuracy:is(:hover, :focus) { fill: var(--text); }
 

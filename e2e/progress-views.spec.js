@@ -202,6 +202,14 @@ test('what moved it: the fixed pairs with their evidence, three at a time, then 
 });
 
 // The list holds only what there is: no "more" under a short list, a practice row alone, and no list at all.
+test('exactly three fixed pairs all show, with no control for more', async ({ page, supabase }) => {
+  await openProgress(page, supabase, weekRuns(undefined, undefined, ['qu', 'ex', 'ox']));
+  await expect(page.locator('#week-movers > li:visible .mover-unit')).toHaveCount(4);
+  await expect(page.locator('#week-movers > li .mover-unit').last()).toHaveText('practice');
+  await expect(page.locator('#more-movers')).toBeHidden();
+  await expect(page.locator('#more-movers')).toHaveText('');
+});
+
 test('one fixed pair lists alone with practice, a week with nothing fixed lists practice, and with neither there is no list', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns(undefined, undefined, ['qu']));
   const units = page.locator('#week-movers > li .mover-unit');
@@ -598,27 +606,50 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
   await expect(page.locator('#week-movers .mover-unit').first()).toHaveText('ex');
 });
 
-// A length pill holds focus while the other tab clears: the pills are drawn again for an empty history, and the pill
-// that had focus is gone or disabled, so focus goes to the page's heading, never to the page's body.
-for (const where of ['overview', 'trends']) {
-  test(`a clear in another tab moves focus from a length pill to the page's heading, on the ${where}`, async ({ page, context, supabase }) => {
-    await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
-    const other = await context.newPage();
-    await other.clock.install({ time: NOW });
-    await supabase.attach(other);
-    await openApp(other);
-    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-
-    if (where === 'trends') await openProgressView(page, 'Speed');
+// Something on Progress holds focus while the other tab clears. The redraw for an empty history hides or disables
+// it, and focus goes to the page's heading, never to the page's body.
+const HOLDERS = {
+  'a length pill': async (page) => {
     await page.locator('.conditions-disclosure > summary').click();
-    await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).focus();
-    await openView(other, 'Progress');
-    await other.locator('#clear-history').click();
-    await other.locator('#confirm-clear-input').fill('clear');
-    await other.locator('#confirm-clear').click();
-    await expect(page.locator('#progress-empty')).toBeVisible();
-    await expect(page.locator('#progress-heading')).toBeFocused();
-  });
+
+    return page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' });
+  },
+  'the condition-set select': async (page) => {
+    await page.locator('.conditions-disclosure > summary').click();
+
+    return page.getByRole('combobox', { name: 'Conditions', exact: true });
+  },
+  'a period pill': async (page) => page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }),
+  'the more control': async (page) => page.locator('#more-movers'),
+  'the runs link': async (page) => page.locator('#open-runs'),
+  'the Keys link': async (page) => page.locator('#progress-more [data-progress-open="keys"]'),
+  'Clear history': async (page) => page.locator('#clear-history'),
+};
+
+for (const [name, holder] of Object.entries(HOLDERS)) {
+  for (const where of name === 'a length pill' ? ['overview', 'trends'] : ['overview']) {
+    test(`a clear in another tab moves focus from ${name} to the page's heading, on the ${where}`, async ({ page, context, supabase }) => {
+      // Two condition sets at 25 words, so the select has a choice to offer.
+      await openProgress(page, supabase, [...weekRuns(), run(1, 60, 95, { punctuation: true })].sort((a, b) => (a.at < b.at ? -1 : 1)),
+        { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+      const other = await context.newPage();
+      await other.clock.install({ time: NOW });
+      await supabase.attach(other);
+      await openApp(other);
+      await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+      if (where === 'trends') await openProgressView(page, 'Speed');
+      const control = await holder(page);
+      await control.focus();
+      await expect(control).toBeFocused();
+      await openView(other, 'Progress');
+      await other.locator('#clear-history').click();
+      await other.locator('#confirm-clear-input').fill('clear');
+      await other.locator('#confirm-clear').click();
+      await expect(page.locator('#progress-empty')).toBeVisible();
+      await expect(page.locator('#progress-heading')).toBeFocused();
+    });
+  }
 }
 
 // The full charts keep no rows. A clear from another tab closes them whole, and never leaves blank charts under

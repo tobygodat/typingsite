@@ -4308,24 +4308,27 @@ function renderTrendFigures(runs) {
 // kept where it was. A detail view of rows keeps them until it is left, so a row someone has open stays open.
 function renderWeek() {
   const open = progressState.detail;
+  const focused = $('progress-screen').contains(document.activeElement) ? document.activeElement : null;
   renderOverview(new Date());
 
   // The full charts keep no rows, so when a clear from another tab leaves them nothing to draw they close whole,
-  // back to the overview, and take focus with them if they held it. A view of rows stays as it is until it is left.
+  // back to the overview. A view of rows stays as it is until it is left.
   if (open === 'trends' && !progressState.detail) {
-    const inside = $('progress-detail').contains(document.activeElement);
     showProgressDetail();
+  } else {
+    // The full charts follow at once too, unless focus is on one of their points, which a redraw would drop: then
+    // they wait, whole, for the view's next drawing.
+    const held = ['progress-trend', 'accuracy-trend', 'progress-spread'].some((id) => $(id).contains(document.activeElement));
 
-    if (inside) $('progress-heading').focus({ preventScroll: true });
-
-    return;
+    if (!progressState.detail || (progressState.detail === 'trends' && !held)) drawProgressView();
   }
 
-  // The full charts follow at once too, unless focus is on one of their points, which a redraw would drop: then
-  // they wait, whole, for the view's next drawing.
-  const held = ['progress-trend', 'accuracy-trend', 'progress-spread'].some((id) => $(id).contains(document.activeElement));
+  // Focus that was on the page and now rests on nothing, or on something hidden or disabled, goes to the page's
+  // heading, never to the body. A row drawn again has already taken its focus back (renderMovers).
+  const now = document.activeElement;
+  const lost = focused && (!now || now === document.body || now.disabled || Boolean(now.closest('[hidden]')));
 
-  if (!progressState.detail || (progressState.detail === 'trends' && !held)) drawProgressView();
+  if (lost) $('progress-heading').focus({ preventScroll: true });
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -4402,7 +4405,7 @@ function renderMovers(week) {
   $('week-moved').hidden = !rows.length;
   const extra = week.movers.length - SHOWN_MOVERS;
   $('more-movers').hidden = extra < 1;
-  $('more-movers').textContent = open ? 'Fewer' : `${extra} more`;
+  $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : `${extra} more`;
   $('more-movers').setAttribute('aria-expanded', String(open));
 
   if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button') || $('progress-heading')).focus();

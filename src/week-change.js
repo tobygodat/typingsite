@@ -118,12 +118,15 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
 export function weekPractice(runs, practiceDays, goal, date) {
   const byDay = minutesByDay(runs, practiceDays);
   const fortnight = periodDays(14, date);
-  // Each day's minutes are a division, so the week's sum is rounded to a microminute before it is floored for print.
+  // Each day's minutes are a division, so the week's sum is rounded to a microminute before it is read for print.
   const sum = (days) => Math.round(days.reduce((total, day) => total + (byDay[day] || 0), 0) * 1e6) / 1e6;
   const [previous, current] = [sum(fortnight.slice(0, 7)), sum(fortnight.slice(7))];
 
   if (!(previous > 0) && !(current > 0)) return null;
-  const [now, was] = [Math.floor(current), Math.floor(previous)];
+  // The status follows the figures the row prints (goalMinutes): none, under a minute, then whole minutes. So a
+  // first half-minute after an empty week is more, not the same.
+  const printed = (minutes) => (minutes > 0 && minutes < 1 ? 0.5 : Math.floor(minutes));
+  const [now, was] = [printed(current), printed(previous)];
 
   return { status: now > was ? 'more' : now < was ? 'less' : 'same', current, previous, streak: practiceStreak(byDay, goal, date), goal };
 }

@@ -120,7 +120,7 @@ The two players type the same original passage sequentially on one keyboard, usi
 
 ## Progress and local history
 
-Progress answers one question first: what changed since last week, and what moved it (TOB-420). `weekChange` in `src/week-change.js` builds the overview as one value, a pure function of the profile's runs, loops and practice days, the chosen condition key, the train focus, the daily goal, the period and `now`: `{ lead, movers, practice, charts, recommendation }`. The page draws what it returns. The same history and settings give the same overview on any device, and after a merge in either order.
+Progress answers one question first: what changed since last week, and what moved it (TOB-420). `weekChange` in `src/week-change.js` builds the overview as one value, a pure function of the profile's runs, loops and practice days, the chosen condition key, the train focus, the daily goal, the period and `now`: `{ lead, movers, practice, charts }`. The page draws what it returns. The same history and settings give the same overview on any device, and after a merge in either order.
 
 Required IDs: `history-list`, `history-row-template`, `progress-empty`, `clear-history`, `clear-dialog`, `confirm-clear-input`, `confirm-clear`, `cancel-clear`, `history-toast`, `undo-clear`, and `history-feedback`.
 

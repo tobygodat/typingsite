@@ -108,6 +108,19 @@ test('practice compares minutes this week with the week before, as a plain fact,
   assert.equal(weekPractice(runs.slice(0, 2), { [dayKey(daysAgo(9))]: 180_000 }, 0, NOW_DATE).status, 'same');
 });
 
+// The row prints "0", "<1" and whole minutes, and its status word follows what it prints: a first half-minute after
+// an empty week reads "0 → <1 min", which is more, not the same.
+test('practice’s status follows the figures the row prints, under a minute included', () => {
+  const seconds = (id, days, amount) => ({ ...run(id, daysAgo(days)), elapsedMs: amount * 1000 });
+  const status = (...list) => weekPractice(list, {}, 0, NOW_DATE).status;
+  assert.equal(status(seconds('a', 0, 20)), 'more');
+  assert.equal(status(seconds('a', 8, 20)), 'less');
+  assert.equal(status(seconds('a', 0, 20), seconds('b', 8, 40)), 'same');
+  assert.equal(status(seconds('a', 0, 70), seconds('b', 8, 40)), 'more');
+  assert.equal(status(seconds('a', 0, 40), seconds('b', 8, 70)), 'less');
+  assert.equal(status(seconds('a', 0, 100), seconds('b', 8, 70)), 'same');
+});
+
 // A pair missed before this week and clean since it began, on enough tries, and never drilled: fixed since the week
 // began. A pair that got worse is not on the list: the list names what was fixed.
 test('a pair the learner named a week ago and no longer can is fixed, and a pair that got worse is not listed', () => {
