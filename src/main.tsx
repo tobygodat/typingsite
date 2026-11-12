@@ -1,3 +1,4 @@
+import { createSettings } from './settings.js';
 import { createPalette } from './palette.js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -14,8 +15,9 @@ if (!container) throw new Error('Missing application root');
 const practice = createPracticeSession();
 const learning = createLearningStore();
 const palette = createPalette();
+const settings = createSettings();
 const root = createRoot(container);
 
-flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} /></StrictMode>));
+flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} /></StrictMode>));
 
-attachApplication(practice, learning, palette);
+attachApplication(practice, learning, palette, settings);

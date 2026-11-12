@@ -5,7 +5,6 @@
 // browser scales up smoothly. Blur, opacity and reach are CSS on the layer, so a slider drag never redraws. The
 // dither and gradient grids cover the whole screen and are drawn once per pick or style, and again only when the
 // screen's size in cells changes.
-import { onSetting, selectSetting } from './settings.js';
 
 export const MAX_EDGE = 1024;
 export const STYLES = ['regular', 'dither', 'gradient'];
@@ -211,7 +210,7 @@ async function readStored(saved) {
   return { pixels, blob: await encode(node, 'image/webp') };
 }
 
-export function createWallpaper({ layer, input, remove, error, style, blur, opacity, reach, surfaces, reading }) {
+export function createWallpaper({ onSetting, selectSetting, layer, input, remove, error, style, blur, opacity, reach, surfaces, reading }) {
   const rows = [style, blur, opacity, reach].map((control) => control.closest('.preference-row'));
   let image = null;
   let luma = null;

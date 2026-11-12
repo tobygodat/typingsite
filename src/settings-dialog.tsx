@@ -1,50 +1,94 @@
-export function SettingsDialog() {
+import { KeybindingEditor } from './keybinding-editor.js';
+import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
+import { wordListIds } from './words.js';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { InputHTMLAttributes, MouseEvent } from 'react';
+import { createSettings } from './settings.js';
+import type { SettingId, SettingsController } from './settings.js';
+
+export function SettingsDialog({ controller }: { controller?: SettingsController } = {}) {
+  const [local] = useState(createSettings);
+  const settings = controller ?? local;
+  const view = useSyncExternalStore(settings.view.subscribe, settings.view.getSnapshot, settings.view.getSnapshot);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<Element | null>(null);
+  useLayoutEffect(() => settings.attach({
+    open(category, from) {
+      opener.current = from === undefined ? document.activeElement : from;
+      const panel = dialog.current;
+
+      if (panel && !panel.open) panel.showModal();
+      panel?.querySelector<HTMLButtonElement>(`[data-settings-category="${category}"]`)?.focus({ preventScroll: true });
+    },
+    close() {
+      if (!dialog.current?.open) return;
+      dialog.current.close();
+
+      if (document.querySelector('dialog[open]')) return;
+      const target = opener.current instanceof HTMLElement && opener.current.isConnected && opener.current.checkVisibility({ visibilityProperty: true }) ? opener.current : document.getElementById('exit-focus');
+      target?.focus({ preventScroll: true });
+    },
+    category() { const content = dialog.current?.querySelector('.settings-content');
+
+ if (content) content.scrollTop = 0; },
+  }), [settings]);
+
+  function radio(id: SettingId, value: string, fallback = false): InputHTMLAttributes<HTMLInputElement> {
+    return { value, checked: view.selected[id] === undefined ? fallback : view.selected[id] === value, readOnly: true };
+  }
+
+  function choose(id: SettingId, event: MouseEvent<HTMLFieldSetElement>) {
+    const target = event.target;
+
+    if (target instanceof HTMLInputElement && target.type === 'radio' && !target.matches(':disabled')) settings.choose(id, target.value);
+  }
+
   return (
-<dialog id="settings-dialog" aria-labelledby="settings-title">
+<dialog ref={dialog} id="settings-dialog" onCancel={(event) => { event.preventDefault(); settings.close(); }} onClose={() => settings.closed()} aria-labelledby="settings-title">
     <header className="settings-header">
       <h2 id="settings-title">Settings</h2>
-      <button id="settings-close" type="button" aria-label="Close settings"><span className="key-hint">esc</span><span aria-hidden="true">×</span></button>
+      <button id="settings-close" type="button" onClick={() => settings.close()} aria-label="Close settings"><span className="key-hint">esc</span><span aria-hidden="true">×</span></button>
     </header>
     <div className="settings-body">
       <nav className="settings-nav" aria-label="Settings categories">
-        <button type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current="true">appearance</button>
-        <button type="button" data-settings-category="practice" aria-controls="settings-practice">practice</button>
-        <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard">keyboard</button>
-        <button type="button" data-settings-category="sound" aria-controls="settings-sound">sound</button>
-        <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts">shortcuts</button>
+        <button type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current={view.category === 'appearance' ? 'true' : undefined} onClick={() => settings.category('appearance')}>appearance</button>
+        <button type="button" data-settings-category="practice" aria-controls="settings-practice" aria-current={view.category === 'practice' ? 'true' : undefined} onClick={() => settings.category('practice')}>practice</button>
+        <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard" aria-current={view.category === 'keyboard' ? 'true' : undefined} onClick={() => settings.category('keyboard')}>keyboard</button>
+        <button type="button" data-settings-category="sound" aria-controls="settings-sound" aria-current={view.category === 'sound' ? 'true' : undefined} onClick={() => settings.category('sound')}>sound</button>
+        <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts" aria-current={view.category === 'shortcuts' ? 'true' : undefined} onClick={() => settings.category('shortcuts')}>shortcuts</button>
         <button id="import-trigger" className="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog">Import Monkeytype settings</button>
       </nav>
       <div className="settings-content">
-        <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-title">
+        <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-title" hidden={view.category !== 'appearance'}>
           <div className="settings-intro"><h3 id="settings-appearance-title">Appearance</h3></div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="theme-select-label">theme</strong></div>
-            <fieldset className="setting-options" id="theme-select" aria-labelledby="theme-select-label">
-              <label className="setting-option"><input type="radio" name="theme-select" defaultValue="system" defaultChecked /><span>system</span></label>
-              <label className="setting-option"><input type="radio" name="theme-select" defaultValue="dark" /><span>dark</span></label>
-              <label className="setting-option"><input type="radio" name="theme-select" defaultValue="light" /><span>light</span></label>
+            <fieldset className="setting-options" id="theme-select" aria-labelledby="theme-select-label" disabled={view.disabled['theme-select'] ?? false} onClick={(event) => choose('theme-select', event)}>
+              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'system', true)} /><span>system</span></label>
+              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'dark')} /><span>dark</span></label>
+              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'light')} /><span>light</span></label>
               <button className="setting-action" id="theme-new" type="button" aria-controls="theme-editor" aria-expanded="false">new</button>
               <button className="setting-action" id="theme-edit" type="button" aria-controls="theme-editor" aria-expanded="false" hidden>edit</button>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="dark-theme-label">dark theme</strong></div>
-            <fieldset className="setting-options" id="dark-theme" aria-labelledby="dark-theme-label">
-              <label className="setting-option"><input type="radio" name="dark-theme" defaultValue="dark" defaultChecked /><span>dark</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" defaultValue="terminal" /><span>terminal</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" defaultValue="midnight" /><span>midnight</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" defaultValue="nord" /><span>nord</span></label>
+            <fieldset className="setting-options" id="dark-theme" aria-labelledby="dark-theme-label" disabled={view.disabled['dark-theme'] ?? false} onClick={(event) => choose('dark-theme', event)}>
+              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'dark', true)} /><span>dark</span></label>
+              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'terminal')} /><span>terminal</span></label>
+              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'midnight')} /><span>midnight</span></label>
+              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'nord')} /><span>nord</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="light-theme-label">light theme</strong></div>
-            <fieldset className="setting-options" id="light-theme" aria-labelledby="light-theme-label">
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="light" defaultChecked /><span>light</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="paper" /><span>paper</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="shadcn" /><span>shadcn</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="soft" /><span>soft</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="swiss" /><span>swiss</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" defaultValue="e-ink" /><span>e-ink</span></label>
+            <fieldset className="setting-options" id="light-theme" aria-labelledby="light-theme-label" disabled={view.disabled['light-theme'] ?? false} onClick={(event) => choose('light-theme', event)}>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'light', true)} /><span>light</span></label>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'paper')} /><span>paper</span></label>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'shadcn')} /><span>shadcn</span></label>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'soft')} /><span>soft</span></label>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'swiss')} /><span>swiss</span></label>
+              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'e-ink')} /><span>e-ink</span></label>
             </fieldset>
           </div>
           <form id="theme-editor" className="theme-editor" aria-label="Custom theme" noValidate hidden>
@@ -74,10 +118,10 @@ export function SettingsDialog() {
           </div>
           <div className="preference-row" hidden>
             <div className="preference-copy"><strong id="wallpaper-style-label">style</strong></div>
-            <fieldset className="setting-options" id="wallpaper-style" aria-labelledby="wallpaper-label wallpaper-style-label">
-              <label className="setting-option"><input type="radio" name="wallpaper-style" defaultValue="regular" /><span>regular</span></label>
-              <label className="setting-option"><input type="radio" name="wallpaper-style" defaultValue="dither" defaultChecked /><span>dither</span></label>
-              <label className="setting-option"><input type="radio" name="wallpaper-style" defaultValue="gradient" /><span>gradient</span></label>
+            <fieldset className="setting-options" id="wallpaper-style" aria-labelledby="wallpaper-label wallpaper-style-label" onClick={(event) => choose('wallpaper-style', event)}>
+              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'regular')} /><span>regular</span></label>
+              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'dither', true)} /><span>dither</span></label>
+              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'gradient')} /><span>gradient</span></label>
             </fieldset>
           </div>
           <label className="preference-row" htmlFor="wallpaper-blur" hidden>
@@ -94,138 +138,127 @@ export function SettingsDialog() {
           </label>
           <div className="preference-row">
             <div className="preference-copy"><strong id="font-size-label">text size</strong></div>
-            <fieldset className="setting-options" id="font-size" aria-labelledby="font-size-label">
-              <label className="setting-option"><input type="radio" name="font-size" defaultValue="22" /><span>small</span></label>
-              <label className="setting-option"><input type="radio" name="font-size" defaultValue="28" defaultChecked /><span>medium</span></label>
-              <label className="setting-option"><input type="radio" name="font-size" defaultValue="36" /><span>large</span></label>
+            <fieldset className="setting-options" id="font-size" aria-labelledby="font-size-label" disabled={view.disabled['font-size'] ?? false} onClick={(event) => choose('font-size', event)}>
+              <label className="setting-option"><input type="radio" name="font-size" {...radio('font-size', '22')} /><span>small</span></label>
+              <label className="setting-option"><input type="radio" name="font-size" {...radio('font-size', '28', true)} /><span>medium</span></label>
+              <label className="setting-option"><input type="radio" name="font-size" {...radio('font-size', '36')} /><span>large</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="word-highlight-label">word highlight</strong></div>
-            <fieldset className="setting-options" id="word-highlight" aria-labelledby="word-highlight-label">
-              <label className="setting-option"><input type="radio" name="word-highlight" defaultValue="off" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="word-highlight" defaultValue="current" /><span>this word</span></label>
-              <label className="setting-option"><input type="radio" name="word-highlight" defaultValue="next" /><span>next word</span></label>
+            <fieldset className="setting-options" id="word-highlight" aria-labelledby="word-highlight-label" disabled={view.disabled['word-highlight'] ?? false} onClick={(event) => choose('word-highlight', event)}>
+              <label className="setting-option"><input type="radio" name="word-highlight" {...radio('word-highlight', 'off', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="word-highlight" {...radio('word-highlight', 'current')} /><span>this word</span></label>
+              <label className="setting-option"><input type="radio" name="word-highlight" {...radio('word-highlight', 'next')} /><span>next word</span></label>
             </fieldset>
           </div>
           <div className="preference-row" hidden>
             <div className="preference-copy"><strong id="word-highlight-slide-label">slide</strong></div>
-            <fieldset className="setting-options" id="word-highlight-slide" aria-labelledby="word-highlight-label word-highlight-slide-label">
-              <label className="setting-option"><input type="radio" name="word-highlight-slide" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="word-highlight-slide" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="word-highlight-slide" aria-labelledby="word-highlight-label word-highlight-slide-label" disabled={view.disabled['word-highlight-slide'] ?? false} onClick={(event) => choose('word-highlight-slide', event)}>
+              <label className="setting-option"><input type="radio" name="word-highlight-slide" {...radio('word-highlight-slide', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="word-highlight-slide" {...radio('word-highlight-slide', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="tape-toggle-label">one-line tape</strong></div>
-            <fieldset className="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label">
-              <label className="setting-option"><input type="radio" name="tape-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="tape-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label" disabled={view.disabled['tape-toggle'] ?? false} onClick={(event) => choose('tape-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="tape-toggle" {...radio('tape-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="tape-toggle" {...radio('tape-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="typing-font-label">typing font</strong></div>
-            <fieldset className="setting-options" id="typing-font" aria-labelledby="typing-font-label">
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="literata" defaultChecked /><span>literata</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="source-serif" /><span>source serif</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="inter" /><span>inter</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="jetbrains-mono" /><span>jetbrains mono</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="ibm-plex-mono" /><span>ibm plex mono</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="roboto-mono" /><span>roboto mono</span></label>
-              <label className="setting-option"><input type="radio" name="typing-font" defaultValue="fira-code" /><span>fira code</span></label>
+            <fieldset className="setting-options" id="typing-font" aria-labelledby="typing-font-label" disabled={view.disabled['typing-font'] ?? false} onClick={(event) => choose('typing-font', event)}>
+              {TYPING_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="typing-font" {...radio('typing-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="app-font-label">app font</strong></div>
-            <fieldset className="setting-options" id="app-font" aria-labelledby="app-font-label">
-              <label className="setting-option"><input type="radio" name="app-font" defaultValue="literata" defaultChecked /><span>literata</span></label>
-              <label className="setting-option"><input type="radio" name="app-font" defaultValue="source-serif" /><span>source serif</span></label>
-              <label className="setting-option"><input type="radio" name="app-font" defaultValue="inter" /><span>inter</span></label>
+            <fieldset className="setting-options" id="app-font" aria-labelledby="app-font-label" disabled={view.disabled['app-font'] ?? false} onClick={(event) => choose('app-font', event)}>
+              {APP_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="app-font" {...radio('app-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
             </fieldset>
           </div>
           <div className="settings-preview" aria-label="Passage preview">
             <p id="settings-preview-passage"><span>Find</span> <span>a</span> <span>little</span> <span>room</span> <span>for</span> <span>thought.</span></p>
           </div>
         </section>
-        <section id="settings-practice" className="settings-category" aria-labelledby="settings-practice-title" hidden>
+        <section id="settings-practice" className="settings-category" aria-labelledby="settings-practice-title" hidden={view.category !== 'practice'}>
           <div className="settings-intro"><h3 id="settings-practice-title">Practice</h3></div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" className="preference-lock" hidden>fixed for standard</small></div>
-            <fieldset className="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock">
-              <label className="setting-option"><input type="radio" name="word-list" defaultValue="200" defaultChecked /><span>top 200</span></label>
-              <label className="setting-option"><input type="radio" name="word-list" defaultValue="1k" /><span>top 1k</span></label>
-              <label className="setting-option"><input type="radio" name="word-list" defaultValue="5k" /><span>top 5k</span></label>
-              <label className="setting-option"><input type="radio" name="word-list" defaultValue="10k" /><span>top 10k</span></label>
-              <label className="setting-option" hidden><input type="radio" name="word-list" defaultValue="standard" disabled /><span>1k–10k</span></label>
+            <fieldset className="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock" disabled={view.disabled['word-list'] ?? false} onClick={(event) => choose('word-list', event)}>
+              {wordListIds.map((id) => <label key={id} className="setting-option"><input type="radio" name="word-list" {...radio('word-list', id, id === '200')} /><span>top {id}</span></label>)}
+              <label className="setting-option" hidden><input type="radio" name="word-list" disabled {...radio('word-list', 'standard')} /><span>1k–10k</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="numbers-toggle-label">numbers</strong><small id="numbers-toggle-lock" className="preference-lock" hidden>fixed for standard</small></div>
-            <fieldset className="setting-options" id="numbers-toggle" aria-labelledby="numbers-toggle-label" aria-describedby="numbers-toggle-lock">
-              <label className="setting-option"><input type="radio" name="numbers-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="numbers-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="numbers-toggle" aria-labelledby="numbers-toggle-label" aria-describedby="numbers-toggle-lock" disabled={view.disabled['numbers-toggle'] ?? false} onClick={(event) => choose('numbers-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="numbers-toggle" {...radio('numbers-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="numbers-toggle" {...radio('numbers-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="repeat-quotes-toggle-label">repeat quotes</strong></div>
-            <fieldset className="setting-options" id="repeat-quotes-toggle" aria-labelledby="repeat-quotes-toggle-label">
-              <label className="setting-option"><input type="radio" name="repeat-quotes-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="repeat-quotes-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="repeat-quotes-toggle" aria-labelledby="repeat-quotes-toggle-label" disabled={view.disabled['repeat-quotes-toggle'] ?? false} onClick={(event) => choose('repeat-quotes-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="repeat-quotes-toggle" {...radio('repeat-quotes-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="repeat-quotes-toggle" {...radio('repeat-quotes-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row preference-row-wide">
             <div className="preference-copy"><strong id="correction-select-label">correction</strong><small id="correction-select-lock" className="preference-lock" hidden>fixed for standard</small></div>
-            <fieldset className="setting-options" id="correction-select" aria-labelledby="correction-select-label" aria-describedby="correction-select-lock">
-              <label className="setting-option"><input type="radio" name="correction-select" defaultValue="relaxed" defaultChecked /><span>free</span></label>
-              <label className="setting-option"><input type="radio" name="correction-select" defaultValue="mandatory" /><span>stop on error</span></label>
-              <label className="setting-option"><input type="radio" name="correction-select" defaultValue="no-backspace" /><span>no backspace</span></label>
-              <label className="setting-option"><input type="radio" name="correction-select" defaultValue="fail-word" /><span>fail on word error</span></label>
-              <label className="setting-option"><input type="radio" name="correction-select" defaultValue="fail-any" /><span>fail on any error</span></label>
+            <fieldset className="setting-options" id="correction-select" aria-labelledby="correction-select-label" aria-describedby="correction-select-lock" disabled={view.disabled['correction-select'] ?? false} onClick={(event) => choose('correction-select', event)}>
+              <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'relaxed', true)} /><span>free</span></label>
+              <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'mandatory')} /><span>stop on error</span></label>
+              <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'no-backspace')} /><span>no backspace</span></label>
+              <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'fail-word')} /><span>fail on word error</span></label>
+              <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'fail-any')} /><span>fail on any error</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="strict-space-toggle-label">strict space</strong><small className="preference-note" id="rules-note" hidden></small></div>
-            <fieldset className="setting-options" id="strict-space-toggle" aria-labelledby="strict-space-toggle-label" aria-describedby="rules-note">
-              <label className="setting-option"><input type="radio" name="strict-space-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="strict-space-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="strict-space-toggle" aria-labelledby="strict-space-toggle-label" aria-describedby="rules-note" disabled={view.disabled['strict-space-toggle'] ?? false} onClick={(event) => choose('strict-space-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="quick-end-toggle-label">quick end</strong><small className="preference-note" id="quick-end-note" hidden></small></div>
-            <fieldset className="setting-options" id="quick-end-toggle" aria-labelledby="quick-end-toggle-label" aria-describedby="quick-end-note rules-note">
-              <label className="setting-option"><input type="radio" name="quick-end-toggle" defaultValue="false" /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="quick-end-toggle" defaultValue="true" defaultChecked /><span>on</span></label>
+            <fieldset className="setting-options" id="quick-end-toggle" aria-labelledby="quick-end-toggle-label" aria-describedby="quick-end-note rules-note" disabled={view.disabled['quick-end-toggle'] ?? false} onClick={(event) => choose('quick-end-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="quick-end-toggle" {...radio('quick-end-toggle', 'false')} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="quick-end-toggle" {...radio('quick-end-toggle', 'true', true)} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="min-accuracy-label">minimum accuracy</strong></div>
-            <fieldset className="setting-options" id="min-accuracy" aria-labelledby="min-accuracy-label">
-              <label className="setting-option"><input type="radio" name="min-accuracy" defaultValue="0" defaultChecked /><span>any %</span></label>
-              <label className="setting-option"><input type="radio" name="min-accuracy" defaultValue="80" /><span>80%</span></label>
-              <label className="setting-option"><input type="radio" name="min-accuracy" defaultValue="90" /><span>90%</span></label>
-              <label className="setting-option"><input type="radio" name="min-accuracy" defaultValue="95" /><span>95%</span></label>
-              <label className="setting-option"><input type="radio" name="min-accuracy" defaultValue="98" /><span>98%</span></label>
+            <fieldset className="setting-options" id="min-accuracy" aria-labelledby="min-accuracy-label" disabled={view.disabled['min-accuracy'] ?? false} onClick={(event) => choose('min-accuracy', event)}>
+              <label className="setting-option"><input type="radio" name="min-accuracy" {...radio('min-accuracy', '0', true)} /><span>any %</span></label>
+              <label className="setting-option"><input type="radio" name="min-accuracy" {...radio('min-accuracy', '80')} /><span>80%</span></label>
+              <label className="setting-option"><input type="radio" name="min-accuracy" {...radio('min-accuracy', '90')} /><span>90%</span></label>
+              <label className="setting-option"><input type="radio" name="min-accuracy" {...radio('min-accuracy', '95')} /><span>95%</span></label>
+              <label className="setting-option"><input type="radio" name="min-accuracy" {...radio('min-accuracy', '98')} /><span>98%</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="min-wpm-label">minimum speed</strong></div>
-            <fieldset className="setting-options" id="min-wpm" aria-labelledby="min-wpm-label">
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="0" defaultChecked /><span data-speed-unit="any {unit}">any wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="20" /><span data-wpm="20">20 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="30" /><span data-wpm="30">30 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="40" /><span data-wpm="40">40 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="60" /><span data-wpm="60">60 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="80" /><span data-wpm="80">80 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" defaultValue="100" /><span data-wpm="100">100 wpm</span></label>
+            <fieldset className="setting-options" id="min-wpm" aria-labelledby="min-wpm-label" disabled={view.disabled['min-wpm'] ?? false} onClick={(event) => choose('min-wpm', event)}>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '0', true)} /><span data-speed-unit="any {unit}">any wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '20')} /><span data-wpm="20">20 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '30')} /><span data-wpm="30">30 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '40')} /><span data-wpm="40">40 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '60')} /><span data-wpm="60">60 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '80')} /><span data-wpm="80">80 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '100')} /><span data-wpm="100">100 wpm</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="pace-select-label">pace caret</strong><small id="pace-note" className="pace-note"></small></div>
-            <fieldset className="setting-options" id="pace-select" aria-labelledby="pace-select-label" aria-describedby="pace-note">
-              <label className="setting-option"><input type="radio" name="pace-select" defaultValue="off" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="pace-select" defaultValue="best" /><span>personal best</span></label>
-              <label className="setting-option"><input type="radio" name="pace-select" defaultValue="average" /><span>average</span></label>
-              <label className="setting-option"><input type="radio" name="pace-select" defaultValue="last" /><span>last run</span></label>
-              <label className="setting-option"><input type="radio" name="pace-select" defaultValue="custom" /><span>custom</span></label>
+            <fieldset className="setting-options" id="pace-select" aria-labelledby="pace-select-label" aria-describedby="pace-note" disabled={view.disabled['pace-select'] ?? false} onClick={(event) => choose('pace-select', event)}>
+              <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'off', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'best')} /><span>personal best</span></label>
+              <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'average')} /><span>average</span></label>
+              <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'last')} /><span>last run</span></label>
+              <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'custom')} /><span>custom</span></label>
             </fieldset>
           </div>
           <label id="pace-custom" className="preference-row" htmlFor="pace-wpm" hidden>
@@ -234,95 +267,95 @@ export function SettingsDialog() {
           </label>
           <div className="preference-row">
             <div className="preference-copy"><strong id="speed-unit-label">speed unit</strong></div>
-            <fieldset className="setting-options" id="speed-unit" aria-labelledby="speed-unit-label">
-              <label className="setting-option"><input type="radio" name="speed-unit" defaultValue="wpm" defaultChecked /><span>wpm</span></label>
-              <label className="setting-option"><input type="radio" name="speed-unit" defaultValue="cpm" /><span>cpm</span></label>
+            <fieldset className="setting-options" id="speed-unit" aria-labelledby="speed-unit-label" disabled={view.disabled['speed-unit'] ?? false} onClick={(event) => choose('speed-unit', event)}>
+              <label className="setting-option"><input type="radio" name="speed-unit" {...radio('speed-unit', 'wpm', true)} /><span>wpm</span></label>
+              <label className="setting-option"><input type="radio" name="speed-unit" {...radio('speed-unit', 'cpm')} /><span>cpm</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="daily-goal-label">daily goal</strong></div>
-            <fieldset className="setting-options" id="daily-goal" aria-labelledby="daily-goal-label">
-              <label className="setting-option"><input type="radio" name="daily-goal" defaultValue="0" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="daily-goal" defaultValue="5" /><span>5 min</span></label>
-              <label className="setting-option"><input type="radio" name="daily-goal" defaultValue="10" /><span>10 min</span></label>
-              <label className="setting-option"><input type="radio" name="daily-goal" defaultValue="15" /><span>15 min</span></label>
-              <label className="setting-option"><input type="radio" name="daily-goal" defaultValue="30" /><span>30 min</span></label>
+            <fieldset className="setting-options" id="daily-goal" aria-labelledby="daily-goal-label" disabled={view.disabled['daily-goal'] ?? false} onClick={(event) => choose('daily-goal', event)}>
+              <label className="setting-option"><input type="radio" name="daily-goal" {...radio('daily-goal', '0', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="daily-goal" {...radio('daily-goal', '5')} /><span>5 min</span></label>
+              <label className="setting-option"><input type="radio" name="daily-goal" {...radio('daily-goal', '10')} /><span>10 min</span></label>
+              <label className="setting-option"><input type="radio" name="daily-goal" {...radio('daily-goal', '15')} /><span>15 min</span></label>
+              <label className="setting-option"><input type="radio" name="daily-goal" {...radio('daily-goal', '30')} /><span>30 min</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="train-focus-label">train focus</strong></div>
-            <fieldset className="setting-options" id="train-focus" aria-labelledby="train-focus-label">
-              <label className="setting-option"><input type="radio" name="train-focus" defaultValue="balanced" defaultChecked /><span>balanced</span></label>
-              <label className="setting-option"><input type="radio" name="train-focus" defaultValue="accuracy" /><span>accuracy</span></label>
-              <label className="setting-option"><input type="radio" name="train-focus" defaultValue="speed" /><span>speed</span></label>
+            <fieldset className="setting-options" id="train-focus" aria-labelledby="train-focus-label" disabled={view.disabled['train-focus'] ?? false} onClick={(event) => choose('train-focus', event)}>
+              <label className="setting-option"><input type="radio" name="train-focus" {...radio('train-focus', 'balanced', true)} /><span>balanced</span></label>
+              <label className="setting-option"><input type="radio" name="train-focus" {...radio('train-focus', 'accuracy')} /><span>accuracy</span></label>
+              <label className="setting-option"><input type="radio" name="train-focus" {...radio('train-focus', 'speed')} /><span>speed</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="drill-length-label">drill length</strong></div>
-            <fieldset className="setting-options" id="drill-length" aria-labelledby="drill-length-label">
-              <label className="setting-option"><input type="radio" name="drill-length" defaultValue="15" /><span>15 s</span></label>
-              <label className="setting-option"><input type="radio" name="drill-length" defaultValue="30" defaultChecked /><span>30 s</span></label>
-              <label className="setting-option"><input type="radio" name="drill-length" defaultValue="60" /><span>60 s</span></label>
-              <label className="setting-option"><input type="radio" name="drill-length" defaultValue="120" /><span>120 s</span></label>
+            <fieldset className="setting-options" id="drill-length" aria-labelledby="drill-length-label" disabled={view.disabled['drill-length'] ?? false} onClick={(event) => choose('drill-length', event)}>
+              <label className="setting-option"><input type="radio" name="drill-length" {...radio('drill-length', '15')} /><span>15 s</span></label>
+              <label className="setting-option"><input type="radio" name="drill-length" {...radio('drill-length', '30', true)} /><span>30 s</span></label>
+              <label className="setting-option"><input type="radio" name="drill-length" {...radio('drill-length', '60')} /><span>60 s</span></label>
+              <label className="setting-option"><input type="radio" name="drill-length" {...radio('drill-length', '120')} /><span>120 s</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="retest-toggle-label">retest after drill</strong></div>
-            <fieldset className="setting-options" id="retest-toggle" aria-labelledby="retest-toggle-label">
-              <label className="setting-option"><input type="radio" name="retest-toggle" defaultValue="false" /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="retest-toggle" defaultValue="true" defaultChecked /><span>on</span></label>
+            <fieldset className="setting-options" id="retest-toggle" aria-labelledby="retest-toggle-label" disabled={view.disabled['retest-toggle'] ?? false} onClick={(event) => choose('retest-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="retest-toggle" {...radio('retest-toggle', 'false')} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="retest-toggle" {...radio('retest-toggle', 'true', true)} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">live wpm and accuracy</strong></div>
-            <fieldset className="setting-options" id="live-toggle" aria-labelledby="live-toggle-label">
-              <label className="setting-option"><input type="radio" name="live-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="live-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="live-toggle" aria-labelledby="live-toggle-label" disabled={view.disabled['live-toggle'] ?? false} onClick={(event) => choose('live-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="focus-toggle-label">focus mode</strong></div>
-            <fieldset className="setting-options" id="focus-toggle" aria-labelledby="focus-toggle-label">
-              <label className="setting-option"><input type="radio" name="focus-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="focus-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="focus-toggle" aria-labelledby="focus-toggle-label" disabled={view.disabled['focus-toggle'] ?? false} onClick={(event) => choose('focus-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
         </section>
-        <section id="settings-keyboard" className="settings-category" aria-labelledby="settings-keyboard-title" hidden>
+        <section id="settings-keyboard" className="settings-category" aria-labelledby="settings-keyboard-title" hidden={view.category !== 'keyboard'}>
           <div className="settings-intro"><h3 id="settings-keyboard-title">Keyboard</h3></div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="layout-select-label">keyboard layout</strong><small id="layout-note" className="preference-note">Doesn’t remap keys; set the layout in your system.</small></div>
-            <fieldset className="setting-options" id="layout-select" aria-labelledby="layout-select-label" aria-describedby="layout-note">
-              <label className="setting-option"><input type="radio" name="layout-select" defaultValue="qwerty" defaultChecked /><span>qwerty</span></label>
-              <label className="setting-option"><input type="radio" name="layout-select" defaultValue="dvorak" /><span>dvorak</span></label>
-              <label className="setting-option"><input type="radio" name="layout-select" defaultValue="colemak" /><span>colemak</span></label>
-              <label className="setting-option"><input type="radio" name="layout-select" defaultValue="colemak-dh" /><span>colemak-dh</span></label>
-              <label className="setting-option"><input type="radio" name="layout-select" defaultValue="workman" /><span>workman</span></label>
+            <fieldset className="setting-options" id="layout-select" aria-labelledby="layout-select-label" aria-describedby="layout-note" disabled={view.disabled['layout-select'] ?? false} onClick={(event) => choose('layout-select', event)}>
+              <label className="setting-option"><input type="radio" name="layout-select" {...radio('layout-select', 'qwerty', true)} /><span>qwerty</span></label>
+              <label className="setting-option"><input type="radio" name="layout-select" {...radio('layout-select', 'dvorak')} /><span>dvorak</span></label>
+              <label className="setting-option"><input type="radio" name="layout-select" {...radio('layout-select', 'colemak')} /><span>colemak</span></label>
+              <label className="setting-option"><input type="radio" name="layout-select" {...radio('layout-select', 'colemak-dh')} /><span>colemak-dh</span></label>
+              <label className="setting-option"><input type="radio" name="layout-select" {...radio('layout-select', 'workman')} /><span>workman</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="keyboard-toggle-label">keyboard</strong></div>
-            <fieldset className="setting-options" id="keyboard-toggle" aria-labelledby="keyboard-toggle-label">
-              <label className="setting-option"><input type="radio" name="keyboard-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="keyboard-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="keyboard-toggle" aria-labelledby="keyboard-toggle-label" disabled={view.disabled['keyboard-toggle'] ?? false} onClick={(event) => choose('keyboard-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="keyboard-toggle" {...radio('keyboard-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="keyboard-toggle" {...radio('keyboard-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row" id="finger-row">
             <div className="preference-copy"><strong id="finger-toggle-label">finger map</strong><small id="finger-note" className="preference-note">Turn on the keyboard to show its finger map.</small></div>
-            <fieldset className="setting-options" id="finger-toggle" aria-labelledby="finger-toggle-label" aria-describedby="finger-note">
-              <label className="setting-option"><input type="radio" name="finger-toggle" defaultValue="false" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="finger-toggle" defaultValue="true" /><span>on</span></label>
+            <fieldset className="setting-options" id="finger-toggle" aria-labelledby="finger-toggle-label" aria-describedby="finger-note" disabled={view.disabled['finger-toggle'] ?? false} onClick={(event) => choose('finger-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="finger-toggle" {...radio('finger-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="finger-toggle" {...radio('finger-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
         </section>
-        <section id="settings-sound" className="settings-category" aria-labelledby="settings-sound-title" hidden>
+        <section id="settings-sound" className="settings-category" aria-labelledby="settings-sound-title" hidden={view.category !== 'sound'}>
           <div className="settings-intro"><h3 id="settings-sound-title">Sound</h3></div>
           <div className="preference-row">
             <div className="preference-copy"><strong id="sound-select-label">sound</strong></div>
-            <fieldset className="setting-options" id="sound-select" aria-labelledby="sound-select-label">
-              <label className="setting-option"><input type="radio" name="sound-select" defaultValue="off" defaultChecked /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="sound-select" defaultValue="clicks" /><span>clicks</span></label>
-              <label className="setting-option"><input type="radio" name="sound-select" defaultValue="clicks-errors" /><span>clicks + error tick</span></label>
+            <fieldset className="setting-options" id="sound-select" aria-labelledby="sound-select-label" disabled={view.disabled['sound-select'] ?? false} onClick={(event) => choose('sound-select', event)}>
+              <label className="setting-option"><input type="radio" name="sound-select" {...radio('sound-select', 'off', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="sound-select" {...radio('sound-select', 'clicks')} /><span>clicks</span></label>
+              <label className="setting-option"><input type="radio" name="sound-select" {...radio('sound-select', 'clicks-errors')} /><span>clicks + error tick</span></label>
             </fieldset>
           </div>
           <label className="preference-row" id="sound-volume-row" htmlFor="sound-volume">
@@ -333,46 +366,17 @@ export function SettingsDialog() {
             </span>
           </label>
         </section>
-        <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden>
+        <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden={view.category !== 'shortcuts'}>
           <div className="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3></div>
           <p id="keybindings-help">Mod means Ctrl or ⌘. Leave blank to disable.</p>
-          <form id="keybindings-form">
-            <div className="keybinding-row">
-              <label htmlFor="keybinding-restart">restart test / local challenge</label>
-              <div className="keybinding-controls">
-                <input className="input" id="keybinding-restart" name="restart" type="text" spellCheck={false} autoComplete="off" autoCapitalize="off" aria-describedby="keybindings-help keybinding-restart-error" />
-                <button className="btn btn-secondary btn-sm" type="button" data-record="restart" aria-label="Record restart test / local challenge binding" aria-pressed="false">Record</button>
-              </div>
-              <p className="keybinding-error" id="keybinding-restart-error"></p>
-            </div>
-            <div className="keybinding-row">
-              <label htmlFor="keybinding-commands">commands</label>
-              <div className="keybinding-controls">
-                <input className="input" id="keybinding-commands" name="commands" type="text" spellCheck={false} autoComplete="off" autoCapitalize="off" aria-describedby="keybindings-help keybinding-commands-error" />
-                <button className="btn btn-secondary btn-sm" type="button" data-record="commands" aria-label="Record commands binding" aria-pressed="false">Record</button>
-              </div>
-              <p className="keybinding-error" id="keybinding-commands-error"></p>
-            </div>
-            <div className="keybinding-row">
-              <label htmlFor="keybinding-exitFocus">exit focus mode</label>
-              <div className="keybinding-controls">
-                <input className="input" id="keybinding-exitFocus" name="exitFocus" type="text" spellCheck={false} autoComplete="off" autoCapitalize="off" aria-describedby="keybindings-help keybinding-exitFocus-error" />
-                <button className="btn btn-secondary btn-sm" type="button" data-record="exitFocus" aria-label="Record exit focus mode binding" aria-pressed="false">Record</button>
-              </div>
-              <p className="keybinding-error" id="keybinding-exitFocus-error"></p>
-            </div>
-            <div className="keybinding-actions">
-              <button className="btn btn-ghost btn-sm" type="button" data-reset-bindings="">Reset defaults</button>
-            </div>
-            <p id="keybindings-status" role="status" aria-live="polite"></p>
-          </form>
+          <KeybindingEditor editor={settings.keybindings} />
 
         </section>
       </div>
     </div>
     <footer className="settings-footer">
       <p id="settings-saved">Guest settings last for this tab.</p>
-      <button id="settings-done" className="btn btn-primary" type="button">Done</button>
+      <button onClick={() => settings.close()} id="settings-done" className="btn btn-primary" type="button">Done</button>
     </footer>
   </dialog>
   );

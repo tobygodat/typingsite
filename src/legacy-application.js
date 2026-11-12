@@ -54,11 +54,10 @@ import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
-import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
 import { createWallpaper } from './wallpaper.js';
 import { createThemeEditor, showThemeOptions, wearColors } from './theme-editor.js';
 import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
-import { matchesBinding, bindingLabel, ariaShortcuts, createKeybindingEditor } from './keybindings.js';
+import { matchesBinding, bindingLabel, ariaShortcuts } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { createOnlineRace } from './online-race.js';
@@ -94,7 +93,11 @@ function copyParts(value) {
   });
 }
 
-export function attachApplication(practice, learning, palette) {
+export function attachApplication(practice, learning, palette, settingsView) {
+const selectSetting = settingsView.select;
+const disableSetting = settingsView.disable;
+const onSetting = settingsView.onSetting;
+
 function updateComparison(patch) {
   flushSync(() => learning.comparison.publish({ ...learning.comparison.getSnapshot(), ...patch }));
 }
@@ -226,7 +229,6 @@ let wordsPassage = null;
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
 const ghostOn = () => learning.preferences.paceCaret !== 'off';
 let keybindingEditor = null;
-let settingsView = null;
 let themeEditor = null;
 let onlineRace = null;
 let inbox = null;
@@ -6082,13 +6084,15 @@ function bindEvents() {
   onSetting('speed-unit', (value) => setSpeedUnit(value));
   onSetting('word-highlight', (value) => setWordHighlight(value));
   onSetting('word-highlight-slide', (value) => setWordHighlightSlide(value === 'true'));
-  keybindingEditor = createKeybindingEditor({
-    form: $('keybindings-form'), status: $('keybindings-status'), getBindings: () => learning.preferences.keybindings,
+  keybindingEditor = settingsView.keybindings;
+  keybindingEditor.configure({
+    getBindings: () => learning.preferences.keybindings,
     onSave: (bindings) => { learning.preferences.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
-  createWallpaper({ layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
-  settingsView = createSettingsView({ dialog: $('settings-dialog'), trigger: $('settings-trigger'), fallback: $('exit-focus'), stopRecording: () => keybindingEditor.stopRecording() });
+  createWallpaper({ onSetting, selectSetting, layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
+  settingsView.configure(() => keybindingEditor.stopRecording());
+  $('settings-trigger').addEventListener('click', () => settingsView.open());
   onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
   onSetting('keyboard-toggle', (value) => { learning.preferences.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
   onSetting('finger-toggle', (value) => { learning.preferences.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
