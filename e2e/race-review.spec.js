@@ -2,14 +2,14 @@ import { test, expect, openApp, openView, signInWithEmail, typeInto, setRaceName
 
 test.setTimeout(90000);
 
-// Ada hosts a quote race, which ends with its passage rather than on the clock, and invites Lin's account; both
-// ready and type the whole passage, Ada first, so Ada wins.
-async function racePair(page, browser, supabase) {
+// Ada hosts a race (a quote race, which ends with its passage rather than on the clock, unless `setup` picks another
+// practice setup first) and invites Lin's account; both ready, and the race is on.
+async function pairInRace(page, browser, supabase, setup = () => page.locator('#mode-quote').click()) {
   supabase.addUser('ada@stilltype.test');
   supabase.addUser('lin@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await page.locator('#mode-quote').click();
+  await setup();
   await openView(page, 'Challenge');
   await setRaceName(page, 'Ada');
   await inviteByEmail(page, 'lin@stilltype.test');
@@ -27,11 +27,22 @@ async function racePair(page, browser, supabase) {
   await lin.locator('#online-ready').click();
   await expect(page.locator('#online-input')).toBeEnabled({ timeout: 12000 });
   await expect(lin.locator('#online-input')).toBeEnabled();
-  const passage = await page.locator('#online-accessible-passage').textContent();
+
+  return { context, lin, passage: await page.locator('#online-accessible-passage').textContent() };
+}
+
+// Both type the whole passage, Ada first, so Ada wins.
+async function typeBoth(page, lin, passage) {
   await typeInto(page, passage, '#online-input', { delay: 20 });
   await typeInto(lin, passage, '#online-input', { delay: 5 });
   await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
   await expect(lin.locator('#online-results')).toBeVisible({ timeout: 10000 });
+}
+
+// A quote race between Ada and Lin, raced to its end.
+async function racePair(page, browser, supabase) {
+  const { context, lin, passage } = await pairInRace(page, browser, supabase);
+  await typeBoth(page, lin, passage);
 
   return { context, lin, passage };
 }
@@ -116,5 +127,72 @@ test('a race without both traces, such as one from before them, shows no Graph o
     await page.waitForTimeout(1500);
     await expect(page.locator('#online-review')).toBeHidden();
     await expect(lin.locator('#online-review')).toBeHidden();
+  } finally { await context.close(); }
+});
+
+// On a slow link a racer's last progress can reach the service after its clock. The service finishes the racer on the
+// keys that progress carried, and it carries no trace, so neither racer had Graph or Replay. The racer's tab now sends
+// the trace of exactly those keys, which the service keeps.
+test('progress that reaches the service after a timed race’s clock still leaves both traces, so Graph and Replay show', async ({ page, browser, supabase }) => {
+  const { context, lin, passage } = await pairInRace(page, browser, supabase, async () => {
+    await page.locator('#mode-time').click();
+    await page.locator('#duration-options [data-length="15"]').click();
+  });
+
+  try {
+    await typeInto(page, passage.slice(0, 20), '#online-input', { delay: 20 });
+    await typeInto(lin, passage.slice(0, 20), '#online-input', { delay: 20 });
+    const room = [...supabase.races.rooms.values()].at(-1);
+    const clockOut = Date.parse(room.startAt) + room.duration * 1000;
+
+    // Ada's next progress waits on its way to the service until the service's clock has run out.
+    let open;
+    const gate = new Promise((resolve) => { open = resolve; });
+    const progress = (request) => request.url().includes('/rpc/race_action') && request.postDataJSON()?.p_action === 'progress';
+    await page.route('**/rest/v1/rpc/race_action', async (route) => {
+      if (progress(route.request())) await gate;
+      await route.fallback();
+    });
+    const held = page.waitForRequest(progress);
+    await page.keyboard.type(passage[20]);
+    await held;
+    await expect.poll(() => Date.now() > clockOut + 500, { timeout: 20000 }).toBe(true);
+    open();
+
+    await expect(page.locator('#online-results')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#online-review')).toBeVisible({ timeout: 10000 });
+    await expect(lin.locator('#online-review')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#online-duel-graph path.graph-line')).toHaveCount(2);
+    expect(room.players.map((player) => player.trace?.k.length)).toEqual([21, 20]);
+  } finally { await context.close(); }
+});
+
+// A rematch's join reply that lands late carries the service's time from when it answered, so a tab that took that
+// time as now ran its race clock seconds behind the service's: it counted down while the other racer typed, and the
+// service finished it before its own clock ran out. Each later reply bounds the start again, and the earliest counts.
+test('a rematch joined late races on the service’s clock, and both results still show Graph and Replay', async ({ page, browser, supabase }) => {
+  const { context, lin } = await racePair(page, browser, supabase);
+
+  try {
+    await expect(page.locator('#online-review')).toBeVisible();
+    await lin.locator('#online-rematch').click();
+    await expect(page.locator('#online-their-rematch')).toHaveAttribute('data-state', 'chosen');
+
+    // Ada picks second, so her tab joins the rematch at once; the service answers that join only after the
+    // rematch's countdown, which Lin's tab, joining on time, sees end.
+    const release = supabase.races.hold('join', supabase.users.get('ada@stilltype.test').id);
+    await page.locator('#online-rematch').click();
+    await expect(lin.locator('#online-input')).toBeEnabled({ timeout: 12000 });
+    release();
+
+    await expect(page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+    const left = async (racer) => Number((await racer.locator('#online-timer').textContent()).match(/\d+/)[0]);
+    const [ada, theirs] = await Promise.all([left(page), left(lin)]);
+    expect(Math.abs(ada - theirs)).toBeLessThanOrEqual(1);
+
+    const passage = await page.locator('#online-accessible-passage').textContent();
+    await typeBoth(page, lin, passage);
+    await expect(page.locator('#online-review')).toBeVisible({ timeout: 10000 });
+    await expect(lin.locator('#online-review')).toBeVisible({ timeout: 10000 });
   } finally { await context.close(); }
 });

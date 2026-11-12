@@ -82,9 +82,11 @@ test('the list follows an invitation arriving, being dismissed, accepted elsewhe
   await other.goto('/');
   await openView(other, 'Challenge');
   await expect(other.locator('#people-list [data-state="invited"]')).toHaveCount(1);
+  // The click focused Dismiss; with Kim's row gone, focus goes to the row now in its place, not to its Race.
   await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).click();
   await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(0);
-  await expect(race).toBeFocused();
+  await expect(rows(page).filter({ hasText: 'Ada' })).toBeFocused();
+  await race.focus();
   await expect(other.locator('#people-list [data-state="invited"]')).toHaveCount(0);
 
   // A friend added in the other tab appears here without a reload.

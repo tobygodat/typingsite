@@ -44,11 +44,12 @@ export class FakeQuickMatch {
     this.held = null;
   }
 
-  // Holds the reply to the next 'queue' request: the service acts on it at once, and the answer comes back
-  // only once the test calls the returned release.
-  holdNextQueue() {
+  // Holds the reply to the next 'queue' request (from `caller` alone, when given: another racer still searching
+  // polls the queue too, and its poll must not take the hold): the service acts on it at once, and the answer comes
+  // back only once the test calls the returned release.
+  holdNextQueue(caller = null) {
     let release;
-    this.held = new Promise((resolve) => { release = resolve; });
+    this.held = { caller, until: new Promise((resolve) => { release = resolve; }) };
 
     return () => release();
   }
@@ -161,7 +162,7 @@ export class FakeQuickMatch {
   }
 
   handle(caller, { p_action: action, p_data: data = {} }, reply) {
-    const held = action === 'queue' ? this.held : null;
+    const held = action === 'queue' && this.held && (!this.held.caller || this.held.caller === caller) ? this.held.until : null;
 
     if (held) this.held = null;
     const send = held ? (status, json) => held.then(() => reply(status, json)) : reply;

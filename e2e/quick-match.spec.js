@@ -308,7 +308,7 @@ test('before the migration is applied, quick match says it is being set up and h
 
 test('a pairing that lands after Stop never opens the race, and the other racer sees it called off', async ({ page, browser, supabase }) => {
   supabase.addUser('ada@stilltype.test');
-  supabase.addUser('lin@stilltype.test');
+  const linUser = supabase.addUser('lin@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openView(page, 'Challenge');
@@ -317,8 +317,9 @@ test('a pairing that lands after Stop never opens the race, and the other racer 
   const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin');
 
   try {
-    // Lin's request pairs on the service, but its reply is held until after Lin presses Stop.
-    const release = supabase.races.quick.holdNextQueue();
+    // Lin's request pairs on the service, but its reply is held until after Lin presses Stop. Only Lin's: Ada is still
+    // searching and polls the queue too, and a hold her poll took would keep her from ever seeing the match.
+    const release = supabase.races.quick.holdNextQueue(linUser.id);
     await quick(lin).click();
     await expect(quick(lin)).toHaveText('Stop looking');
     await expect(page.locator('#online-room-status')).toHaveText('Matched with Lin.', { timeout: 5000 });

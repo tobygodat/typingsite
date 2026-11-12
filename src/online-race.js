@@ -83,6 +83,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
   let refused = false;
   let finishRequested = false;
+  // Whether a finishing packet (the one that carries the trace) has gone; the last few progress packets sent, each
+  // with the keys it covered; and the trace sent for the keys the service settled on, when it finished this seat
+  // before that packet (sendSettledTrace).
+  let finishSent = false;
+  let sentProgress = [];
+  let settledTrace = null;
   let baseKeystrokes = 0;
   let baseErrors = 0;
   let baseTyped = '';
@@ -233,7 +239,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (signedIn && !rows.length && friendsLoaded) rows.push({ key: 'link', kind: 'link', state: 'link', name: 'A friend', line: null, tally: null });
     $('people-race-link').hidden = !signedIn || rows.some((row) => row.kind === 'link');
     $('people-list').hidden = !rows.length;
-    drawPeople($('people-list'), rows, { fallback: $('quick-match').querySelector('[data-quick="toggle"]'),
+    // With no row left (the friend list not read yet, so no "A friend" row), focus goes to Quick match's heading,
+    // not its Find a race: a second press of the key that emptied the list starts nothing.
+    drawPeople($('people-list'), rows, { fallback: $('quick-match-heading'),
       decorate: (button) => { if (button.matches(RACE_CONTROLS)) markBusy(button); } });
     const message = signedIn ? (friendsFailure || invitesFailure)?.message || '' : '';
 
@@ -651,6 +659,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     dirty = false;
     refused = false;
     finishRequested = false;
+    finishSent = false;
+    sentProgress = [];
+    settledTrace = null;
     lastClock = '';
     lastAnnouncement = '';
     $('online-input').value = '';
@@ -739,14 +750,20 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     room = next;
     notifyChanges(previousStatus, previousOpponent, entering);
 
-    if (room.startAt && startPerf === null) {
-      startPerf = performance.now() + stamp(room.startAt) - stamp(room.serverNow);
+    // The shared start on this tab's clock. The service stamps serverNow before its reply leaves, so a reply that
+    // took long (a join that landed late) puts the start late by that long, and this tab would race on after the
+    // service's clock ran out. Every reply bounds the start again, and the earliest is kept.
+    const start = room.startAt ? performance.now() + stamp(room.startAt) - stamp(room.serverNow) : null;
+
+    if (start !== null && (startPerf === null || start < startPerf)) {
+      startPerf = start;
       setTimeout(updateClock, startPerf - performance.now());
     }
 
     startIfDue();
 
     if (['countdown', 'racing'].includes(room.status)) prepareAttempt();
+    sendSettledTrace();
     renderRoom();
     updateClock();
 
@@ -985,6 +1002,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;
         const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
+        finishSent ||= finishRequested;
+        sentProgress = [...sentProgress.slice(-3), { ...payload, events: attempt.events.length, at: performance.now() - startPerf }];
         next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
       } else {
         next = await multiplayer.getRace(getSession(), currentCredentials);
@@ -1057,6 +1076,24 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     readTraces();
   }
 
+  // The service finishes a seat on its own clock: progress that lands after it (sent just before this tab's clock ran
+  // out, or from a tab whose clock ran late) finishes the run on the keys it carried, with no trace. The service keeps
+  // a trace sent after that when it replays to the same result, so this tab sends one for exactly those keys: the
+  // events up to the packet the service settled on. A quick match is left alone: its seat finishes only with its own
+  // finishing packet (ADR 0014), so this never happens there.
+  function sendSettledTrace() {
+    const me = self();
+
+    if (room.quick || !me?.finished || finishSent || settledTrace || !attempt || baseTyped) return;
+    const settled = sentProgress.findLast((sent) => sent.typed === me.typed && sent.keystrokes === me.keystrokes);
+    const trace = settled && encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
+
+    if (!trace) return;
+    finishRequested = true;
+    finishSent = true;
+    settledTrace = multiplayer.updateRaceProgress(getSession(), credentials, { ...settled, finished: true, trace }).catch(() => {});
+  }
+
   // Both racers' traces draw the graph and the replay. A race from before traces, or one either racer
   // resumed after a reload, has none, and shows neither.
   async function readTraces() {
@@ -1065,6 +1102,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const from = credentials;
     const { text } = room.passage;
     const name = opponentOf(room).name;
+
+    // This tab's own trace, when it went after the service finished the seat, is read once it has arrived.
+    await settledTrace;
+
+    if (credentials !== from) return;
 
     for (let read = 1; read <= TRACE_READS; read += 1) {
       let traces;
@@ -1124,9 +1166,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   });
 
   for (const back of document.querySelectorAll('[data-challenge-back]')) back.addEventListener('click', () => show('people', { focus: true }));
-  // A key held down repeats. After Dismiss, focus moves to another row's action, and the repeat would press that
-  // too: join a race, or send an invitation. After Done, it would press the link that opened the view. So a repeat
-  // presses no button or link anywhere on Challenge. Fields are left alone: the race's own typing rules hold there.
+  // A key held down repeats. After Done, the repeat would press the link that opened the view, and after any press
+  // it would press whatever focus moved to. So a repeat presses no button or link anywhere on Challenge. (After
+  // Dismiss focus lands on a row, which nothing presses: see drawPeople.) Fields are left alone: the race's own
+  // typing rules hold there, and a name field takes a held key as any field does.
   $('compete-screen').addEventListener('keydown', (event) => {
     const pressing = event.key === 'Enter' || event.key === ' ';
 
