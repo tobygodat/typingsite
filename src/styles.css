@@ -116,7 +116,15 @@
   --dur-fast: calc(250ms * var(--motion-scale));
   --dur-medium: calc(350ms * var(--motion-scale));
   --dur-develop: calc(450ms * var(--motion-scale));
+  --dur-settle: calc(700ms * var(--motion-scale));
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* The rated result card (src/rank-card.js): its width, the emblem, the rank name and the bar. Its colours live
+     in that module, not here: they are the ranks' own and don't follow the theme's accent. */
+  --rank-card: 420px;
+  --rank-emblem: 132px;
+  --text-rank: 40px;
+  --rank-bar: 10px;
 }
 
 :root[data-typing-font="source-serif"] { --font-typing: var(--font-source-serif); }
@@ -3341,6 +3349,73 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 /* Online race results: you on the left, them on the right, the pair's tally between. Size and
    brightness say who won without colour; the accent marks only the tally figure this race raised. */
 .race-duel { margin-top: var(--space-8); }
+
+/* The rated result card. Colours arrive as --rc-* from src/rank-card.js, each a light-dark() pair, so the card
+   follows the theme's own scheme. The wind canvas sits behind the body and keeps clear of its text. */
+.rank-card-slot { margin-top: var(--space-6); }
+.rank-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  max-width: var(--rank-card);
+  margin-inline: auto;
+  padding: var(--space-6) var(--space-6) var(--space-4);
+  border: 1px solid var(--rc-glow);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(120% 90% at 50% 0%, var(--rc-top) 0%, var(--rc-mid) 60%, var(--rc-edge) 100%);
+  box-shadow: 0 18px 50px -22px var(--rc-glow);
+  color: var(--rc-ink);
+  font-family: var(--font-app);
+}
+.rc-wind { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--rc-trail); pointer-events: none; }
+.rc-body { position: relative; display: grid; justify-items: center; text-align: center; }
+.rc-label { margin: 0; font-size: var(--text-fine); font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--rc-a); }
+.rc-emblem { position: relative; width: var(--rank-emblem); aspect-ratio: 1; margin: var(--space-3) 0 var(--space-1); animation: rc-settle var(--dur-settle) var(--ease-out) both; }
+.rc-emblem::before { content: ""; position: absolute; inset: -10px; border-radius: 50%; background: radial-gradient(closest-side, var(--rc-glow), transparent 70%); filter: blur(10px); }
+.rc-emblem svg { position: relative; display: block; width: 100%; height: 100%; }
+.rc-hull { fill: var(--rc-hull); }
+.rc-stop-a { stop-color: var(--rc-a); }
+.rc-stop-b { stop-color: var(--rc-b); }
+.rc-mark { animation: rc-sway calc(var(--rc-sway, 0s) * var(--motion-scale)) ease-in-out infinite alternate; }
+.rc-step { fill: var(--rc-a); font-family: var(--font-app); font-weight: 700; }
+.rc-rank {
+  margin: 0;
+  font-size: var(--text-rank);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  /* The gradient paints only inside the box, so the box reaches below the descenders ("Tempest", "Whisper"). */
+  padding-bottom: 0.25em;
+  margin-bottom: -0.25em;
+  background: linear-gradient(180deg, var(--rc-ink), var(--rc-a));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rc-rise var(--dur-develop) var(--ease-out) var(--dur-base) both;
+}
+.rc-from { margin: var(--space-1) 0 0; font-size: var(--text-label); color: var(--rc-soft); animation: rc-rise var(--dur-develop) var(--ease-out) var(--dur-fast) both; }
+.rc-nums { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 0 var(--space-3); margin: var(--space-4) 0 0; font-size: var(--text-title); line-height: 1.2; }
+.rank-card[data-kind="provisional"] .rc-nums { margin-top: var(--space-3); font-size: var(--text-rank); }
+.rc-rating { font-weight: 300; }
+.rc-delta { font-weight: 700; color: var(--rc-up); animation: rc-rise var(--dur-develop) var(--ease-out) calc(2 * var(--dur-develop)) both; }
+.rank-card[data-tone="down"] .rc-delta { color: var(--rc-down); }
+.rank-card[data-tone="even"] .rc-delta { color: var(--rc-soft); }
+.rc-count, .rc-why { margin: var(--space-1) 0 0; font-size: var(--text-label); color: var(--rc-soft); text-wrap: balance; }
+.rc-why { margin-top: var(--space-3); }
+.rc-bar { position: relative; justify-self: stretch; height: var(--rank-bar); margin-top: var(--space-4); overflow: hidden; border-radius: var(--radius-full); background: var(--rc-track); }
+.rc-fill, .rc-change { position: absolute; top: 0; bottom: 0; transition: transform calc(var(--rc-bar) * var(--motion-scale)) var(--ease-out); }
+.rc-fill { left: 0; width: 100%; background: linear-gradient(90deg, var(--rc-b), var(--rc-a)); transform: translateX(-100%); }
+.rc-change { border-radius: 0 var(--radius-full) var(--radius-full) 0; background: var(--rc-gain); transform: scaleX(0); transform-origin: left; }
+.rc-change[data-change="loss"] { background: var(--rc-down); transform-origin: right; }
+.rc-bar[data-reset] > * { transition: none; }
+.rc-ends { justify-self: stretch; display: flex; justify-content: space-between; gap: var(--space-3); margin: var(--space-2) 0 0; font-size: var(--text-fine); color: var(--rc-soft); }
+.rc-ends span { white-space: nowrap; }
+.rank-card[data-motion="still"] *, .rank-card[data-motion="still"] *::before { animation: none; transition: none; }
+@keyframes rc-sway { from { transform: translateX(-3px); } to { transform: translateX(3px); } }
+@keyframes rc-settle { from { transform: scale(1.18); opacity: 0; } }
+@keyframes rc-rise { from { transform: translateY(10px); opacity: 0; } }
+@media (max-width: 480px) {
+  .rank-card { padding-inline: var(--space-4); }
+}
 .duel-scores { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--space-6); text-align: center; }
 .duel-side { min-width: 0; display: grid; grid-template-rows: auto var(--text-numeral-mobile) auto auto; justify-items: center; align-items: end; }
 .duel-name { margin: 0; font-size: var(--text-lead); font-weight: 400; overflow-wrap: anywhere; }
