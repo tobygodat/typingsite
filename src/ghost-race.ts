@@ -346,16 +346,16 @@ export function resultParts<T>(text: string, figure: (wpm: number) => T) {
   return match && [at(match, 1), figure(Number(at(match, 3))), `, ${at(match, 2)} `, figure(Number(at(match, 4))), '.'];
 }
 
-async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: string; duration: number | null; conditions: RaceConditions; trace: CompactTrace }): Promise<unknown> {
+async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: string; duration: number | null; conditions: RaceConditions; trace: CompactTrace }, signal?: AbortSignal): Promise<unknown> {
   if (!session?.user?.id) throw new AuthError('Sign in to send or race a ghost challenge.');
   // A background poll may have rotated the refresh token; the newest stored session wins.
   const lifetime = accountLifetime();
   const stored = loadSession();
-  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session, { signal });
 
   try {
     return await request('/rest/v1/rpc/challenge_action', {
-      method: 'POST', token: active?.access_token, lifetime, body: { p_action: action, p_id: id, p_data: data ?? {} },
+      method: 'POST', token: active?.access_token, lifetime, signal, body: { p_action: action, p_id: id, p_data: data ?? {} },
     });
   } catch (cause) {
     const error = errorDetails(cause);
@@ -368,7 +368,7 @@ async function call(session: Session | null, action: string, id: string | null =
   }
 }
 
-export const listChallenges = (session: Session | null) => session ? call(session, 'list').then((value) => decodeReply(Schema.mutable(Schema.Array(ChallengeSchema)), value)) : Promise.resolve([]);
+export const listChallenges = (session: Session | null, signal?: AbortSignal) => session ? call(session, 'list', null, undefined, signal).then((value) => decodeReply(Schema.mutable(Schema.Array(ChallengeSchema)), value)) : Promise.resolve([]);
 export const getChallenge = (session: Session | null, id: string) => call(session, 'get', id).then((value) => decodeReply(ChallengeSchema, value));
 export const finishChallenge = (session: Session | null, id: string, trace: CompactTrace) => call(session, 'finish', id, { trace }).then((value) => decodeReply(ChallengeSchema, value));
 

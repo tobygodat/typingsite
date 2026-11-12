@@ -219,7 +219,7 @@ export async function listPeopleLinks(session: Session | null) {
   }
 }
 
-export const listRaceInvites = (session: Session | null) => session ? action(session, 'invites').then((value) => decodeReply(Schema.mutable(Schema.Array(InviteSchema)), value)) : Promise.resolve([]);
+export const listRaceInvites = (session: Session | null, signal?: AbortSignal) => session ? action(session, 'invites', {}, undefined, signal).then((value) => decodeReply(Schema.mutable(Schema.Array(InviteSchema)), value)) : Promise.resolve([]);
 
 export function joinRace(session: Session | null, { roomId, inviteToken, displayName, guestToken }: RaceCredentials & { displayName: string }) {
   return action(session, 'join', { roomId, guestToken }, { inviteToken: inviteToken || null, displayName }).then((value) => entryWithSequence(value, session, { roomId, guestToken }));

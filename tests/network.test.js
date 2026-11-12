@@ -240,3 +240,30 @@ test('race entry replies preserve absent or nullable account tokens without inve
 
   assert.throws(() => entryReply({ roomId: 'room', room: { id: 'room', passage: 'hello' }, guestToken: 42 }));
 });
+
+
+test('inbox poll cancellation reaches both RPC and expired-session refresh I/O', async () => {
+  const { listRaceInvites } = await import('../src/multiplayer.js');
+  const { listChallenges } = await import('../src/ghost-race.js');
+
+  await service(async ({ calls, signals }) => {
+    for (const [poll, path] of [[listRaceInvites, '/rest/v1/rpc/race_action'], [listChallenges, '/rest/v1/rpc/challenge_action']]) {
+      for (const expired of [false, true]) {
+        const caller = new AbortController();
+        const before = calls.length;
+
+        const pending = poll({ user: { id: 'inbox-owner' }, access_token: 'access', refresh_token: 'refresh',
+          expires_at: expired ? 0 : 9999999999 }, caller.signal);
+
+        const rejected = assert.rejects(pending, AuthError);
+        await until(() => calls.length > before);
+        assert.equal(calls[before], expired ? '/auth/v1/token' : path);
+        caller.abort();
+        await rejected;
+
+        assert.equal(signals[before].aborted, true);
+        assert.equal(calls.length, before + 1, 'cancelled polls never continue or retry');
+      }
+    }
+  });
+});
