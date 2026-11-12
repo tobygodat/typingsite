@@ -278,6 +278,22 @@ test('correction times stay only on the runs that keep their pattern counts, the
   assert.deepEqual(learnerEvidence(kept, keyboardOf(conditions)).map((r) => r.id), kept.slice(-120).map((r) => r.id));
 });
 
+test('a drill between tests takes no place in the pattern window', () => {
+  // A real drill record carries no counts: its synthetic text is never evidence.
+  const alternating = (length) => Array.from({ length }, (_, i) => (i % 2 ? run(`d${i}`, { kind: 'drill', patterns: [], keys: [] }) : run(`t${i}`)));
+  const runs = alternating(200);
+  const kept = retainRuns(runs);
+  assert.equal(kept.filter((r) => r.kind === 'test' && r.patterns.length === 1).length, 100);
+  assert.deepEqual(kept.filter((r) => r.kind === 'drill'), runs.filter((r) => r.kind === 'drill'));
+
+  // The bound still holds: of 150 tests, the newest 120 keep their counts.
+  const longer = retainRuns(alternating(300));
+  const tests = longer.filter((r) => r.kind === 'test');
+  assert.equal(tests.length, 150);
+  assert.deepEqual(tests.filter((r) => r.patterns.length === 1).map((r) => r.id), tests.slice(-120).map((r) => r.id));
+  assert.deepEqual(retainRuns(kept), kept);
+});
+
 test('daily passage is stable within a UTC day, changes at midnight, and states its reset', () => {
   const morning = dailyPassage(new Date('2026-09-30T00:00:00Z'));
   const night = dailyPassage(new Date('2026-09-30T23:59:59Z'));
@@ -615,7 +631,7 @@ test('ghost races keep no trace or patterns and never displace practice evidence
   assert.equal(kept.some((r) => r.kind === 'challenge' && 'patterns' in r), false);
 });
 
-test('a profile with only comparable runs is retained exactly as before', () => {
+test('a profile whose comparable runs all carry counts is retained exactly as before', () => {
   // The retention rule as it stood before custom text existed (per-key counts age out with patterns).
   const previous = (runs) => {
     const kept = runs.slice(-1000);
@@ -625,11 +641,26 @@ test('a profile with only comparable runs is retained exactly as before', () => 
 
   const kinds = ['test', 'retest', 'drill', 'daily'];
   const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
-  legacy[1050] = { ...legacy[1050], patterns: undefined };
-  legacy[500] = { ...legacy[500], patterns: undefined };
   assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(previous(legacy)));
   const short = legacy.slice(0, 40);
   assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
+});
+
+test('a run that carries no counts takes no place and is left as stored', () => {
+  const carries = (r) => Boolean(r.patterns?.length || r.keys?.length || 'corrections' in r);
+
+  const expected = (runs) => {
+    const kept = runs.slice(-1000);
+    const inWindow = new Set(kept.filter(carries).slice(-120));
+
+    return kept.map((r) => (carries(r) && !inWindow.has(r) ? { ...r, patterns: [], keys: [] } : r));
+  };
+
+  const kinds = ['test', 'retest', 'drill', 'daily'];
+  const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
+  legacy[1050] = { ...legacy[1050], patterns: undefined };
+  legacy[500] = { ...legacy[500], patterns: undefined };
+  assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(expected(legacy)));
 });
 
 // A timed run as app.js stores it: one insert per letter, and every 20th letter (5%) mistyped, deleted and retyped,
