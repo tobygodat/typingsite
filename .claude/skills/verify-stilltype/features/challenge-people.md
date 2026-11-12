@@ -1,6 +1,6 @@
 # Challenge: the people you race
 
-Challenge has no visible heading. Quick match sits on top with its rating line and the page's one filled
+Challenge has no visible heading. Quick match sits on top with its rating line and the filled
 button, Find a race. Under it, one row per person you race: the name, one quiet line saying the newest thing
 between you (an invitation and its age, a ghost waiting and its time left, a finished ghost race), the pair's
 tally when the service has one, and one action. Quiet links at the foot open Add a friend, Copy a race link,

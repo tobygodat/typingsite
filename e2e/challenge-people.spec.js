@@ -133,7 +133,7 @@ test('a guest sees quick match, sign-in, the daily passage and One keyboard, and
   await expect(page.locator('[data-guest]').first()).toHaveText('Sign in to be matched.');
   await expect(page.locator('#people-list')).toBeHidden();
   await expect(page.locator('.people-foot button:visible')).toHaveText(['Sign in to keep friends', 'Daily passage', 'One keyboard']);
-  await expect(page.locator('#compete-screen .btn-primary:visible')).toHaveText(['Find a race']);
+  await expect(page.getByRole('button', { name: 'Find a race' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign in to keep friends' }).click();
   await expect(page.locator('#account-dialog')).toBeVisible();
 });
@@ -185,16 +185,29 @@ test.describe('on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, ...phone });
 
   for (const width of [390, 320]) {
-    test(`nothing scrolls sideways and the first action clears the dock at ${width}px`, async ({ page, supabase }) => {
+    test(`with a rank showing nothing scrolls sideways, every control is a 44px target and the first action clears the dock at ${width}px`, async ({ page, supabase }) => {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 568 });
       const toby = supabase.addUser('toby@stilltype.test');
       const maya = supabase.addUser('maya@stilltype.test');
+      const kim = supabase.addUser('kim@stilltype.test');
+      supabase.races.quick.ratings.set(toby.id, { rating: 2110, races: 230 });
       supabase.races.addFriend(toby.id, { name: 'Maya Okafor-Lindqvist', friendId: maya.id });
+      supabase.races.addFriend(toby.id, { name: 'Kim', friendId: kim.id });
       supabase.races.tallies.set([toby.id, maya.id].sort().join(':'), [12, 10]);
       supabase.races.invite(maya.id, toby.id, { name: 'Maya' });
+      supabase.challenges.seed(kim.id, toby.id, { name: 'Kim', label: 'Toby', passage: PASSAGE, trace: trace(150) });
       await signedIn(page, supabase);
-      await expect(rows(page)).toHaveCount(1);
+      await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText(/^Tempest\sIII\s·\s2110\s·\s230\srated\sraces$/);
+      await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(1);
+      await expect(page.locator('#people-list [data-state="ghost"]')).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+
+      // Every row action, Dismiss and the foot links are at least 44px each way on a coarse pointer.
+      const small = await page.locator('#challenge-people button:visible').evaluateAll((buttons) => buttons
+        .map((button) => ({ name: button.textContent.trim(), ...button.getBoundingClientRect().toJSON() }))
+        .filter((box) => box.width < 44 || box.height < 44).map((box) => `${box.name} ${Math.round(box.width)}×${Math.round(box.height)}`));
+
+      expect(small).toEqual([]);
 
       if (width === 390) {
         const dock = await page.locator('.dock-zone').boundingBox();
@@ -206,4 +219,16 @@ test.describe('on a phone', () => {
       }
     });
   }
+
+  test('under reduced motion a person arriving takes no time to ease in', async ({ page, supabase }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const toby = supabase.addUser('toby@stilltype.test');
+    const kim = supabase.addUser('kim@stilltype.test');
+    await signedIn(page, supabase);
+    supabase.races.invite(kim.id, toby.id, { name: 'Kim' });
+    await page.evaluate(() => dispatchEvent(new Event('online')));
+    await expect(rows(page).first()).toHaveAttribute('data-state', 'invited', { timeout: 15000 });
+    // The app's reduced-motion rule holds every transition to 1 ms, so the row is there at once.
+    expect(await rows(page).first().evaluate((row) => getComputedStyle(row).transitionDuration.split(',').every((value) => parseFloat(value) <= 0.001))).toBe(true);
+  });
 });

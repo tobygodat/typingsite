@@ -8,7 +8,7 @@ available.
 
 ## Sub-features
 
-- `challenge-views`: `#open-daily` and `#open-local` each show their view (`#challenge-daily-view`, `#challenge-local-view`) with one filled button, and Back returns to `#challenge-people` with focus on the link.
+- `challenge-views`: `#open-daily` and `#open-local` each show their view (`#challenge-daily-view`, `#challenge-local-view`), and Back returns to `#challenge-people` with focus on the link.
 - `dock-label-in-name`: each `.nav-item`'s visible word is the start of its ARIA name. Below 360px: "type practice", "train", "track progress", "race challenge". From 360px: the visible word alone.
 - `key-hints-touch`: `.key-hint` elements (shortcut row, `#race-help`'s restart hint, the `esc` in `#settings-close`, `#exit-focus-hint`, the palette search's `esc`) are hidden when a coarse pointer is the only one, and shown otherwise.
 
