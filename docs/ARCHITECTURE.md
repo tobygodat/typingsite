@@ -75,7 +75,7 @@ Elsewhere:
 
 - `index.html`, `sw.js`, `manifest.webmanifest`, `icons/`: markup, offline shell and install files.
 - `server.mjs`: the local server. It serves only what the build copies.
-- `scripts/`: `build-static.mjs` (the build), `build-book-texts.mjs`, `measure-latency.mjs`, `measure-profile.mjs` and `evaluate-learner.mjs` (`npm run evaluate:learner`: the policies on simulated typists, and ADR 0013's rule v2 that picks the default; `-- --rule 0015` for ADR 0015's; `-- --rule 0019` for ADR 0019's, which runs `evaluate-let-go.mjs` on worker threads; or a stored profile).
+- `scripts/`: `build-static.mjs` (the build), `build-book-texts.mjs`, `measure-latency.mjs`, `measure-profile.mjs`, `measure-fixed-floor.mjs` (how often Train reads "fixed" with and without a per-run floor, on simulated seasons; `docs/verification/2026-11-12-fixed-floor.md`) and `evaluate-learner.mjs` (`npm run evaluate:learner`: the policies on simulated typists, and ADR 0013's rule v2 that picks the default; `-- --rule 0015` for ADR 0015's; `-- --rule 0019` for ADR 0019's, which runs `evaluate-let-go.mjs` on worker threads; or a stored profile).
 - `tests/`: Node unit tests. `e2e/`: Playwright specs with a fake Supabase (`e2e/fake-supabase.js`).
 - `supabase/`: migrations, Edge Functions and SQL tests.
 - `tools/oxlint/anti-slop/`: the vendored lint plugin.

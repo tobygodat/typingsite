@@ -5,6 +5,7 @@ import { AHEAD_STEPS, FIXED_OBSERVATIONS, FIXED_RUNS, aheadCopy, behindCopy, evi
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
+import { trainPath as trainPathBefore } from './train-path-reference.js';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -134,8 +135,9 @@ test('a fixed target the learner names again goes back to the open step or ahead
   const path = pathFor([...runs, ...relapse], loops, 'accuracy');
   assert.equal(path.current.unit, 'he');
   assert.deepEqual(path.behind, []);
-  // As the open step it brings its own "since you drilled it" line: 2 of 12 before, 18 of 71 since.
-  assert.equal(sinceCopy(path.current.since), '17% → 25% missed since you drilled it');
+  // As the open step it brings its own "since you drilled it" line: 2 of 12 before, 18 of 71 since, in counts as
+  // every other line on the path states them (TOB-448).
+  assert.equal(sinceCopy(path.current.since), '2 of 12 → 18 of 71 missed since you drilled it');
 });
 
 test('a pair drilled for its pace is fixed only on clean intervals at or under the naming floor, read back as pace', () => {
@@ -193,7 +195,19 @@ test('the open step’s since-line reads the kind of evidence the step is drawn 
   assert.equal(path.current.unit, 'th');
   assert.equal(path.current.was.basis, 'slow');
   assert.equal(path.current.since.basis, 'slow');
-  assert.equal(sinceCopy(path.current.since), '90 ms slower → 90 ms slower than your pace since you drilled it');
+  assert.equal(sinceCopy(path.current.since), '90 ms slower → 90 ms slower than your pace since you drilled it, over 12 intervals');
+});
+
+// A since-line never states a rate it can't support: "19% → 33%" from 2 of 6 tries read as a trend. It gives the
+// counts on both sides, and for pace the clean intervals since, so a tiny sample reads as one (TOB-448).
+test('the open step’s since-line gives its counts, however few', () => {
+  assert.equal(sinceCopy({ basis: 'errors', before: { runs: 4, tries: 31, errors: 6 }, after: { runs: 1, tries: 6, errors: 2 } }),
+    '6 of 31 → 2 of 6 missed since you drilled it');
+  assert.equal(sinceCopy({ basis: 'errors', before: { runs: 4, tries: 31, errors: 6 }, after: { runs: 3, tries: 1, errors: 0 } }),
+    '6 of 31 → 0 of 1 missed since you drilled it');
+  assert.equal(sinceCopy({ basis: 'slow', before: { runs: 2, intervals: 30, ms: 80 }, after: { runs: 1, intervals: 1, ms: 5 } }),
+    '80 ms slower → 5 ms slower than your pace since you drilled it, over 1 interval');
+  assert.equal(sinceCopy({ basis: 'errors', before: null, after: { runs: 1, tries: 6, errors: 2 } }), '');
 });
 
 test('a loop saved before the read-back existed shows its before and since figures instead', () => {
@@ -370,4 +384,79 @@ test('the path is the same whatever order the history arrives in, and after eith
       assert.deepEqual(pathFor(other.runs, other.loops, focus), expected, `round ${round}: merged cloud into local`);
     }
   }
+});
+
+// trainPath reads the runs and the evidence once, not once per loop (TOB-448). Its output is the same as the
+// version that rescanned every run per loop (tests/train-path-reference.js), over random histories wider than the
+// ones above: several keyboards, duplicate run ids and pattern rows, undated and drill runs, loops with and without
+// a retest among the runs, loops with no target, saved twice, and out of date order.
+test('the one-pass path is the same as the path that rescanned every run per loop', () => {
+  const random = seeded(448);
+  const pick = (items) => items[Math.floor(random() * items.length)];
+  const keyboards = [conditions, { ...conditions, layout: 'dvorak' }, { ...conditions, inputClass: 'touch' }];
+  const pairs = ['th', 'an', 'er', 'in', 'ou', 'qu', 'ck', 'he', 're', 'on'];
+  let behindSeen = 0;
+  let fixedSeen = 0;
+  let sinceSeen = 0;
+
+  for (let round = 0; round < 150; round += 1) {
+    const count = Math.floor(random() * 80);
+
+    const runs = Array.from({ length: count }, (_, i) => {
+      const rows = pairs.flatMap((pair) => {
+        if (random() >= 0.6) return [];
+        const tries = Math.floor(random() * 14);
+        const timed = random() < 0.7 ? Math.floor(random() * (tries + 1)) : 0;
+        const slow = Math.round((random() - 0.3) * 120);
+
+        return [[pair, tries, random() < 0.6 ? 0 : Math.floor(random() * 4), timed, 200 + slow, slow]];
+      });
+
+      // A pattern row twice in one run, and a run id twice in the history.
+      if (rows.length && random() < 0.1) rows.push([...rows[0].slice(0, 1), 9, 0, 9, 200, 0]);
+      const id = random() < 0.08 && i ? `r${Math.floor(random() * i)}` : `r${i}`;
+      const at = random() < 0.05 ? null : day(Math.floor(random() * 200));
+
+      return { ...summary(id, at, withBackground(rows)), conditions: pick(keyboards), kind: random() < 0.1 ? 'drill' : 'test' };
+    });
+
+    const loops = Array.from({ length: Math.floor(random() * 30) }, (_, i) => {
+      const retest = runs.length && random() < 0.8 ? pick(runs) : { id: `missing-${i}`, at: day(Math.floor(random() * 200)) };
+      const target = random() < 0.1 ? null : random() < 0.15 ? pick(['e', 't', 'n']) : pick(pairs);
+      const basis = random() < 0.4 ? 'slow' : 'errors';
+
+      const made = loop(`l${i}`, target, { id: retest.id, at: retest.at || day(Math.floor(random() * 200)) }, { basis,
+        pace: { was: { slowMs: 60, timed: 12, timedRuns: 2, slowRuns: 2 }, now: { slowMs: 10, timed: 8 } } });
+
+      made.conditions = random() < 0.85 ? conditions : pick(keyboards);
+
+      // A loop saved before targetBasis existed.
+      if (random() < 0.2) delete made.targetBasis;
+
+      return made;
+    });
+
+    // A loop saved twice, and the list out of date order.
+    if (loops.length && random() < 0.3) loops.push({ ...loops[0] });
+    loops.sort(() => random() - 0.5);
+
+    for (const focus of FOCUSES) {
+      const recommendation = recommend(runs, loops, focus);
+
+      for (const keyboard of [KEYBOARD, keyboardOf(keyboards[1])]) {
+        for (const after of [null, { trained: recommendation.target }, { trained: null }]) {
+          const args = { recommendation, loops, runs, keyboard, after };
+          const path = trainPath(args);
+          assert.deepEqual(path, trainPathBefore(args), `round ${round}, ${focus}, ${keyboard}`);
+          behindSeen += path.behind.length;
+          fixedSeen += path.behind.filter((step) => step.state === 'fixed').length;
+          sinceSeen += path.current.since ? 1 : 0;
+        }
+      }
+    }
+  }
+
+  assert.ok(behindSeen > 500, `the generator puts steps behind (${behindSeen})`);
+  assert.ok(fixedSeen > 10, `the generator fixes some (${fixedSeen})`);
+  assert.ok(sinceSeen > 50, `the generator gives the open step a since line (${sinceSeen})`);
 });

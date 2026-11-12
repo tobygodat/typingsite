@@ -3,14 +3,21 @@
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
+// Three tiers, never crossing (TOB-448): the text starting with the query, then holding it (earlier and after a space
+// first), then holding its letters in order. A fuzzy score grows with every letter it keeps in a row, so it is squashed
+// under the other two tiers; a long fuzzy match once outranked an exact prefix.
+const PREFIX_SCORE = 300;
+const SUBSTRING_SCORE = 200;
+const FUZZY_CEILING = 100;
+
 function fuzzyScore(text, query) {
   if (!query) return 1;
   const haystack = text.toLowerCase();
   const direct = haystack.indexOf(query);
 
-  if (direct === 0) return 100;
+  if (direct === 0) return PREFIX_SCORE;
 
-  if (direct > 0) return 80 - Math.min(direct, 40) + (haystack[direct - 1] === ' ' ? 10 : 0);
+  if (direct > 0) return SUBSTRING_SCORE + 40 - Math.min(direct, 40) + (haystack[direct - 1] === ' ' ? 10 : 0);
   let score = 0;
   let from = 0;
   let streak = 0;
@@ -24,13 +31,15 @@ function fuzzyScore(text, query) {
     from = index + 1;
   }
 
-  return score;
+  return (FUZZY_CEILING * score) / (score + FUZZY_CEILING);
 }
 
 export function createPalette({ dialog, input, list, empty, highlight, trigger, getCommands, onOpen }) {
   let items = [];
   let active = 0;
   let returnFocus = null;
+  // The exit animation's timer while the palette fades out: open, it can still be opened again (TOB-448).
+  let closing = null;
 
   function filtered(query) {
     const q = query.trim().toLowerCase();
@@ -38,7 +47,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     const groups = [...new Set(commands.map((command) => command.group))];
 
     return commands
-      .map((command) => ({ command, score: command.secret ? 100 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
+      .map((command) => ({ command, score: command.secret ? PREFIX_SCORE : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
       .filter(({ score, command }) => score > 0 && !command.disabled)
       .sort((a, b) => (q ? b.score - a.score : groups.indexOf(a.command.group) - groups.indexOf(b.command.group)))
       .map(({ command }) => command);
@@ -111,20 +120,34 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     row.scrollIntoView({ block: 'nearest' });
   }
 
+  // Opened again while it fades out, it stops fading and starts afresh, keeping where focus goes back to: a quick
+  // Escape then ⌘K once closed it for good.
   function open() {
-    if (dialog.open) return;
-    returnFocus = document.activeElement;
+    if (closing) {
+      clearTimeout(closing);
+      closing = null;
+      dialog.classList.remove('is-closing');
+    } else if (dialog.open) {
+      return;
+    } else {
+      returnFocus = document.activeElement;
+    }
+
     onOpen?.();
     input.value = '';
-    dialog.showModal();
+
+    if (!dialog.open) dialog.showModal();
     render();
     input.focus();
   }
 
   function close({ restore = true, animate = true } = {}) {
-    if (!dialog.open) return;
+    if (!dialog.open || (closing && animate)) return;
+    clearTimeout(closing);
+    closing = null;
 
     const finish = () => {
+      closing = null;
       dialog.classList.remove('is-closing');
       dialog.close();
 
@@ -138,7 +161,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     }
 
     dialog.classList.add('is-closing');
-    setTimeout(finish, 150);
+    closing = setTimeout(finish, 150);
   }
 
   function run(index = active) {
@@ -178,5 +201,8 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
   trigger?.addEventListener('click', open);
 
-  return { open, close, isOpen: () => dialog.open };
+  // Fading out counts as closed, so the commands binding opens it again rather than closing it twice.
+  const isOpen = () => dialog.open && !closing;
+
+  return { open, close, isOpen, toggle: () => (isOpen() ? close() : open()) };
 }

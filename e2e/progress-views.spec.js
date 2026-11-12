@@ -55,6 +55,16 @@ async function openProgress(page, supabase, list = runs, { width = 1280, height 
   await openView(page, 'Progress');
 }
 
+// Signing out reloads the page, and the page as served already reads guest, before app.js has wired the account's
+// buttons. So "guest" alone can be the half-loaded page, where a press on Sign in opens nothing; the reload's load
+// event comes only after the app's script has run (TOB-448).
+async function signOut(page) {
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('sign out');
+  await Promise.all([page.waitForEvent('load'), page.keyboard.press('Enter')]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+}
+
 const lead = (page) => ({ number: page.locator('#lead-figure .lead-number'), spoken: page.locator('#lead-figure .sr-only'), sentence: page.locator('#lead-sentence'),
   sample: page.locator('#lead-sample'), note: page.locator('#lead-note') });
 
@@ -97,10 +107,7 @@ test('a drop reads as a drop in coral, and a week without change as none', async
 
   const user = supabase.addUser('flat@stilltype.test');
   supabase.profiles.set(user.id, { data: profileOf(weekRuns([75, 76, 74, 75, 75, 77, 74], [75, 74, 76, 75, 75, 76])) });
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('sign out');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await signOut(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
   await expect(lead(page).number).toHaveText('0');
@@ -219,10 +226,7 @@ test('one fixed pair lists alone with practice, a week with nothing fixed lists 
   const signInAs = async (email, list) => {
     const user = supabase.addUser(email);
     supabase.profiles.set(user.id, { data: profileOf(list) });
-    await page.keyboard.press('Control+k');
-    await page.keyboard.type('sign out');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+    await signOut(page);
     await signInWithEmail(page, email);
     await openView(page, 'Progress');
   };
@@ -607,7 +611,9 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
 });
 
 // Something on Progress holds focus while the other tab clears. The redraw for an empty history hides or disables
-// it, and focus goes to the page's heading, never to the page's body.
+// it, and focus lands where a sighted keyboard user sees it (TOB-448): on the overview, the empty state's heading; in
+// the runs view, which stays until it is left, the view's own heading. Never the page's body, and never the page's
+// heading, which only a screen reader can see.
 const HOLDERS = {
   'a length pill': async (page) => {
     await page.locator('.conditions-disclosure > summary').click();
@@ -626,31 +632,87 @@ const HOLDERS = {
   'Clear history': async (page) => page.locator('#clear-history'),
 };
 
+const VIEWS = { 'a length pill': ['overview', 'trends', 'runs'], 'the condition-set select': ['overview', 'runs'] };
+
+async function clearElsewhere(page, context, supabase) {
+  const other = await context.newPage();
+  await other.clock.install({ time: NOW });
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+  return async () => {
+    await openView(other, 'Progress');
+    await other.locator('#clear-history').click();
+    await other.locator('#confirm-clear-input').fill('clear');
+    await other.locator('#confirm-clear').click();
+    // The overview has redrawn for an empty history, whether or not a view covers it.
+    await expect(page.locator('#clear-history')).toHaveAttribute('hidden', '');
+
+    return other;
+  };
+}
+
 for (const [name, holder] of Object.entries(HOLDERS)) {
-  for (const where of name === 'a length pill' ? ['overview', 'trends'] : ['overview']) {
-    test(`a clear in another tab moves focus from ${name} to the page's heading, on the ${where}`, async ({ page, context, supabase }) => {
+  for (const where of VIEWS[name] || ['overview']) {
+    test(`a clear in another tab moves focus from ${name} to where it can be seen, on the ${where}`, async ({ page, context, supabase }) => {
       // Two condition sets at 25 words, so the select has a choice to offer.
       await openProgress(page, supabase, [...weekRuns(), run(1, 60, 95, { punctuation: true })].sort((a, b) => (a.at < b.at ? -1 : 1)),
         { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
-      const other = await context.newPage();
-      await other.clock.install({ time: NOW });
-      await supabase.attach(other);
-      await openApp(other);
-      await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+      const clear = await clearElsewhere(page, context, supabase);
 
       if (where === 'trends') await openProgressView(page, 'Speed');
+
+      if (where === 'runs') await openProgressDetail(page, 'runs');
       const control = await holder(page);
       await control.focus();
+      // A keyboard user reaches it with Tab: back past it and on to it again.
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
       await expect(control).toBeFocused();
-      await openView(other, 'Progress');
-      await other.locator('#clear-history').click();
-      await other.locator('#confirm-clear-input').fill('clear');
-      await other.locator('#confirm-clear').click();
-      await expect(page.locator('#progress-empty')).toBeVisible();
-      await expect(page.locator('#progress-heading')).toBeFocused();
+      await clear();
+      const landing = page.locator(where === 'runs' ? '#progress-detail-heading' : '#progress-empty-title');
+      await expect(landing).toBeFocused();
+      await expect(landing).toBeVisible();
+      await expect(landing).toHaveCSS('outline-style', 'solid');
+
+      if (where === 'runs') await expect(landing).toHaveText('Runs');
     });
   }
 }
+
+// Focus the page moves for someone using a mouse lands in the same place without a ring: the ring follows the last
+// input, a key or a pointer, the same in every engine (TOB-448).
+test('after a click, focus moved by a clear in another tab lands without a ring', async ({ page, context, supabase }) => {
+  await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+  const clear = await clearElsewhere(page, context, supabase);
+  const pill = page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' });
+  await pill.click();
+  await expect(pill).toBeFocused();
+
+  // A modifier on its own, as when a shortcut is half pressed, is no keyboard use.
+  for (const key of ['Shift', 'Control', 'Alt', 'Meta']) await page.keyboard.press(key);
+
+  await clear();
+  await expect(page.locator('#progress-empty-title')).toBeFocused();
+  await expect(page.locator('#progress-empty-title')).toHaveCSS('outline-style', 'none');
+});
+
+// Focus that wasn't on Progress stays where it was when another tab clears or undoes: a redraw never pulls focus onto
+// the page, from the dock or from nothing at all (TOB-448).
+test('a clear in another tab leaves focus that was elsewhere where it was', async ({ page, context, supabase }) => {
+  await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+  const clear = await clearElsewhere(page, context, supabase);
+  const dock = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Progress' });
+  await dock.focus();
+  const other = await clear();
+  await expect(dock).toBeFocused();
+
+  await page.evaluate(() => document.activeElement.blur());
+  await other.locator('#undo-clear').click();
+  await expect(lead(page).sample).toHaveText('medians of 6 and 7 runs');
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
 
 // The full charts keep no rows. A clear from another tab closes them whole, and never leaves blank charts under
 // figures of runs that are gone.
@@ -674,7 +736,7 @@ test('a clear in another tab closes the full charts onto the empty overview, and
   await expect(screen).toHaveAttribute('data-detail', '');
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-detail')).toBeHidden();
-  await expect(page.locator('#progress-heading')).toBeFocused();
+  await expect(page.locator('#progress-empty-title')).toBeFocused();
 
   await other.locator('#undo-clear').click();
   await expect(lead(page).sample).toHaveText('medians of 6 and 7 runs');
@@ -833,3 +895,53 @@ for (const [width, height] of [[1440, 900], [1280, 800], [390, 844], [320, 640]]
     }
   });
 }
+
+// The palette's "progress" goes to Progress's overview, as the dock does from another screen, even from one of its
+// own detail views (TOB-448): it never leaves a view open behind a focused page heading.
+test('the palette’s progress shows the overview from a detail view', async ({ page, supabase }) => {
+  await openProgress(page, supabase, weekRuns());
+
+  for (const name of ['runs', 'keys', 'trends']) {
+    if (name === 'trends') await page.locator('#week-speed button').click();
+    else await openProgressDetail(page, name);
+    await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill('progress');
+    await expect(page.locator('#palette-list [aria-selected="true"] .opt-label')).toHaveText('progress');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', '');
+    await expect(page.locator('#progress-overview')).toBeVisible();
+    await expect(page.locator('#progress-detail')).toBeHidden();
+    await expect(page.locator('#week-speed svg')).toBeVisible();
+    await expect(page.locator('#progress-heading')).toBeFocused();
+  }
+});
+
+// Under forced colours the charts draw in system colours (TOB-448): a line kept in the theme's green could vanish into
+// a high-contrast ground. Each line and its end take the text colour the system forces, on the small charts and the full.
+test('under forced colours the small and full charts draw their lines in system colours', async ({ page, supabase }) => {
+  await page.emulateMedia({ forcedColors: 'active' });
+  await openProgress(page, supabase, weekRuns());
+  expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
+
+  // The colour the system forces for text, and each mark's stroke as drawn (a redraw for the synced history can
+  // replace a chart while it is read, so each read is retried until it reads a drawn mark).
+  const system = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'CanvasText';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+
+    return color;
+  });
+
+  const stroke = (selector) => page.locator(selector).first().evaluate((node) => (node.isConnected ? getComputedStyle(node).stroke : ''));
+
+  for (const selector of ['#week-speed .trend-line', '#week-speed .week-chart-end', '#week-accuracy .trend-line']) {
+    await expect.poll(() => stroke(selector), selector).toBe(system);
+  }
+
+  await page.locator('#week-speed button').click();
+  await expect.poll(() => stroke('#progress-trend .trend-line')).toBe(system);
+});
