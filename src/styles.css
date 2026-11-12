@@ -573,7 +573,9 @@ button, summary, a { -webkit-tap-highlight-color: transparent; }
 button { cursor: pointer; }
 
 /* Neutral ring, so a focused secondary control never reads as a second primary. */
-:focus-visible {
+/* A landing the page moved focus to for someone using the keyboard shows the same ring (data-focus-ring, TOB-448). */
+:focus-visible,
+[data-focus-ring]:focus {
   outline: 2px solid var(--text);
   outline-offset: 3px;
 }
@@ -3161,7 +3163,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .detail-back svg { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .detail-heading { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
 /* A heading focused by a click shows no ring; one reached from the keyboard does (TOB-448). */
-.detail-heading:focus:not(:focus-visible) { outline: none; }
+.detail-heading:focus:not(:focus-visible, [data-focus-ring]) { outline: none; }
 .detail-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); width: 100%; }
 .detail-filters:empty { display: none; }
 .detail-filters .lead-meta { font: inherit; }

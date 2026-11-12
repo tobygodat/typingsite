@@ -55,6 +55,16 @@ async function openProgress(page, supabase, list = runs, { width = 1280, height 
   await openView(page, 'Progress');
 }
 
+// Signing out reloads the page, and the page as served already reads guest, before app.js has wired the account's
+// buttons. So "guest" alone can be the half-loaded page, where a press on Sign in opens nothing; the reload's load
+// event comes only after the app's script has run (TOB-448).
+async function signOut(page) {
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('sign out');
+  await Promise.all([page.waitForEvent('load'), page.keyboard.press('Enter')]);
+  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+}
+
 const lead = (page) => ({ number: page.locator('#lead-figure .lead-number'), spoken: page.locator('#lead-figure .sr-only'), sentence: page.locator('#lead-sentence'),
   sample: page.locator('#lead-sample'), note: page.locator('#lead-note') });
 
@@ -97,10 +107,7 @@ test('a drop reads as a drop in coral, and a week without change as none', async
 
   const user = supabase.addUser('flat@stilltype.test');
   supabase.profiles.set(user.id, { data: profileOf(weekRuns([75, 76, 74, 75, 75, 77, 74], [75, 74, 76, 75, 75, 76])) });
-  await page.keyboard.press('Control+k');
-  await page.keyboard.type('sign out');
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+  await signOut(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
   await expect(lead(page).number).toHaveText('0');
@@ -219,10 +226,7 @@ test('one fixed pair lists alone with practice, a week with nothing fixed lists 
   const signInAs = async (email, list) => {
     const user = supabase.addUser(email);
     supabase.profiles.set(user.id, { data: profileOf(list) });
-    await page.keyboard.press('Control+k');
-    await page.keyboard.type('sign out');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+    await signOut(page);
     await signInWithEmail(page, email);
     await openView(page, 'Progress');
   };
@@ -675,6 +679,19 @@ for (const [name, holder] of Object.entries(HOLDERS)) {
     });
   }
 }
+
+// Focus the page moves for someone using a mouse lands in the same place without a ring: the ring follows the last
+// input, a key or a pointer, the same in every engine (TOB-448).
+test('after a click, focus moved by a clear in another tab lands without a ring', async ({ page, context, supabase }) => {
+  await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+  const clear = await clearElsewhere(page, context, supabase);
+  const pill = page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' });
+  await pill.click();
+  await expect(pill).toBeFocused();
+  await clear();
+  await expect(page.locator('#progress-empty-title')).toBeFocused();
+  await expect(page.locator('#progress-empty-title')).toHaveCSS('outline-style', 'none');
+});
 
 // Focus that wasn't on Progress stays where it was when another tab clears or undoes: a redraw never pulls focus onto
 // the page, from the dock or from nothing at all (TOB-448).

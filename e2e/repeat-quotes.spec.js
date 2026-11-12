@@ -200,8 +200,12 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await shot(page, 'progress-light');
 
   // Turning repeats off swaps a repeated passage that hasn't been started for unseen text. From another view
-  // the swap waits until Practice opens, so the switch never moves you.
+  // the swap waits until Practice opens, so the switch never moves you. The standalone drill left waiting above is
+  // still there on the way back (TOB-448); Practice pressed on Practice leaves it for the quote practice.
   await openView(page, 'Practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await openView(page, 'Practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
   await page.locator('#restart-button').click();
   expect(await passageText(page)).toBe(quote);
   await openView(page, 'Progress');

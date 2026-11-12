@@ -38,6 +38,8 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   let items = [];
   let active = 0;
   let returnFocus = null;
+  // The exit animation's timer while the palette fades out: open, it can still be opened again (TOB-448).
+  let closing = null;
 
   function filtered(query) {
     const q = query.trim().toLowerCase();
@@ -118,20 +120,34 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     row.scrollIntoView({ block: 'nearest' });
   }
 
+  // Opened again while it fades out, it stops fading and starts afresh, keeping where focus goes back to: a quick
+  // Escape then ⌘K once closed it for good.
   function open() {
-    if (dialog.open) return;
-    returnFocus = document.activeElement;
+    if (closing) {
+      clearTimeout(closing);
+      closing = null;
+      dialog.classList.remove('is-closing');
+    } else if (dialog.open) {
+      return;
+    } else {
+      returnFocus = document.activeElement;
+    }
+
     onOpen?.();
     input.value = '';
-    dialog.showModal();
+
+    if (!dialog.open) dialog.showModal();
     render();
     input.focus();
   }
 
   function close({ restore = true, animate = true } = {}) {
-    if (!dialog.open) return;
+    if (!dialog.open || (closing && animate)) return;
+    clearTimeout(closing);
+    closing = null;
 
     const finish = () => {
+      closing = null;
       dialog.classList.remove('is-closing');
       dialog.close();
 
@@ -145,7 +161,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     }
 
     dialog.classList.add('is-closing');
-    setTimeout(finish, 150);
+    closing = setTimeout(finish, 150);
   }
 
   function run(index = active) {
@@ -185,5 +201,8 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
   dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
   trigger?.addEventListener('click', open);
 
-  return { open, close, isOpen: () => dialog.open };
+  // Fading out counts as closed, so the commands binding opens it again rather than closing it twice.
+  const isOpen = () => dialog.open && !closing;
+
+  return { open, close, isOpen, toggle: () => (isOpen() ? close() : open()) };
 }

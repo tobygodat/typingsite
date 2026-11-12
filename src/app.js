@@ -4188,7 +4188,9 @@ function renderTestPills(shapes) {
   // Progress lands it (progressLanding).
   if (focused) {
     const pill = [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape && !node.disabled && node.isConnected);
-    (pill?.checkVisibility() ? pill : progressLanding()).focus({ preventScroll: true });
+
+    if (pill?.checkVisibility()) pill.focus({ preventScroll: true });
+    else landProgressFocus();
   }
 }
 
@@ -4201,6 +4203,22 @@ function progressLanding() {
   if ($('progress-screen').dataset.detail) return $('progress-detail-heading');
 
   return profile.runs.some(practiceRun) || profile.loops.length ? $('lead-figure') : $('progress-empty-title');
+}
+
+// Whether the person's last input was a key. Where the page moves focus for them, each engine guesses differently
+// whether to show its ring (Firefox shows none after the element that held focus is gone), so the landing shows it
+// by this instead: a ring for someone using the keyboard, none after a click or a tap (TOB-448).
+let keyboardInput = false;
+
+document.addEventListener('keydown', () => { keyboardInput = true; }, true);
+
+document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+
+function landProgressFocus({ scroll = false } = {}) {
+  const target = progressLanding();
+  target.toggleAttribute('data-focus-ring', keyboardInput);
+  target.addEventListener('blur', () => target.removeAttribute('data-focus-ring'), { once: true });
+  target.focus({ preventScroll: !scroll });
 }
 
 function runRow(run) {
@@ -4351,7 +4369,7 @@ function renderWeek() {
   const now = document.activeElement;
   const lost = focused && (!now || now === document.body || now.disabled || Boolean(now.closest('[hidden]')));
 
-  if (lost) progressLanding().focus({ preventScroll: true });
+  if (lost) landProgressFocus();
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -4431,7 +4449,12 @@ function renderMovers(week) {
   $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : `${extra} more`;
   $('more-movers').setAttribute('aria-expanded', String(open));
 
-  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button') || progressLanding()).focus({ preventScroll: true });
+  if (held) {
+    const button = rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button');
+
+    if (button) button.focus({ preventScroll: true });
+    else landProgressFocus();
+  }
 }
 
 function statusWord(word, tone) {
@@ -4586,7 +4609,9 @@ function closeProgressDetail() {
   // What changed while the view was open (a merge or a clear elsewhere) shows on the way back.
   renderHistory();
   const opener = typeof back === 'function' ? back() : back;
-  (opener?.isConnected && !opener.hidden ? opener : progressLanding()).focus();
+
+  if (opener?.isConnected && !opener.hidden) opener.focus();
+  else landProgressFocus({ scroll: true });
 }
 
 function showProgressDetail({ focus = false } = {}) {
@@ -7153,10 +7178,11 @@ function bindEvents() {
         event.preventDefault();
 
         if (!event.repeat) palette.open();
-      } else if (palette?.isOpen() && matchesAppBinding(event, prefs.keybindings.commands)) {
+      } else if ($('palette').open && matchesAppBinding(event, prefs.keybindings.commands)) {
         event.preventDefault();
 
-        if (!event.repeat) palette.close();
+        // Open, it closes; fading out, it opens again.
+        if (!event.repeat) palette.toggle();
       }
 
       return;
