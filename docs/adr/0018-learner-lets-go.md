@@ -206,4 +206,4 @@ The rule said Train's fixed would read `letGo` whichever policy is the default. 
 
 - The default is unchanged: `learner-decay-timing@1`, provisional, with no claim about learning (`PRODUCT.md` principle 4). The measured hold (34 to 111 clean runs) stands.
 - `learner-let-go@2` and `learner-let-go-misses@2` are named variants. The learner's fold takes the drilled targets on the keyboard (`drilledTargets`), which only these variants read; every earlier version computes exactly what it did (a pinned test, written against master first).
-- A fit on 1,000 runs, every one holding pattern evidence, and 200 loops takes a median of 13.4 ms for the shipped default and 16.4 ms for `learner-let-go@2` in Node on tobygdesktop, under load from other runs (slowest of 15: 17.5 and 22.2 ms).
+- A recommendation on 1,000 runs, every one holding pattern evidence, and 200 loops takes a median of 16.5 ms for `learner-decay-timing@1` on master, 14.7 ms for it on this branch (the same, within the machine's noise) and 18.5 ms for `learner-let-go@2`, in Node on tobygdesktop under other jobs' load (slowest of 15: 23.4, 23.8 and 25.6 ms). A person would not notice any of them.
