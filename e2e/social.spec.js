@@ -527,6 +527,7 @@ test('an invitation’s Join keeps keyboard focus while its join is out, and a p
   const kim = supabase.addUser('kim@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
   await challengeFrom(supabase, kim, 'host@stilltype.test');
+  await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
@@ -534,16 +535,16 @@ test('an invitation’s Join keeps keyboard focus while its join is out, and a p
   const join = page.locator('[data-accept-invite]');
   await expect(join).toBeVisible();
   const room = [...supabase.races.rooms.values()][0];
-  // Joining also refreshes the invitations; that answer, with another invitation in it, draws the list again
-  // while the join is out.
+  // The inbox's own polls stop, so the only invitations read from here is the one Join sends before its join.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  // That read is held and brings another invitation, so its answer draws the list again while the join is out.
   const releaseInvites = supabase.races.hold('invites');
   const releaseJoin = supabase.races.hold('join');
   await challengeFrom(supabase, lin, 'host@stilltype.test');
   await join.focus();
   await page.keyboard.press('Enter');
   await expect(join).toHaveAttribute('aria-disabled', 'true');
-  // The join's own refresh is skipped when a poll is already out; then the next poll, within ten seconds, brings it.
-  await expect.poll(() => supabase.races.holds.has('invites'), { timeout: 15000 }).toBe(false);
+  await arrived(supabase, 'invites');
   const redraws = await countRedraws(page, '#people-list');
   releaseInvites();
   await expect.poll(redraws).toBeGreaterThan(0);
