@@ -62,6 +62,8 @@ Preconditions:
 - **Restart.** Drive it: in a flow file, type a few letters with `h.type('ab')`, press
   `page.keyboard.press('Escape')`, then `check` that `#accessible-passage` text changed and
   `body[data-running]` is gone.
+- Words 10 typed, the results card, then Run again on a fresh passage:
+  `$V drive .claude/skills/verify-stilltype/flows/practice-run-again.mjs`.
 
 ## Gotchas
 

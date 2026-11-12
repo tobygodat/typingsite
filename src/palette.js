@@ -3,14 +3,21 @@
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
+// Three tiers, never crossing (TOB-448): the text starting with the query, then holding it (earlier and after a space
+// first), then holding its letters in order. A fuzzy score grows with every letter it keeps in a row, so it is squashed
+// under the other two tiers; a long fuzzy match once outranked an exact prefix.
+const PREFIX_SCORE = 300;
+const SUBSTRING_SCORE = 200;
+const FUZZY_CEILING = 100;
+
 function fuzzyScore(text, query) {
   if (!query) return 1;
   const haystack = text.toLowerCase();
   const direct = haystack.indexOf(query);
 
-  if (direct === 0) return 100;
+  if (direct === 0) return PREFIX_SCORE;
 
-  if (direct > 0) return 80 - Math.min(direct, 40) + (haystack[direct - 1] === ' ' ? 10 : 0);
+  if (direct > 0) return SUBSTRING_SCORE + 40 - Math.min(direct, 40) + (haystack[direct - 1] === ' ' ? 10 : 0);
   let score = 0;
   let from = 0;
   let streak = 0;
@@ -24,7 +31,7 @@ function fuzzyScore(text, query) {
     from = index + 1;
   }
 
-  return score;
+  return (FUZZY_CEILING * score) / (score + FUZZY_CEILING);
 }
 
 export function createPalette({ dialog, input, list, empty, highlight, trigger, getCommands, onOpen }) {
@@ -38,7 +45,7 @@ export function createPalette({ dialog, input, list, empty, highlight, trigger, 
     const groups = [...new Set(commands.map((command) => command.group))];
 
     return commands
-      .map((command) => ({ command, score: command.secret ? 100 : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
+      .map((command) => ({ command, score: command.secret ? PREFIX_SCORE : fuzzyScore(`${command.label} ${command.keywords || ''} ${command.group}`, q) }))
       .filter(({ score, command }) => score > 0 && !command.disabled)
       .sort((a, b) => (q ? b.score - a.score : groups.indexOf(a.command.group) - groups.indexOf(b.command.group)))
       .map(({ command }) => command);

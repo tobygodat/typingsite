@@ -19,9 +19,9 @@
 // The lead compares fresh-text runs at one condition key, a week against the week before (weeklyChange). The movers
 // read every measured run on that key's keyboard, as Train does, in the train focus.
 
-import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, weeklyChange } from './insights.js';
+import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, trimmedSince, weeklyChange } from './insights.js';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
-import { evidenceSince, isFixed, sinceDrilled } from './train-path.js';
+import { retestSplit, evidenceSince, isFixed, sinceDrilled } from './train-path.js';
 
 // A week holds a median from this many runs, the floor the standard score's median uses: below it one or two runs
 // would stand in for a week.
@@ -71,8 +71,15 @@ const basisNamed = (item) => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
 // since `began`. "A week ago" is the learner built on the history as it stood then (the same fold, given only the
 // earlier evidence and `began`), never a second set of rules. Ranked by what each saved in the learner's terms: the
 // change in its gain, the time it loses per letter typed, between the two fits. Largest first, then by unit.
+//
+// A profile past MAX_PATTERN_RUNS keeps counts on its newest runs only, so runs that fed the learner a week ago can
+// have lost theirs since (trimmedSince), and the learner a week ago can't be rebuilt (TOB-448). Then only what needs
+// no learner a week ago is listed: a unit drilled this week, or one whose evidence from its drill to the week's start
+// is all still held and already fell short of the rule then. A unit judged since `began` needs the learner a week ago
+// to have named it, so none is listed.
 export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
+  const lost = trimmedSince(runs, began).filter((run) => keyboardOf(run.conditions) === keyboard);
   const records = learnerEvidence(runs, keyboard);
   const earlier = records.filter((record) => record.at === null || record.at < began);
   const [modelNow, modelThen] = [fitLearner(records, now, variant, focus), fitLearner(earlier, began, variant, focus)];
@@ -97,13 +104,18 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }) {
 
   for (const unit of [...new Set([...queuedThen.keys(), ...drilledNow.keys()])].sort()) {
     const loop = drilledNow.get(unit);
-    const fixedThen = drilledThen.has(unit) && isFixed(sinceDrilled(drilledThen.get(unit), runs, earlier), queuedThen.has(unit));
+    const then = drilledThen.get(unit);
+    const sinceThen = then ? sinceDrilled(then, runs, earlier) : null;
+    const fixedThen = Boolean(then) && isFixed(sinceThen, queuedThen.has(unit));
+
+    // Not fixed a week ago, as far as the stored history can say: drilled since, or short of the rule on evidence alone.
+    const notFixedThen = !then || (!lost.some((run) => Date.parse(run.at) >= retestSplit(then, runs)) && !isFixed(sinceThen, false));
 
     if (loop) {
       const since = sinceDrilled(loop, runs, records);
 
-      if (isFixed(since, queuedNow.has(unit)) && !fixedThen) add(unit, since, 'drill');
-    } else if (queuedThen.has(unit) && !queuedNow.has(unit)) {
+      if (isFixed(since, queuedNow.has(unit)) && !fixedThen && (!lost.length || notFixedThen)) add(unit, since, 'drill');
+    } else if (!lost.length && queuedThen.has(unit) && !queuedNow.has(unit)) {
       const since = evidenceSince(unit, basisNamed(queuedThen.get(unit)), began, records);
 
       if (isFixed(since, false)) add(unit, since, 'week');

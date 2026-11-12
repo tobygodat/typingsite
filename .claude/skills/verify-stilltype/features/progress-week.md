@@ -33,6 +33,9 @@ Preconditions: `$V doctor` exits 0.
   `--scheme light`. Each step checks nothing scrolls sideways.
 - One account only: `PROGRESS_ONLY=gain` (or one, practice, quiet, drop, flat, week, guest) before the command.
 - Every theme on one sheet: `$V drive .claude/skills/verify-stilltype/flows/progress-week-themes.mjs`.
+- Focus after a clear in another tab, on the overview and in the runs view, and the small charts under forced
+  colours: `TOB448_ONLY=focus $V drive .claude/skills/verify-stilltype/flows/tob448-follow-ups.mjs` (or `runs-focus`,
+  `forced`). Run one part at a time: each signs in its own account.
 
 ## Gotchas
 

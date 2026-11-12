@@ -274,6 +274,25 @@ test.describe('reduced motion', () => {
   });
 });
 
+// An exact prefix ranks first (TOB-448). A long fuzzy match gains on every letter it keeps in a row, so "practice c"
+// once ranked "practice" (its letters, then the c of its own keywords) above "practice calendar".
+test('the palette ranks a label that starts with the query above a fuzzy match', async ({ page }) => {
+  await openApp(page);
+
+  for (const [query, label] of [['practice c', 'practice calendar'], ['words · 10 w', 'words · 10 words'], ['words · 100', 'words · 100 words'],
+    ['sound · clic', 'sound · clicks'], ['layout · dv', 'layout · dvorak'], ['app font · i', 'app font · inter']]) {
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill(query);
+    await expect(page.locator('#palette-list [aria-selected="true"] .opt-text'), query).toHaveText(label);
+    await page.keyboard.press('Escape');
+  }
+
+  // A label that holds the query ranks above one that only holds its letters in order.
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill('calendar');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
+});
+
 test('a palette jump puts focus on the new screen’s heading, or in the passage on Practice', async ({ page }) => {
   await openApp(page);
   await page.locator('#account-trigger').focus();

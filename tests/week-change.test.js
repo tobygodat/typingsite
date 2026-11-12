@@ -4,7 +4,7 @@ import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, r
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { dayKey } from '../src/insights.js';
+import { MAX_PATTERN_RUNS, dayKey, retainRuns } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -341,4 +341,89 @@ test('the overview is the same whatever order the history arrives in, and after 
 
 test('the list shows a few units, ranked, and keeps the rest', () => {
   assert.equal(SHOWN_MOVERS, 3);
+});
+
+// A profile past MAX_PATTERN_RUNS keeps pattern counts on its newest runs only (retainRuns), so a run whose counts
+// fed the learner a week ago can have lost them since. "A week ago" can't be rebuilt from what is stored then, and
+// Progress lists only what it can still support (TOB-448): "ex" had a long clean history and a few misses just
+// before the week, so the learner a week ago never named it, but the stored history has lost the clean runs and
+// would read it as named then and fixed this week. "ck", drilled this week, needs no learner a week ago.
+test('on a trimmed history, the movers are only those the history as it stood a week ago supports', () => {
+  const at = (daysBack, i) => new Date(2026, 10, 11 - daysBack, 8, 0, i);
+  const old = Array.from({ length: 200 }, (_, i) => run(`o${i}`, at(40 - Math.floor(i / 8), i), { patterns: withBackground([['ex', 10, 0, 10, 200, 0], ...(i < 196 ? [] : [['ck', 10, 3, 10, 200, 0]])]) }));
+  const missed = Array.from({ length: 4 }, (_, i) => run(`m${i}`, at(8, i), { patterns: withBackground([['ex', 10, 3, 10, 200, 0], ['ck', 10, 3, 10, 200, 0]]) }));
+  const week = Array.from({ length: 110 }, (_, i) => run(`n${i}`, at(5 - Math.floor(i / 25), i), { patterns: withBackground([['ex', 10, 0, 10, 200, 0], ['ck', 10, 0, 10, 200, 0]]) }));
+  const full = [...old, ...missed, ...week];
+  const loops = [loop('lc', 'ck', week[0])];
+  const movers = (runs) => weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
+
+  const stored = retainRuns(full);
+  assert.equal(stored.filter((item) => item.patterns.length).length, MAX_PATTERN_RUNS);
+  assert.ok(stored.some((item) => Date.parse(item.at) < THEN && !item.patterns.length), 'runs from before the week have lost their counts');
+  assert.deepEqual(movers(full), ['ck:drill']);
+  assert.deepEqual(movers(stored), ['ck:drill']);
+
+  // The same profile under the cap, nothing trimmed: the week ago is the stored history's, and both agree.
+  const short = [...old.slice(-6), ...missed, ...week.slice(0, 100)];
+  assert.deepEqual(movers(retainRuns(short)), movers(short));
+});
+
+// The learner "a week ago" is fitted at the moment the week began, not now (TOB-448). Its decay reads each record's
+// age, so the moment matters: two undated clean runs keep their full weight while the dated ones fade, and "qu",
+// missed in two of five runs a month ago, is named by the learner at the week's start and not by one fitted now.
+// Clean this week, it is fixed since the week began only by the learner of the week's start.
+test('the learner a week ago is fitted at the start of the week', () => {
+  const undated = [0, 1].map((i) => ({ ...run(`u${i}`, daysAgo(60), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }), at: null, day: null }));
+  const month = Array.from({ length: 5 }, (_, i) => run(`b${i}`, daysAgo(30 + i), { patterns: withBackground([['qu', 10, i < 2 ? 2 : 0, 10, 200, 0]]) }));
+  const week = Array.from({ length: 3 }, (_, i) => run(`a${i}`, daysAgo(3 - i), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+  const runs = [...undated, ...month, ...week];
+  const named = (at) => recommend([...undated, ...month], [], 'balanced', at).queue.some((item) => item.unit === 'qu');
+  assert.equal(named(THEN), true);
+  assert.equal(named(NOW), false);
+  assert.deepEqual(weekMovers({ runs, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`), ['qu:week']);
+});
+
+// A loop on another keyboard is no drill of this keyboard's unit (TOB-448): "ck", named here a week ago and clean here
+// since, is fixed since the week began, judged at the week's start, whatever was drilled on the Dvorak layout yesterday.
+test('loops on another keyboard leave this keyboard’s movers alone', () => {
+  const dvorak = { ...conditions, layout: 'dvorak' };
+  const before = Array.from({ length: 5 }, (_, i) => run(`b${i}`, daysAgo(12 - i), { patterns: withBackground([['ck', 8, 1, 8, 200, 0]]) }));
+  const after = Array.from({ length: 6 }, (_, i) => run(`a${i}`, daysAgo(5 - i), { patterns: withBackground([['ck', 15, 0, 15, 200, 0]]) }));
+  const elsewhere = run('d', daysAgo(1), { cond: dvorak, patterns: withBackground([['ck', 12, 0, 12, 200, 0]]) });
+  const runs = [...before, ...after, elsewhere];
+  const movers = (loops) => weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
+  assert.deepEqual(movers([]), ['ck:week']);
+  assert.deepEqual(movers([{ ...loop('ld', 'ck', elsewhere), conditions: dvorak }]), ['ck:week']);
+});
+
+// A loop counts as a week ago when it was saved before midnight at the start of the week, and from that midnight on
+// it is this week's (TOB-448). "qu" was drilled long ago and fixed well before the week; drilled again just before
+// midnight, it is judged since that drill, a week ago one run of evidence, so its fix since is this week's. Drilled
+// again on the stroke of midnight or just after, the week ago is the old drill's, already fixed then, so it isn't listed.
+test('a loop counts as a week ago only when it was saved before the week began', () => {
+  const weak = Array.from({ length: 5 }, (_, i) => run(`w${i}`, daysAgo(40 - i), { patterns: withBackground([['qu', 10, 3, 10, 200, 0]]) }));
+  const first = run('t1', daysAgo(35), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) });
+  const clean = Array.from({ length: 60 }, (_, i) => run(`c${i}`, new Date(daysAgo(34 - Math.floor(i / 2)).getTime() + (i % 2) * 3_600_000), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+  const week = Array.from({ length: 3 }, (_, i) => run(`n${i}`, daysAgo(3 - i), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+
+  const movers = (at) => {
+    const again = run('t2', new Date(at - 60_000), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) });
+    const second = { ...loop('l2', 'qu', again), at: new Date(at).toISOString() };
+    const runs = [...weak, first, ...clean, again, ...week].sort((a, b) => (a.at < b.at ? -1 : 1));
+
+    return weekMovers({ runs, loops: [loop('l1', 'qu', first), second], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
+  };
+
+  // The week began at midnight six days back: Thursday 5 November, for a Wednesday noon.
+  assert.equal(THEN, new Date(2026, 10, 5, 0, 0, 0).getTime());
+  assert.deepEqual(movers(THEN - 60_000), ['qu:drill']);
+  assert.deepEqual(movers(THEN), []);
+  assert.deepEqual(movers(THEN + 60_000), []);
+});
+
+// The practice row's week is today and the six days before; the week before is the seven before those (TOB-448).
+test('the practice row splits its weeks at the start of the sixth day back', () => {
+  const minutes = (id, days, amount) => ({ ...run(id, daysAgo(days)), elapsedMs: amount * 60_000 });
+  const practice = weekPractice([minutes('a', 13, 1), minutes('b', 7, 2), minutes('c', 6, 4), minutes('d', 0, 8), minutes('e', 14, 16)], {}, 0, NOW_DATE);
+  assert.deepEqual([practice.previous, practice.current], [3, 12]);
 });

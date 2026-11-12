@@ -3347,6 +3347,11 @@ function drawPath(path, { advance, fresh, source, recommendation }) {
   list.scrollLeft = fresh || advance ? list.scrollWidth : list.scrollWidth - fromEnd;
   scrollablePath();
 
+  // Down the page, up to 900px, the path opens with the open step's button in view in the same way, clear of a dock
+  // at the foot: the page's scroll padding holds the dock's height (TOB-448). On a short phone the steps behind you
+  // once pushed it under the dock.
+  if (fresh && matchMedia('(max-width: 900px)').matches) list.querySelector('#train-current .train-actions').scrollIntoView({ block: 'nearest', behavior: 'instant' });
+
   if (had) {
     const open = $(path.just && path.current.kind === 'targeted' ? 'comparison-next' : 'start-drill');
     const same = hadUnit ? list.querySelector(`[data-unit="${CSS.escape(hadUnit)}"] .path-choose`) : had;
@@ -3523,7 +3528,10 @@ function navigate(view) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it. An unstarted
     // repeat that repeats-off would replace is redrawn.
-    const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom') && !['complete', 'interrupted'].includes(attempt.status);
+    // A drill or retest nobody has started is Train's work waiting, so coming back to Practice from another screen
+    // keeps it too (TOB-448); Practice pressed on Practice still leaves it for practice.
+    const waitingTraining = document.body.dataset.view !== 'practice' && attempt?.status === 'ready' && (sessionKind === 'drill' || sessionKind === 'retest');
+    const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom' || waitingTraining) && !['complete', 'interrupted'].includes(attempt.status);
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
     const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
 
@@ -4176,11 +4184,23 @@ function renderTestPills(shapes) {
     return option;
   })));
 
-  // A pill gone or disabled by the redraw (a clear, here or in another tab) can't hold focus, so the page's heading does.
+  // A pill gone or disabled by the redraw (a clear, here or in another tab) can't hold focus, so it lands where
+  // Progress lands it (progressLanding).
   if (focused) {
     const pill = [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape && !node.disabled && node.isConnected);
-    (pill?.checkVisibility() ? pill : $('progress-heading')).focus();
+    (pill?.checkVisibility() ? pill : progressLanding()).focus({ preventScroll: true });
   }
+}
+
+// Where focus lands on Progress when what held it is gone, hidden or disabled (TOB-448): somewhere a sighted keyboard
+// user can see it. In a detail view, the view's own heading; on the overview, the empty state's heading, or the lead's
+// figure. The page's heading is for screen readers only, so it is never the landing. The view is the one on screen (a
+// view of rows stays until it is left, after a clear too); the overview's state is read from the history, so a landing
+// chosen mid-redraw is the one the redraw ends on.
+function progressLanding() {
+  if ($('progress-screen').dataset.detail) return $('progress-detail-heading');
+
+  return profile.runs.some(practiceRun) || profile.loops.length ? $('lead-figure') : $('progress-empty-title');
 }
 
 function runRow(run) {
@@ -4325,12 +4345,13 @@ function renderWeek() {
     if (!progressState.detail || (progressState.detail === 'trends' && !held)) drawProgressView();
   }
 
-  // Focus that was on the page and now rests on nothing, or on something hidden or disabled, goes to the page's
-  // heading, never to the body. A row drawn again has already taken its focus back (renderMovers).
+  // Focus that was on the page and now rests on nothing, or on something hidden or disabled, lands where Progress
+  // lands it (progressLanding), never on the body. Focus that wasn't on the page stays where it was. A row drawn again
+  // has already taken its focus back (renderMovers).
   const now = document.activeElement;
   const lost = focused && (!now || now === document.body || now.disabled || Boolean(now.closest('[hidden]')));
 
-  if (lost) $('progress-heading').focus({ preventScroll: true });
+  if (lost) progressLanding().focus({ preventScroll: true });
 }
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
@@ -4392,7 +4413,7 @@ function renderLead(lead) {
 // "more"; then practice.
 function renderMovers(week) {
   const open = progressState.moversOpen;
-  // A redraw keeps keyboard focus on the same row's control, or on the page's heading when that row has gone.
+  // A redraw keeps keyboard focus on the same row's control, or lands it (progressLanding) when that row has gone.
   const held = $('week-movers').contains(document.activeElement) ? document.activeElement.closest('li')?.dataset.unit ?? 'practice' : null;
 
   const rows = week.movers.map((mover, i) => {
@@ -4410,7 +4431,7 @@ function renderMovers(week) {
   $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : `${extra} more`;
   $('more-movers').setAttribute('aria-expanded', String(open));
 
-  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button') || $('progress-heading')).focus();
+  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button') || progressLanding()).focus({ preventScroll: true });
 }
 
 function statusWord(word, tone) {
@@ -4462,7 +4483,11 @@ function renderLoops(loops) {
   const rows = loops.map((loop) => {
     const row = template.content.firstElementChild.cloneNode(true);
     row.querySelector('.history-date').textContent = new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    row.querySelector('.history-target').textContent = loop.drillCompleted
+    // A drill interrupted part way still went on to its retest: the loop is its drill and retest here, as Train calls
+    // its target drilled (TOB-448). Only a loop with no drill at all (an adaptive run's, or one saved before every
+    // retest followed a drill) is a fresh-text check.
+    const drilled = loop.drillCompleted || Boolean(loop.drill);
+    row.querySelector('.history-target').textContent = drilled
       ? loop.target ? `“${loop.target}” drill and retest` : 'General drill and retest'
       : 'Fresh-text check';
     row.querySelector('.history-conditions').textContent = describeConditions(loop.conditions);
@@ -4491,7 +4516,7 @@ function renderLoops(loops) {
       ['before', loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ` · ${loop.comparison.before.accuracy}%`] : 'Not retained in this older comparison'],
       ['after', loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ` · ${loop.comparison.after.accuracy}%`] : 'Not retained in this older comparison'],
       // Loops saved without a drill length come from when every drill ran 60 s.
-      ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : 'Skipped'],
+      ['drill', loop.drillCompleted ? `${loop.drill?.duration || 60} s · ${loop.target || 'general'}` : drilled ? `interrupted · ${loop.target || 'general'}` : 'Skipped'],
     ]));
 
     if (timing) detail.append(element('p', `“${timing.target}” clean intervals: ${timing.beforeCount} before / ${timing.afterCount} after. ${timing.deltaMs === null ? 'Too few samples to call a timing change.' : `${signed(timing.deltaMs, 'ms')} median timing change.`}`));
@@ -4561,7 +4586,7 @@ function closeProgressDetail() {
   // What changed while the view was open (a merge or a clear elsewhere) shows on the way back.
   renderHistory();
   const opener = typeof back === 'function' ? back() : back;
-  (opener?.isConnected && !opener.hidden ? opener : $('progress-heading')).focus();
+  (opener?.isConnected && !opener.hidden ? opener : progressLanding()).focus();
 }
 
 function showProgressDetail({ focus = false } = {}) {
@@ -7586,6 +7611,13 @@ function toggleFingerMap() {
 
 // A jump from the palette lands where the screen starts: the passage on Practice, the heading elsewhere.
 function jumpTo(view) {
+  // Progress is its overview, from one of its own detail views too, as from any other screen (TOB-448).
+  if (view === 'progress' && document.body.dataset.view === 'progress' && progressState.detail) {
+    progressState.detail = '';
+    detailOpener = null;
+    renderHistory();
+  }
+
   navigate(view);
 
   if (view !== 'practice') $(`${view}-heading`).focus();

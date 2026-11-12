@@ -394,3 +394,63 @@ test('clearing history needs the typed word and can be undone', async ({ page })
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
 });
+
+// A drill or retest waits on Practice until someone types it. Opening another screen and coming back to Practice
+// keeps it, rather than drawing a plain practice passage over it (TOB-448). Practice's own dock button, pressed on
+// Practice, still leaves it for practice.
+test('a waiting drill and a waiting retest are kept through Train, Progress and Challenge', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+
+  for (const away of ['Train', 'Progress', 'Challenge']) {
+    await openView(page, 'Train');
+    await page.locator('#start-drill').click();
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    const drill = await passageText(page);
+    await openView(page, away);
+    await openView(page, 'Practice');
+    await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    expect(await passageText(page)).toBe(drill);
+  }
+
+  await finishDrill(page);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  const retest = await passageText(page);
+  await openView(page, 'Challenge');
+  await openView(page, 'Practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  expect(await passageText(page)).toBe(retest);
+
+  await openView(page, 'Practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+});
+
+// A drill interrupted part way (the window lost focus) still goes on to its retest, and the loop it saves is one
+// thing with one name (TOB-448): Train puts the target behind you as drilled, and Progress lists the same loop as its
+// drill and retest, with the drill marked interrupted, never as a "Fresh-text check" whose drill was skipped.
+test('a loop whose drill was interrupted has the same name on Train and Progress', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await chooseMore(page, 'mode-drill');
+  await page.locator('#manual-target-input').fill('br');
+  await page.locator('#apply-manual-target').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await page.clock.install();
+  await typeInto(page, (await passageText(page)).slice(0, 4));
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await expect(page.locator('#typing-status')).toHaveText('Interrupted');
+  await page.clock.fastForward(30_000);
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'retest');
+  await completePassage(page);
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+
+  await openView(page, 'Train');
+  await expect(page.locator('#train-path > .is-behind:not(#comparison-panel)').filter({ hasText: 'br' }).locator('.path-status')).toHaveText('drilled');
+  await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
+  await expect(page.locator('.history-target')).toHaveText('“br” drill and retest');
+  await page.locator('.history-row summary').first().click();
+  await expect(page.locator('.history-detail')).toContainText('drillinterrupted · br');
+});
