@@ -159,8 +159,13 @@ export function runRecord(attempt, at = attempt.at || null) {
   return record;
 }
 
-// Comparable runs keep the newest 1,000 summaries, the newest 120 with pattern evidence (their pair and key counts
-// and correction times, which the learner reads only beside the counts); other kinds keep their newest 50. Order stays chronological, and a profile with only comparable runs is retained exactly as before.
+// Pattern counts, key counts or correction times on a summary: what the pattern window keeps or removes.
+const carriesCounts = (run) => Boolean(run.patterns?.length || run.keys?.length || 'corrections' in run);
+
+// Comparable runs keep the newest 1,000 summaries. Pattern counts, key counts and correction times (which the
+// learner reads only beside the counts) stay on the newest 120 of them that carry any, so a drill between tests,
+// which carries none, takes no place, as with missed words below. Other kinds keep their newest 50. Order stays
+// chronological.
 // Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
 // from the end means drills between them never push counted runs out of the list's window (word practice and
 // custom text are on their own budget anyway).
@@ -168,11 +173,11 @@ export function retainRuns(runs) {
   const comparable = runs.filter((run) => comparableKind(run.kind));
   const other = runs.filter((run) => !comparableKind(run.kind));
   const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
-  const withPatterns = new Set(comparable.slice(-MAX_PATTERN_RUNS));
+  const withPatterns = new Set(comparable.filter((run) => kept.has(run) && carriesCounts(run)).slice(-MAX_PATTERN_RUNS));
   const withWords = new Set(comparable.filter((run) => kept.has(run) && missedWordsRun(run)).slice(-MAX_PATTERN_RUNS));
 
   return runs.filter((run) => kept.has(run)).map((run) => {
-    const trimPatterns = comparableKind(run.kind) && !withPatterns.has(run);
+    const trimPatterns = comparableKind(run.kind) && carriesCounts(run) && !withPatterns.has(run);
     const trimWords = 'missedWords' in run && !withWords.has(run);
 
     if (!trimPatterns && !trimWords) return run;
@@ -230,6 +235,10 @@ export const practiceRun = (run) => validRun(run) && comparableKind(run.kind) &&
 // bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
 export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
+
+// A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
+// never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
+export const bestRun = (run) => trendRun(run) && run.conditions?.mode !== 'code';
 
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.

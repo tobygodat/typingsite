@@ -337,6 +337,9 @@ export class FakeRaces {
 
     if (action === 'progress' && (room.status === 'finished' || player.finished)) this.keepTrace(room, player, data.trace);
 
+    // As race_action does: a seat still racing can't send progress to a room that isn't.
+    if (action === 'progress' && room.status !== 'finished' && !player.finished && room.status !== 'racing') return failure('Wait for the shared countdown to finish.');
+
     if (action === 'progress' && room.status === 'racing' && !player.finished && data.sequence > player.sequence) {
       // As race_action checks them: printable ASCII text, and counters that match it.
       const correct = [...data.typed].filter((char, i) => char === room.passage[i]).length;

@@ -193,6 +193,12 @@ function storedPreferences(raw) {
 const withSummary = (trace) => (trace && !trace.summary && Array.isArray(trace.events) && typeof trace.text === 'string'
   ? { ...trace, summary: replayAttempt(trace) } : trace);
 
+// A stored list keeps only its records. One null or stray value (a corrupt cache, a hand-edited row) would
+// otherwise throw below, and the caller would read the whole copy as empty. Nothing inside a record is checked:
+// older builds saved records with fewer fields, and they stay.
+const isRecord = (entry) => entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+const recordsOf = (list) => (Array.isArray(list) ? list.filter(isRecord) : []);
+
 export function normalizeProfile(stored) {
   if (stored?.version !== 2) return emptyProfile();
   const parsed = withoutConditionSets(stored);
@@ -207,12 +213,12 @@ export function normalizeProfile(stored) {
     if (oldChoice) preferencesAt.correction = oldChoice;
   }
 
-  const traces = Array.isArray(parsed.attempts) ? parsed.attempts.map(withSummary) : [];
+  const traces = recordsOf(parsed.attempts).map(withSummary);
 
-  const records = Array.isArray(parsed.runs) ? parsed.runs : traces.map((trace) => {
+  const records = Array.isArray(parsed.runs) ? recordsOf(parsed.runs) : traces.map((trace) => {
     // Older traces did not have wall-clock dates. Preserve unknown dates rather than invent them.
-    const loop = parsed.loops?.find((l) => l.afterAttemptId === trace.id);
-    const best = Object.values(parsed.bests || {}).find((b) => b.attemptId === trace.id);
+    const loop = recordsOf(parsed.loops).find((l) => l.afterAttemptId === trace.id);
+    const best = Object.values(parsed.bests || {}).filter(isRecord).find((b) => b.attemptId === trace.id);
 
     return runRecord(trace, trace.at || loop?.at || best?.at || null);
   });
@@ -229,11 +235,13 @@ export function normalizeProfile(stored) {
     attempts: retainTraces(settleDailyFirsts(traces)),
     ...retainHistory(settleDailyFirsts(records), validPracticeDays(parsed.practiceDays)),
     runCounts: retainRunCounts(parsed.runCounts),
-    loops: Array.isArray(parsed.loops) ? parsed.loops : [],
-    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds : [],
+    loops: recordsOf(parsed.loops),
+    seenTextIds: Array.isArray(parsed.seenTextIds) ? parsed.seenTextIds.filter((id) => typeof id === 'string') : [],
     // Stored bests are kept exactly as saved, including any an exhausted quote pool set before repeat quotes:
     // only a run from now on needs fresh text to set one (storeAttempt).
-    bests: parsed.bests && typeof parsed.bests === 'object' ? parsed.bests : {},
+    bests: isRecord(parsed.bests)
+      ? Object.fromEntries(Object.entries(parsed.bests).filter(([, best]) => isRecord(best) && Number.isFinite(best.wpm)))
+      : {},
     lessons: normalizeLessonProgress(parsed.lessons),
     compositions: normalizeCompositions(parsed.compositions),
   });

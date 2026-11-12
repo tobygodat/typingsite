@@ -3,7 +3,7 @@
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
 import { retainTraces } from './insights.js';
 import { retainCompositions } from './compose.js';
-import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
+import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, bestRun } from './insights.js';
 import { keepDays, mergeRunCounts, retainRunCounts, validRunCounts } from './run-counts.js';
 import { conditionKey } from './typing.js';
 
@@ -11,6 +11,17 @@ const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-JwGKezfGmITUHTITrhsNw_Izw71gdI';
 export const SESSION_KEY = 'stilltype-session-v1';
 const VERIFIER_KEY = 'stilltype-pkce-verifier';
+
+// A sign-up waiting for its confirmation email: the address, and when. A token link signs in only the address
+// this browser signed up with, and only for a day, as a ?code= needs the verifier this browser kept.
+const PENDING_SIGNUP_KEY = 'stilltype-pending-signup';
+const PENDING_SIGNUP_MS = 24 * 60 * 60 * 1000;
+
+export const REDIRECT_COPY = {
+  refused: 'That link can’t sign you in here. Sign in with your email and password.',
+  failed: 'That sign-in link didn’t work. Try signing in again.',
+};
+
 const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
 
 export const profileKey = (userId) => `${LEGACY_PROFILE_KEY}:${userId}`;
@@ -166,6 +177,7 @@ export async function signUp(email, password, redirectTo) {
 
   // With email confirmation on, Supabase returns the user without a session.
   if (data?.access_token) return { session: storeSignIn(data) };
+  writeJson(PENDING_SIGNUP_KEY, { email: email.trim().toLowerCase(), at: Date.now() });
 
   return { confirm: true };
 }
@@ -201,7 +213,8 @@ export async function completeRedirect(href) {
   if (!redirect) return null;
   history.replaceState(history.state, '', cleanRedirectUrl(href));
 
-  if (redirect.kind === 'error') throw new AuthError(redirect.message);
+  // The link's own words are never shown, since anyone can write a link.
+  if (redirect.kind === 'error') throw new AuthError(REDIRECT_COPY.failed);
 
   if (redirect.kind === 'code') {
     const verifier = readJson(VERIFIER_KEY);
@@ -213,7 +226,15 @@ export async function completeRedirect(href) {
     return storeSignIn(data);
   }
 
+  // A token link carries everything needed to sign in, so anyone can make one for their own account. It is
+  // taken only as the answer to a sign-up this browser made, for that address, and only once.
+  const pending = readJson(PENDING_SIGNUP_KEY);
+  remove(PENDING_SIGNUP_KEY);
+
+  if (!pending?.email || !(Date.now() - pending.at < PENDING_SIGNUP_MS)) throw new AuthError(REDIRECT_COPY.refused);
   const user = await request('/auth/v1/user', { token: redirect.access_token });
+
+  if ((user?.email || '').toLowerCase() !== pending.email) throw new AuthError(REDIRECT_COPY.refused);
 
   return storeSignIn({ ...redirect, user });
 }
@@ -1103,7 +1124,7 @@ export function mergeSynced(local, cloud) {
     const key = conditionKey(run.conditions);
     const best = { wpm: run.score?.wpm, attemptId: run.id, at: run.at };
 
-    if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
+    if (bestRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
 
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];

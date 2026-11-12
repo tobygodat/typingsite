@@ -39,6 +39,34 @@ test('sign-up that needs confirmation shows the check-your-email step', async ({
   await expect(account(page)).toHaveAttribute('data-state', 'guest');
 });
 
+const tokenLink = ({ access_token, refresh_token }) => `/#access_token=${access_token}&refresh_token=${refresh_token}&expires_in=3600&type=signup`;
+
+test('the confirmation link signs in the browser that signed up', async ({ page, supabase }) => {
+  supabase.confirmSignups = true;
+  await openApp(page);
+  await page.locator('#account-trigger').click();
+  await page.locator('#account-create').click();
+  await page.locator('#account-email-input').fill('new@stilltype.test');
+  await page.locator('#account-password').fill('a long passphrase');
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-confirm')).toBeVisible();
+  await page.locator('#account-confirm-done').click();
+  await expect(account(page)).toHaveAttribute('data-state', 'guest');
+
+  // The link opens as a fresh page load (going straight from / would only change the hash), and signing in reloads it.
+  await page.goto('about:blank');
+  await page.goto(tokenLink(supabase.issueSession(supabase.users.get('new@stilltype.test'))));
+  await expect(account(page)).toHaveAttribute('data-state', 'member');
+});
+
+test('a token link nobody here asked for signs nobody in', async ({ page, supabase }) => {
+  const user = supabase.addUser('someone@stilltype.test');
+  await openApp(page, tokenLink(supabase.issueSession(user)));
+  await expect(page.locator('#account-feedback')).toHaveText('That link can’t sign you in here. Sign in with your email and password.');
+  await expect(account(page)).toHaveAttribute('data-state', 'guest');
+  expect(page.url()).not.toContain('access_token');
+});
+
 test('creating an account signs in and syncs a first profile row', async ({ page, supabase }) => {
   await openApp(page);
   await page.locator('#account-trigger').click();
