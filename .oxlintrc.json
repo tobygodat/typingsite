@@ -55,7 +55,7 @@
     {
       "files": [
         "src/books.ts", "src/compose.ts", "src/custom-themes.ts", "src/fonts.ts",
-        "src/insights.ts", "src/layouts.ts", "src/lengths.ts", "src/lessons.ts",
+        "src/insights.ts", "src/keybindings.ts", "src/layouts.ts", "src/lengths.ts", "src/lessons.ts",
         "src/profile.ts", "src/run-counts.ts", "src/typing.ts", "src/word-highlight.ts"
       ],
       "rules": {
