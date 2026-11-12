@@ -284,9 +284,9 @@ export function challengeTextId(passage: string, conditions: RaceConditions = {}
 // Who led: more correct characters kept per minute. On a timed race both clocks match, so that is the
 // text kept; under stop on error both runs end on the exact text, so it is the earlier finish; under
 // continue on error a quick finish full of mistakes doesn't beat a clean one.
-export function challengeOutcome({ sender, result }: { sender?: ChallengeScore | null; result?: ChallengeScore | null }) {
+export function challengeOutcome({ sender, result }: { sender?: Pick<ChallengeScore, 'elapsedMs' | 'correct'> | null; result?: Pick<ChallengeScore, 'elapsedMs' | 'correct'> | null }) {
   if (!sender || !result) return null;
-  const pace = (score: ChallengeScore) => (score.elapsedMs > 0 ? score.correct / score.elapsedMs : 0);
+  const pace = (score: Pick<ChallengeScore, 'elapsedMs' | 'correct'>) => (score.elapsedMs > 0 ? score.correct / score.elapsedMs : 0);
   const lead = pace(result) - pace(sender);
 
   return lead > 0 ? 'recipient' : lead < 0 ? 'sender' : 'tie';
