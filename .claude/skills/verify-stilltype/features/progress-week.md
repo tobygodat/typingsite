@@ -2,7 +2,7 @@
 
 Progress opens on one question: what changed since last week, and what moved it. A large figure gives the change in
 speed against the week before, with the two medians beside it and a conditions line that is also the control that
-changes them. Under it, the pairs and keys that were fixed or are slipping, and practice; then two small charts; then
+changes them. Under it, the pairs and keys fixed this week, and practice; then two small charts; then
 quiet links to runs and drills, keys, the practice calendar, the standard score and composing, each a view one step
 away with a way back.
 
@@ -12,7 +12,7 @@ away with a way back.
 - PW-2: Without two weeks to compare, the lead shows this week's median, the week before's or the latest run, and says when a change can show.
 - PW-3: A new guest sees "Nothing to compare yet" with Take a test and Take the standard test.
 - PW-4: The conditions line opens the length pills and the condition-set select; the lead, charts and lists follow.
-- PW-5: The list shows units fixed (green word) and slipping (coral word, with "Drill “…”"), three at a time, then practice (more, less, same).
+- PW-5: The list shows units fixed this week (the word "fixed"), three at a time with "N more" for the rest, then practice (more, less, same). One fixed unit lists alone with practice; nothing fixed lists practice alone; with neither, there is no list. A named unit is drilled from Patterns across runs in Keys.
 - PW-6: A small chart opens its full chart on the trends view; each link opens its view; Progress goes back, focus on what opened it.
 - PW-7: Clear history empties the page to the new-guest state and Undo brings the week back.
 
@@ -27,11 +27,11 @@ away with a way back.
 Preconditions: `$V doctor` exits 0.
 
 - Every state, dark, at a laptop width: `$V drive .claude/skills/verify-stilltype/flows/progress-week.mjs --width 1280 --height 800`.
-  Shots: guest, gain, conditions-open, each detail view, cleared, undone, drill, drop, flat, week. `run.json`
-  notes each lead and its movers ("ol:fixed", "ex:slipping", "qu:fixed", "practice:less" for gain).
+  Shots: guest, gain, conditions-open, each detail view, cleared, undone, drill, one, practice, quiet, drop, flat, week. `run.json`
+  notes each lead and its movers ("ol:fixed", "ex:fixed", "qu:fixed", "practice:less" for gain; "qu:fixed", "practice:less" for one; "practice:less" for practice; none for quiet).
 - Phones and light: add `--width 390 --height 844 --mobile` or `--width 320 --height 568 --mobile`, or
   `--scheme light`. Each step checks nothing scrolls sideways.
-- One account only: `PROGRESS_ONLY=gain` (or drop, flat, week, guest) before the command.
+- One account only: `PROGRESS_ONLY=gain` (or one, practice, quiet, drop, flat, week, guest) before the command.
 - Every theme on one sheet: `$V drive .claude/skills/verify-stilltype/flows/progress-week-themes.mjs`.
 
 ## Gotchas
