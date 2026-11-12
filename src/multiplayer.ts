@@ -62,7 +62,7 @@ async function action(session: Session | null, type: string, credentials: RaceCr
   }
 }
 
-export function createRace(session: Session | null, { passage, conditions = {}, displayName, inviteEmail = '', friendId = '' }: RaceSetup) {
+export function createRace(session: Session | null, { passage, conditions = {}, displayName, inviteEmail = '', friendId = '' }: RaceSetup, signal?: AbortSignal) {
   if (!session?.user?.id) throw new AuthError('Sign in to host an online race.');
 
   const race: CreateRaceData = { passage: typeof passage === 'string' ? passage : passage?.text,
@@ -71,14 +71,14 @@ export function createRace(session: Session | null, { passage, conditions = {}, 
 
   if (friendId) race.friendId = friendId;
 
-  return action(session, 'create', {}, race).then((value) => entryWithSequence(value, session));
+  return action(session, 'create', {}, race, signal).then((value) => entryWithSequence(value, session));
 }
 
 // Picks Rematch on a closed race, or takes the pick back (want: false). When both seats have picked, the
 // service opens the next room for both, already counting down, and its id comes back as `rematchId`. The
 // reply's `roomId` is another room only when this seat moves into it: a service from before picks opens or
 // joins the rematch at the first ask.
-export function rematchRace(session: Session | null, credentials: RaceCredentials, { want = true, passage, conditions = {} }: RematchSetup) {
+export function rematchRace(session: Session | null, credentials: RaceCredentials, { want = true, passage, conditions = {} }: RematchSetup, signal?: AbortSignal) {
   const ask: RematchData = { want };
 
   if (passage) {
@@ -86,11 +86,11 @@ export function rematchRace(session: Session | null, credentials: RaceCredential
     ask.conditions = { ...conditions, textId: (typeof passage === 'string' ? undefined : passage.id) || conditions.textId };
   }
 
-  return action(session, 'rematch', credentials, ask).then((value) => entryWithSequence(value, session, credentials));
+  return action(session, 'rematch', credentials, ask, signal).then((value) => entryWithSequence(value, session, credentials));
 }
 
 // Both racers' keystroke traces once the race is finished, in seat order: [{ slot, trace }].
-export const getRaceTraces = (session: Session | null, credentials: RaceCredentials) => action(session, 'traces', credentials).then((result) => decodeReply(TraceReplySchema, result).traces || []);
+export const getRaceTraces = (session: Session | null, credentials: RaceCredentials, signal?: AbortSignal) => action(session, 'traces', credentials, undefined, signal).then((result) => decodeReply(TraceReplySchema, result).traces || []);
 
 // Friends are private to the signed-in owner. Rows carry an email only when the owner typed it.
 // Each call takes the abort signal its queue gives it (below).
@@ -203,14 +203,14 @@ export async function quickMatch(session: Session | null, type: 'rating' | 'queu
 // Challenge's people links (public.race_people): each friend row's tally, and the friend row each open invitation
 // and ghost challenge belongs to. Null before its migration is applied: rows then show no tally and the records
 // stay apart, as they did before it.
-export async function listPeopleLinks(session: Session | null) {
+export async function listPeopleLinks(session: Session | null, signal?: AbortSignal) {
   if (!session?.user?.id) return null;
   const lifetime = accountLifetime();
   const stored = loadSession();
-  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session, { signal });
 
   try {
-    return decodeReply(PeopleLinksSchema, await request('/rest/v1/rpc/race_people', { method: 'POST', token: active?.access_token, lifetime, body: {} }));
+    return decodeReply(PeopleLinksSchema, await request('/rest/v1/rpc/race_people', { method: 'POST', token: active?.access_token, lifetime, signal, body: {} }));
   } catch (cause) {
     const error = errorDetails(cause);
 
@@ -221,16 +221,16 @@ export async function listPeopleLinks(session: Session | null) {
 
 export const listRaceInvites = (session: Session | null, signal?: AbortSignal) => session ? action(session, 'invites', {}, undefined, signal).then((value) => decodeReply(Schema.mutable(Schema.Array(InviteSchema)), value)) : Promise.resolve([]);
 
-export function joinRace(session: Session | null, { roomId, inviteToken, displayName, guestToken }: RaceCredentials & { displayName: string }) {
-  return action(session, 'join', { roomId, guestToken }, { inviteToken: inviteToken || null, displayName }).then((value) => entryWithSequence(value, session, { roomId, guestToken }));
+export function joinRace(session: Session | null, { roomId, inviteToken, displayName, guestToken }: RaceCredentials & { displayName: string }, signal?: AbortSignal) {
+  return action(session, 'join', { roomId, guestToken }, { inviteToken: inviteToken || null, displayName }, signal).then((value) => entryWithSequence(value, session, { roomId, guestToken }));
 }
 
-export const getRace = (session: Session | null, credentials: RaceCredentials) => action(session, 'get', credentials).then((value) => roomWithSequence(value, session, credentials));
-export const setRaceReady = (session: Session | null, credentials: RaceCredentials, ready = true) => action(session, 'ready', credentials, { ready }).then((value) => roomWithSequence(value, session, credentials));
+export const getRace = (session: Session | null, credentials: RaceCredentials, signal?: AbortSignal) => action(session, 'get', credentials, undefined, signal).then((value) => roomWithSequence(value, session, credentials));
+export const setRaceReady = (session: Session | null, credentials: RaceCredentials, ready = true, signal?: AbortSignal) => action(session, 'ready', credentials, { ready }, signal).then((value) => roomWithSequence(value, session, credentials));
 
 // A finished racer's progress carries the run's keystroke trace, which draws the graph and replay. `sent` hears the
 // packet's sequence number, which the service reports back for the packet it last applied.
-export function updateRaceProgress(session: Session | null, credentials: RaceCredentials, { typed, keystrokes, errors, finished = false, trace = null }: RaceProgress, sent: (sequence: number) => void = () => {}) {
+export function updateRaceProgress(session: Session | null, credentials: RaceCredentials, { typed, keystrokes, errors, finished = false, trace = null }: RaceProgress, sent: (sequence: number) => void = () => {}, signal?: AbortSignal) {
   const key = `${credentials.roomId}:${session?.user?.id || credentials.guestToken}`;
   const sequence = (sequences.get(key) || 0) + 1;
   sequences.set(key, sequence);
@@ -240,10 +240,10 @@ export function updateRaceProgress(session: Session | null, credentials: RaceCre
 
   if (trace) progress.trace = trace;
 
-  return action(session, 'progress', credentials, progress).then((value) => roomWithSequence(value, session, credentials));
+  return action(session, 'progress', credentials, progress, signal).then((value) => roomWithSequence(value, session, credentials));
 }
 
-export const leaveRace = (session: Session | null, credentials: RaceCredentials) => action(session, 'leave', credentials).then((value) => roomWithSequence(value, session, credentials));
+export const leaveRace = (session: Session | null, credentials: RaceCredentials, signal?: AbortSignal) => action(session, 'leave', credentials, undefined, signal).then((value) => roomWithSequence(value, session, credentials));
 
 export function parseRaceLink(href: string) {
   const hash = new URLSearchParams(new URL(href).hash.slice(1));

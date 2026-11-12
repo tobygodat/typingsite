@@ -267,3 +267,50 @@ test('inbox poll cancellation reaches both RPC and expired-session refresh I/O',
     }
   });
 });
+
+test('online race operations abort their actual HTTP request when their owner cancels', async () => {
+  const race = await import('../src/multiplayer.js');
+  const session = { user: { id: 'online-owner' }, access_token: 'access', refresh_token: 'refresh', expires_at: 9999999999 };
+  const credentials = { roomId: 'room' };
+
+  const sends = [
+    (signal) => race.createRace(session, { passage: 'the race text', displayName: 'Lin' }, signal),
+    (signal) => race.joinRace(session, { ...credentials, displayName: 'Lin' }, signal),
+    (signal) => race.getRace(session, credentials, signal),
+    (signal) => race.setRaceReady(session, credentials, true, signal),
+    (signal) => race.updateRaceProgress(session, credentials, { typed: 'the', keystrokes: 3, errors: 0 }, () => {}, signal),
+    (signal) => race.leaveRace(session, credentials, signal),
+    (signal) => race.rematchRace(session, credentials, {}, signal),
+    (signal) => race.getRaceTraces(session, credentials, signal),
+    (signal) => race.listPeopleLinks(session, signal),
+  ];
+
+  await service(async ({ calls, signals }) => {
+    for (const send of sends) {
+      const caller = new AbortController();
+      const before = calls.length;
+      const pending = send(caller.signal);
+      const rejected = assert.rejects(pending, AuthError);
+      await until(() => calls.length > before);
+      caller.abort();
+      await rejected;
+      assert.equal(signals[before].aborted, true);
+      assert.equal(calls.length, before + 1, 'an uncertain race operation is never retried');
+    }
+  });
+});
+
+test('expired room snapshots retain nullable clocks and the complete settled rating contract', async () => {
+  const { roomReply } = await import('../src/network-race.js');
+  const rating = { rated: false, reason: 'unfinished', outcome: null, before: 1000, after: 1000, delta: 0, races: 0 };
+
+  const room = roomReply({ id: 'room', passage: 'hello', status: 'expired', startAt: null, serverNow: null, expiresAt: null,
+    players: [], selfSlot: 1, rating });
+
+  assert.equal(room.status, 'expired');
+  assert.equal(room.serverNow, null);
+  assert.equal(room.rating, rating);
+  const older = roomReply({ id: 'older', passage: 'hello' });
+  assert.equal(Object.hasOwn(older, 'players'), false);
+  assert.equal(Object.hasOwn(older, 'selfSlot'), false);
+});

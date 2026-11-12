@@ -42,13 +42,14 @@ export const PlayerSchema = open({
 
 export type RacePlayer = typeof PlayerSchema.Type;
 
-const RatingSchema = open({ after: Schema.optional(Schema.Number), delta: Schema.optional(Schema.Number), races: Schema.optional(Schema.Number), outcome: optionalString });
+const ratingFields = { rated: Schema.Boolean, reason: Schema.NullOr(Schema.String), outcome: Schema.NullOr(Schema.Literals(['won', 'lost', 'tied'])), before: Schema.Number, after: Schema.Number, delta: Schema.Number, races: Schema.Number };
+const RatingSchema = open(ratingFields);
 
 const RoomSchema = open({
   id: Schema.String, passage: Schema.Union([Schema.String, open({ id: Schema.String, text: Schema.String })]),
   conditions: Schema.optional(ConditionsSchema), players: Schema.optional(Schema.mutable(Schema.Array(PlayerSchema))), selfSlot: Schema.optional(Schema.Number),
-  status: Schema.optional(Schema.Literals(['waiting', 'countdown', 'racing', 'finished', 'cancelled'])), duration: optionalNumber,
-  startAt: optionalString, serverNow: Schema.optional(Schema.String), expiresAt: optionalString, inviteKind: optionalString,
+  status: Schema.optional(Schema.Literals(['waiting', 'countdown', 'racing', 'finished', 'cancelled', 'expired'])), duration: optionalNumber,
+  startAt: optionalString, serverNow: optionalString, expiresAt: optionalString, inviteKind: optionalString,
   rematchOf: optionalString, rematchId: optionalString, tally: Schema.optional(Schema.NullOr(Schema.mutable(Schema.Array(Schema.Number)))),
   quick: Schema.optional(Schema.Boolean), rating: Schema.optional(Schema.NullOr(RatingSchema)),
 });
@@ -94,7 +95,7 @@ export const ChallengeSchema = open({
 
 export type GhostChallenge = typeof ChallengeSchema.Type;
 
-const LastRatingSchema = open({ roomId: Schema.String, rated: Schema.Boolean, reason: Schema.NullOr(Schema.String), outcome: Schema.NullOr(Schema.Literals(['won', 'lost', 'tied'])), before: Schema.Number, after: Schema.Number, delta: Schema.Number, races: Schema.Number });
+const LastRatingSchema = open({ roomId: Schema.String, ...ratingFields });
 
 export type QuickMatchReply =
   | { state: 'idle' }
