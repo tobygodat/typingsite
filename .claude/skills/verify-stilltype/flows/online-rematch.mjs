@@ -1,7 +1,8 @@
 // An online race between two accounts, seen from the host's side: the results with the graph and the
 // replay, then each Rematch state (you picked, they picked, both picked: "Starting", they left). Mara is a
 // second browser context on the same fake Supabase. The pair's earlier wins (2 to 1) are seeded in the fake
-// service, so the first result reads 3 – 1 without racing four times.
+// service, so the first result reads 3 – 1 without racing four times. Toby's join of the rematch lands after its
+// countdown has ended (TOB-448): his clock still matches Mara's, and both results of the rematch have Graph and Replay.
 // On a build without the rematch results it stops after the results shot, which makes it the "before".
 export default async ({ page, h, shot, note, check, fake, url }) => {
   const host = fake.addUser('toby@stilltype.test');
@@ -79,18 +80,35 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await h.settle();
     await shot('they-chose');
 
-    // Holding the reply that moves Toby into the rematch keeps "Starting" on screen for the shot.
-    const release = fake.races.hold('join');
+    // Holding the reply that moves Toby into the rematch keeps "Starting" on screen for the shot, and lets it land
+    // only once Mara is racing.
+    const release = fake.races.hold('join', host.id);
     await page.locator('#online-rematch').click();
     await page.locator('#online-starting:not([hidden])').waitFor();
     await h.settle();
     await shot('both-chose');
+    await mara.locator('#online-input:enabled').waitFor({ timeout: 20000 });
     release();
-    await page.locator('#online-countdown', { hasText: 'Starting in' }).waitFor();
-    await shot('rematch-countdown');
+    await page.locator('#online-input:enabled').waitFor({ timeout: 20000 });
+    const left = async (racer) => Number((await racer.locator('#online-timer').textContent()).match(/\d+/)?.[0]);
+    const clocks = await Promise.all([left(page), left(mara)]);
+    note('rematch clocks (Toby, Mara)', clocks.join(', '));
+    check(Math.abs(clocks[0] - clocks[1]) <= 1, 'a late join races on the same clock as the other racer');
+    await shot('rematch-joined-late');
 
     await race();
     await page.locator('#online-review').waitFor({ timeout: 10000 });
+    await mara.locator('#online-review').waitFor({ timeout: 10000 });
+    check(await page.locator('#online-duel-graph path.graph-line').count() === 2, 'the rematch graph draws both racers');
+    check(await mara.locator('#online-duel-graph path.graph-line').count() === 2, 'Mara’s rematch graph draws both racers');
+    await h.settle();
+    await shot('rematch-graph');
+    await page.locator('#online-show-replay').click();
+    await page.waitForTimeout(9000);
+    await page.locator('#online-replay-toggle').click();
+    check(await page.locator('#online-replay-display .caret-tag').count() === 2, 'both rematch carets carry a name');
+    await shot('rematch-replay');
+    await page.locator('#online-show-graph').click();
     await mara.locator('#online-leave').click();
     await page.locator('#online-their-rematch[data-state="left"]').waitFor();
     await h.settle();

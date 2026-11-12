@@ -4,10 +4,22 @@
 import { test, expect, openApp, openView, chooseWords, passageText, typeInto, finishDrill, completePassage } from './fixtures.js';
 import { conditions, withHistory } from './train-fixtures.js';
 
-async function besideTab(page, context, supabase, email) {
+// A seeded Math.random from `start`, so the other tab's passages are fixed.
+const seedFrom = (start) => {
+  let seed = start;
+  Math.random = () => {
+    seed = (seed * 16807) % 2147483647;
+
+    return (seed - 1) / 2147483646;
+  };
+};
+
+async function besideTab(page, context, supabase, email, { seed = null } = {}) {
   const errors = [];
   await withHistory(page, supabase, email);
   const other = await context.newPage();
+
+  if (seed !== null) await other.addInitScript(seedFrom, seed);
   await supabase.attach(other);
   other.on('pageerror', (error) => errors.push(error.message));
   await openApp(other);
@@ -71,8 +83,11 @@ async function clearIn(page) {
 async function runWithMisses(page) {
   await openView(page, 'Practice');
   await chooseWords(page, 10);
-  await typeInto(page, (await passageText(page)).replaceAll('e', 'x'));
+  const passage = await passageText(page);
+  await typeInto(page, passage.replaceAll('e', 'x'));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+
+  return passage;
 }
 
 test('a clear in another tab and its undo redraw Train here, each time as the stored history gives it', async ({ page, context, supabase }) => {
@@ -96,12 +111,14 @@ test('a clear in another tab and its undo redraw Train here, each time as the st
 
 test('a run typed in another tab redraws the steps ahead here, and Patterns across runs on Progress', async ({ page, context, supabase }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const { other, errors } = await besideTab(page, context, supabase, 'follow-run@stilltype.test');
+  // A random ten words can miss every pair the path shows (th, an, er, in and the drilled ones), and then nothing on
+  // it changes. The other tab's passages are fixed, and the first holds "th".
+  const { other, errors } = await besideTab(page, context, supabase, 'follow-run@stilltype.test', { seed: 7919 });
   await openView(page, 'Train');
   const before = await drawn(page);
   expect(before).toEqual((await stored(page)).path);
 
-  await runWithMisses(other);
+  expect(await runWithMisses(other)).toContain('th');
   await expect.poll(async () => JSON.stringify((await stored(page)).path), { timeout: 10_000 }).not.toBe(JSON.stringify(before));
   await expectStoredPath(page);
 

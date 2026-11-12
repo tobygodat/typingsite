@@ -1,5 +1,6 @@
 // The independent check of PR 134: what a one-press Race uses, the people links after another tab's friend change,
-// where focus lands after Dismiss, friends who share a name, a tally nobody has won yet, and a missing race_people.
+// where focus lands after Dismiss (a row, so a double tap presses nothing), friends who share a name, a tally nobody
+// has won yet, and a missing race_people.
 import { test, expect, openApp, openView, signInWithEmail, chooseWords } from './fixtures.js';
 
 test.setTimeout(90000);
@@ -108,7 +109,8 @@ test('a friend change in another tab reads the links again: an invitation joins 
   await other.close();
 });
 
-test('after Dismiss focus lands where a second press destroys nothing', async ({ page, supabase }) => {
+// Three invitations: Ada's (Ada is a friend, so her row stays as Race after Dismiss), then Kim's, then Lin's.
+async function threeInvitations(page, supabase) {
   const toby = supabase.addUser('toby@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
@@ -120,32 +122,71 @@ test('after Dismiss focus lands where a second press destroys nothing', async ({
   await signedIn(page);
   await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(3);
   await expect(rows(page).first()).toHaveAttribute('data-key', /^friend:/);
+}
 
-  // Ada's row stays (Ada is a friend): focus goes to Ada's Race, and a second press only starts nothing destructive.
+const row = (page, name) => rows(page).filter({ has: page.locator('.people-name', { hasText: name }) });
+const focusShows = (locator) => locator.evaluate((node) => node.matches(':focus-visible') && getComputedStyle(node).outlineStyle !== 'none');
+
+test('after Dismiss focus lands on a row, shown, and Tab goes on to its action', async ({ page, supabase }) => {
+  await threeInvitations(page, supabase);
+
+  // Ada's row stays (Ada is a friend): focus goes to her row, not her Race.
   await page.getByRole('button', { name: 'Dismiss Ada’s invitation' }).focus();
   await page.keyboard.press('Enter');
+  await expect(row(page, 'Ada')).toBeFocused();
+  expect(await focusShows(row(page, 'Ada'))).toBe(true);
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Race Ada', exact: true })).toBeFocused();
 
-  // Kim's row goes: focus goes to the next row's main action, Lin's Join, never Lin's Dismiss.
+  // Kim's row goes: focus goes to the row now in its place, Lin's, not Lin's Join or Dismiss.
   await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(1);
+  await expect(row(page, 'Lin')).toBeFocused();
+  expect(await focusShows(row(page, 'Lin'))).toBe(true);
+  await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Join Lin’s race' })).toBeFocused();
-  await expect(page.getByRole('button', { name: 'Dismiss Lin’s invitation' })).toBeVisible();
+
+  // Clicked with the mouse, Dismiss still hands focus to a row, but no ring shows for a pointer.
+  await page.getByRole('button', { name: 'Dismiss Lin’s invitation' }).click();
+  await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(0);
+  await expect(row(page, 'Ada')).toBeFocused();
+  expect(await focusShows(row(page, 'Ada'))).toBe(false);
 });
 
-// Focus lands on another row's action after Dismiss, so a key that is still down must not press it.
+// A quick double tap is two real presses, so the key-repeat guard doesn't see the second one.
+test('a double tap of Enter on Dismiss dismisses once and presses nothing else', async ({ page, supabase }) => {
+  await threeInvitations(page, supabase);
+
+  const twice = async (key) => {
+    await page.keyboard.press(key);
+    await page.keyboard.press(key);
+  };
+
+  // Kim's row goes. The second press must not join Lin's race.
+  await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
+  await twice('Enter');
+  await expect(row(page, 'Lin')).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Join Lin’s race' })).toBeVisible();
+  await expect(page.locator('#online-room')).toBeHidden();
+
+  // Ada's row stays as Race. The second press must not send her an invitation; nor must a double Space.
+  await page.getByRole('button', { name: 'Dismiss Ada’s invitation' }).focus();
+  await twice(' ');
+  await expect(row(page, 'Ada')).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#online-room')).toBeHidden();
+  await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(1);
+
+  // From the row, the action is one Tab away, and a fresh press of it still works.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#online-room')).toBeVisible();
+});
+
+// Focus lands on a row after Dismiss, so a key that is still down presses nothing there.
 test('a held Enter on Dismiss dismisses once and presses nothing else', async ({ page, supabase }) => {
-  const toby = supabase.addUser('toby@stilltype.test');
-  const kim = supabase.addUser('kim@stilltype.test');
-  const lin = supabase.addUser('lin@stilltype.test');
-  const ada = supabase.addUser('ada@stilltype.test');
-  supabase.races.addFriend(toby.id, { name: 'Ada', friendId: ada.id });
-  supabase.races.invite(ada.id, toby.id, { name: 'Ada', ageMs: 60000 });
-  supabase.races.invite(kim.id, toby.id, { name: 'Kim', ageMs: 30000 });
-  supabase.races.invite(lin.id, toby.id, { name: 'Lin' });
-  await signedIn(page);
-  await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(3);
+  await threeInvitations(page, supabase);
 
   const hold = async () => {
     await page.keyboard.down('Enter');
@@ -159,22 +200,38 @@ test('a held Enter on Dismiss dismisses once and presses nothing else', async ({
     await page.keyboard.up('Enter');
   };
 
-  // Kim's row goes and focus lands on Lin's Join. The held key must not join Lin's race.
+  // Kim's row goes and focus lands on Lin's row. The held key must not join Lin's race.
   await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
   await hold();
-  await expect(page.getByRole('button', { name: 'Join Lin’s race' })).toBeFocused();
+  await expect(row(page, 'Lin')).toBeFocused();
   await expect(page.locator('#online-room')).toBeHidden();
   await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(1);
 
-  // Ada's row stays and focus lands on her Race. The held key must not send her an invitation.
+  // Ada's row stays and focus lands on it. The held key must not send her an invitation.
   await page.getByRole('button', { name: 'Dismiss Ada’s invitation' }).focus();
   await hold();
-  await expect(page.getByRole('button', { name: 'Race Ada', exact: true })).toBeFocused();
+  await expect(row(page, 'Ada')).toBeFocused();
   await expect(page.locator('#online-room')).toBeHidden();
+});
 
-  // A fresh press still works.
-  await page.keyboard.press('Enter');
-  await expect(page.locator('#online-room')).toBeVisible();
+// The key-repeat guard is for buttons and links: a field takes a held key as any field does.
+test('a held Space in Race setup’s name field types every space', async ({ page, supabase }) => {
+  supabase.addUser('toby@stilltype.test');
+  await signedIn(page);
+  await page.getByRole('button', { name: /^Race setup/ }).click();
+  const name = page.locator('#online-name');
+  await name.fill('');
+  await name.focus();
+  await page.keyboard.down(' ');
+
+  // Each further down without an up is the key repeating.
+  for (let i = 0; i < 6; i += 1) {
+    await page.waitForTimeout(40);
+    await page.keyboard.down(' ');
+  }
+
+  await page.keyboard.up(' ');
+  await expect(name).toHaveValue(' '.repeat(7));
 });
 
 test('a held Enter on Race setup’s Done returns to the list and does not reopen the view', async ({ page, supabase }) => {
@@ -195,7 +252,7 @@ test('a held Enter on Race setup’s Done returns to the list and does not reope
   await expect(page.getByRole('button', { name: /^Race setup/ })).toBeFocused();
 });
 
-test('the last invitation dismissed hands focus to the list’s first control, never a Dismiss', async ({ page, supabase }) => {
+test('the last invitation dismissed hands focus to the row now last, never an action in it', async ({ page, supabase }) => {
   const toby = supabase.addUser('toby@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
@@ -208,7 +265,33 @@ test('the last invitation dismissed hands focus to the list’s first control, n
   await last.getByRole('button', { name: `Dismiss ${name}’s invitation` }).focus();
   await page.keyboard.press('Enter');
   await expect(rows(page)).toHaveCount(1);
-  await expect(rows(page).first().locator('.people-action')).toBeFocused();
+  await expect(rows(page).first()).toBeFocused();
+});
+
+// Signed in, an emptied list shows the "A friend" row only once the friend list has been read. Before that, the
+// last Dismiss leaves no row, and focus goes to Quick match's heading: a second press starts no search.
+test('before the friend list is read, the last Dismiss hands focus to Quick match’s heading, not Find a race', async ({ page, supabase }) => {
+  const toby = supabase.addUser('toby@stilltype.test');
+  const kim = supabase.addUser('kim@stilltype.test');
+  supabase.races.invite(kim.id, toby.id, { name: 'Kim' });
+  const release = supabase.races.hold('friends');
+
+  try {
+    await signedIn(page);
+    await expect(rows(page)).toHaveCount(1);
+    await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#people-list')).toBeHidden();
+    const heading = page.locator('#quick-match-heading');
+    await expect(heading).toBeFocused();
+    expect(await focusShows(heading)).toBe(true);
+    await expect(page.locator('#quick-match [data-quick="toggle"]')).toHaveText('Find a race');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#quick-match [data-quick="toggle"]')).toBeFocused();
+  } finally {
+    release();
+  }
 });
 
 test('friends who share a name are told apart by the email typed for them, seen and heard', async ({ page, supabase }) => {

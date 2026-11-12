@@ -3321,7 +3321,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .online-copy { color: var(--muted); font-size: var(--text-small); }
 .quick-match { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2) var(--space-6); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
 .quick-match-head { min-width: 0; display: grid; gap: var(--space-1); }
-.quick-match-head h2 { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
+.quick-match-head h2 { justify-self: start; margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
 .quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
 .quick-match-status, .quick-match-lonely { grid-column: 1 / -1; }
 .quick-match-status { margin: var(--space-2) 0 0; }
@@ -3338,6 +3338,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @starting-style {
   .people-row:not([data-settled]) { opacity: 0; transform: translateY(var(--space-1)); }
 }
+/* Focus lands on a row after Dismiss (a row presses nothing); its ring follows the row's corners. */
+.people-row:focus-visible { border-radius: var(--radius-sm); }
 .people-who { min-width: 0; display: grid; gap: var(--space-1); }
 .people-name { margin: 0; font-size: var(--text-lead); line-height: 1.3; overflow-wrap: anywhere; }
 .people-line { margin: 0; color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }

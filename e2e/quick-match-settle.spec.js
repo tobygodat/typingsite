@@ -47,6 +47,12 @@ async function typeUntilClosed(page, text, delay) {
   }
 }
 
+// Every key of `text` in one task, as a script pasting key by key would: each is a plain one-letter insert the race
+// scores as a key, and none is a moment after the one before.
+const pasteKeys = (page, text) => page.locator('#online-input').evaluate((field, keys) => {
+  for (const data of keys) field.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }));
+}, text);
+
 // What one racer's results say: both cards' winner marks, the tally and the rating line.
 async function results(page) {
   await expect(page.locator('#online-results')).toBeVisible({ timeout: 25000 });
@@ -82,9 +88,11 @@ test('a pasted run is never the winner: both racers see the checked run win, in 
   const { ada, lin, passage } = await matched(browser, supabase);
 
   try {
-    // Ada's keys all arrive at once, further than Lin types honestly.
+    // Ada's keys all arrive at once, further than Lin types honestly. They go in one task, so no time passes between
+    // them on any engine: typed by Playwright, a loaded WebKit spaced them out enough to pass the interval check and
+    // fail only the speed cap, or to pass both.
     await ada.page.locator('#online-input').focus();
-    await Promise.all([ada.page.keyboard.type(passage.slice(0, 150)), typeUntilClosed(lin.page, passage.slice(0, 40), 100)]);
+    await Promise.all([pasteKeys(ada.page, passage.slice(0, 150)), typeUntilClosed(lin.page, passage.slice(0, 40), 100)]);
     expect(await results(ada.page)).toEqual({ mine: 'unchecked', theirs: 'won', tally: 'You 0, Lin 1',
       line: 'Rated loss: your run couldn’t be checked. It had keys closer together than the check allows. Race rating 1480 · 1 rated race · provisional (−20)' });
     await expect(ada.page.locator('#online-duel-mine .duel-accuracy')).toHaveText('not checked');
