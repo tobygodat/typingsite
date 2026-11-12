@@ -3479,6 +3479,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .duel-their-rematch[data-state="open"]::before { content: ""; width: var(--space-3); height: var(--space-3); border: 1.5px solid var(--muted); border-radius: var(--radius-full); }
 .duel-their-rematch[data-state="chosen"] { color: var(--accent); }
 .duel-review { margin-top: var(--space-10); display: grid; justify-items: center; gap: var(--space-6); }
+/* Holds Graph and Replay's place, at their height (the toggle, the gap and the graph), while a racer's keystrokes are
+   on their way, so nothing below moves when they come; and says why, when they don't. */
+.duel-review-wait { min-height: calc(var(--control) + var(--space-6) + var(--space-16) * 4); align-content: center; }
+.duel-review-note { margin: 0; max-width: 34ch; color: var(--muted); text-align: center; }
 .duel-toggle { background: var(--raised); }
 .duel-toggle button[aria-pressed="true"] { background: var(--raised-2); }
 .duel-graph { width: 100%; height: calc(var(--space-16) * 4); aspect-ratio: auto; }

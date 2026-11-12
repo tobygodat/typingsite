@@ -97,6 +97,7 @@ $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # 
 $V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every typing font: caret, tape, pace caret measured
 $V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs     # background image: settings without/with one, each style idle, dimmed mid-run
 $V drive .claude/skills/verify-stilltype/flows/online-rematch.mjs --full-page   # two accounts race: results, graph, replay, each Rematch state, a rematch joined late through to its graph and replay
+$V drive .claude/skills/verify-stilltype/flows/online-review-wait.mjs --full-page   # a result whose other racer's keystrokes never came: waiting in Graph and Replay's place, then saying they never came
 $V drive .claude/skills/verify-stilltype/flows/challenge-people.mjs   # Challenge's people list: every row state, forced colours, an invitation arriving, Race setup, Race into the room
 $V drive .claude/skills/verify-stilltype/flows/challenge-people-dismiss.mjs   # Dismiss with a double tap of Enter: focus shown on a row, never an action; with no row left, on Quick match's heading
 $V drive .claude/skills/verify-stilltype/flows/challenge-people-states.mjs   # guest, empty list, quick match searching, Add a friend, daily and One keyboard and Back, a guest joining by link

@@ -2,11 +2,57 @@ import { test, expect, openApp, openView, signInWithEmail, typeInto, setRaceName
 
 test.setTimeout(90000);
 
+// Playwright's clock on a racer's page, installed before it loads, set to now and running at real speed: the race runs
+// on the same time as the fake service, which keeps real time, and a spec moves a page's clock on only once the service
+// has closed the room, when nothing it decides depends on time any more. AbortSignal.timeout runs on the browser's own
+// timer, which the clock doesn't reach, so it is made here from the clock's setTimeout, as the browser makes it: aborted
+// with a TimeoutError after `ms`. That is the 15 s after which `request` (src/account.js) gives up. The page also counts
+// its trace reads, started and settled.
+async function onTestClock(page) {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    AbortSignal.timeout = (ms) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('The operation timed out.', 'TimeoutError')), ms);
+
+      return controller.signal;
+    };
+
+    const send = window.fetch;
+    window.traceReads = { started: 0, settled: 0 };
+    window.fetch = (input, init) => {
+      const read = String(input).includes('/rpc/race_action') && JSON.parse(init?.body || '{}').p_action === 'traces';
+
+      if (!read) return send(input, init);
+      window.traceReads.started += 1;
+
+      return send(input, init).finally(() => { window.traceReads.settled += 1; });
+    };
+  });
+}
+
+const traceReads = (page) => page.evaluate(() => window.traceReads);
+
+// Moves a page's clock on by `ms`, 2 s at a time, letting each trace read that starts finish before the next step.
+async function advance(page, ms) {
+  for (let moved = 0; moved < ms; moved += 2000) {
+    await page.clock.runFor(2000);
+    await expect.poll(async () => {
+      const reads = await traceReads(page);
+
+      return reads.started - reads.settled;
+    }).toBe(0);
+  }
+}
+
 // Ada hosts a race (a quote race, which ends with its passage rather than on the clock, unless `setup` picks another
-// practice setup first) and invites Lin's account; both ready, and the race is on.
-async function pairInRace(page, browser, supabase, setup = () => page.locator('#mode-quote').click()) {
+// practice setup first) and invites Lin's account; both ready, and the race is on. With `clock`, both pages run on
+// Playwright's clock (onTestClock).
+async function pairInRace(page, browser, supabase, setup = () => page.locator('#mode-quote').click(), { clock = false } = {}) {
   supabase.addUser('ada@stilltype.test');
   supabase.addUser('lin@stilltype.test');
+
+  if (clock) await onTestClock(page);
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await setup();
@@ -17,6 +63,8 @@ async function pairInRace(page, browser, supabase, setup = () => page.locator('#
   const context = await browser.newContext();
   const lin = await context.newPage();
   await supabase.attach(lin);
+
+  if (clock) await onTestClock(lin);
   await openApp(lin);
   await signInWithEmail(lin, 'lin@stilltype.test');
   await openView(lin, 'Challenge');
@@ -40,8 +88,8 @@ async function typeBoth(page, lin, passage) {
 }
 
 // A quote race between Ada and Lin, raced to its end.
-async function racePair(page, browser, supabase) {
-  const { context, lin, passage } = await pairInRace(page, browser, supabase);
+async function racePair(page, browser, supabase, options) {
+  const { context, lin, passage } = await pairInRace(page, browser, supabase, undefined, options);
   await typeBoth(page, lin, passage);
 
   return { context, lin, passage };
@@ -118,24 +166,81 @@ test('reduced motion opens the replay on its last frame, still, with Play left t
   } finally { await context.close(); }
 });
 
-test('a race without both traces, such as one from before them, shows no Graph or Replay', async ({ page, browser, supabase }) => {
-  supabase.races.dropTraces = true;
-  const { context, lin } = await racePair(page, browser, supabase);
+// The usual race: both traces are on the service when the results show, so each side reads them once, as before, and
+// reads no more.
+test('a race whose traces are both there reads them once on each side', async ({ page, browser, supabase }) => {
+  const { context, lin } = await racePair(page, browser, supabase, { clock: true });
 
   try {
-    await expect(page.locator('#online-duel-mine')).toHaveAttribute('data-outcome', 'won');
-    await page.waitForTimeout(1500);
+    await expect(page.locator('#online-review')).toBeVisible();
+    await expect(lin.locator('#online-review')).toBeVisible();
+    await expect(page.locator('#online-review-wait')).toBeHidden();
+    await advance(page, 60000);
+    await advance(lin, 60000);
+    expect(await traceReads(page)).toEqual({ started: 1, settled: 1 });
+    expect(await traceReads(lin)).toEqual({ started: 1, settled: 1 });
+  } finally { await context.close(); }
+});
+
+// Neither trace ever comes, as in a race from before them. Both results wait in Graph and Replay's place, at their
+// size, and read the traces less and less often for a minute (nine reads); then they say the keystrokes never came, and
+// read no more. Close race ends the reads at once, as does the next race.
+test('a race whose traces never come says so once the reads run out, and leaving ends the reads', async ({ page, browser, supabase }) => {
+  supabase.races.dropTraces = true;
+  const { context, lin } = await racePair(page, browser, supabase, { clock: true });
+  const room = [...supabase.races.rooms.values()].at(-1);
+
+  try {
+    expect(room.status).toBe('finished');
+    const note = (racer) => racer.locator('#online-review-wait');
+    await expect(note(page)).toHaveText('Graph and Replay appear when both racers’ keystrokes arrive.');
+    await expect(note(lin)).toHaveText('Graph and Replay appear when both racers’ keystrokes arrive.');
     await expect(page.locator('#online-review')).toBeHidden();
+
+    // The note holds Graph and Replay's height, so nothing below it moves when they come.
+    const height = (await note(page).boundingBox()).height;
+
+    // Lin waits the minute out; Ada leaves after ten seconds.
+    await advance(page, 10000);
+    const readsAtLeave = (await traceReads(page)).started;
+    await page.locator('#online-leave').click();
+    await advance(page, 60000);
+    expect((await traceReads(page)).started).toBe(readsAtLeave);
+
+    await advance(lin, 60000);
+    await expect(note(lin)).toHaveText('No Graph or Replay for this race: neither racer’s keystrokes arrived.');
+    await expect(note(lin)).toHaveAttribute('data-state', 'none');
+    expect((await note(lin).boundingBox()).height).toBeCloseTo(height, 0);
+    expect(await traceReads(lin)).toEqual({ started: 9, settled: 9 });
+    await advance(lin, 60000);
+    expect((await traceReads(lin)).started).toBe(9);
     await expect(lin.locator('#online-review')).toBeHidden();
   } finally { await context.close(); }
 });
 
+test('a rematch while the last race’s traces are awaited ends those reads', async ({ page, browser, supabase }) => {
+  supabase.races.dropTraces = true;
+  const { context, lin } = await racePair(page, browser, supabase, { clock: true });
+
+  try {
+    await expect(lin.locator('#online-review-wait')).toHaveText('Graph and Replay appear when both racers’ keystrokes arrive.');
+    await advance(lin, 4000);
+    await page.locator('#online-rematch').click();
+    await lin.locator('#online-rematch').click();
+    await expect(lin.locator('#online-countdown')).toContainText('Starting in');
+    await expect(lin.locator('#online-review-wait')).toBeHidden();
+    const reads = (await traceReads(lin)).started;
+    await advance(lin, 60000);
+    expect((await traceReads(lin)).started).toBe(reads);
+  } finally { await context.close(); }
+});
+
 // A timed race between Ada and Lin, each with the passage's first 20 keys on the service.
-async function twentyKeysEach(page, browser, supabase) {
+async function twentyKeysEach(page, browser, supabase, options) {
   const race = await pairInRace(page, browser, supabase, async () => {
     await page.locator('#mode-time').click();
     await page.locator('#duration-options [data-length="15"]').click();
-  });
+  }, options);
 
   const room = [...supabase.races.rooms.values()].at(-1);
   await typeInto(page, race.passage.slice(0, 20), '#online-input', { delay: 20 });
@@ -243,6 +348,78 @@ for (const { name, failing = 0, dropTrace = false } of [
       // The tab's own finish (all 22 keys) went first, as many times as it failed and once more, then the settled trace.
       expect(sent.slice(1, 2 + failing)).toEqual(Array(1 + failing).fill([22, 22]));
       expect(sent.filter(([, keys]) => keys === 21)).toHaveLength(dropTrace ? 2 : 1);
+    } finally { await context.close(); }
+  });
+}
+
+// As above, but the way it happens: the service applies Ada's late progress and its answer never comes, so her tab
+// waits out the 15 s `request` (src/account.js) allows before it sends its finish and the trace of the settled keys,
+// which can then be lost on the way and sent again, 2 s apart. Lin's results were shown long before. Both racers still
+// get Graph and Replay: Lin's reads go on while Ada's trace is missing, and say whose keystrokes they wait for.
+for (const lost of [0, 1, 2]) {
+  test(`after a 15 s timeout${lost ? ` and ${lost} lost ${lost === 1 ? 'send' : 'sends'} of the settled trace` : ''}, both racers still get Graph and Replay`, async ({ page, browser, supabase }) => {
+    const { context, lin, passage, room, clockOut } = await twentyKeysEach(page, browser, supabase, { clock: true });
+    const ada = supabase.users.get('ada@stilltype.test').id;
+
+    try {
+      // Before any jump, both pages' clocks are the service's (real) time.
+      for (const racer of [page, lin]) expect(Math.abs(await racer.evaluate(() => Date.now()) - Date.now())).toBeLessThan(1000);
+      let open;
+      const gate = new Promise((resolve) => { open = resolve; });
+      let unanswered = 1;
+      let dropping = lost;
+      await page.route('**/rest/v1/rpc/race_action', async (route) => {
+        if (!isProgress(route.request())) return route.fallback();
+        const body = route.request().postDataJSON();
+
+        if (unanswered) {
+          unanswered = 0;
+          await gate;
+          // The service takes the progress; its answer never comes, so the tab's request runs out its time.
+          await supabase.races.handle(ada, body, () => {});
+
+          return new Promise(() => {});
+        }
+
+        if (dropping && body.p_data.trace?.k.length === 21) {
+          dropping -= 1;
+
+          return route.abort('failed');
+        }
+
+        return route.fallback();
+      });
+      await expect.poll(() => Date.now() > clockOut - 3000, { timeout: 20000 }).toBe(true);
+      const held = page.waitForRequest(isProgress);
+      await page.keyboard.type(passage[20]);
+      await held;
+      await page.keyboard.type(passage[21]);
+      await expect.poll(() => Date.now() > clockOut + 500, { timeout: 10000 }).toBe(true);
+      open();
+
+      // The service has closed the room: Lin's results show, and her first read finds Ada's trace missing.
+      await expect.poll(() => room.status).toBe('finished');
+      await expect(lin.locator('#online-results')).toBeVisible({ timeout: 10000 });
+      const note = lin.locator('#online-review-wait');
+      await expect(note).toHaveText('Graph and Replay appear when Ada’s keystrokes arrive.');
+      const waiting = (await note.boundingBox()).height;
+
+      // Lin's next two reads, 2 and 4 s on, still find it missing: Ada's tab is waiting on its request.
+      await advance(lin, 6000);
+      expect(await traceReads(lin)).toEqual({ started: 3, settled: 3 });
+      expect(room.players[0].trace ?? null).toBe(null);
+
+      // Ada's request runs out its 15 s; her tab sends its finish and then the settled trace, until it gets through.
+      await page.clock.fastForward(15000);
+      await expect.poll(() => room.players[0].trace?.k.length, { timeout: 20000 }).toBe(21);
+      await expect(page.locator('#online-review')).toBeVisible({ timeout: 10000 });
+
+      // Lin's reads go on, and the next finds it.
+      for (let step = 0; step < 30 && !(await lin.locator('#online-review').isVisible()); step += 1) await advance(lin, 2000);
+      await expect(lin.locator('#online-review')).toBeVisible();
+      await expect(note).toBeHidden();
+      expect((await lin.locator('#online-review').boundingBox()).height).toBeCloseTo(waiting, 0);
+      expect(room.players.map((player) => [player.typed.length, player.trace?.k.length])).toEqual([[21, 21], [20, 20]]);
     } finally { await context.close(); }
   });
 }
