@@ -134,6 +134,49 @@ test('after Dismiss focus lands where a second press destroys nothing', async ({
   await expect(page.getByRole('button', { name: 'Dismiss Lin’s invitation' })).toBeVisible();
 });
 
+// Focus lands on another row's action after Dismiss, so a key that is still down must not press it.
+test('a held Enter on Dismiss dismisses once and presses nothing else', async ({ page, supabase }) => {
+  const toby = supabase.addUser('toby@stilltype.test');
+  const kim = supabase.addUser('kim@stilltype.test');
+  const lin = supabase.addUser('lin@stilltype.test');
+  const ada = supabase.addUser('ada@stilltype.test');
+  supabase.races.addFriend(toby.id, { name: 'Ada', friendId: ada.id });
+  supabase.races.invite(ada.id, toby.id, { name: 'Ada', ageMs: 60000 });
+  supabase.races.invite(kim.id, toby.id, { name: 'Kim', ageMs: 30000 });
+  supabase.races.invite(lin.id, toby.id, { name: 'Lin' });
+  await signedIn(page);
+  await expect(page.locator('#people-list [data-state="invited"]')).toHaveCount(3);
+
+  const hold = async () => {
+    await page.keyboard.down('Enter');
+
+    // Each further down without an up is the key repeating.
+    for (let i = 0; i < 6; i += 1) {
+      await page.waitForTimeout(40);
+      await page.keyboard.down('Enter');
+    }
+
+    await page.keyboard.up('Enter');
+  };
+
+  // Kim's row goes and focus lands on Lin's Join. The held key must not join Lin's race.
+  await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
+  await hold();
+  await expect(page.getByRole('button', { name: 'Join Lin’s race' })).toBeFocused();
+  await expect(page.locator('#online-room')).toBeHidden();
+  await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(1);
+
+  // Ada's row stays and focus lands on her Race. The held key must not send her an invitation.
+  await page.getByRole('button', { name: 'Dismiss Ada’s invitation' }).focus();
+  await hold();
+  await expect(page.getByRole('button', { name: 'Race Ada', exact: true })).toBeFocused();
+  await expect(page.locator('#online-room')).toBeHidden();
+
+  // A fresh press still works.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#online-room')).toBeVisible();
+});
+
 test('the last invitation dismissed hands focus to the list’s first control, never a Dismiss', async ({ page, supabase }) => {
   const toby = supabase.addUser('toby@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');
