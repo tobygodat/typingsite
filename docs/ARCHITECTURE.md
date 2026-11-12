@@ -98,4 +98,4 @@ Elsewhere:
 - **Cloudflare Workers** for hosting (`wrangler.jsonc`).
 - **Supabase** project `bicbyljexprkaedakofa` for auth (email and Google), Postgres and Edge Functions.
 - **Anthropic API** (Claude Haiku 5.5), called only from the `generate-theme` Edge Function, with the `ANTHROPIC_API_KEY` secret.
-- **GitHub Actions** on the self-hosted runner on tobygdesktop, for CI and deploys ([ADR 0012](adr/0012-npm-node-and-the-desktop-runner.md)).
+- **GitHub Actions** on GitHub's hosted runners, for CI and deploys ([ADR 0018](adr/0018-ci-on-hosted-runners.md)).
