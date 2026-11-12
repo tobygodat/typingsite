@@ -6,9 +6,20 @@ import { build, transformWithOxc } from 'vite';
 const root = process.cwd();
 const out = path.join(root, 'dist');
 
+const prepaint = await build({
+  configFile: false,
+  publicDir: false,
+  build: { target: 'es2022', write: false, minify: false,
+    lib: { entry: path.join(root, 'src/prepaint.ts'), formats: ['iife'], name: 'StilltypePrepaint' } },
+});
+
+const paintOutput = Array.isArray(prepaint) ? prepaint[0] : prepaint;
+const paintScript = paintOutput.output.find((file) => file.type === 'chunk').code;
+
 await build({
   configFile: false,
   publicDir: false,
+  plugins: [{ name: 'inline-prepaint', transformIndexHtml: { order: 'pre', handler: (html) => html.replace('<script data-prepaint></script>', `<script>${paintScript}</script>`) } }],
   build: { target: 'es2022', assetsInlineLimit: 0, cssMinify: false, sourcemap: false },
 });
 

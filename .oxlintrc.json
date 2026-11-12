@@ -108,6 +108,15 @@
       }
     },
     {
+      "files": ["src/prepaint.ts"],
+      "rules": {
+        // Before-paint storage recovery must tolerate historical theme ids and raw custom token fields.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off"
+      }
+    },
+    {
       "files": ["supabase/functions/**"],
       "rules": {
         // cleanTheme is the boundary parser for the model's reply, so it takes unknown by design.
