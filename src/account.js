@@ -662,6 +662,15 @@ const withoutSummary = ({ summary, ...trace }) => trace;
 export const storedCopy = (profile, now = Date.now()) => withConditionSets(Array.isArray(profile?.attempts)
   ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile, now);
 
+// The file "Export my data" saves: this device's stored copy as it is, keystroke recordings included, with
+// the moment it was made. It stays a stored copy at its top level, so anything that reads one reads it
+// (normalizeProfile, scripts/evaluate-learner.mjs --profile). The sign-in is kept elsewhere and is never in it.
+export function exportCopy(profile, now = Date.now()) {
+  const at = new Date(now).toISOString();
+
+  return { name: `stilltype-export-${at.slice(0, 10)}.json`, text: JSON.stringify({ ...storedCopy(profile, now), exportedAt: at }, null, 1) };
+}
+
 export function loadCachedProfile(userId) {
   return readJson(profileKey(userId));
 }

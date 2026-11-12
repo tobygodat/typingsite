@@ -5958,6 +5958,16 @@ function closeAccountMenu() {
   $('account').open = false;
 }
 
+// Saves this device's copy of the profile as a file. Nothing is sent anywhere: the browser builds the file.
+function exportData() {
+  const file = account.exportCopy(profile);
+  const url = URL.createObjectURL(new Blob([file.text], { type: 'application/json' }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: file.name });
+  link.click();
+  URL.revokeObjectURL(url);
+  announce('Your data was saved as a file on this device.');
+}
+
 // Account deletion. The server deletes first (account.deleteAccount); only a confirmed deletion
 // signs this device out and clears it. Any failure leaves the session, cache and history untouched.
 const DELETE_WORD = 'delete';
@@ -6132,6 +6142,7 @@ function bindAccount() {
   $('account-google').addEventListener('click', continueWithGoogle);
   $('account-dialog-google').addEventListener('click', continueWithGoogle);
   $('account-signout').addEventListener('click', signOutAccount);
+  $('account-export').addEventListener('click', exportData);
   $('account-delete').addEventListener('click', openDeleteAccount);
   $('confirm-delete-input').addEventListener('input', (event) => {
     if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
@@ -7391,6 +7402,7 @@ function paletteCommands(query) {
     ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
     ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
+    { group: 'account', label: 'export my data', keywords: 'download backup json history runs take out privacy', run: exportData },
     ...(session
       ? [
         { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
