@@ -252,6 +252,54 @@ test('a held Enter on Race setup’s Done returns to the list and does not reope
   await expect(page.getByRole('button', { name: /^Race setup/ })).toBeFocused();
 });
 
+// Back hands focus to the link that opened the view, so a repeat of the held key would press that link and open the
+// view again. The guard is what stops it, now that Dismiss lands on a row that presses nothing anyway.
+test('a held Enter on Add a friend’s Back returns to the list and does not reopen the view', async ({ page, supabase }) => {
+  supabase.addUser('toby@stilltype.test');
+  await signedIn(page);
+  await page.locator('#people-add').click();
+  const back = page.locator('#people-add-view [data-challenge-back]');
+  await expect(back).toBeVisible();
+  await back.focus();
+  await page.keyboard.down('Enter');
+
+  for (let i = 0; i < 6; i += 1) {
+    await page.waitForTimeout(40);
+    await page.keyboard.down('Enter');
+  }
+
+  await page.keyboard.up('Enter');
+  await expect(page.locator('#people-add-view')).toBeHidden();
+  await expect(page.locator('#people-add')).toBeFocused();
+});
+
+// A row takes focus in place of its action and presses nothing. Space there would scroll the page away from it, the
+// browser's default for a key on something that isn't a control; it doesn't, and Space still scrolls from elsewhere.
+test('Space on a row that took focus after Dismiss leaves the page where it is', async ({ page, supabase }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await threeInvitations(page, supabase);
+  const scrolled = () => page.evaluate(() => scrollY);
+  await page.getByRole('button', { name: 'Dismiss Kim’s invitation' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(row(page, 'Lin')).toBeFocused();
+  // Whether the page's own handling left the browser's default (the scroll) to happen, read after every listener.
+  await page.evaluate(() => addEventListener('keydown', (event) => { if (event.key === ' ') window.spaceScrolls = !event.defaultPrevented; }));
+  const before = await scrolled();
+  await page.keyboard.press(' ');
+  expect(await page.evaluate(() => window.spaceScrolls)).toBe(false);
+  await page.keyboard.press(' ');
+  expect(await page.evaluate(() => window.spaceScrolls)).toBe(false);
+  await expect(row(page, 'Lin')).toBeFocused();
+  expect(await scrolled()).toBe(before);
+  await expect(page.locator('#online-room')).toBeHidden();
+
+  // Nothing else changed: from the page itself, Space scrolls.
+  await page.evaluate(() => { document.activeElement.blur(); scrollTo(0, 0); });
+  await page.keyboard.press(' ');
+  expect(await page.evaluate(() => window.spaceScrolls)).toBe(true);
+  await expect.poll(scrolled).toBeGreaterThan(0);
+});
+
 test('the last invitation dismissed hands focus to the row now last, never an action in it', async ({ page, supabase }) => {
   const toby = supabase.addUser('toby@stilltype.test');
   const kim = supabase.addUser('kim@stilltype.test');

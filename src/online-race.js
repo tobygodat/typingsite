@@ -23,8 +23,13 @@ const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
 const PICK_WATCH_MS = 1000;
 const CLOSED_WATCH_MS = 3000;
 
-// A trace posted just after the race finished can miss the first read, so traces are read up to three times.
-const TRACE_READS = 3;
+// A racer's trace can reach the service well after the race closed: their tab may first wait out a request the
+// service had already applied (15 s, as `request` in src/account.js allows), then send the trace up to three times,
+// 2 s apart (sendSettledTrace). So a result still missing a trace reads the traces again, further apart each time,
+// for a minute: at these times after the first read. A result whose traces are both there at the first read reads
+// them once.
+const TRACE_READS_AT = [0, 2, 4, 8, 16, 26, 36, 48, 60].map((seconds) => seconds * 1000);
+const TRACE_SENDS = 3;
 const TRACE_RETRY_MS = 2000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
@@ -83,12 +88,15 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
   let refused = false;
   let finishRequested = false;
-  // Whether a finishing packet (the one that carries the trace) has gone; the last few progress packets sent, each
-  // with the keys it covered; and the trace sent for the keys the service settled on, when it finished this seat
-  // before that packet (sendSettledTrace).
-  let finishSent = false;
+  // Every progress packet this race sent, each with the keys it covered, and the trace sent for the keys the service
+  // settled on when it finished this seat on a packet that carried none (sendSettledTrace).
   let sentProgress = [];
   let settledTrace = null;
+  // The timers of this race's trace sends and reads, all cleared when the tab leaves the race; how many times this
+  // tab's own trace has reached the service; and the wake for a read waiting for it.
+  const traceTimers = new Set();
+  let ownTraceArrivals = 0;
+  let wakeReads = null;
   let baseKeystrokes = 0;
   let baseErrors = 0;
   let baseTyped = '';
@@ -659,9 +667,13 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     dirty = false;
     refused = false;
     finishRequested = false;
-    finishSent = false;
     sentProgress = [];
     settledTrace = null;
+
+    for (const timer of traceTimers) clearTimeout(timer);
+    traceTimers.clear();
+    wakeReads = null;
+    reviewNote('');
     lastClock = '';
     lastAnnouncement = '';
     $('online-input').value = '';
@@ -1002,9 +1014,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;
         const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
-        finishSent ||= finishRequested;
-        sentProgress = [...sentProgress.slice(-3), { ...payload, events: attempt.events.length, at: performance.now() - startPerf }];
-        next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
+        const keys = { events: attempt.events.length, at: performance.now() - startPerf };
+        next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload, (sequence) => sentProgress.push({ ...payload, ...keys, sequence }));
       } else {
         next = await multiplayer.getRace(getSession(), currentCredentials);
         refused = false;
@@ -1079,23 +1090,81 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The service finishes a seat on its own clock: progress that lands after it (sent just before this tab's clock ran
   // out, or from a tab whose clock ran late) finishes the run on the keys it carried, with no trace. The service keeps
   // a trace sent after that when it replays to the same result, so this tab sends one for exactly those keys: the
-  // events up to the packet the service settled on. A quick match is left alone: its seat finishes only with its own
-  // finishing packet (ADR 0014), so this never happens there.
+  // events up to the packet the service settled on. Which packet that was is the sequence number the service reports
+  // for the seat, never what this tab heard back: a request can fail after the service applied it, and the tab's own
+  // finish that follows holds keys the service never took, so its trace can't be kept; or that finish can fail on its
+  // way, and the service settle the seat on an earlier packet. Every packet sent is kept for this, so a run of failed
+  // sends can't push the settled one out. A send of the trace that fails is tried again. A
+  // quick match is left alone: its seat finishes only with its own finishing packet (ADR 0014), so this never happens
+  // there.
   function sendSettledTrace() {
     const me = self();
 
-    if (room.quick || !me?.finished || finishSent || settledTrace || !attempt || baseTyped) return;
-    const settled = sentProgress.findLast((sent) => sent.typed === me.typed && sent.keystrokes === me.keystrokes);
-    const trace = settled && encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
+    if (room.quick || !me?.finished || settledTrace || !attempt || baseTyped) return;
+    const settled = sentProgress.find((sent) => sent.sequence === me.sequence);
+
+    // Settled on a finishing packet, which carried this run's trace itself.
+    if (!settled || settled.trace) return;
+    const trace = encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
 
     if (!trace) return;
     finishRequested = true;
-    finishSent = true;
-    settledTrace = multiplayer.updateRaceProgress(getSession(), credentials, { ...settled, finished: true, trace }).catch(() => {});
+    const from = credentials;
+    const { typed, keystrokes, errors } = settled;
+
+    // Resolves true once the service has the trace, false once every send has failed.
+    settledTrace = (async () => {
+      for (let send = 1; send <= TRACE_SENDS; send += 1) {
+        try {
+          await multiplayer.updateRaceProgress(getSession(), from, { typed, keystrokes, errors, finished: true, trace });
+          ownTraceArrivals += 1;
+          wakeReads?.();
+
+          return true;
+        } catch {
+          if (send < TRACE_SENDS) await tracePause(TRACE_RETRY_MS);
+        }
+      }
+
+      return false;
+    })();
   }
 
-  // Both racers' traces draw the graph and the replay. A race from before traces, or one either racer
-  // resumed after a reload, has none, and shows neither.
+  // A wait that belongs to this race: leaving the race (resetAttempt) clears it, and it never resolves.
+  function tracePause(ms) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        traceTimers.delete(timer);
+        resolve();
+      }, ms);
+
+      traceTimers.add(timer);
+    });
+  }
+
+  // What the results say in Graph and Replay's place, at their size, while a trace is missing, and once it won't come.
+  function reviewNote(text, state = 'waiting') {
+    $('online-review-wait').hidden = !text;
+    $('online-review-wait').dataset.state = state;
+    $('online-review-note').textContent = text;
+  }
+
+  // Whose keystrokes a read found missing: 'mine', 'theirs', 'both', or 'unread' when no read has answered.
+  const missingCopy = {
+    waiting: { mine: 'your keystrokes arrive', theirs: (name) => `${name}’s keystrokes arrive`, both: 'both racers’ keystrokes arrive', unread: 'the race service answers' },
+    none: { mine: 'your keystrokes didn’t arrive', theirs: (name) => `${name}’s keystrokes didn’t arrive`, both: 'neither racer’s keystrokes arrived', unread: 'the race service didn’t answer' },
+  };
+
+  const missingText = (state, missing, name) => {
+    const part = missingCopy[state][missing];
+
+    return typeof part === 'function' ? part(name) : part;
+  };
+
+  // Both racers' traces draw the graph and the replay. Reads go on while a trace is missing (TRACE_READS_AT), and a
+  // trace this tab sent itself wakes the read waiting for it; meanwhile the results say whose keystrokes they wait
+  // for, in Graph and Replay's place. When the reads run out, the results say whose never came. A race this tab
+  // resumed after a reload has no record of the keys before it, so it says so at once.
   async function readTraces() {
     if (tracesRead === room.id) return;
     tracesRead = room.id;
@@ -1103,30 +1172,58 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const { text } = room.passage;
     const name = opponentOf(room).name;
 
-    // This tab's own trace, when it went after the service finished the seat, is read once it has arrived.
-    await settledTrace;
+    if (baseTyped) {
+      reviewNote('No Graph or Replay for this race: it was resumed after a reload, so your keystrokes weren’t all recorded.', 'none');
+
+      return;
+    }
+
+    // This tab's own trace, when it went after the service finished the seat, is usually there within a moment.
+    if (settledTrace) await Promise.race([settledTrace, tracePause(TRACE_READS_AT[1])]);
 
     if (credentials !== from) return;
+    let missing = 'unread';
 
-    for (let read = 1; read <= TRACE_READS; read += 1) {
-      let traces;
+    for (const [index, at] of TRACE_READS_AT.entries()) {
+      const arrivals = ownTraceArrivals;
+      let traces = null;
 
-      try { traces = await multiplayer.getRaceTraces(getSession(), from); } catch { return; }
+      try { traces = await multiplayer.getRaceTraces(getSession(), from); } catch {}
 
       if (credentials !== from) return;
-      const mine = traces.find((entry) => entry.slot === room.selfSlot)?.trace;
-      const theirs = traces.find((entry) => entry.slot !== room.selfSlot)?.trace;
 
-      if (validTrace(mine) && validTrace(theirs)) {
-        review.show({ text, mine, theirs, name });
+      if (traces) {
+        const seat = (mineToo) => {
+          const trace = traces.find((entry) => (entry.slot === room.selfSlot) === mineToo)?.trace;
 
-        return;
+          return validTrace(trace) ? trace : null;
+        };
+
+        const [mine, theirs] = [seat(true), seat(false)];
+
+        if (mine && theirs) {
+          reviewNote('');
+          review.show({ text, mine, theirs, name });
+
+          return;
+        }
+
+        missing = mine ? 'theirs' : theirs ? 'mine' : 'both';
       }
 
-      if (read < TRACE_READS) await new Promise((resolve) => { setTimeout(resolve, TRACE_RETRY_MS); });
+      if (index === TRACE_READS_AT.length - 1) break;
+      reviewNote(`Graph and Replay appear when ${missingText('waiting', missing, name)}.`);
+
+      // A trace of this tab's own that arrived during the read is read again at once.
+      if (ownTraceArrivals === arrivals) {
+        await Promise.race([tracePause(TRACE_READS_AT[index + 1] - at), new Promise((resolve) => { wakeReads = resolve; })]);
+        wakeReads = null;
+      }
 
       if (credentials !== from) return;
     }
+
+    reviewNote(`No Graph or Replay for this race: ${missingText('none', missing, name)}.`, 'none');
   }
 
   async function leave() {
@@ -1166,14 +1263,19 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   });
 
   for (const back of document.querySelectorAll('[data-challenge-back]')) back.addEventListener('click', () => show('people', { focus: true }));
-  // A key held down repeats. After Done, the repeat would press the link that opened the view, and after any press
-  // it would press whatever focus moved to. So a repeat presses no button or link anywhere on Challenge. (After
+  // A key held down repeats. After Done or Back, the repeat would press the link that opened the view, and after any
+  // press it would press whatever focus moved to. So a repeat presses no button or link anywhere on Challenge. (After
   // Dismiss focus lands on a row, which nothing presses: see drawPeople.) Fields are left alone: the race's own
   // typing rules hold there, and a name field takes a held key as any field does.
   $('compete-screen').addEventListener('keydown', (event) => {
     const pressing = event.key === 'Enter' || event.key === ' ';
 
     if (event.repeat && pressing && event.target.closest('button, a[href], summary')) event.preventDefault();
+  });
+  // A row has focus in place of its action, so Space there is a press that presses nothing. The browser would take it
+  // as a scroll, and carry the row (and focus) off the screen; it stays put. Space anywhere else scrolls as ever.
+  $('people-list').addEventListener('keydown', (event) => {
+    if (event.key === ' ' && event.target.matches('.people-row')) event.preventDefault();
   });
   $('people-list').addEventListener('click', (event) => {
     const button = event.target.closest('[data-people-action]');
