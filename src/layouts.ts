@@ -1,7 +1,12 @@
+import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
+
 export type Hand = 'left' | 'right' | 'both';
+
 export type Finger = 'index' | 'middle' | 'ring' | 'pinky' | 'thumb';
+
 export interface KeyboardKey { key: string; hand: Hand; finger: Finger; column: number }
+
 interface Layout { label: string; rows: string[]; angle?: boolean }
 // Keyboard layouts for the on-screen keyboard legend and its optional finger map.
 // Typed characters are never remapped: people who switch layouts do it in the operating
@@ -13,13 +18,13 @@ export const DEFAULT_LAYOUT = 'qwerty';
 // The thirty main keys of a row-staggered (ANSI) keyboard, top, home and bottom row, as each
 // layout labels them. Colemak-DH uses its recommended ANSI form with the angle mod (bottom row
 // x c d v z), which shifts the left hand's bottom-row fingers one key over.
-const LAYOUTS: Record<string, Layout> = {
+const LAYOUTS = {
   qwerty: { label: 'qwerty', rows: ['qwertyuiop', 'asdfghjkl;', 'zxcvbnm,./'] },
   dvorak: { label: 'dvorak', rows: ["',.pyfgcrl", 'aoeuidhtns', ';qjkxbmwvz'] },
   colemak: { label: 'colemak', rows: ['qwfpgjluy;', 'arstdhneio', 'zxcvbkm,./'] },
   'colemak-dh': { label: 'colemak-dh', rows: ['qwfpbjluy;', 'arstgmneio', 'xcdvzkh,./'], angle: true },
   workman: { label: 'workman', rows: ['qdrwbjfup;', 'ashtgyneoi', 'zxmcvkl,./'] },
-};
+} satisfies Record<string, Layout>;
 
 export const layoutIds = Object.keys(LAYOUTS);
 
@@ -47,15 +52,15 @@ export function isDefaultLayout(id: unknown) {
 }
 
 export function layoutLabel(id: string | undefined) {
-  return LAYOUTS[id ?? DEFAULT_LAYOUT]?.label || String(id || DEFAULT_LAYOUT);
+  return lookup(LAYOUTS, id ?? DEFAULT_LAYOUT)?.label || String(id || DEFAULT_LAYOUT);
 }
 
 // Rows of { key, hand, finger, column } for the legend, ending with the space bar (both thumbs).
 export function keyboardRows(id: unknown): KeyboardKey[][] {
-  const layout = LAYOUTS[normalizeLayout(id)] ?? at(Object.values(LAYOUTS), 0);
+  const layout = lookup(LAYOUTS, normalizeLayout(id)) ?? at(Object.values(LAYOUTS), 0);
 
   const rows = layout.rows.map((row, rowIndex) => [...row].map((key, column) => {
-    const [hand, finger] = at(layout.angle && rowIndex === 2 ? ANGLE_FINGERS : COLUMN_FINGERS, column);
+    const [hand, finger] = at('angle' in layout && layout.angle && rowIndex === 2 ? ANGLE_FINGERS : COLUMN_FINGERS, column);
 
     return { key, hand, finger, column };
   }));

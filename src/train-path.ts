@@ -1,5 +1,7 @@
+import { analysisRuns, analysisLoops } from './domain-history.js';
+import type { AnalysisLoop } from './profile-types.js';
 import { at as indexed, entry } from './domain-values.js';
-import type { RunRecord, TrainingLoop, TargetCounts } from './profile-types.js';
+import type { TargetCounts } from './profile-types.js';
 import type { Basis, EvidenceUnit, LearnerEvidence, Recommendation, TargetEvidence } from './learner.js';
 
 export interface ErrorTally { runs: number; tries: number; errors: number }
@@ -10,7 +12,7 @@ export type Since = { basis: 'errors'; before: ErrorTally | null; after: ErrorTa
 
 type Entries = [number, EvidenceUnit][];
 
-export type BehindStep = { unit: string | null; state: string; loopId: string } & ({ basis: 'slow'; retest: { was: number; now: number } | null; since: Extract<Since, { basis: 'slow' }> } | { basis: 'errors'; retest: { was: TargetCounts; now: TargetCounts } | null; since: Extract<Since, { basis: 'errors' }> });
+export type BehindStep = { unit: string | null | undefined; state: string; loopId: string | undefined } & ({ basis: 'slow'; retest: { was: number; now: number } | null; since: Extract<Since, { basis: 'slow' }> } | { basis: 'errors'; retest: { was: TargetCounts; now: TargetCounts } | null; since: Extract<Since, { basis: 'errors' }> });
 
 interface CurrentStep { kind: string; unit: string | null; title: string; was: TargetEvidence | null; since: Since | null }
 // Train's path (TOB-420): the targets you have drilled behind you, the one to drill now, and the next ones the
@@ -38,10 +40,10 @@ export const FIXED_RUNS = 2;
 export const FIXED_OBSERVATIONS = 2 * MIN_PATTERN_SAMPLES;
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
-const byDate = (a: TrainingLoop, b: TrainingLoop) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const byDate = (a: AnalysisLoop, b: AnalysisLoop) => (Date.parse(a.at ?? '') || 0) - (Date.parse(b.at ?? '') || 0) || ((a.id ?? '') < (b.id ?? '') ? -1 : (a.id ?? '') > (b.id ?? '') ? 1 : 0);
 
 // What a loop's target was drilled for. Loops saved before `targetBasis` read a saved pace as slowness.
-export const basisOf = (loop: TrainingLoop): Basis => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
+export const basisOf = (loop: AnalysisLoop): Basis => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
 // A unit's observed evidence on measured runs on the keyboard, before `split` (ms) and from it on, of one kind: tries
 // and misses, or clean intervals and their mean slowdown over the person's pace. `runs` counts only the runs that
@@ -103,16 +105,16 @@ function tallySince(entries: Entries = [], basis: Basis, split: number): Since {
 }
 
 // Where a loop's evidence splits: its retest's date, else the loop's own.
-const splitOf = (loop: TrainingLoop, retestAt: string | null | undefined) => Date.parse(retestAt || loop.at);
+const splitOf = (loop: AnalysisLoop, retestAt: string | null | undefined) => Date.parse(retestAt || loop.at || '');
 
 // A drilled target's evidence, split at its retest: before its drill and from its retest on, of one kind (by default
 // the kind it was drilled for).
-export function sinceDrilled(loop: TrainingLoop, runs: RunRecord[], records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
-  return evidenceSince(loop.target, basis, retestSplit(loop, runs), records);
+export function sinceDrilled(loop: AnalysisLoop, runs: readonly unknown[], records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
+  return evidenceSince(loop.target ?? null, basis, retestSplit(loop, runs), records);
 }
 
 // Where a loop's evidence splits, found among the runs: its retest's date (ms), else the loop's own.
-const retestSplit = (loop: TrainingLoop, runs: RunRecord[]) => splitOf(loop, runs.find((run) => run.id === loop.afterAttemptId)?.at);
+const retestSplit = (loop: AnalysisLoop, runs: readonly unknown[]) => splitOf(loop, analysisRuns(runs).find((run) => run.id === loop.afterAttemptId)?.at);
 
 // The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for. Train
 // asks it of a drilled target, split at its retest; Progress also asks it of a unit never drilled, split where its week
@@ -125,16 +127,12 @@ export function isFixed(since: Since | null, queued: boolean) {
 }
 
 // The loop's own read-back: the retest's misses or pace beside the evidence the drill was chosen on.
-function retestOf(loop: TrainingLoop, basis: Basis) {
-  if (basis === 'slow') return loop.targetPace ? { was: loop.targetPace.was.slowMs, now: loop.targetPace.now.slowMs } : null;
-
-  return loop.targetMisses ? { was: loop.targetMisses.was, now: loop.targetMisses.now } : null;
-}
-
 // The path for a recommendation (recommendFor's, at the conditions Train shows) over the profile's loops and runs.
 // `after` is set while the comparison shows: `trained` is the unit just retested (null for a general, adaptive or
 // missed-word drill), and the open step is the first queued unit other than it, as the comparison's Next drills.
-export function trainPath({ recommendation, loops = [], runs = [], keyboard, after = null }: { recommendation: Recommendation; loops?: TrainingLoop[]; runs?: RunRecord[]; keyboard: string; after?: { trained: string | null } | null }) {
+export function trainPath({ recommendation, loops: rawLoops = [], runs: rawRuns = [], keyboard, after = null }: { recommendation: Recommendation; loops?: readonly unknown[]; runs?: readonly unknown[]; keyboard: string; after?: { trained: string | null } | null }) {
+  const runs = analysisRuns(rawRuns);
+  const loops = analysisLoops(rawLoops);
   const queue = recommendation.queue || [];
   const trained = after ? after.trained : null;
   const open = after ? queue.filter((item) => item.unit !== trained) : queue;
@@ -150,20 +148,20 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
   // One pass over the runs and one over the evidence, whatever the number of loops (TOB-448). The first run with
   // an id is its retest, as runs.find would pick.
   const index = evidenceIndex(learnerEvidence(runs, keyboard));
-  const retestAt = new Map<string, string | null>();
+  const retestAt = new Map<string | undefined, string | null | undefined>();
 
   for (const run of runs) if (!retestAt.has(run.id)) retestAt.set(run.id, run.at);
-  const since = (loop: TrainingLoop, basis: Basis) => tallySince(index.get(loop.target ?? ''), basis, splitOf(loop, retestAt.get(loop.afterAttemptId)));
+  const since = (loop: AnalysisLoop, basis: Basis) => tallySince(index.get(loop.target ?? ''), basis, splitOf(loop, retestAt.get(loop.afterAttemptId)));
 
   // Each drilled target once, by its newest loop on this keyboard, newest nearest the open step.
-  const newest = new Map<string | null, TrainingLoop>();
+  const newest = new Map<string | null | undefined, AnalysisLoop>();
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
 
   // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
   if (current.unit && newest.has(current.unit)) current.since = since(newest.get(current.unit) ?? indexed(loops, 0), current.was?.basis === 'slow' ? 'slow' : 'errors');
 
-  const behind: BehindStep[] = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target)).map((loop) => {
+  const behind: BehindStep[] = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target ?? null)).map((loop) => {
     const basis = basisOf(loop);
     const evidence = since(loop, basis);
     const common = { unit: loop.target, state: isFixed(evidence, queued.has(loop.target ?? '')) ? 'fixed' : 'drilled', loopId: loop.id };

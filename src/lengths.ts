@@ -1,3 +1,4 @@
+import { lookup } from './domain-values.js';
 import type { Preferences } from './profile-types.js';
 // Test lengths: the preset pills, and the bounds for a custom time or word count.
 // A custom length is stored as an ordinary duration or count, so it enters the test conditions
@@ -6,17 +7,17 @@ import type { Preferences } from './profile-types.js';
 
 interface LengthSpec { presets: number[]; min: number; max: number; fallback: number; key: 'duration' | 'count'; customKey: 'customDuration' | 'customCount'; unit: string; noun: string }
 
-export const LENGTHS: Record<string, LengthSpec> = {
+export const LENGTHS = {
   time: { presets: [15, 30, 60, 120], min: 5, max: 600, fallback: 30, key: 'duration', customKey: 'customDuration', unit: 'seconds', noun: 'time' },
   words: { presets: [10, 25, 50, 100], min: 5, max: 500, fallback: 25, key: 'count', customKey: 'customCount', unit: 'words', noun: 'word count' },
-};
+} satisfies Record<string, LengthSpec>;
 
 export function isPresetLength(mode: string, value: unknown) {
-  return Boolean(typeof value === 'number' && LENGTHS[mode]?.presets.includes(value));
+  return Boolean(typeof value === 'number' && lookup(LENGTHS, mode)?.presets.includes(value));
 }
 
 export function isValidLength(mode: string, value: unknown): value is number {
-  const spec = LENGTHS[mode];
+  const spec = lookup(LENGTHS, mode);
 
   return Boolean(spec) && typeof value === 'number' && Number.isInteger(value) && value >= (spec?.min ?? Infinity) && value <= (spec?.max ?? -Infinity);
 }
@@ -24,7 +25,7 @@ export function isValidLength(mode: string, value: unknown): value is number {
 // What someone typed into the custom field: { ok: true, value } or { ok: false, message }.
 // Whole numbers only; a trailing unit ("45 s", "75 words") is forgiven.
 export function parseCustomLength(mode: string, raw: unknown) {
-  const spec = LENGTHS[mode];
+  const spec = lookup(LENGTHS, mode);
 
   if (!spec) return { ok: false, message: 'Quotes have no custom length.' };
   const unit = mode === 'time' ? /^(\d+)\s*(?:s|secs?|seconds?)?$/i : /^(\d+)\s*(?:w|words?)?$/i;
@@ -49,7 +50,7 @@ export function normalizeLengthPreferences<T extends Pick<Preferences, 'duration
   const next = { ...preferences };
 
   for (const mode of Object.keys(LENGTHS)) {
-    const spec = LENGTHS[mode];
+    const spec = lookup(LENGTHS, mode);
 
     if (!spec) continue;
     const { key, customKey, fallback } = spec;

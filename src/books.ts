@@ -1,6 +1,9 @@
+import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
 import type { RunRecord } from './profile-types.js';
+
 export interface BookPage { id: string; book: string; text: string; page: number }
+
 // Book mode: the opening sections of four public-domain books, typed a page at a time.
 // The text is in book-texts.js (generated); pagination and the place in each book live here.
 import { BOOK_TEXTS } from './book-texts.js';
@@ -94,7 +97,8 @@ const opened = new Map<string, BookPage[]>();
 // Every page of a book, in order. Each section starts on a new page. A page's id carries a hash of
 // its text, so a change to the text or the pagination gives new ids.
 export function openBook(id: string) {
-  const sections = BOOK_TEXTS[id];
+  const sections = lookup(BOOK_TEXTS, id);
+
   if (!sections) return null;
 
   if (!opened.has(id)) {

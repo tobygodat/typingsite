@@ -1,6 +1,6 @@
 import { isRecord } from './domain-values.js';
 import { isAttempt, isRunRecord, isTrainingLoop, replaySource, isConditions } from './domain-history.js';
-import type { HydratedProfile, HistoricalRecord, HistoricalBest } from './profile-types.js';
+import type { HydratedProfile, HistoricalRecord } from './profile-types.js';
 
 export { isAttempt, isRunRecord, isTrainingLoop };
 
@@ -252,8 +252,12 @@ export function normalizeProfile(stored: unknown): HydratedProfile {
   if (!isRecord(stored) || stored.version !== 2) return { ...emptyProfile() };
   const decoded: unknown = withoutConditionSets(stored);
   const parsed = isRecord(decoded) ? decoded : {};
-  const rawPreferences: HistoricalRecord = { ...(isRecord(parsed.preferences) ? parsed.preferences : {}) };
-  const preferencesAt: HistoricalRecord = { ...(isRecord(parsed.preferencesAt) ? parsed.preferencesAt : {}) };
+  const rawPreferences: HistoricalRecord = {};
+
+  if (isRecord(parsed.preferences)) Object.assign(rawPreferences, parsed.preferences);
+  const preferencesAt: HistoricalRecord = {};
+
+  if (isRecord(parsed.preferencesAt)) Object.assign(preferencesAt, parsed.preferencesAt);
   const oldChoice = preferencesAt.stopOnError || '';
   const newChoice = preferencesAt.correction || '';
 

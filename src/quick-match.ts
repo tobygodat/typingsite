@@ -1,3 +1,5 @@
+import { lookup } from './domain-values.js';
+
 function validSteps(value: unknown): value is number[] { return Array.isArray(value) && value.every((step: unknown) => typeof step === 'number' && Number.isInteger(step) && step >= 0 && step <= TRACE_CHECK.maxStepMs); }
 
 import { at as indexed, isRecord } from './domain-values.js';
@@ -147,15 +149,15 @@ const capitalised = (text: string) => `${text.charAt(0).toUpperCase()}${text.sli
 
 // Why a rated race ended as it did, when the traces didn't simply decide it, and the outcome word that goes with it.
 function ratedLead({ reason, outcome }: RatedResult, opponent: string) {
-  const leads: Record<string, [string, string]> = {
+  const leads = {
     forfeit: outcome === 'won' ? ['win', `${opponent} left the race.`] : ['loss', 'you left the race.'],
     'opponent-absent': ['win', `${opponent} didn’t finish.`],
     'opponent-unchecked': ['win', `${opponent}’s run couldn’t be checked.`],
     unfinished: ['loss', `${LATE}.`],
     left: ['loss', 'you left the race.'],
-  };
+  } satisfies Record<string, [string, string]>;
 
-  const lead = leads[reason ?? ''] || (RUN_FAULTS[reason ?? ''] ? ['loss', `your run couldn’t be checked. It ${RUN_FAULTS[reason ?? '']}.`] : [outcome ? OUTCOME_WORDS[outcome] : 'race', null]);
+  const lead = lookup(leads, reason ?? '') || (RUN_FAULTS[reason ?? ''] ? ['loss', `your run couldn’t be checked. It ${RUN_FAULTS[reason ?? '']}.`] : [outcome ? OUTCOME_WORDS[outcome] : 'race', null]);
 
   return { outcome: `Rated ${lead[0]}`, why: lead[1] };
 }
@@ -175,9 +177,9 @@ export function ratingResult(result: RatedResult | null | undefined, opponent = 
   if (!rated && outcome) return { kind: 'unrated', sentence: `Not rated: you and ${opponent} have raced each other too often today.` };
 
   if (!rated) {
-    const messages: Record<string, string> = { unfinished: `${capitalised(LATE)}.`, left: 'You left the race.' };
+    const messages = { unfinished: `${capitalised(LATE)}.`, left: 'You left the race.' } satisfies Record<string, string>;
 
-    const yours = messages[reason ?? '']
+    const yours = lookup(messages, reason ?? '')
       || `Yours ${RUN_FAULTS[reason ?? ''] || 'couldn’t be checked'}.`;
 
     return { kind: 'unrated', sentence: `Not rated: neither racer finished with a run that could be checked. ${yours}` };

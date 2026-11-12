@@ -73,10 +73,15 @@ export interface StoredProfileCopy extends ProfileCopy { conditionSets?: unknown
 export type CloudProfileData = Omit<Profile, 'attempts'>;
 
 export interface HistoricalRecord { [key: string]: unknown }
+
 export type HistoricalTrace = Attempt | HistoricalRecord;
+
 export type HistoricalRun = RunRecord | HistoricalRecord;
+
 export type HistoricalLoop = TrainingLoop | HistoricalRecord;
+
 export type HistoricalBest = Best | (HistoricalRecord & { wpm: number });
+
 export interface HydratedProfile {
   [key: string]: unknown;
   version: 2;
@@ -93,3 +98,14 @@ export interface HydratedProfile {
   lessons: LessonProgress;
   compositions: CompositionRecord[];
 }
+
+export type AnalysisRun = Partial<Omit<RunRecord, 'kind' | 'status' | 'conditions' | 'minimums' | 'stopped'>> & {
+  kind?: string; status?: string; conditions?: Conditions | HistoricalRecord; minimums?: unknown; stopped?: unknown;
+};
+
+export type ScoredRun = AnalysisRun & { score: Score };
+
+export type AnalysisLoop = Partial<Omit<TrainingLoop, 'beforeAttemptId' | 'conditions' | 'comparison' | 'minimums' | 'inputClass' | 'targetPace' | 'targetMisses'>> & {
+  beforeAttemptId?: string | null; conditions?: Conditions | HistoricalRecord; comparison?: unknown; minimums?: unknown; inputClass?: unknown;
+  targetPace?: TrainingLoop['targetPace'] | null; targetMisses?: TrainingLoop['targetMisses'] | null;
+};

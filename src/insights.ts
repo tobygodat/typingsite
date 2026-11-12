@@ -1,4 +1,7 @@
-import { at as indexed, entry, isRecord } from './domain-values.js';
+import { lookup } from './domain-values.js';
+import { analysisRuns, analysisLoops, isScoredRun } from './domain-history.js';
+import type { AnalysisRun, ScoredRun } from './profile-types.js';
+import { at as indexed, entry } from './domain-values.js';
 
 interface RetentionRun { kind?: string; status?: string; interrupted?: boolean; fresh?: boolean; patterns?: unknown[]; keys?: unknown[]; corrections?: unknown; missedWords?: unknown }
 
@@ -18,9 +21,8 @@ interface KeyTotal { key: string; samples: number; errors: number }
 
 interface PairTotal { pair: string; samples: number; errors: number; slowRuns: number; timedRuns: number; runs: number }
 
-import type { Attempt, AttemptKind, Conditions, Minimums, Replay, Score } from './typing.js';
-import type { TrainingLoop } from './profile-types.js';
-import type { RunRecord, KeyCounts, PatternCounts } from './profile-types.js';
+import type { Attempt, Conditions, Replay } from './typing.js';
+import type { RunRecord, KeyCounts } from './profile-types.js';
 
 export type { RunRecord, KeyCounts, PatternCounts } from './profile-types.js';
 
@@ -141,8 +143,7 @@ export const measuredKind = (kind: string | undefined) => MEASURED_KINDS.has(kin
 export function runRecord(attempt: Attempt, at = attempt.at || null) {
   const replay = attempt.summary || replayAttempt(attempt);
 
-  const record: RunRecord = {
-    score: replay.score, elapsedMs: replay.elapsedMs, errors: replay.firstAttempts.filter((item) => !item.correct).length, target: attempt.target || null,
+  const base: Omit<RunRecord, 'score' | 'elapsedMs' | 'errors' | 'target'> = {
     id: attempt.id, at, kind: attempt.kind, status: attempt.status,
     // The calendar day where the run happened, so a later reader in another zone keeps the same day.
     day: at ? dayKey(at) : null,
@@ -151,10 +152,11 @@ export function runRecord(attempt: Attempt, at = attempt.at || null) {
   };
 
   // Practice minimums are labelled on the run, not keyed into its conditions.
-  if (attempt.minimums) record.minimums = attempt.minimums;
+  if (attempt.minimums) base.minimums = attempt.minimums;
 
-  if (attempt.stopped) record.stopped = attempt.stopped;
-  Object.assign(record, {
+  if (attempt.stopped) base.stopped = attempt.stopped;
+
+  const record: RunRecord = Object.assign(base, {
     score: replay.score, elapsedMs: replay.elapsedMs,
     errors: replay.firstAttempts.filter((item) => !item.correct).length,
     target: attempt.target || null, challengeDate: attempt.challengeDate || null,
@@ -203,22 +205,23 @@ export function retainRuns<T extends RetentionRun>(runs: T[]) {
   const withPatterns = new Set(comparable.filter((run) => kept.has(run) && carriesCounts(run)).slice(-MAX_PATTERN_RUNS));
   const withWords = new Set(comparable.filter((run) => kept.has(run) && missedWordsRun(run)).slice(-MAX_PATTERN_RUNS));
 
-  return runs.filter((run) => kept.has(run)).map((run) => {
+  return runs.flatMap((run) => {
+    if (!kept.has(run)) return [];
     const trimPatterns = comparableKind(run.kind) && carriesCounts(run) && !withPatterns.has(run);
     const trimWords = 'missedWords' in run && !withWords.has(run);
 
-    if (!trimPatterns && !trimWords) return run;
+    if (!trimPatterns && !trimWords) return [run];
     // Drop missed words rather than empty them: an empty list would read as a run with no misses.
     const { missedWords, ...rest } = run;
 
-    const kept = { ...(trimWords ? rest : run) };
+    const trimmed = { ...(trimWords ? rest : run) };
 
     if (trimPatterns) {
-      Object.assign(kept, { patterns: [], keys: [] });
-      delete kept.corrections;
+      Object.assign(trimmed, { patterns: [], keys: [] });
+      delete trimmed.corrections;
     }
 
-    return kept;
+    return [trimmed];
   });
 }
 
@@ -270,11 +273,12 @@ export const bestRun = (run: RetentionRun & { conditions?: Conditions }) => tren
 
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.
-export function passageBest(runs: RunRecord[], run: RunRecord) {
+export function passageBest(inputRuns: readonly unknown[], run: AnalysisRun) {
+  const runs = analysisRuns(inputRuns);
   const key = conditionKey(run.conditions);
 
-  return runs.filter((r) => r.id !== run.id && r.textId === run.textId && practiceRun(r) && conditionKey(r.conditions) === key)
-    .reduce<RunRecord | null>((best, r) => (!best || r.score.wpm > best.score.wpm ? r : best), null);
+  return runs.filter(isScoredRun).filter((r) => r.id !== run.id && r.textId === run.textId && practiceRun(r) && conditionKey(r.conditions) === key)
+    .reduce<ScoredRun | null>((best, r) => (!best || r.score.wpm > best.score.wpm ? r : best), null);
 }
 
 // A run that counts as evidence about the person's typing: complete, uninterrupted and of a measured kind, and
@@ -286,11 +290,13 @@ export const evidenceRun = (run: RetentionRun) => validRun(run) && measuredKind(
 
 // The runs "words you keep missing" counts: those pattern memory reads that recorded missed words.
 const missedWordsRun = (run: RetentionRun) => evidenceRun(run) && Array.isArray(run.missedWords);
-const inputClassOf = (run: RunRecord | undefined) => run?.conditions?.inputClass || 'physical-keyboard';
+const inputClassOf = (run: AnalysisRun | undefined) => run?.conditions?.inputClass || 'physical-keyboard';
 
 // The runs at one condition key, inside a window of local days when given one (a Progress period's
 // periodWindow). Undated runs fall in no window with a first day.
-export function filterRuns(runs: RunRecord[], key: string, { from = null, to = null }: Window = {}) {
+export function filterRuns(inputRuns: readonly unknown[], key: string, { from = null, to = null }: Window = {}) {
+  const runs = analysisRuns(inputRuns);
+
   return runs.filter((run) => {
     const day = runDay(run);
 
@@ -306,12 +312,13 @@ function median(values: number[]) {
   return sorted.length % 2 ? indexed(sorted, mid) : (indexed(sorted, mid - 1) + indexed(sorted, mid)) / 2;
 }
 
-export function weeklyChange(runs: RunRecord[], key: string, date = new Date()) {
-  const eligible = runs.filter(trendRun);
+export function weeklyChange(inputRuns: readonly unknown[], key: string, date = new Date()) {
+  const runs = analysisRuns(inputRuns);
+  const eligible = runs.filter(isScoredRun).filter(trendRun);
   const fortnight = filterRuns(eligible, key, periodWindow(14, date));
-  const current = filterRuns(fortnight, key, periodWindow(7, date));
+  const current = filterRuns(fortnight, key, periodWindow(7, date)).filter(isScoredRun);
   const ids = new Set(current.map((r) => r.id));
-  const previous = fortnight.filter((r) => !ids.has(r.id));
+  const previous = fortnight.filter(isScoredRun).filter((r) => !ids.has(r.id));
 
   return { current, previous,
     wpm: current.length && previous.length ? (median(current.map((r) => r.score.wpm)) ?? 0) - (median(previous.map((r) => r.score.wpm)) ?? 0) : null,
@@ -321,10 +328,11 @@ export function weeklyChange(runs: RunRecord[], key: string, date = new Date()) 
 
 // The runs a Progress view selects, one entry per local calendar day, oldest first. Each day carries its
 // runs in the order given, and the medians of their speed and accuracy. Undated runs have no day and are left out.
-export function runsByDay(runs: RunRecord[]) {
-  const days = new Map<string, RunRecord[]>();
+export function runsByDay(inputRuns: readonly unknown[]) {
+  const runs = analysisRuns(inputRuns);
+  const days = new Map<string, ScoredRun[]>();
 
-  for (const run of runs) {
+  for (const run of runs.filter(isScoredRun)) {
     const day = runDay(run);
 
     if (!day) continue;
@@ -342,7 +350,9 @@ export function runsByDay(runs: RunRecord[]) {
 
 // The figures above the Progress charts: medians over every selected run, and the fastest of them.
 // A tie for fastest goes to the most recent run.
-export function periodStats(runs: RunRecord[]) {
+export function periodStats(inputRuns: readonly unknown[]) {
+  const runs = inputRuns.filter(isScoredRun);
+
   if (!runs.length) return { count: 0, wpm: null, accuracy: null, best: null };
 
   const best = runs.reduce((top, run) => (run.score.wpm > top.score.wpm
@@ -405,7 +415,7 @@ export function testShapes(sources: { conditions: Conditions }[]) {
   for (const mode of Object.keys(LENGTHS)) {
     if (![...shapes.values()].some((shape) => shape.mode === mode)) continue;
 
-    for (const size of LENGTHS[mode]?.presets ?? []) {
+    for (const size of lookup(LENGTHS, mode)?.presets ?? []) {
       const id = `${mode}:${size}`;
 
       if (!shapes.has(id)) shapes.set(id, { id, mode, size: String(size), variants: new Map() });
@@ -419,10 +429,10 @@ export function testShapes(sources: { conditions: Conditions }[]) {
     .sort((a, b) => rank(a.mode) - rank(b.mode) || (Number(a.size) || 0) - (Number(b.size) || 0) || (a.id < b.id ? -1 : 1));
 }
 
-export const CORRECTION_LABELS: Record<string, string> = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+export const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' } satisfies Record<string, string>;
 
 export function correctionLabel(policy: string | undefined) {
-  return CORRECTION_LABELS[policy || 'mandatory'] || 'stop on error';
+  return lookup(CORRECTION_LABELS, policy || 'mandatory') || 'stop on error';
 }
 
 // Every part of a condition key (conditionKey), named as people read it, in the order a conditions line
@@ -431,20 +441,20 @@ export function correctionLabel(policy: string | undefined) {
 // line names it only beside a quote set that differs by it.
 const version = (id: string) => id.replace(/^.*-(v\d+)$/, '$1');
 
-const LENGTH_TEXT: Partial<Record<string, (c: Conditions) => string>> = {
+const LENGTH_TEXT = {
   words: (c) => `${c.count} words`,
   time: (c) => `${c.duration} s`,
   quote: (c) => `${c.quoteLength || 'any'} quote`,
   code: (c) => `code · ${c.codeLanguage || DEFAULT_CODE_LANGUAGE}`,
   book: (c) => bookName(c.book),
   standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
-};
+} satisfies Partial<Record<string, (c: Conditions) => string>>;
 
 interface ConditionPart { name: string; text: (c: Conditions) => string | undefined; shown?: (c: Conditions) => boolean }
 
 const CONDITION_PARTS: ConditionPart[] = [
   { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
-  { name: 'length', text: (c) => LENGTH_TEXT[c.mode ?? '']?.(c) ?? c.mode },
+  { name: 'length', text: (c) => lookup(LENGTH_TEXT, c.mode ?? '')?.(c) ?? c.mode },
   { name: 'text', text: (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : `${c.punctuation ? 'punctuation' : 'plain'}${c.numbers ? ' · numbers' : ''}`) },
   { name: 'setting', text: (c) => (c.mode === 'quote' ? `punctuation setting ${c.punctuation ? 'on' : 'off'}` : ''), shown: () => false },
   { name: 'input', text: (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard') },
@@ -534,8 +544,9 @@ export const STANDARD_MIN_RUNS = 3;
 // The standard score headline: the best at one standard key, plus the median wpm of the most recent
 // completed runs there. Below three runs there is no median, so one run can't stand in for a score.
 // Only comparable kinds count: a custom run is never a standard run, whatever conditions it carries.
-export function standardScore(runs: RunRecord[], key: string, best: number | null = null) {
-  const eligible = runs.filter((run) => comparableKind(run.kind) && trendRun(run) && conditionKey(run.conditions) === key);
+export function standardScore(inputRuns: readonly unknown[], key: string, best: number | null = null) {
+  const runs = analysisRuns(inputRuns);
+  const eligible = runs.filter(isScoredRun).filter((run) => comparableKind(run.kind) && trendRun(run) && conditionKey(run.conditions) === key);
   const recent = eligible.slice(-STANDARD_RECENT_RUNS);
   const settled = recent.length >= STANDARD_MIN_RUNS;
 
@@ -561,7 +572,9 @@ export function standardInputClass(keyboard: ReturnType<typeof standardScore>, t
   return touch.settled && touch.total > keyboard.total ? 'touch' : 'physical-keyboard';
 }
 
-export function recurringTargets(runs: RunRecord[], loops: TrainingLoop[], compatibleConditions: Conditions) {
+export function recurringTargets(inputRuns: readonly unknown[], inputLoops: readonly unknown[], compatibleConditions: Conditions) {
+  const runs = analysisRuns(inputRuns);
+  const loops = analysisLoops(inputLoops);
   const key = conditionKey(compatibleConditions);
   const eligible = runs.filter((r) => evidenceRun(r) && conditionKey(r.conditions) === key).slice(-MAX_PATTERN_RUNS);
   const pairs = new Map<string, RecurringPair>();
@@ -576,7 +589,7 @@ export function recurringTargets(runs: RunRecord[], loops: TrainingLoop[], compa
       if (errors) p.errorRuns += 1;
 
       if (timingCount >= 10 && (slowdownMs ?? 0) > 0 && medianMs !== null) p.slowRuns += 1;
-      p.lastAt = run.at;
+      p.lastAt = run.at ?? null;
       pairs.set(pair, p);
     }
   }
@@ -621,7 +634,7 @@ export function runDay(run: { day?: string | null; at?: string | null }) {
 }
 
 // Interrupted runs keep their clock going after focus is lost, so only valid runs count as practice.
-function addRunTime(totals: Record<string, number>, runs: PracticeRecord[]) {
+function addRunTime(totals: Record<string, number>, runs: readonly PracticeRecord[]) {
   for (const run of runs) {
     const key = runDay(run);
 
@@ -673,7 +686,7 @@ export function recordPracticeTime(practiceDays: unknown, at: string, elapsedMs:
 // largest of those, so no run counts twice; its archive is that total less the merged runs' time, which the
 // calendar adds back. An empty copy (a new account) takes the other's archive as it is. The trade-off:
 // different runs that two copies never shared, archived on the same day, count as the larger day, not the sum.
-export function mergePracticeDays(a: { practiceDays?: unknown; runs?: PracticeRecord[] }, b: { practiceDays?: unknown; runs?: PracticeRecord[] }, runs: PracticeRecord[]) {
+export function mergePracticeDays(a: { practiceDays?: unknown; runs?: PracticeRecord[] }, b: { practiceDays?: unknown; runs?: PracticeRecord[] }, runs: readonly PracticeRecord[]) {
   const own = (side: { practiceDays?: unknown }) => validPracticeDays(side.practiceDays);
   const total = (side: { practiceDays?: unknown; runs?: PracticeRecord[] }) => addRunTime(own(side), Array.isArray(side.runs) ? side.runs : []);
   const [first, second, merged] = [total(a), total(b), addRunTime({}, runs)];
@@ -688,8 +701,8 @@ export function mergePracticeDays(a: { practiceDays?: unknown; runs?: PracticeRe
   return days;
 }
 
-export function minutesByDay(runs: RunRecord[], practiceDays: Record<string, number> = {}) {
-  const totals = addRunTime({ ...practiceDays }, runs);
+export function minutesByDay(runs: readonly unknown[], practiceDays: Record<string, number> = {}) {
+  const totals = addRunTime({ ...practiceDays }, analysisRuns(runs));
 
   for (const key of Object.keys(totals)) totals[key] = (totals[key] ?? 0) / 60000;
 
@@ -730,7 +743,8 @@ export function practiceLevel(minutes: number, goal = 0) {
 // or "don't", stay). A token that is all punctuation keeps itself.
 const missedWordKey = (word: string) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
 
-export function recurringMissedWords(runs: RunRecord[], limit = 8) {
+export function recurringMissedWords(inputRuns: readonly unknown[], limit = 8) {
+  const runs = analysisRuns(inputRuns);
   const recent = runs.filter(missedWordsRun).slice(-MAX_PATTERN_RUNS);
   const inputClass = inputClassOf(recent.at(-1));
   const counted = recent.filter((run) => inputClassOf(run) === inputClass);
@@ -811,7 +825,7 @@ const DAILY_TEXTS = [
 // Stilltype rule: no confident per-key or per-pair claim below this many first attempts.
 export const MIN_PATTERN_SAMPLES = 10;
 
-const directKeys = (run: RunRecord) => run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys) ? run.keys : null;
+const directKeys = (run: AnalysisRun) => run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys) ? run.keys : null;
 
 // Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
 // that letter over its tries. Older summaries without per-letter counts fall back to their pairs
@@ -819,7 +833,9 @@ const directKeys = (run: RunRecord) => run.keysVersion === KEY_COUNTS_VERSION &&
 // another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) and
 // repeated text are never mined, even if a record carries counts (a run on an exhausted pool saved them before
 // repeat quotes).
-export function keyAnalysis(runs: RunRecord[], limit = 8) {
+export function keyAnalysis(inputRuns: readonly unknown[], limit = 8) {
+  const runs = analysisRuns(inputRuns);
+
   const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && r.fresh !== false
     && ((r.patterns || []).length || directKeys(r)?.length))
     .slice(-MAX_PATTERN_RUNS);

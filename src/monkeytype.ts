@@ -1,3 +1,4 @@
+import { lookup } from './domain-values.js';
 import { at as indexed, isRecord } from './domain-values.js';
 import type { Preferences } from './profile-types.js';
 import type { CorrectionPolicy } from './typing.js';
@@ -15,7 +16,6 @@ interface SkippedSetting { setting: string; from: string; reason: string }
 import { LENGTHS, isPresetLength, isValidLength } from './lengths.js';
 import { MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, clampPace } from './profile.js';
 import { SOUND_LABELS } from './sound.js';
-import { SPEED_UNITS } from './units.js';
 
 const MAX_IMPORT_LENGTH = 1_000_000;
 
@@ -23,12 +23,12 @@ const MAX_IMPORT_LENGTH = 1_000_000;
 // Any other theme name is taken as dark, Monkeytype's default and the larger set.
 const LIGHT_THEMES = new Set(['9009', 'beach', 'bingsu', 'blueberry_light', 'breeze', 'cafe', 'camping', 'cheesecake', 'creamsicle', 'darling', 'desert_oasis', 'dino', 'dmg', 'dollar', 'fleuriste', 'froyo', 'frozen_llama', 'fruit_chew', 'godspeed', 'gruvbox_light', 'hanok', 'honey', 'iceberg_light', 'lavender', 'lil_dragon', 'lilac_mist', 'macroblank', 'magic_girl', 'menthol', 'mexican', 'milkshake', 'mizu', 'modern_dolch_light', 'modern_ink', 'mr_sleeves', 'ms_cupcakes', 'nord_light', 'olive', 'paper', 'pastel', 'peaches', 'pink_lemonade', 'rainbow_trail', 'repose_light', 'retro', 'rose_pine_dawn', 'serika', 'sewing_tin_light', 'shoko', 'slambook', 'snes', 'soaring_skies', 'solarized_light', 'tangerine', 'taro', 'terrazzo', 'tiramisu', 'vaporwave', 'vesper_light', 'witch_girl']);
 
-const WORD_LISTS: Record<string, [string, string]> = { english: ['200', 'top 200'], english_1k: ['1k', 'top 1k'], english_5k: ['5k', 'top 5k'], english_10k: ['10k', 'top 10k'] };
-const PACE: Record<string, string> = { off: 'off', pb: 'best', tagPb: 'best', average: 'average', last: 'last', custom: 'custom' };
-const PACE_LABELS: Record<string, string> = { off: 'off', best: 'personal best', average: 'average', last: 'last run', custom: 'custom' };
-const QUOTE_LENGTHS: Record<string, string> = { 0: 'short', 1: 'medium', 2: 'long', 3: 'long' };
+const WORD_LISTS = { english: ['200', 'top 200'], english_1k: ['1k', 'top 1k'], english_5k: ['5k', 'top 5k'], english_10k: ['10k', 'top 10k'] } satisfies Record<string, [string, string]>;
+const PACE = { off: 'off', pb: 'best', tagPb: 'best', average: 'average', last: 'last', custom: 'custom' } satisfies Record<string, string>;
+const PACE_LABELS = { off: 'off', best: 'personal best', average: 'average', last: 'last run', custom: 'custom' } satisfies Record<string, string>;
+const QUOTE_LENGTHS = { 0: 'short', 1: 'medium', 2: 'long', 3: 'long' } satisfies Record<string, string>;
 const FONT_SIZES: [string, string][] = [['22', 'small'], ['28', 'medium'], ['36', 'large']];
-const CORRECTION_LABELS: Record<string, string> = { relaxed: 'free', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' };
+const CORRECTION_LABELS = { relaxed: 'free', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' } satisfies Record<string, string>;
 
 // Monkeytype's three correction settings, strongest first: Stilltype takes one correction rule, so the first
 // that asks for one wins. Failing the run decides its outcome, holding the caret decides how it is typed,
@@ -42,7 +42,7 @@ const CORRECTION_SOURCES: [string, Record<string, CorrectionPolicy | null | unde
 ];
 
 // Monkeytype's names for the layouts Stilltype draws.
-const KEYMAP_LAYOUTS: Record<string, string> = { qwerty: 'qwerty', dvorak: 'dvorak', colemak: 'colemak', colemak_dh: 'colemak-dh', workman: 'workman' };
+const KEYMAP_LAYOUTS = { qwerty: 'qwerty', dvorak: 'dvorak', colemak: 'colemak', colemak_dh: 'colemak-dh', workman: 'workman' } satisfies Record<string, string>;
 
 // Keys every Monkeytype config export carries, used to tell an export from any other JSON.
 const MONKEYTYPE_KEYS = ['mode', 'time', 'words', 'punctuation', 'numbers', 'language', 'theme', 'quoteLength', 'paceCaret', 'stopOnError', 'keymapMode', 'fontSize', 'caretStyle', 'difficulty', 'funbox', 'layout'];
@@ -123,7 +123,7 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
   // A length off the presets imports as a custom one, within the custom length's bounds (src/lengths.js).
   for (const [mode, setting, unit] of [['time', 'time length', 's'], ['words', 'word count', 'words']] satisfies [string, string, string][] ) {
     if (!has(mode)) continue;
-    const spec = LENGTHS[mode];
+    const spec = lookup(LENGTHS, mode);
 
     if (!spec) continue;
     const { key, min, max } = spec;
@@ -140,7 +140,7 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
   }
 
   if (has('language')) {
-    const list = WORD_LISTS[String(config.language)];
+    const list = lookup(WORD_LISTS, String(config.language));
     const from = `language: ${shown(config.language)}`;
 
     if (list) map('word list', { wordList: list[0] }, list[1], from);
@@ -151,7 +151,7 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
     // An array in current exports ([1] by default); a single number in older ones.
     const lengths = [...new Set([config.quoteLength].flat())];
     const from = `quoteLength: ${shown(config.quoteLength)}`;
-    const named = [...new Set(lengths.map((length) => QUOTE_LENGTHS[String(length)]))];
+    const named = [...new Set(lengths.map((length) => lookup(QUOTE_LENGTHS, String(length))))];
 
     if ([0, 1, 2].every((length) => lengths.includes(length)) || lengths.includes(-1)) map('quote length', { quoteLength: 'any' }, 'any', from);
     else if (named.length === 1 && named[0]) map('quote length', { quoteLength: named[0] }, lengths.includes(3) ? 'long (Stilltype’s longest)' : named[0], from);
@@ -175,7 +175,7 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
 
   if (chosen?.policy) {
     const approximate = chosen.key === 'stopOnError' && config.stopOnError === 'word' ? ' (Stilltype stops at the letter, not the word)' : '';
-    map('correction', { correction: chosen.policy }, (CORRECTION_LABELS[chosen.policy ?? ''] ?? '') + approximate, chosen.from);
+    map('correction', { correction: chosen.policy }, (lookup(CORRECTION_LABELS, chosen.policy ?? '') ?? '') + approximate, chosen.from);
   } else {
     const off = sources.filter((source) => source.policy === null);
 
@@ -218,7 +218,7 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
   // The layout Monkeytype draws its keymap in becomes the keyboard legend. Monkeytype's own layout setting
   // remaps the keys typed, which Stilltype never does: it scores what the operating system sends.
   if (has('keymapLayout') && config.keymapLayout !== 'overrideSync') {
-    const layout = KEYMAP_LAYOUTS[String(config.keymapLayout)];
+    const layout = lookup(KEYMAP_LAYOUTS, String(config.keymapLayout));
     const from = `keymapLayout: ${shown(config.keymapLayout)}`;
 
     if (layout) map('keyboard layout', { layout }, layout, from);
@@ -230,10 +230,10 @@ export function mapMonkeytypeConfig(config: MonkeytypeConfig) {
   }
 
   if (has('paceCaret')) {
-    const pace = PACE[String(config.paceCaret)];
+    const pace = lookup(PACE, String(config.paceCaret));
     const from = `paceCaret: ${shown(config.paceCaret)}`;
 
-    if (pace) map('pace caret', { paceCaret: pace }, PACE_LABELS[pace] ?? '', from);
+    if (pace) map('pace caret', { paceCaret: pace }, lookup(PACE_LABELS, pace) ?? '', from);
     else skip('pace caret', from, 'Stilltype paces against your best, average, last run or a set speed.');
   }
 

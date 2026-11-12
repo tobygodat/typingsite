@@ -1,6 +1,8 @@
+import { analysisRuns, analysisLoops } from './domain-history.js';
+import type { AnalysisLoop, ScoredRun } from './profile-types.js';
 import { at as indexed } from './domain-values.js';
 import type { Conditions } from './typing.js';
-import type { RunRecord, TrainingLoop } from './profile-types.js';
+
 import type { Basis, LearnerModel, TargetEvidence } from './learner.js';
 import type { Since, ErrorTally, SlowTally } from './train-path.js';
 
@@ -46,7 +48,7 @@ const median = (values: number[]) => {
   return sorted.length % 2 ? indexed(sorted, mid) : (indexed(sorted, mid - 1) + indexed(sorted, mid)) / 2;
 };
 
-const weekOf = (runs: RunRecord[]) => {
+const weekOf = (runs: ScoredRun[]) => {
   const settled = runs.length >= WEEK_MIN_RUNS;
 
   return { count: runs.length, median: settled ? median(runs.map((run) => run.score.wpm)) : null, accuracy: settled ? median(runs.map((run) => run.score.accuracy)) : null };
@@ -55,14 +57,14 @@ const weekOf = (runs: RunRecord[]) => {
 // The lead: this week against the week before, at one condition key, by weeklyChange's weeks (today and the six
 // days before, then the seven before those). A week without WEEK_MIN_RUNS runs has no median, so no change is
 // stated from it.
-export function weekLead(runs: RunRecord[], key: string, date: Date) {
+export function weekLead(runs: readonly unknown[], key: string, date: Date) {
   const { current, previous } = key ? weeklyChange(runs, key, date) : { current: [], previous: [] };
   const [now, before] = [weekOf(current), weekOf(previous)];
 
   const state = now.median !== null && before.median !== null ? 'change' : now.median !== null ? 'this-week' : before.median !== null ? 'last-week'
     : current.length || previous.length ? 'thin' : 'none';
 
-  const latest = [...current, ...previous].reduce<RunRecord | null>((last, run) => (!last || (run.at || '') > (last.at || '') ? run : last), null);
+  const latest = [...current, ...previous].reduce<ScoredRun | null>((last, run) => (!last || (run.at || '') > (last.at || '') ? run : last), null);
 
   return { state, current: now, previous: before, latest };
 }
@@ -70,7 +72,7 @@ export function weekLead(runs: RunRecord[], key: string, date: Date) {
 // When this week began: midnight at the start of the lead's week, the moment "a week ago" is read at.
 export const weekStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate() - 6).getTime();
 
-const byDate = (a: TrainingLoop, b: TrainingLoop) => (Date.parse(a.at) || 0) - (Date.parse(b.at) || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const byDate = (a: AnalysisLoop, b: AnalysisLoop) => (Date.parse(a.at ?? '') || 0) - (Date.parse(b.at ?? '') || 0) || ((a.id ?? '') < (b.id ?? '') ? -1 : (a.id ?? '') > (b.id ?? '') ? 1 : 0);
 const basisNamed = (item: { was: TargetEvidence | null } | undefined): Basis => (item?.was?.basis === 'slow' ? 'slow' : 'errors');
 
 // The units fixed between `began` and now, on one keyboard, in one focus: Train's isFixed now and not then. A drilled
@@ -78,7 +80,8 @@ const basisNamed = (item: { was: TargetEvidence | null } | undefined): Basis => 
 // since `began`. "A week ago" is the learner built on the history as it stood then (the same fold, given only the
 // earlier evidence and `began`), never a second set of rules. Ranked by what each saved in the learner's terms: the
 // change in its gain, the time it loses per letter typed, between the two fits. Largest first, then by unit.
-export function weekMovers({ runs, loops = [], keyboard, focus, now, began }: { runs: RunRecord[]; loops?: TrainingLoop[]; keyboard: string; focus: string; now: number; began: number }) {
+export function weekMovers({ runs, loops: rawLoops = [], keyboard, focus, now, began }: { runs: readonly unknown[]; loops?: readonly unknown[]; keyboard: string; focus: string; now: number; began: number }) {
+  const loops = analysisLoops(rawLoops);
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
   const records = learnerEvidence(runs, keyboard);
   const earlier = records.filter((record) => record.at === null || record.at < began);
@@ -87,13 +90,13 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }: { 
   const queuedThen = new Map(learnerRecommendation(modelThen).queue.map((item) => [item.unit, item]));
   const gains = (model: LearnerModel) => new Map(model.units.map((unit) => [unit.unit, unit.gain]));
   const [gainNow, gainThen] = [gains(modelNow), gains(modelThen)];
-  const drilledNow = new Map<string, TrainingLoop>();
-  const drilledThen = new Map<string, TrainingLoop>();
+  const drilledNow = new Map<string, AnalysisLoop>();
+  const drilledThen = new Map<string, AnalysisLoop>();
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) {
     drilledNow.set(loop.target ?? '', loop);
 
-    if (Date.parse(loop.at) < began) drilledThen.set(loop.target ?? '', loop);
+    if (Date.parse(loop.at ?? '') < began) drilledThen.set(loop.target ?? '', loop);
   }
 
   // A mover is a before → after, so it needs observations on both sides; without them the list says nothing of it.
@@ -128,7 +131,7 @@ export function weekMovers({ runs, loops = [], keyboard, focus, now, began }: { 
 
 // Minutes practised this week and the week before (every kind of practice, as the calendar counts it), and the
 // streak ending today. Null when neither week has any.
-export function weekPractice(runs: RunRecord[], practiceDays: Record<string, number>, goal: number, date: Date) {
+export function weekPractice(runs: readonly unknown[], practiceDays: Record<string, number>, goal: number, date: Date) {
   const byDay = minutesByDay(runs, practiceDays);
   const fortnight = periodDays(14, date);
   // Each day's minutes are a division, so the week's sum is rounded to a microminute before it is read for print.
@@ -144,9 +147,9 @@ export function weekPractice(runs: RunRecord[], practiceDays: Record<string, num
   return { status: now > was ? 'more' : now < was ? 'less' : 'same', current, previous, streak: practiceStreak(byDay, goal, date), goal };
 }
 
-export function weekChange({ runs = [], loops = [], practiceDays = {}, key = '', conditions = null, focus, goal = 0, period = '30', now }: { runs?: RunRecord[]; loops?: TrainingLoop[]; practiceDays?: Record<string, number>; key?: string; conditions?: Conditions | null; focus: string; goal?: number; period?: string; now: number }) {
+export function weekChange({ runs = [], loops = [], practiceDays = {}, key = '', conditions = null, focus, goal = 0, period = '30', now }: { runs?: readonly unknown[]; loops?: readonly unknown[]; practiceDays?: Record<string, number>; key?: string; conditions?: Conditions | null; focus: string; goal?: number; period?: string; now: number }) {
   const date = new Date(now);
-  const trend = runs.filter(trendRun);
+  const trend = analysisRuns(runs).filter(trendRun);
   const charted = key ? filterRuns(trend, key, periodWindow(period, date)) : [];
   const first = charted.map(runDay).filter(Boolean).sort()[0] || null;
 
@@ -171,7 +174,7 @@ export function moverCopy({ basis, before, after }: Mover) {
 
 // What a mover's figures are counted over: "before your drill, then 31 tries in 3 runs since", or the same split at
 // the start of this week.
-export function moverSample({ basis, before, after, split }: Mover) {
+export function moverSample({ before, after, split }: Mover) {
   const counted = (side: ErrorTally | SlowTally) => ('intervals' in side ? plural(side.intervals, 'clean interval') : `${side.tries} ${side.tries === 1 ? 'try' : 'tries'}`);
   const [was, since] = split === 'drill' ? ['before your drill', 'since'] : ['before this week', 'this week'];
 

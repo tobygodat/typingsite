@@ -17,3 +17,11 @@ export function entry<T>(values: ReadonlyMap<string, T>, key: string): T {
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
+
+export function hasKey<T extends object>(value: T, key: PropertyKey): key is keyof T {
+  return Object.hasOwn(value, key);
+}
+
+export function lookup<T extends object>(value: T, key: string): T[keyof T] | undefined {
+  return hasKey(value, key) ? value[key] : undefined;
+}

@@ -1,4 +1,5 @@
 import type { HistoricalRecord } from './profile-types.js';
+import { isPatternAttempt } from './domain-history.js';
 import { at } from './domain-values.js';
 
 export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
@@ -715,7 +716,7 @@ export function customTextProblem(text: string) {
   return null;
 }
 
-export function replayAttempt(attempt: Pick<Attempt, 'text' | 'events' | 'startedAt' | 'endedAt'>): Replay {
+export function replayAttempt(attempt: { text: string; events?: AttemptEvent[]; startedAt?: number | null; endedAt?: number | null }): Replay {
   let typed = '';
   let insertions = 0;
   let correctInsertions = 0;
@@ -885,10 +886,10 @@ function median(values: number[]) {
   return Math.round(sorted.length % 2 ? at(sorted, middle) : (at(sorted, middle - 1) + at(sorted, middle)) / 2);
 }
 
-export function summarizePatterns(attempts: Attempt[], limit = 20, compatibleConditions: Conditions | null = null) {
+export function summarizePatterns(attempts: readonly unknown[], limit = 20, compatibleConditions: Conditions | null = null) {
   const key = compatibleConditions ? conditionKey(compatibleConditions) : null;
 
-  const recent = attempts.filter((attempt) => attempt.status === 'complete'
+  const recent = attempts.filter(isPatternAttempt).filter((attempt) => attempt.status === 'complete'
     && !attempt.interrupted
     && attempt.kind !== 'drill'
     && attempt.kind !== 'missed'
@@ -948,7 +949,7 @@ function errorCount({ errors, observations }: { errors: number; observations: nu
   return `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${observations} ${observations === 1 ? 'try' : 'tries'}`;
 }
 
-export function recommendTarget(attempts: Attempt[], compatibleConditions: Conditions | null = null) {
+export function recommendTarget(attempts: readonly unknown[], compatibleConditions: Conditions | null = null) {
   const evidence = summarizePatterns(attempts, 20, compatibleConditions);
   const errorCandidates = evidence.pairs.filter((pair) => pair.observations >= 10 && pair.errors > 0).sort((a, b) => b.errorRate - a.errorRate || b.observations - a.observations || a.pair.localeCompare(b.pair));
   const timingCandidates = evidence.pairs.filter((pair) => pair.timings.length >= 10 && (pair.slowdownMs ?? 0) > 0).sort((a, b) => (b.slowdownMs ?? 0) - (a.slowdownMs ?? 0) || b.timings.length - a.timings.length || a.pair.localeCompare(b.pair));

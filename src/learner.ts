@@ -1,6 +1,8 @@
-import { at as indexed, entry } from './domain-values.js';
-import type { Attempt, Conditions, WeightedUnit } from './typing.js';
-import type { RunRecord, TrainingLoop, TargetCounts } from './profile-types.js';
+import { analysisRuns, analysisLoops } from './domain-history.js';
+import type { AnalysisRun, AnalysisLoop, HistoricalRecord } from './profile-types.js';
+import { entry } from './domain-values.js';
+import type { Conditions, WeightedUnit } from './typing.js';
+import type { TargetCounts } from './profile-types.js';
 
 export type Basis = 'errors' | 'slow';
 
@@ -155,7 +157,7 @@ const LETTER = /^[a-z]$/;
 const PAIR = /^[a-z]{2}$/;
 
 // The keyboard a run was typed on: touch and each layout are their own mechanics, never pooled.
-export const keyboardOf = (conditions: Conditions = {}) => `${conditions.inputClass || 'physical-keyboard'}:${normalizeLayout(conditions.layout)}`;
+export const keyboardOf = (conditions: Conditions | HistoricalRecord = {}) => `${conditions.inputClass || 'physical-keyboard'}:${normalizeLayout(conditions.layout)}`;
 
 // How often each pair and letter turns up in running English: the 5k list, most frequent first, weighted by
 // 1 / rank (Zipf), counting letters inside words only. Shares of all pairs and of all letters.
@@ -200,8 +202,8 @@ export function englishFrequency() {
 // A pair's `slow` says whether its median clean interval was slower than the run's median, `ratio` is the log of
 // one over the other and `slowMs` the difference (all null: untimed). `correction` is the run's timed
 // corrections and the log of their median over the run's median interval (null: none timed, or an untimed run).
-export function learnerEvidence(runs: RunRecord[], keyboard: string) {
-  return runs.flatMap((run) => {
+export function learnerEvidence(runs: readonly unknown[], keyboard: string) {
+  return analysisRuns(runs).flatMap((run) => {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) return [];
     const record = evidenceRecord(run);
 
@@ -209,7 +211,7 @@ export function learnerEvidence(runs: RunRecord[], keyboard: string) {
   });
 }
 
-function evidenceRecord(run: RunRecord) {
+function evidenceRecord(run: AnalysisRun) {
   const units: EvidenceUnit[] = [];
   let pace: number | null = null;
 
@@ -259,21 +261,21 @@ export function orderedEvidence(evidence: LearnerEvidence[]) {
       || (record.units.length === held.units.length && compare(JSON.stringify(record), JSON.stringify(held)) < 0)) byId.set(record.id, record);
   }
 
-  return [...byId.values()].sort((a, b) => compare(a.at ?? -Infinity, b.at ?? -Infinity) || compare(a.id, b.id));
+  return [...byId.values()].sort((a, b) => compare(a.at ?? -Infinity, b.at ?? -Infinity) || compare(a.id ?? '', b.id ?? ''));
 }
 
 // What a loop's target was drilled for, as Train reads it (basisOf in train-path.js). Loops saved before `targetBasis`
 // read a saved pace as slowness.
-export const basisOf = (loop: TrainingLoop): Basis => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
+export const basisOf = (loop: AnalysisLoop): Basis => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
-const loopOrder = (a: TrainingLoop, b: TrainingLoop) => compare(Date.parse(a.at) || 0, Date.parse(b.at) || 0) || compare(a.id, b.id) || compare(JSON.stringify(a), JSON.stringify(b));
+const loopOrder = (a: AnalysisLoop, b: AnalysisLoop) => compare(Date.parse(a.at ?? '') || 0, Date.parse(b.at ?? '') || 0) || compare(a.id ?? '', b.id ?? '') || compare(JSON.stringify(a), JSON.stringify(b));
 
 // Each drilled target on a keyboard and its newest loop, by date, then id, as Train's path picks it: so duplicated loops
 // and the order loops arrive in change nothing.
-export function drilledTargets(loops: TrainingLoop[], keyboard: string) {
-  const newest = new Map<string | null, TrainingLoop>();
+export function drilledTargets(loops: readonly unknown[], keyboard: string) {
+  const newest = new Map<string | null | undefined, AnalysisLoop>();
 
-  for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
+  for (const loop of analysisLoops(loops).filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
 
   return newest;
 }
@@ -305,7 +307,7 @@ export function letGoIndex(evidence: LearnerEvidence[]) {
 }
 
 // Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
-export const drillSplit = (loop: TrainingLoop, index: ReleaseIndex) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
+export const drillSplit = (loop: AnalysisLoop, index: ReleaseIndex) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at ?? '');
 
 // The one rule for letting go of a drilled target (ADR 0019), of one kind, at one split: the let-go variants drop that
 // part of the target's gain. It failed ADR 0019's rule, so no default reads it and Train keeps its own "fixed"; a
@@ -353,7 +355,7 @@ export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, sp
 // of its gain when balanced, its misses for accuracy, its slowness for speed. `missCost` is what a miss costs in
 // clean intervals. `observed` holds raw, undecayed counts, the only numbers a person is shown; `slowMs` is the
 // mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
-export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: TrainingLoop[] = []) {
+export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: AnalysisLoop[] = []) {
   const settings = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
   const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = settings;
   const records = orderedEvidence(evidence);
@@ -469,7 +471,7 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
     for (const loop of drills) {
       const basis = basisOf(loop);
 
-      if (settings.letGo.includes(basis) && letGo(index, loop.target, basis, drillSplit(loop, index), { ...LET_GO, ...settings })) released.set(loop.target, [basis]);
+      if (settings.letGo.includes(basis) && letGo(index, loop.target ?? null, basis, drillSplit(loop, index), { ...LET_GO, ...settings })) released.set(loop.target ?? null, [basis]);
     }
   }
 
@@ -572,7 +574,7 @@ export function learnerRecommendation(model: LearnerModel): Recommendation {
 // The baseline policy, the counting rule this replaced: the recurring pair with the highest first-try error
 // rate across recent matching runs (10 tries, errors or slowness in two runs), else the newest traces' target,
 // else a general drill.
-export function countingRecommendation(runs: RunRecord[], loops: TrainingLoop[], traces: Attempt[], source: Conditions): Recommendation {
+export function countingRecommendation(runs: readonly unknown[], loops: readonly unknown[], traces: readonly unknown[], source: Conditions): Recommendation {
   const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(runs, loops, source)[0];
 
@@ -593,7 +595,7 @@ export function countingRecommendation(runs: RunRecord[], loops: TrainingLoop[],
 }
 
 // A recurring pair's counts, as the counting rule shows them and the comparison reads them back.
-export function countingEvidence(runs: RunRecord[], loops: TrainingLoop[], pair: string, source: Conditions) {
+export function countingEvidence(runs: readonly unknown[], loops: readonly unknown[], pair: string, source: Conditions) {
   const recurring = recurringTargets(runs, loops, source).find((item) => item.pair === pair);
 
   return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
@@ -602,7 +604,7 @@ export function countingEvidence(runs: RunRecord[], loops: TrainingLoop[], pair:
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
 // keyboard `source` is typed on, and the let-go variants its drilled targets there; the counting rule reads only runs
 // at its exact conditions.
-export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: RunRecord[]; loops?: TrainingLoop[]; traces: Attempt[]; source: Conditions; now: number; focus?: string }) {
+export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: readonly unknown[]; loops?: readonly unknown[]; traces: readonly unknown[]; source: Conditions; now: number; focus?: string }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
   const keyboard = keyboardOf(source);

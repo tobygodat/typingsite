@@ -1,5 +1,5 @@
 import { at as indexed } from './domain-values.js';
-import type { RunRecord } from './profile-types.js';
+import type { ScoredRun as RunRecord } from './profile-types.js';
 
 type Point = [number, number];
 
@@ -321,7 +321,7 @@ export function renderTrend(container: HTMLElement, runs: RunRecord[], onSelect:
     const tip = svgNode('title', {});
     tip.textContent = label;
     dot.append(tip);
-    const open = () => onSelect(latestRun(day.runs).id);
+    const open = () => onSelect(latestRun(day.runs).id ?? '');
     dot.addEventListener('click', open);
     dot.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }

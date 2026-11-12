@@ -1,4 +1,4 @@
-import { at, isRecord } from './domain-values.js';
+import { at } from './domain-values.js';
 import type { RunCounts } from './profile-types.js';
 
 export type { RunCounts } from './profile-types.js';

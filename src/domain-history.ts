@@ -69,3 +69,68 @@ export function isTrainingLoop(value: unknown): value is TrainingLoop {
   return isRecord(value) && typeof value.id === 'string' && typeof value.at === 'string' && isConditions(value.conditions)
     && (value.target === null || typeof value.target === 'string') && typeof value.beforeAttemptId === 'string' && typeof value.afterAttemptId === 'string';
 }
+
+function optional(value: Record<string, unknown>, keys: string[], accepts: (value: unknown) => boolean) {
+  return keys.every((key) => value[key] === undefined || accepts(value[key]));
+}
+
+const string = (value: unknown): value is string => typeof value === 'string';
+const number = (value: unknown): value is number => typeof value === 'number';
+const boolean = (value: unknown): value is boolean => typeof value === 'boolean';
+const nullableString = (value: unknown): value is string | null => value === null || typeof value === 'string';
+const nullableNumber = (value: unknown): value is number | null => value === null || typeof value === 'number';
+
+export function isAnalysisRun(value: unknown): value is import('./profile-types.js').AnalysisRun {
+  if (!isRecord(value)) return false;
+
+  return optional(value, ['id', 'kind', 'status', 'textId'], string)
+    && optional(value, ['at', 'day', 'target', 'challengeDate'], nullableString)
+    && optional(value, ['fresh', 'interrupted', 'firstDailyAttempt', 'adaptive'], boolean)
+    && optional(value, ['elapsedMs', 'errors', 'drillSeconds', 'keysVersion'], number)
+    && optional(value, ['conditions'], isRecord) && optional(value, ['score'], isScore)
+    && optional(value, ['keys'], (keys) => Array.isArray(keys) && keys.every((key: unknown) => Array.isArray(key) && key.length === 3 && typeof key[0] === 'string' && typeof key[1] === 'number' && typeof key[2] === 'number'))
+    && optional(value, ['patterns'], (patterns) => Array.isArray(patterns) && patterns.every((row: unknown) => Array.isArray(row) && row.length === 6 && typeof row[0] === 'string'
+      && typeof row[1] === 'number' && typeof row[2] === 'number' && typeof row[3] === 'number' && nullableNumber(row[4]) && nullableNumber(row[5])))
+    && optional(value, ['corrections'], (corrections) => Array.isArray(corrections) && corrections.length === 2 && typeof corrections[0] === 'number' && nullableNumber(corrections[1]))
+    && optional(value, ['missedWords'], (words) => Array.isArray(words) && words.every(string));
+}
+
+export function isScoredRun(value: unknown): value is import('./profile-types.js').ScoredRun {
+  return isAnalysisRun(value) && isScore(value.score);
+}
+
+export function analysisRuns(values: readonly unknown[]) {
+  return values.filter(isAnalysisRun);
+}
+
+export function isAnalysisLoop(value: unknown): value is import('./profile-types.js').AnalysisLoop {
+  if (!isRecord(value)) return false;
+
+  return optional(value, ['id', 'at', 'afterAttemptId', 'drillAttemptId'], string)
+    && optional(value, ['beforeAttemptId', 'target'], nullableString)
+    && optional(value, ['conditions'], isRecord)
+    && optional(value, ['targetBasis'], (basis) => basis === 'slow' || basis === 'errors')
+    && optional(value, ['drillCompleted'], boolean)
+    && optional(value, ['targetMisses'], (counts) => counts === null || (isRecord(counts) && isTargetCounts(counts.was) && isTargetCounts(counts.now)))
+    && optional(value, ['targetPace'], (pace) => pace === null || (isRecord(pace) && isRecord(pace.was) && typeof pace.was.slowMs === 'number' && isRecord(pace.now) && typeof pace.now.slowMs === 'number'));
+}
+
+function isTargetCounts(value: unknown): value is { errors: number; observations: number } {
+  return isRecord(value) && typeof value.errors === 'number' && typeof value.observations === 'number';
+}
+
+export function analysisLoops(values: readonly unknown[]) {
+  return values.filter(isAnalysisLoop);
+}
+
+export interface PatternAttempt {
+  text: string; events?: AttemptEvent[]; startedAt?: number | null; endedAt?: number | null;
+  status?: string; kind?: string; interrupted?: boolean; fresh?: boolean; conditions?: Conditions; summary?: Replay;
+}
+
+export function isPatternAttempt(value: unknown): value is PatternAttempt {
+  return isRecord(value) && typeof value.text === 'string'
+    && optional(value, ['status', 'kind'], string) && optional(value, ['interrupted', 'fresh'], boolean)
+    && optional(value, ['startedAt', 'endedAt'], nullableNumber) && optional(value, ['conditions'], isConditions)
+    && optional(value, ['summary'], isReplay) && optional(value, ['events'], (events) => Array.isArray(events) && events.every(isAttemptEvent));
+}

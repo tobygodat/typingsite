@@ -1,3 +1,4 @@
+import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
 // Word lists for generated passages and drills, most frequent first. Each list is
 // stored as one string and split on first use, so unused lists cost nothing at runtime.
@@ -15,7 +16,7 @@ import { at } from './domain-values.js';
 
 export const DEFAULT_WORD_LIST = '200';
 
-const sources: Record<string, string> = {
+const sources = {
   '200': `
   the be of and a to in he have it that for they i with as not on she at by this we you do but from or
   which one would all will there say who make when can more if no man out other so what time up go
@@ -1267,7 +1268,7 @@ const sources: Record<string, string> = {
   dull cabins commenced satellites ignoring majestic bicycles knowledgeable critically localities
   dinosaur apprentice frogs chickens mango bestseller mangos
 `,
-};
+} satisfies Record<string, string>;
 
 export const wordListIds = Object.keys(sources);
 
@@ -1276,9 +1277,11 @@ const cache = new Map<string, string[]>();
 export function wordList(id: string = DEFAULT_WORD_LIST): string[] {
   const key = Object.hasOwn(sources, id) ? id : DEFAULT_WORD_LIST;
 
-  if (!cache.has(key)) cache.set(key, (sources[key] ?? at(Object.values(sources), 0)).trim().split(/\s+/));
+  if (!cache.has(key)) cache.set(key, (lookup(sources, key) ?? at(Object.values(sources), 0)).trim().split(/\s+/));
 
   const result = cache.get(key);
+
   if (!result) throw new Error('Word list was not cached');
+
   return result;
 }

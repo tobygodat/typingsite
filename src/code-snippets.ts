@@ -1,4 +1,6 @@
+import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
+
 // Original code snippets for code mode. The engine has no line breaks, so each snippet is
 // auto-unindented and its lines are joined with a single space, and must still be valid code once
 // joined: no line comments, and statements that end up on one line need a semicolon between them
@@ -12,7 +14,7 @@ export const MAX_CODE_TOKEN = 24;
 export const MIN_CODE_CHARS = 250;
 export const MAX_CODE_CHARS = 500;
 
-export const CODE_SNIPPETS: Record<string, string[]> = {
+export const CODE_SNIPPETS = {
   js: [
     `export function debounce(fn, wait = 200) {
       let timer = null;
@@ -1227,7 +1229,7 @@ export const CODE_SNIPPETS: Record<string, string[]> = {
     }
     let config = Config { verbose: true, ..Config::default() };`,
   ],
-};
+} satisfies Record<string, string[]>;
 
 // Strip each line's leading indentation and join the lines with one space.
 export function unindent(snippet: string) {
@@ -1246,7 +1248,7 @@ export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], ra
   const lang = CODE_LANGUAGES.includes(language) ? language : DEFAULT_CODE_LANGUAGE;
   const seen = new Set(seenIds);
 
-  const all = (CODE_SNIPPETS[lang] ?? []).map((snippet) => {
+  const all = (lookup(CODE_SNIPPETS, lang) ?? []).map((snippet) => {
     const text = unindent(snippet);
 
     return { id: `code-${lang}-${textId(text)}`, text };

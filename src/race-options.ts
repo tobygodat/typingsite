@@ -1,3 +1,4 @@
+import { lookup } from './domain-values.js';
 import type { Conditions, PassageOptions } from './typing.js';
 
 export interface RaceOptions { mode: 'time' | 'words' | 'quote'; duration?: number; count?: number; punctuation?: boolean; numbers?: boolean; wordList?: string; quoteLength?: string; difficulty?: string }
@@ -34,7 +35,7 @@ export function raceOptions(practice: PracticeOptions = {}): RaceOptions {
   if ((mode !== 'time' && mode !== 'words' && mode !== 'quote') || (adaptive && mode !== 'quote') || (session && session !== 'practice')) return { ...RACE_FALLBACK };
 
   if (mode === 'quote') return { mode, quoteLength: quoteLength || 'any', difficulty: difficulty || 'any' };
-  const spec = LENGTHS[mode];
+  const spec = lookup(LENGTHS, mode);
 
   if (!spec) return { ...RACE_FALLBACK };
   const length = mode === 'time' ? duration : count;

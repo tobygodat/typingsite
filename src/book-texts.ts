@@ -2,7 +2,8 @@
 // (public domain in the US). Opening sections only, normalised to printable ASCII. Rerun the
 // script rather than editing by hand; src/books.js holds titles, pagination and the text version.
 export interface BookSection { label: string; title: string; paragraphs: string[] }
-export const BOOK_TEXTS: Record<string, BookSection[]> = {
+
+export const BOOK_TEXTS = {
   alice: [
     { label: "Chapter I", title: "Down the Rabbit-Hole",
       paragraphs: [
@@ -384,4 +385,4 @@ export const BOOK_TEXTS: Record<string, BookSection[]> = {
         "Your affectionate brother, Robert Walton",
       ] },
   ],
-};
+} satisfies Record<string, BookSection[]>;
