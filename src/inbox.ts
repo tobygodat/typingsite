@@ -73,21 +73,6 @@ const DAY_MS = 86400000;
 const WEEK_MS = 7 * DAY_MS;
 const TOAST_MS = 18000;
 
-// Draws a list's rows again without losing keyboard focus: a focused control comes back on the new
-// control with the same data attributes or, when its row has gone, on `fallback`. The online race's
-// lists use it too.
-export function redrawList(list: HTMLElement, rows: Node[], fallback: HTMLElement | null = null) {
-  const focused = document.activeElement instanceof HTMLElement && list.contains(document.activeElement) ? document.activeElement : null;
-  const key = focused && JSON.stringify({ ...focused.dataset });
-  const focusVisible = focused?.matches(':focus-visible');
-  list.replaceChildren(...rows);
-
-  if (!focused) return;
-  const same = [...list.querySelectorAll('button')].find((button) => JSON.stringify({ ...button.dataset }) === key);
-  const options = { preventScroll: true, focusVisible };
-  (same || fallback)?.focus(options);
-}
-
 export function ago(at: string, now = Date.now()) {
   const minutes = Math.round((now - Date.parse(at)) / 60000);
 
