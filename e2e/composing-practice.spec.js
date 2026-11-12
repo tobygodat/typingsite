@@ -362,7 +362,7 @@ test('Tab reaches Done first, the finished field leaves the tab order and the cl
   await expect(page.locator('#compose-input')).toHaveJSProperty('tabIndex', 0);
 });
 
-test('keyless input, focus loss and an emptied field are never saved, and settings wait', async ({ page, browserName }) => {
+test('keyless input, focus loss and an emptied field are never saved, and settings wait', { tag: '@compat' }, async ({ page, browserName }) => {
   await startPausedClock(page);
   // A copy test in progress is dropped on the way in, and its hidden passage is left alone.
   await page.locator('#typing-input').focus();
@@ -511,7 +511,7 @@ test('text no counted key typed, an edit a refusal could not cancel or unlike it
   await expect(page.locator('#compose-history')).toBeHidden();
 });
 
-test('letters, Enter, Backspace, Delete and word deletes at any caret, emoji included, are all scored', async ({ page }) => {
+test('letters, Enter, Backspace, Delete and word deletes at any caret, emoji included, are all scored', { tag: '@compat' }, async ({ page }) => {
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');

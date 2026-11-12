@@ -248,7 +248,7 @@ test('chrome fades while typing and returns on pointer movement and finish', asy
 test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' });
 
-  test('every duration collapses to (effectively) zero', async ({ page }) => {
+  test('every duration collapses to (effectively) zero', { tag: '@compat' }, async ({ page }) => {
     await openApp(page);
     await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--motion-scale').trim())).toBe('0');
 

@@ -1,6 +1,6 @@
 ---
 name: verify-stilltype
-description: Drive the real Stilltype typing-practice web app (index.html + src/, served by server.mjs) in headless Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Points at desktop-test for anything bigger than one e2e spec.
+description: Drive the real Stilltype typing-practice web app (index.html + src/, served by server.mjs) in headless Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Uses hosted CI for full suites and local targeted runs for iteration.
 ---
 
 # Verify Stilltype
@@ -146,20 +146,34 @@ Train, Progress, Challenge, Commands (below 360px the names are "type practice",
 and radio-group fieldsets such as `#theme-select input[value=…]` (system, dark, light) and `#dark-theme` /
 `#light-theme` (each mode's pick).
 
-Running tests is separate from driving the app. One spec locally:
-`CHROMIUM=/usr/bin/chromium npx playwright test e2e/practice-more.spec.js` (`/usr/local/bin/chromium` on a cloud
-machine; the suite reads only `CHROMIUM` and otherwise needs `npx playwright install chromium`; a worktree needs `npm ci` first;
-the specs import `@playwright/test` from the checkout). Anything bigger goes to the desktop, which syncs this
-checkout and runs 12 workers: `desktop-test quick`, `desktop-test e2e [files] [-g pattern]`,
-`desktop-test unit|build|all`. Before asking to merge, AGENTS.md wants `npm test`, `npm run build` and the
-full `npm run test:e2e` (`desktop-test all` covers all three). The desktop is shared: other sessions run
-there too, and its load swings the suite between about 4 and 5 minutes, so compare timings only across runs
-made under similar load. Pass `--workers=4` when several of your own runs share it.
+Running tests is separate from driving the app. In a worktree, run `npm ci` first. Set a private
+`E2E_PORT` and use `CHROMIUM=/usr/bin/chromium` on the desktop or `/usr/local/bin/chromium` in the cloud.
+Run `npm run test:e2e:quick` and the changed specs while iterating, with the load-based worker default.
+The full Chromium suite runs once per PR head in hosted CI. Cite that run with
+`gh run list --workflow=ci.yml --commit <sha>` instead of repeating it locally or on the desktop.
+Before asking to merge, run dependency install, lint, unit tests and build as `AGENTS.md` requires.
+
+For input, layout, motion or engine-specific changes, request the selected `@compat` Firefox/WebKit set
+once with `gh workflow run ci.yml --ref <branch> -f browsers=compat`. It does not repeat Chromium.
+`npm run test:e2e:compat` runs that set locally. Full alternate-engine suites remain explicit diagnostics
+through `browsers=all`, or `test:e2e:firefox`, `test:e2e:webkit` and `test:e2e:all`, which set `E2E_FULL=1`.
+To diagnose an untagged case, use `E2E_FULL=1 E2E_BROWSERS=firefox npx playwright test e2e/<spec> -g <case>`.
+
+One independent checker proves the final head in its own worktree and returns `PASS`, `PASS+NOTES` or
+`FAIL` with evidence. Keep real-artifact proof and batch findings into this one final check. Demonstrated
+in-scope correctness, security or data failures block. Optional tests, wording and unrelated existing
+flakes are notes. After a fix, check the affected case and its impact. Reopen independent review only for
+a demonstrated blocker in the changed behavior. Never repeat passing whole suites at the same head.
+For test-policy changes, prove actual selection and execution. Product changes still need the Practice,
+Train and affected flows from `AGENTS.md`.
+
+Classify retries as product failures, test flakes or infrastructure failures. A retry does not justify
+rerunning green CI. Diagnose the specific failure and allow at most one targeted rerun by default.
+Repeated 20-, 100- or 200-run campaigns need an explicit diagnostic request.
 
 The screenshots committed under `docs/screenshots/` are a different thing from this skill's evidence. They
 come from the specs' screenshot tests, which write there only when `SCREENSHOTS=1` is set. Refresh them
-locally (`SCREENSHOTS=1 CHROMIUM=/usr/bin/chromium npx playwright test e2e/<spec>`): `desktop-test` passes
-no environment variables over ssh and copies only `test-results/` back.
+locally (`SCREENSHOTS=1 CHROMIUM=/usr/bin/chromium npx playwright test e2e/<spec>`).
 
 ## Evidence
 

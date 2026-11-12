@@ -21,7 +21,7 @@ async function expectTyping(page) {
 
 const liveMetrics = (page) => page.locator('#palette-list [role="option"]', { hasText: 'live metrics' });
 
-test('a command clicked with the mouse leaves a caret in the typing input', async ({ page }) => {
+test('a command clicked with the mouse leaves a caret in the typing input', { tag: '@compat' }, async ({ page }) => {
   await openPaletteFromInput(page);
   await liveMetrics(page).click();
   await expect(page.locator('#live-toggle input[value="true"]')).toBeChecked();

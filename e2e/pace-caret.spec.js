@@ -161,7 +161,7 @@ test('the pace caret glides through each letter instead of hopping between them'
   for (let i = 1; i < xs.length; i += 1) expect(xs[i] - xs[i - 1]).toBeLessThan(6);
 });
 
-test('under reduced motion the pace caret stays put', async ({ page }) => {
+test('under reduced motion the pace caret stays put', { tag: '@compat' }, async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
   await openSettings(page, 'practice');

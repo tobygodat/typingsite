@@ -5,15 +5,15 @@ on:
   pull_request:
   push:
     branches: [master]
-  # The other engines, on request: `gh workflow run ci.yml --ref <branch> -f browsers=all`.
+  # The other engines, on request: `gh workflow run ci.yml --ref <branch> -f browsers=compat`.
   # A manual run never deploys (the deploy job needs a push to master).
   workflow_dispatch:
     inputs:
       browsers:
         description: Engines for Browser e2e
         type: choice
-        options: [all, chromium]
-        default: all
+        options: [compat, chromium, all]
+        default: compat
 
 permissions:
   contents: read
@@ -59,7 +59,7 @@ jobs:
           wranglerVersion: "4.151.0"
 
   e2e:
-    name: Browser e2e (${{ matrix.engine }} ${{ matrix.shard }}/6)
+    name: ${{ matrix.total == 1 && format('Browser compat ({0})', matrix.engine) || format('Browser e2e ({0} {1}/6)', matrix.engine, matrix.shard) }}
     # After the deploy, so on master it reports without delaying it.
     needs: [unit, deploy]
     if: ${{ !cancelled() && needs.unit.result == 'success' }}
@@ -71,12 +71,53 @@ jobs:
       cancel-in-progress: true
     strategy:
       fail-fast: false
-      # One engine per job, so a slow engine never shares a shard with a fast one.
       matrix:
-        engine: ${{ fromJSON((github.event_name == 'push' || inputs.browsers == 'all') && '["chromium", "firefox", "webkit"]' || '["chromium"]') }}
-        shard: [1, 2, 3, 4, 5, 6]
+        include: >-
+          ${{ fromJSON(
+            inputs.browsers == 'all' && '[
+            {"engine": "chromium", "shard": 1, "total": 6},
+            {"engine": "chromium", "shard": 2, "total": 6},
+            {"engine": "chromium", "shard": 3, "total": 6},
+            {"engine": "chromium", "shard": 4, "total": 6},
+            {"engine": "chromium", "shard": 5, "total": 6},
+            {"engine": "chromium", "shard": 6, "total": 6},
+            {"engine": "firefox", "shard": 1, "total": 6},
+            {"engine": "firefox", "shard": 2, "total": 6},
+            {"engine": "firefox", "shard": 3, "total": 6},
+            {"engine": "firefox", "shard": 4, "total": 6},
+            {"engine": "firefox", "shard": 5, "total": 6},
+            {"engine": "firefox", "shard": 6, "total": 6},
+            {"engine": "webkit", "shard": 1, "total": 6},
+            {"engine": "webkit", "shard": 2, "total": 6},
+            {"engine": "webkit", "shard": 3, "total": 6},
+            {"engine": "webkit", "shard": 4, "total": 6},
+            {"engine": "webkit", "shard": 5, "total": 6},
+            {"engine": "webkit", "shard": 6, "total": 6}
+          ]' ||
+            github.event_name == 'push' && '[
+            {"engine": "chromium", "shard": 1, "total": 6},
+            {"engine": "chromium", "shard": 2, "total": 6},
+            {"engine": "chromium", "shard": 3, "total": 6},
+            {"engine": "chromium", "shard": 4, "total": 6},
+            {"engine": "chromium", "shard": 5, "total": 6},
+            {"engine": "chromium", "shard": 6, "total": 6},
+            {"engine": "firefox", "shard": 1, "total": 1},
+            {"engine": "webkit", "shard": 1, "total": 1}
+          ]' ||
+            inputs.browsers == 'compat' && '[
+            {"engine": "firefox", "shard": 1, "total": 1},
+            {"engine": "webkit", "shard": 1, "total": 1}
+          ]' || '[
+            {"engine": "chromium", "shard": 1, "total": 6},
+            {"engine": "chromium", "shard": 2, "total": 6},
+            {"engine": "chromium", "shard": 3, "total": 6},
+            {"engine": "chromium", "shard": 4, "total": 6},
+            {"engine": "chromium", "shard": 5, "total": 6},
+            {"engine": "chromium", "shard": 6, "total": 6}
+          ]') }}
     env:
       E2E_BROWSERS: ${{ matrix.engine }}
+      E2E_FULL: ${{ inputs.browsers == 'all' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -86,7 +127,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps ${{ matrix.engine }}
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
-      - run: npx playwright test --shard=${{ matrix.shard }}/6${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
+      - run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total }}${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

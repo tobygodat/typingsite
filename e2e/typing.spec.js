@@ -1,6 +1,6 @@
 import { test, expect, firstTryErrors, openApp, passageText, typeInto, chooseWords, completePassage, openView, chooseSetting, closeSettings } from './fixtures.js';
 
-test('a corrected mistake keeps its first-try error and visible tint', async ({ page }) => {
+test('a corrected mistake keeps its first-try error and visible tint', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -36,7 +36,7 @@ test('a corrected mistake keeps its first-try error and visible tint', async ({ 
   await expect(page.locator('#best')).toHaveText(/^Best · \d+ wpm$/);
 });
 
-test('stop on error blocks the next letter until the miss is fixed', async ({ page }) => {
+test('stop on error blocks the next letter until the miss is fixed', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   await closeSettings(page);
   await chooseSetting(page, 'correction-select', 'mandatory');
@@ -55,7 +55,7 @@ test('stop on error blocks the next letter until the miss is fixed', async ({ pa
   await expect(page.locator('#typing-wrap')).toHaveAttribute('data-blocked', 'false');
 });
 
-test('a timed run stops exactly at its limit', async ({ page }) => {
+test('a timed run stops exactly at its limit', { tag: '@compat' }, async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await page.locator('#duration-options [data-length="15"]').click();
@@ -71,7 +71,7 @@ test('a timed run stops exactly at its limit', async ({ page }) => {
   await expect(page.locator('#result-conditions')).toContainText('15 s');
 });
 
-test('paste is refused and leaves the input empty', async ({ page }) => {
+test('paste is refused and leaves the input empty', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   await page.locator('#typing-input').focus();
   await page.locator('#typing-input').evaluate((input) => {
