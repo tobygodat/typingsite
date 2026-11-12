@@ -349,7 +349,7 @@ test('a multi-character IME commit and a single kana are refused as before', asy
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
 
-test('Firefox and Safari composition orders each score the commit once', async ({ page }) => {
+test('Firefox and Safari composition orders each score the commit once', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   const text = await quoteWithMarks(page);
   const at = text.indexOf('"');
@@ -1012,7 +1012,7 @@ test('a mark pending when focus moves on is dropped, and the run stays ready or 
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 });
 
-test('a mark committed a task or more before focus moves (Safari, a click on macOS) is dropped too', async ({ page }) => {
+test('a mark committed a task or more before focus moves (Safari, a click on macOS) is dropped too', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   await chooseWords(page, 10);
   const text = await passageText(page);

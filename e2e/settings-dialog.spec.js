@@ -2,7 +2,7 @@ import { test, expect, openApp, openSettings, closeSettings, chooseSetting, choo
 
 const dialog = (page) => page.getByRole('dialog', { name: 'Settings', exact: true });
 
-test('native modal traps focus, keeps the page inert, and restores the opener on every close action', async ({ page }) => {
+test('native modal traps focus, keeps the page inert, and restores the opener on every close action', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   const trigger = page.getByRole('button', { name: 'Settings', exact: true });
 
@@ -82,7 +82,7 @@ test('Escape dismisses Settings before its commands binding and cancels recordin
   await expect(page.locator('#palette')).toBeHidden();
 });
 
-test('native radio arrows apply preferences, retain focus, and update the live sample without changing the passage', async ({ page }) => {
+test('native radio arrows apply preferences, retain focus, and update the live sample without changing the passage', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
   const text = await passageText(page);
   await openSettings(page, 'appearance');

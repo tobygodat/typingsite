@@ -7,7 +7,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
   test.describe(`${name} ${viewport.width}px`, () => {
     test.use({ viewport, ...phone });
 
-    test('fits without sideways scroll and keeps 44px targets', async ({ page }) => {
+    test('fits without sideways scroll and keeps 44px targets', { tag: viewport.width === 320 ? '@compat' : [] }, async ({ page }) => {
       await page.clock.install();
       await openApp(page);
       expect(await overflow(page)).toBeLessThanOrEqual(0);

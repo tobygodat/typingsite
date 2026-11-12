@@ -45,6 +45,7 @@ export default defineConfig({
   },
   projects: names.map((name) => ({
     name,
+    ...(name !== 'chromium' && process.env.E2E_FULL !== '1' && { grep: /@compat/ }),
     ...(name === 'webkit' && names.length > 1 && { workers: '33%' }),
     use: { ...engines[name], viewport: { width: 1280, height: 800 } },
   })),
