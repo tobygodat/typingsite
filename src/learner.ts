@@ -1,3 +1,32 @@
+import { at as indexed, entry } from './domain-values.js';
+import type { Attempt, Conditions, WeightedUnit } from './typing.js';
+import type { RunRecord, TrainingLoop, TargetCounts } from './profile-types.js';
+
+export type Basis = 'errors' | 'slow';
+
+export interface EvidenceUnit { unit: string; seen: number; errors: number; timed: number; slow: boolean | null; ratio: number | null; slowMs: number | null }
+
+export interface LearnerEvidence { id: string; at: number | null; correction: { count: number; ratio: number } | null; units: EvidenceUnit[] }
+
+interface Frequency { pairs: Map<string, number>; keys: Map<string, number> }
+
+interface OwnTally { seen: number; errors: number; n: number; e: number; worst: number }
+
+interface Tally { seen: number; errors: number; runs: number; errorRuns: number; timed: number; timedRuns: number; slowRuns: number; slowMs: number; n: number; e: number; tn: number; tr: number; own?: OwnTally }
+
+export interface Observed { seen: number; errors: number; runs: number; errorRuns: number; timed: number; timedRuns: number; slowRuns: number; slowMs: number | null }
+
+export interface Estimate { unit: string; kind: 'key' | 'pair'; frequency: number; error: { mean: number; sd: number }; slowdown: number | null; observed: Observed; own?: { seen: number; errors: number }; letGo?: Basis[]; gain: number; basis: Basis }
+
+export interface LearnerModel { policy: string; focus: string; runs: number; errorRate: number; missCost: number; units: Estimate[] }
+
+export interface TargetEvidence extends TargetCounts { runs?: number; slowRuns?: number; basis?: Basis; slowMs?: number | null; timed?: number; timedRuns?: number }
+
+export interface Recommendation { kind: string; target: string | null; title: string; reason: string; was: TargetEvidence | null; lean: WeightedUnit[]; queue: { unit: string; was: TargetEvidence | null }[]; runs: number; policy: string; focus?: string }
+
+interface ReleaseRow { at: number; seen: number; errors: number; timed: number; slow: boolean | null }
+
+export interface ReleaseIndex { typical: number; dates: Map<string, number | null>; rows: Map<string, ReleaseRow[]> }
 // The learning core (ADR 0013): a per-person estimate of how often each letter pair and key is missed on the
 // first try and how much slower than the person's pace each pair is typed, from the run summaries the profile
 // already keeps, ranked by the time practice could save. It is a pure fold over evidence records: no DOM, no
@@ -88,7 +117,11 @@ const TYPICAL_FLOOR = 0.01;
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare: SLOW_SHARE, returnOdds: RETURN_ODDS };
 
-export const LEARNER_VARIANTS = {
+export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[] } & Partial<typeof LET_GO>;
+
+interface LearnerVariants { [policy: string]: LearnerVariant; [DECAY_TIMING_POLICY]: LearnerVariant }
+
+export const LEARNER_VARIANTS: LearnerVariants = {
   [LEARNER_POLICY]: { policy: LEARNER_POLICY, decay: false, timing: false, ownCost: false, ...constants },
   [DECAY_POLICY]: { policy: DECAY_POLICY, decay: true, timing: false, ownCost: false, ...constants },
   [TIMING_POLICY]: { policy: TIMING_POLICY, decay: false, timing: true, ownCost: false, ...constants },
@@ -122,16 +155,16 @@ const LETTER = /^[a-z]$/;
 const PAIR = /^[a-z]{2}$/;
 
 // The keyboard a run was typed on: touch and each layout are their own mechanics, never pooled.
-export const keyboardOf = (conditions = {}) => `${conditions.inputClass || 'physical-keyboard'}:${normalizeLayout(conditions.layout)}`;
+export const keyboardOf = (conditions: Conditions = {}) => `${conditions.inputClass || 'physical-keyboard'}:${normalizeLayout(conditions.layout)}`;
 
 // How often each pair and letter turns up in running English: the 5k list, most frequent first, weighted by
 // 1 / rank (Zipf), counting letters inside words only. Shares of all pairs and of all letters.
-let frequencyTable = null;
+let frequencyTable: Frequency | null = null;
 
 export function englishFrequency() {
   if (frequencyTable) return frequencyTable;
-  const pairs = new Map();
-  const keys = new Map();
+  const pairs = new Map<string, number>();
+  const keys = new Map<string, number>();
   let pairTotal = 0;
   let keyTotal = 0;
 
@@ -140,11 +173,11 @@ export function englishFrequency() {
     const letters = word.toLowerCase();
 
     for (let i = 0; i < letters.length; i += 1) {
-      if (!LETTER.test(letters[i])) continue;
-      keys.set(letters[i], (keys.get(letters[i]) || 0) + weight);
+      if (!LETTER.test(letters.charAt(i))) continue;
+      keys.set(letters.charAt(i), (keys.get(letters.charAt(i)) || 0) + weight);
       keyTotal += weight;
 
-      if (i > 0 && LETTER.test(letters[i - 1])) {
+      if (i > 0 && LETTER.test(letters.charAt(i - 1))) {
         const pair = letters.slice(i - 1, i + 1);
         pairs.set(pair, (pairs.get(pair) || 0) + weight);
         pairTotal += weight;
@@ -167,7 +200,7 @@ export function englishFrequency() {
 // A pair's `slow` says whether its median clean interval was slower than the run's median, `ratio` is the log of
 // one over the other and `slowMs` the difference (all null: untimed). `correction` is the run's timed
 // corrections and the log of their median over the run's median interval (null: none timed, or an untimed run).
-export function learnerEvidence(runs, keyboard) {
+export function learnerEvidence(runs: RunRecord[], keyboard: string) {
   return runs.flatMap((run) => {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) return [];
     const record = evidenceRecord(run);
@@ -176,14 +209,14 @@ export function learnerEvidence(runs, keyboard) {
   });
 }
 
-function evidenceRecord(run) {
-  const units = [];
-  let pace = null;
+function evidenceRecord(run: RunRecord) {
+  const units: EvidenceUnit[] = [];
+  let pace: number | null = null;
 
   for (const [pair, seen, errors, timed, pairMs, slowdownMs] of run.patterns || []) {
     if (!PAIR.test(pair) || !(seen >= 0)) continue;
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
-    const measured = timed > 0 && runMs >= MIN_PACE_MS && pairMs > 0;
+    const measured = timed > 0 && runMs !== null && pairMs !== null && runMs >= MIN_PACE_MS && pairMs > 0;
 
     if (measured) pace ??= runMs;
     units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null,
@@ -191,14 +224,14 @@ function evidenceRecord(run) {
   }
 
   // Older summaries have no letter counts; a pair's first try is a try at its second letter.
-  const keys = new Map();
+  const keys = new Map<string, [number, number]>();
 
   if (run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys)) {
     for (const [key, seen, errors] of run.keys) if (LETTER.test(key)) keys.set(key, [seen, Math.min(errors, seen)]);
   } else {
     for (const { unit, seen, errors } of units) {
-      const k = keys.get(unit[1]) || [0, 0];
-      keys.set(unit[1], [k[0] + seen, k[1] + errors]);
+      const k = keys.get(unit.charAt(1)) || [0, 0];
+      keys.set(unit.charAt(1), [k[0] + seen, k[1] + errors]);
     }
   }
 
@@ -207,17 +240,17 @@ function evidenceRecord(run) {
   const at = run.at ? Date.parse(run.at) : NaN;
 
   const [count, ms] = Array.isArray(run.corrections) ? run.corrections : [0, null];
-  const correction = pace && Number.isInteger(count) && count > 0 && Number.isFinite(ms) && ms > 0 ? { count, ratio: Math.log(ms / pace) } : null;
+  const correction = pace && Number.isInteger(count) && count > 0 && typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? { count, ratio: Math.log(ms / pace) } : null;
 
   return { id: String(run.id), at: Number.isFinite(at) ? at : null, correction, units };
 }
 
-const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const compare = <T extends string | number>(a: T, b: T) => (a < b ? -1 : a > b ? 1 : 0);
 
 // Oldest first, by date then id, with undated records first. A record seen twice keeps its fuller copy, and
 // between equally full copies the one whose JSON sorts first, so the choice never depends on arrival order.
-export function orderedEvidence(evidence) {
-  const byId = new Map();
+export function orderedEvidence(evidence: LearnerEvidence[]) {
+  const byId = new Map<string, LearnerEvidence>();
 
   for (const record of evidence) {
     const held = byId.get(record.id);
@@ -231,14 +264,14 @@ export function orderedEvidence(evidence) {
 
 // What a loop's target was drilled for, as Train reads it (basisOf in train-path.js). Loops saved before `targetBasis`
 // read a saved pace as slowness.
-export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
+export const basisOf = (loop: TrainingLoop): Basis => (loop.targetBasis ? loop.targetBasis : loop.targetPace ? 'slow' : 'errors');
 
-const loopOrder = (a, b) => compare(Date.parse(a.at) || 0, Date.parse(b.at) || 0) || compare(a.id, b.id) || compare(JSON.stringify(a), JSON.stringify(b));
+const loopOrder = (a: TrainingLoop, b: TrainingLoop) => compare(Date.parse(a.at) || 0, Date.parse(b.at) || 0) || compare(a.id, b.id) || compare(JSON.stringify(a), JSON.stringify(b));
 
 // Each drilled target on a keyboard and its newest loop, by date, then id, as Train's path picks it: so duplicated loops
 // and the order loops arrive in change nothing.
-export function drilledTargets(loops, keyboard) {
-  const newest = new Map();
+export function drilledTargets(loops: TrainingLoop[], keyboard: string) {
+  const newest = new Map<string | null, TrainingLoop>();
 
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
 
@@ -247,9 +280,9 @@ export function drilledTargets(loops, keyboard) {
 
 // What the let-go test reads from the evidence: the person's typical first-try miss rate over every pair (raw), each
 // record's date by id, and each unit's dated rows, oldest first.
-export function letGoIndex(evidence) {
+export function letGoIndex(evidence: LearnerEvidence[]) {
   const records = orderedEvidence(evidence);
-  const rows = new Map();
+  const rows = new Map<string, ReleaseRow[]>();
   const dates = new Map(records.map((record) => [record.id, record.at]));
   let seen = 0;
   let errors = 0;
@@ -264,7 +297,7 @@ export function letGoIndex(evidence) {
       if (record.at === null) continue;
 
       if (!rows.has(unit.unit)) rows.set(unit.unit, []);
-      rows.get(unit.unit).push({ at: record.at, seen: unit.seen, errors: unit.errors, timed: unit.timed, slow: unit.slow });
+      entry(rows, unit.unit).push({ at: record.at, seen: unit.seen, errors: unit.errors, timed: unit.timed, slow: unit.slow });
     }
   }
 
@@ -272,20 +305,20 @@ export function letGoIndex(evidence) {
 }
 
 // Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
-export const drillSplit = (loop, index) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
+export const drillSplit = (loop: TrainingLoop, index: ReleaseIndex) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
 
 // The one rule for letting go of a drilled target (ADR 0019), of one kind, at one split: the let-go variants drop that
 // part of the target's gain. It failed ADR 0019's rule, so no default reads it and Train keeps its own "fixed"; a
 // variant that passes would have Train read it too, as "let go and not queued". Every run since the split that
 // holds an observation of the kind steps the walk; see LET_GO_ODDS. True when it is let go after the newest run.
-export function letGo(index, unit, basis, split, k = LET_GO) {
+export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, split: number, k = LET_GO) {
   if (!Number.isFinite(split)) return false;
   const [p, ceiling, back] = [index.typical, Math.log(k.letGoOdds), Math.log(k.returnOdds)];
   const weak = Math.min(0.5, k.weakRatio * p);
   const [miss, clean, slower, faster] = [Math.log(p / weak), Math.log((1 - p) / (1 - weak)), Math.log(0.5 / k.slowShare), Math.log(0.5 / (1 - k.slowShare))];
   let [walk, against, runs, observed, released] = [0, 0, 0, 0, false];
 
-  for (const row of index.rows.get(unit) || []) {
+  for (const row of index.rows.get(unit ?? '') || []) {
     const held = basis === 'slow' ? row.slow !== null : row.seen > 0;
 
     if (row.at < split || !held) continue;
@@ -320,12 +353,12 @@ export function letGo(index, unit, basis, split, k = LET_GO) {
 // of its gain when balanced, its misses for accuracy, its slowness for speed. `missCost` is what a miss costs in
 // clean intervals. `observed` holds raw, undecayed counts, the only numbers a person is shown; `slowMs` is the
 // mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
-export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills = []) {
+export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: TrainingLoop[] = []) {
   const settings = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
   const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = settings;
   const records = orderedEvidence(evidence);
   const table = englishFrequency();
-  const tally = new Map();
+  const tally = new Map<string, Tally>();
   const corrections = { count: 0, weight: 0, ratio: 0 };
 
   records.forEach((record, index) => {
@@ -351,9 +384,9 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
       if (slow !== null) {
         t.timed += timed;
         t.timedRuns += 1;
-        t.slowMs += timed * slowMs;
+        t.slowMs += timed * (slowMs ?? 0);
         t.tn += w * timed;
-        t.tr += w * timed * ratio;
+        t.tr += w * timed * (ratio ?? 0);
 
         if (slow) t.slowRuns += 1;
       }
@@ -370,9 +403,9 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   }
 
   for (const [unit, t] of tally) {
-    const key = tally.get(unit[1]);
+    const key = tally.get(unit.charAt(1));
 
-    if (unit.length !== 2 || !key) continue;
+    if (unit.length !== 2 || !key?.own) continue;
 
     if (!owned(t)) {
       key.own.worst = Math.max(key.own.worst, t.errors);
@@ -385,10 +418,10 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
     key.own.e = Math.max(0, Math.min(key.own.n, key.own.e - t.e));
   }
 
-  const own = (t) => t?.own || t || { n: 0, e: 0 };
+  const own = (t: Tally | undefined) => t?.own || t || { n: 0, e: 0 };
   // A pair or key never seen in the list counts as half the rarest one.
-  const floor = (map) => Math.min(...map.values()) / 2;
-  const shares = new Map([[1, [table.keys, floor(table.keys)]], [2, [table.pairs, floor(table.pairs)]]]);
+  const floor = (map: Map<string, number>) => Math.min(...map.values()) / 2;
+  const shares = new Map<number, [Map<string, number>, number]>([[1, [table.keys, floor(table.keys)]], [2, [table.pairs, floor(table.pairs)]]]);
   const names = [...new Set([...table.pairs.keys(), ...table.keys.keys(), ...tally.keys()])].sort(compare);
 
   // Each kind's prior: the person's pooled rate over its pairs, or over its keys' own tries.
@@ -402,20 +435,20 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   const estimates = names.map((unit) => {
     const t = tally.get(unit);
     const { n, e } = own(t);
-    const a = pooledTries * pooled.get(unit.length) + e;
-    const b = pooledTries * (1 - pooled.get(unit.length)) + n - e;
+    const a = pooledTries * (pooled.get(unit.length) ?? NaN) + e;
+    const b = pooledTries * (1 - (pooled.get(unit.length) ?? NaN)) + n - e;
     const mean = a / (a + b);
-    const [map, rarest] = shares.get(unit.length);
+    const [map, rarest] = shares.get(unit.length) ?? [new Map<string, number>(), NaN];
 
     const observed = t ? { seen: t.seen, errors: t.errors, runs: t.runs, errorRuns: t.errorRuns, timed: t.timed, timedRuns: t.timedRuns, slowRuns: t.slowRuns,
       slowMs: t.timed ? t.slowMs / t.timed : null } : { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, slowMs: null };
 
     const slowdown = timing && unit.length === 2 ? (t?.tr || 0) / ((t?.tn || 0) + timingTries) : null;
 
-    const estimate = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
+    const estimate: Estimate = { gain: 0, basis: 'errors', unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
       slowdown, observed };
 
-    if (unit.length === 1) estimate.own = t ? { seen: t.own.seen, errors: Math.max(0, t.own.errors - t.own.worst) } : { seen: 0, errors: 0 };
+    if (unit.length === 1) estimate.own = t ? { seen: (t.own?.seen ?? 0), errors: Math.max(0, (t.own?.errors ?? 0) - (t.own?.worst ?? 0)) } : { seen: 0, errors: 0 };
 
     return estimate;
   });
@@ -428,7 +461,7 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   const missCost = ownCost && corrections.count >= costCorrections ? Math.max(1, Math.exp(corrections.ratio / corrections.weight) - 1) : MISS_INTERVALS;
 
   // A drilled target let go on the evidence since its drill loses that part of its gain (ADR 0019).
-  const released = new Map();
+  const released = new Map<string | null, Basis[]>();
 
   if (settings.letGo && drills.length) {
     const index = letGoIndex(records);
@@ -436,7 +469,7 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
     for (const loop of drills) {
       const basis = basisOf(loop);
 
-      if (settings.letGo.includes(basis) && letGo(index, loop.target, basis, drillSplit(loop, index), settings)) released.set(loop.target, [basis]);
+      if (settings.letGo.includes(basis) && letGo(index, loop.target, basis, drillSplit(loop, index), { ...LET_GO, ...settings })) released.set(loop.target, [basis]);
     }
   }
 
@@ -458,7 +491,7 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
 // Whether a pair's tally holds the evidence to be named, leaving out the slowness floor: the floor of first tries,
 // and a miss or the floor of clean intervals slower than the run's median in most runs that timed it. Only the
 // ranking reads it, to give a key its own evidence, so the floor below never moves the ranking.
-const owned = (t) => t.seen >= MIN_PATTERN_SAMPLES && (t.errors > 0 || (t.timed >= MIN_PATTERN_SAMPLES && t.slowRuns * 2 > t.timedRuns));
+const owned = (t: Tally) => t.seen >= MIN_PATTERN_SAMPLES && (t.errors > 0 || (t.timed >= MIN_PATTERN_SAMPLES && t.slowRuns * 2 > t.timedRuns));
 
 // A pair is named for its slowness only when the figure the page prints, its mean clean interval over the
 // person's pace in ms, rounded, is more than this. 20 ms is a tenth of a key at 60 wpm (200 ms a key), about
@@ -473,26 +506,26 @@ export const SLOW_FLOOR_MS = 20;
 // the pairs ending in it that hold the evidence to be named (owned), and its misses outside those and outside
 // its most-missed other pair. So a key is named only when it is missed beyond any one pair: misses that all sit
 // in "th" are th's, whether "th" has the tries to be named yet or not. Keys have no timing.
-export function stated({ basis, observed, own = observed }) {
-  if (basis === 'slow') return observed.timed >= MIN_PATTERN_SAMPLES && observed.slowRuns * 2 > observed.timedRuns && Math.round(observed.slowMs) > SLOW_FLOOR_MS;
+export function stated({ basis, observed, own = observed }: Pick<Estimate, 'basis' | 'observed' | 'own'>) {
+  if (basis === 'slow') return observed.timed >= MIN_PATTERN_SAMPLES && observed.slowRuns * 2 > observed.timedRuns && Math.round(observed.slowMs ?? 0) > SLOW_FLOOR_MS;
 
   return own.seen >= MIN_PATTERN_SAMPLES && own.errors > 0;
 }
 
-const errorCount = ({ errors, seen }) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${seen} ${seen === 1 ? 'try' : 'tries'}`;
+const errorCount = ({ errors, seen }: Pick<Observed, 'errors' | 'seen'>) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${seen} ${seen === 1 ? 'try' : 'tries'}`;
 
 // "38 ms slower", "12 ms faster", "at your pace": a pair's clean intervals against the person's pace, rounded
 // as the page prints them.
-export function paceShift(ms) {
-  const rounded = Math.round(ms);
+export function paceShift(ms: number | null) {
+  const rounded = Math.round(ms ?? 0);
 
   return rounded > 0 ? `${rounded} ms slower` : rounded < 0 ? `${-rounded} ms faster` : 'at your pace';
 }
 
-export const paceAgainst = (ms) => (Math.round(ms) ? `${paceShift(ms)} than your pace` : 'at your pace');
+export const paceAgainst = (ms: number | null) => (Math.round(ms ?? 0) ? `${paceShift(ms)} than your pace` : 'at your pace');
 
 // "45 ms slower than your pace, in 4 of 5 runs that timed it (31 clean intervals)": observed timing only.
-export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }) => `${paceAgainst(slowMs)}, in ${slowRuns} of ${timedRuns} ${timedRuns === 1 ? 'run' : 'runs'} that timed it (${timed} clean ${timed === 1 ? 'interval' : 'intervals'})`;
+export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }: Pick<Observed, 'slowMs' | 'slowRuns' | 'timedRuns' | 'timed'>) => `${paceAgainst(slowMs)}, in ${slowRuns} of ${timedRuns} ${timedRuns === 1 ? 'run' : 'runs'} that timed it (${timed} clean ${timed === 1 ? 'interval' : 'intervals'})`;
 
 // What Train, the results card and adaptive text act on. The target is the highest-ranked unit whose
 // observations can be stated, the head of `queue`; with none it is a general drill that says so. Either way
@@ -502,15 +535,15 @@ export const paceCopy = ({ slowMs, slowRuns, timedRuns, timed }) => `${paceAgain
 // runs behind it.
 //   { kind: 'targeted' | 'general', target, title, reason, was, lean: [{ unit, weight }],
 //     queue: [{ unit, was }], runs, policy }
-function wasOf({ observed, basis }) {
-  const was = { errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns };
+function wasOf({ observed, basis }: Pick<Estimate, 'observed' | 'basis'>) {
+  const was: TargetEvidence = { errors: observed.errors, observations: observed.seen, runs: observed.runs, slowRuns: observed.slowRuns };
 
   if (basis === 'slow') Object.assign(was, { basis, slowMs: observed.slowMs, timed: observed.timed, timedRuns: observed.timedRuns });
 
   return was;
 }
 
-export function learnerRecommendation(model) {
+export function learnerRecommendation(model: LearnerModel): Recommendation {
   const ranked = model.units.filter((e) => e.gain > 0);
   const lean = ranked.slice(0, LEAN_UNITS).map((e) => ({ unit: e.unit, weight: e.gain }));
   const named = ranked.filter(stated);
@@ -537,7 +570,7 @@ export function learnerRecommendation(model) {
 // The baseline policy, the counting rule this replaced: the recurring pair with the highest first-try error
 // rate across recent matching runs (10 tries, errors or slowness in two runs), else the newest traces' target,
 // else a general drill.
-export function countingRecommendation(runs, loops, traces, source) {
+export function countingRecommendation(runs: RunRecord[], loops: TrainingLoop[], traces: Attempt[], source: Conditions): Recommendation {
   const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(runs, loops, source)[0];
 
@@ -558,7 +591,7 @@ export function countingRecommendation(runs, loops, traces, source) {
 }
 
 // A recurring pair's counts, as the counting rule shows them and the comparison reads them back.
-export function countingEvidence(runs, loops, pair, source) {
+export function countingEvidence(runs: RunRecord[], loops: TrainingLoop[], pair: string, source: Conditions) {
   const recurring = recurringTargets(runs, loops, source).find((item) => item.pair === pair);
 
   return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
@@ -567,7 +600,7 @@ export function countingEvidence(runs, loops, pair, source) {
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
 // keyboard `source` is typed on, and the let-go variants its drilled targets there; the counting rule reads only runs
 // at its exact conditions.
-export function recommendFor(policy, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }) {
+export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: RunRecord[]; loops?: TrainingLoop[]; traces: Attempt[]; source: Conditions; now: number; focus?: string }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
   const keyboard = keyboardOf(source);

@@ -1,3 +1,10 @@
+type CaretSide = 'start' | 'end';
+
+type CaretMove = { side: CaretSide } | { x: number } | { y: number };
+
+interface Spot { x: number; y: number; height: number }
+
+interface CaretRect { left: number; top: number; height: number }
 // The composing field's caret where the browser can't hold its own still. With
 // `caret-animation: manual` (src/styles.css) the native caret is solid and nothing here runs. Without
 // it the native caret would blink for the whole minute, so it is made transparent (never removed: IME,
@@ -24,8 +31,13 @@ const MIRRORED = [
 const VERTICAL = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown']);
 const AT_CARET = new Set(['Backspace', 'Delete', 'Enter', 'Home', 'ArrowLeft', 'ArrowRight']);
 
-export function drawCaret(input) {
-  const wrap = input.parentElement;
+export function drawCaret(input: HTMLTextAreaElement) {
+  const parent = input.parentElement;
+
+  if (!parent) throw new Error('Compose field requires a parent');
+  const wrap = parent;
+  const lifetime = new AbortController();
+  const signal = lifetime.signal;
   const layer = document.createElement('div');
   layer.className = 'compose-caret-layer';
   layer.setAttribute('aria-hidden', 'true');
@@ -46,28 +58,29 @@ export function drawCaret(input) {
   // joins the spaces ending the line before); Up, Down, Page Up and Page Down take the side nearest
   // the x they set out from; a click or tap takes the line it hit; deleting, Home, Left and Right
   // put it at the start of the next line.
-  let move = { side: 'start' };
+  let move: CaretMove = { side: 'start' };
   // The side a move settled on, kept while the caret stays at that offset (so scrolling never flips it).
-  let settled = null;
+  let settled: { at: number; side: CaretSide } | null = null;
   let lastX = 0;
   // At a wrapped line Firefox's Right first moves the caret from the end of the line to the start of
   // the next, and Left back, without changing the offset, so no selectionchange follows: an arrow
   // that leaves the offset where it was has crossed the break, and its release shows where it went.
-  let arrow = null;
+  let arrow: { key: string; at: number } | null = null;
 
-  function moved(next) {
+  function moved(next: CaretMove) {
     move = next;
     settled = null;
   }
 
-  function sideFor(at, end, start, top) {
+  function sideFor(at: number, end: Spot, start: Spot, top: number) {
     if (settled?.at === at) return settled.side;
-    let side = 'start';
+    let side: CaretSide = 'start';
 
-    if (move.side) side = move.side;
+    if ('side' in move) side = move.side;
     else if ('x' in move) side = Math.abs(end.x - move.x) < Math.abs(start.x - move.x) ? 'end' : 'start';
     else if ('y' in move) {
-      const off = (spot) => Math.abs(top + spot.y + spot.height / 2 - move.y);
+      const y = move.y;
+      const off = (spot: Spot) => Math.abs(top + spot.y + spot.height / 2 - y);
       side = off(end) < off(start) ? 'end' : 'start';
     }
 
@@ -112,35 +125,37 @@ export function drawCaret(input) {
     const lineStart = at === 0 || value[at - 1] === '\n';
     const lineEnd = at === value.length || value[at] === '\n';
     mirror.textContent = value.slice(0, at);
-    let start = null;
-    let end = null;
+    let startRect: CaretRect | null = null;
+    let endRect: CaretRect | null = null;
 
     if (lineStart || !lineEnd) {
       marker.textContent = (lineEnd ? '\u200B' : '') + value.slice(at);
       mirror.append(marker);
-      start = marker.getClientRects()[0] || marker.getBoundingClientRect();
+      startRect = marker.getClientRects()[0] || marker.getBoundingClientRect();
     }
 
     if (!lineStart) {
       const range = document.createRange();
+
+      if (!mirror.firstChild) return;
       range.setStart(mirror.firstChild, value.lastIndexOf('\n', at - 1) + 1);
       range.setEnd(mirror.firstChild, at);
       const rects = range.getClientRects();
       const last = rects[rects.length - 1];
 
-      if (last) end = { left: last.right, top: last.top, height: last.height };
+      if (last) endRect = { left: last.right, top: last.top, height: last.height };
     }
 
     const origin = mirror.getBoundingClientRect();
 
-    const place = (rect) => rect && ({
+    const place = (rect: CaretRect | null) => rect && ({
       x: rect.left - origin.left - input.clientLeft - input.scrollLeft,
       y: rect.top - origin.top - input.clientTop - input.scrollTop,
       height: rect.height,
     });
 
-    start = place(start);
-    end = place(end);
+    const start = place(startRect);
+    const end = place(endRect);
     // The writing never stays in the page beyond the field itself.
     mirror.textContent = '';
 
@@ -151,6 +166,8 @@ export function drawCaret(input) {
     }
 
     let spot = start || end;
+
+    if (!spot) return;
 
     if (start && end && Math.abs(start.y - end.y) > start.height / 2) {
       spot = sideFor(at, end, start, field.top + input.clientTop) === 'end' ? end : start;
@@ -164,8 +181,8 @@ export function drawCaret(input) {
     bar.hidden = false;
   }
 
-  input.addEventListener('focus', () => { focused = true; update(); });
-  input.addEventListener('blur', () => { focused = false; hide(); });
+  input.addEventListener('focus', () => { focused = true; update(); }, { signal });
+  input.addEventListener('blur', () => { focused = false; hide(); }, { signal });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'End' || (event.metaKey && event.key === 'ArrowRight')) moved({ side: 'end' });
     else if (VERTICAL.has(event.key)) {
@@ -177,28 +194,29 @@ export function drawCaret(input) {
     else if (event.key.length === 1 || AT_CARET.has(event.key)) moved({ side: 'start' });
 
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') arrow = { key: event.key, at: input.selectionStart };
-  });
+  }, { signal });
   input.addEventListener('keyup', (event) => {
-    if (event.key === arrow?.key && input.selectionStart === arrow.at) moved({ side: arrow.key === 'ArrowLeft' ? 'end' : 'start' });
+    if (arrow && event.key === arrow.key && input.selectionStart === arrow.at) moved({ side: arrow.key === 'ArrowLeft' ? 'end' : 'start' });
     arrow = null;
 
     if (focused) update();
-  });
-  input.addEventListener('pointerdown', (event) => moved({ y: event.clientY }));
+  }, { signal });
+  input.addEventListener('pointerdown', (event) => moved({ y: event.clientY }), { signal });
   input.addEventListener('input', (event) => {
-    moved({ side: event.inputType?.startsWith('insert') ? 'end' : 'start' });
+    moved({ side: event instanceof InputEvent && event.inputType?.startsWith('insert') ? 'end' : 'start' });
     update();
-  });
+  }, { signal });
 
-  for (const type of ['select', 'scroll', 'compositionupdate', 'compositionend']) input.addEventListener(type, update);
+  for (const type of ['select', 'scroll', 'compositionupdate', 'compositionend']) input.addEventListener(type, update, { signal });
   // Arrow keys, clicks and drags move the selection without an input event; a click can also keep
   // the offset and change only the line it is shown on.
-  document.addEventListener('selectionchange', () => { if (focused) update(); });
-  input.addEventListener('pointerup', () => { if (focused) update(); });
+  document.addEventListener('selectionchange', () => { if (focused) update(); }, { signal });
+  input.addEventListener('pointerup', () => { if (focused) update(); }, { signal });
 
   // A new window width or text size wraps the writing again; a late font changes letter widths.
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (focused) update(); }).observe(input);
-  document.fonts?.addEventListener?.('loadingdone', () => { if (focused) update(); });
+  const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => { if (focused) update(); }) : null;
+  observer?.observe(input);
+  document.fonts?.addEventListener?.('loadingdone', () => { if (focused) update(); }, { signal });
 
-  return { update };
+  return { update, dispose() { lifetime.abort(); observer?.disconnect(); layer.remove(); delete wrap.dataset.caret; } };
 }

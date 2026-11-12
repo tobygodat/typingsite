@@ -1,3 +1,14 @@
+import { at as indexed } from './domain-values.js';
+import type { Attempt, AttemptEvent } from './typing.js';
+
+interface SpeedPoint { t: number; wpm: number; misses: number }
+
+interface SpeedSeries { points: SpeedPoint[]; durationS: number }
+
+interface Plot { svg: SVGElement; x: (t: number) => number; y: (speed: number) => number; left: number; right: number }
+
+interface DrawnPoint { t: number; speed: number }
+
 // Speed graph: the run's typing speed over time, with mistakes marked, as an SVG line chart.
 // Presentational only. Scoring never reads from here; it reads the event log.
 import { CHARS_PER_WORD } from './typing.js';
@@ -9,28 +20,28 @@ const MAX_POINTS = 60;
 const PAD = { top: 10, right: 6, bottom: 22, left: 34 };
 
 // Seconds per drawn point: one per second up to a minute, then coarser so a long run stays readable.
-function stepMs(durationMs) {
+function stepMs(durationMs: number) {
   return Math.max(1, Math.ceil(durationMs / 1000 / MAX_POINTS)) * 1000;
 }
 
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
 // Speed at each point is measured over exactly the trailing three seconds of keystroke timestamps,
 // however coarse the drawn points are; mistakes are summed per drawn point.
-export function speedSeries(attempt) {
+export function speedSeries(attempt: Attempt) {
   const all = attempt?.events || [];
-  const events = all.filter((event) => event.type === 'insert' || event.type === 'blocked-insert');
+  const events = all.filter((event): event is Extract<AttemptEvent, { text: string }> => event.type === 'insert' || event.type === 'blocked-insert');
 
   if (!events.length) return { points: [], durationS: 0 };
-  const start = attempt.startedAt ?? events[0].offsetMs;
-  const end = Math.max(attempt.endedAt ?? 0, events[events.length - 1].offsetMs);
+  const start = attempt.startedAt ?? indexed(events, 0).offsetMs;
+  const end = Math.max(attempt.endedAt ?? 0, indexed(events, events.length - 1).offsetMs);
   const durationMs = Math.max(1, end - start);
   const step = stepMs(durationMs);
   const count = Math.max(1, Math.ceil(durationMs / step));
-  const misses = new Array(count).fill(0);
+  const misses = new Array<number>(count).fill(0);
 
   // Like the wpm figure, speed counts only correct characters still there at the finish:
   // a correct key that is later deleted is taken back out.
-  const kept = [];
+  const kept: { at: number; hit: boolean }[] = [];
 
   for (const event of all) {
     if (event.type === 'delete') {
@@ -41,9 +52,9 @@ export function speedSeries(attempt) {
     if (event.type !== 'insert' && event.type !== 'blocked-insert') continue;
     const at = Math.max(0, event.offsetMs - start);
     const accepted = event.type === 'insert' && event.accepted !== false;
-    const hit = accepted && attempt.text?.[event.position] === event.text;
+    const hit = accepted && attempt.text?.[event.position ?? NaN] === event.text;
 
-    if (!hit) misses[Math.min(count - 1, Math.floor(at / step))] += 1;
+    if (!hit) misses[Math.min(count - 1, Math.floor(at / step))] = indexed(misses, Math.min(count - 1, Math.floor(at / step))) + 1;
 
     if (accepted) kept.push({ at, hit });
   }
@@ -63,27 +74,27 @@ export function speedSeries(attempt) {
 }
 
 // A round top for the y axis, so the gridline labels read as plain numbers in either unit.
-function niceMax(value) {
+function niceMax(value: number) {
   const target = Math.max(20, value * 1.1);
   const step = [10, 20, 25, 50, 100, 200, 250].find((s) => target / s <= 4) || 250;
 
   return Math.ceil(target / step) * step;
 }
 
-function el(name, attrs = {}, text) {
+function el(name: string, attrs: Record<string, string | number> = {}, text?: string | number) {
   const node = document.createElementNS(SVG, name);
 
-  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, String(value));
 
-  if (text !== undefined) node.textContent = text;
+  if (text !== undefined) node.textContent = String(text);
 
   return node;
 }
 
-const seconds = (value) => `${Number.isInteger(value) ? value : value.toFixed(1)}s`;
+const seconds = (value: number) => `${Number.isInteger(value) ? value : value.toFixed(1)}s`;
 
 // Points are in wpm; the summary reads them in the chosen display unit.
-export function describeSeries({ points }, averageWpm, unit) {
+export function describeSeries({ points }: SpeedSeries, averageWpm: number, unit?: string) {
   if (!points.length) return 'No keystrokes to graph.';
   const speeds = points.map((point) => point.wpm);
   const misses = points.reduce((sum, point) => sum + point.misses, 0);
@@ -94,7 +105,7 @@ export function describeSeries({ points }, averageWpm, unit) {
 
 // The chart's frame at the container's pixel size: three gridlines (0, half, top) labelled on the left
 // and the time axis labelled underneath. Returns the svg and the scales the lines are drawn on.
-function plot(container, { durationS, top, animate }) {
+function plot(container: HTMLElement, { durationS, top, animate }: { durationS: number; top: number; animate: boolean }) {
   const width = Math.round(container.clientWidth);
   const height = Math.round(container.clientHeight);
   container.replaceChildren();
@@ -109,8 +120,8 @@ function plot(container, { durationS, top, animate }) {
   const right = width - PAD.right;
   const plotW = right - left;
   const plotH = height - PAD.top - PAD.bottom;
-  const x = (t) => left + (durationS ? (t / durationS) * plotW : 0);
-  const y = (speed) => PAD.top + plotH - (Math.min(speed, top) / top) * plotH;
+  const x = (t: number) => left + (durationS ? (t / durationS) * plotW : 0);
+  const y = (speed: number) => PAD.top + plotH - (Math.min(speed, top) / top) * plotH;
 
   for (const value of [0, top / 2, top]) {
     svg.append(el('line', { class: value ? 'graph-grid' : 'graph-axis', x1: left, x2: right, y1: y(value), y2: y(value) }));
@@ -127,21 +138,21 @@ function plot(container, { durationS, top, animate }) {
 }
 
 // Straight segments, or with smooth a Catmull-Rom curve through every point, so the mistake dots stay on it.
-function line({ svg, x, y, left }, points, className, { smooth = false } = {}) {
-  const coords = points.map((point) => [x(point.t), y(point.speed)]);
+function line({ svg, x, y, left }: Plot, points: DrawnPoint[], className: string, { smooth = false } = {}) {
+  const coords: [number, number][] = points.map((point) => [x(point.t), y(point.speed)]);
 
-  if (coords.length === 1) coords.unshift([left, coords[0][1]]);
-  const at = ([px, py]) => `${px.toFixed(1)} ${py.toFixed(1)}`;
+  if (coords.length === 1) coords.unshift([left, indexed(coords, 0)[1]]);
+  const at = ([px, py]: number[]) => `${(px ?? NaN).toFixed(1)} ${(py ?? NaN).toFixed(1)}`;
 
   const d = coords.map((point, index) => {
     if (!index) return `M${at(point)}`;
 
     if (!smooth) return `L${at(point)}`;
-    const from = coords[index - 1];
+    const from = indexed(coords, index - 1);
     const before = coords[index - 2] || from;
     const after = coords[index + 1] || point;
-    const out = [0, 1].map((axis) => from[axis] + (point[axis] - before[axis]) / 6);
-    const into = [0, 1].map((axis) => point[axis] - (after[axis] - from[axis]) / 6);
+    const out = [0, 1].map((axis) => indexed(from, axis) + (indexed(point, axis) - indexed(before, axis)) / 6);
+    const into = [0, 1].map((axis) => indexed(point, axis) - (indexed(after, axis) - indexed(from, axis)) / 6);
 
     return `C${at(out)} ${at(into)} ${at(point)}`;
   }).join(' ');
@@ -150,14 +161,14 @@ function line({ svg, x, y, left }, points, className, { smooth = false } = {}) {
 }
 
 // Speed points in the display unit, so the gridline labels are round numbers in that unit.
-const inUnit = (points) => points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
+const inUnit = (points: SpeedPoint[]) => points.map((point) => ({ ...point, speed: speedValue(point.wpm) }));
 
 // The run card's trace: the full width with no speed axis, so the line spans the run's own range (a
 // fifth of the average at least, so a steady run reads as steady) with an eighth of the plot clear above
 // and below. A hairline floor, and the time at the start, middle and end underneath.
 const TRACE_LABELS = 24;
 
-function trace(container, { durationS, low, high, animate }) {
+function trace(container: HTMLElement, { durationS, low, high, animate }: { durationS: number; low: number; high: number; animate: boolean }) {
   const width = Math.round(container.clientWidth);
   const height = Math.round(container.clientHeight);
   container.replaceChildren();
@@ -170,8 +181,8 @@ function trace(container, { durationS, low, high, animate }) {
   const floor = height - TRACE_LABELS;
   const middle = (low + high) / 2;
   const span = Math.max(high - low, middle / 5, 1);
-  const x = (t) => (durationS ? (t / durationS) * width : 0);
-  const y = (speed) => floor * (7 / 8 - ((speed - middle) / span + 0.5) * (3 / 4));
+  const x = (t: number) => (durationS ? (t / durationS) * width : 0);
+  const y = (speed: number) => floor * (7 / 8 - ((speed - middle) / span + 0.5) * (3 / 4));
   svg.append(el('line', { class: 'graph-axis', x1: 0, x2: width, y1: floor - 0.5, y2: floor - 0.5 }));
   const ticks = durationS ? [0, durationS / 2, durationS] : [0];
   ticks.forEach((t, index) => {
@@ -181,7 +192,7 @@ function trace(container, { durationS, low, high, animate }) {
   return { svg, x, y, left: 0, right: width };
 }
 
-export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
+export function renderSpeedGraph(container: HTMLElement, attempt: Attempt, { animate = true } = {}) {
   const series = speedSeries(attempt);
   const averageWpm = attempt?.summary?.score?.wpm ?? 0;
   // Described even while hidden and undrawn, so the label always reads in the unit on screen.
@@ -205,9 +216,10 @@ export function renderSpeedGraph(container, attempt, { animate = true } = {}) {
 
 // An online race: both racers' speed on one chart over the race clock, which both traces start from the
 // shared start, so the two lines compare directly. Yours is the accent, theirs the text colour.
-export function renderDuelGraph(container, [mine, theirs], { animate = true } = {}) {
+export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [Attempt, Attempt], { animate = true } = {}) {
   const series = [mine, theirs].map(speedSeries);
-  const [ours, others] = series.map((each) => inUnit(each.points));
+  const ours = inUnit(indexed(series, 0).points);
+  const others = inUnit(indexed(series, 1).points);
   const top = niceMax(Math.max(0, ...ours.map((point) => point.speed), ...others.map((point) => point.speed)));
   const chart = plot(container, { durationS: Math.max(...series.map((each) => each.durationS)), top, animate });
 

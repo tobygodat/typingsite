@@ -1,3 +1,12 @@
+import { at as indexed } from './domain-values.js';
+
+export interface TypingFxOptions { tape?: () => boolean; ensureCharacters?: (index: number) => void }
+
+interface Spring { value: number; target: number; velocity: number; stiffness: number; damping: number }
+
+type GhostSpot = { index: number; hidden: true } | { index: number; hidden: false; target: HTMLElement; left: number; row: number; width: number };
+
+interface Ghost { cps: number; points: [number, number][] | null; cursor: number; start: number; frame: number; spot: GhostSpot | null; armed: boolean; seeked: number }
 // Typing-surface motion: a spring-driven caret, line scrolling, and an optional
 // ghost caret (the pace caret, or a friend's recorded run in a ghost race) that
 // glides through the letters rather than hopping from one to the next.
@@ -12,11 +21,11 @@ const IDLE_AFTER_MS = 800;
 // friend's speed while typing and still waits out their pauses.
 const REPLAY_GLIDE_MS = 150;
 
-function spring(stiffness, damping) {
+function spring(stiffness: number, damping: number) {
   return { value: 0, target: 0, velocity: 0, stiffness, damping };
 }
 
-function stepSpring(s, dt) {
+function stepSpring(s: Spring, dt: number) {
   const force = (s.target - s.value) * s.stiffness - s.velocity * s.damping;
   s.velocity += force * dt;
   s.value += s.velocity * dt;
@@ -31,18 +40,18 @@ function stepSpring(s, dt) {
   return true;
 }
 
-function snap(s, value) {
+function snap(s: Spring, value: number) {
   s.value = value;
   s.target = value;
   s.velocity = 0;
 }
 
 // Offsets relative to the display, walking up through any positioned ancestors.
-function offsetIn(element, display) {
+function offsetIn(element: HTMLElement, display: HTMLElement) {
   let left = 0;
   let top = 0;
 
-  for (let node = element; node && node !== display; node = node.offsetParent) {
+  for (let node: HTMLElement | null = element; node && node !== display; node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null) {
     left += node.offsetLeft;
     top += node.offsetTop;
   }
@@ -61,12 +70,12 @@ export function createWordGlide() {
   const fill = document.createElement('span');
   const end = document.createElement('span');
   element.append(fill, end);
-  let shown = null;
+  let shown: { left: number; top: number; width: number; height: number } | null = null;
   let cap = 0;
 
   return {
     element,
-    follow(word, { instant = false } = {}) {
+    follow(word: HTMLElement | null, { instant = false } = {}) {
       element.classList.toggle('is-hidden', !word);
 
       if (!word) {
@@ -76,6 +85,8 @@ export function createWordGlide() {
       }
 
       const container = element.parentElement;
+
+      if (!container) return;
       const box = word.getBoundingClientRect();
       const origin = container.getBoundingClientRect();
       const left = box.left - origin.left - container.clientLeft;
@@ -102,7 +113,7 @@ export function createWordGlide() {
   };
 }
 
-export function createTypingFx(wrap, display, options = {}) {
+export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options: TypingFxOptions = {}) {
   const caret = document.createElement('span');
   caret.className = 'caret';
   const bar = document.createElement('span');
@@ -113,35 +124,35 @@ export function createTypingFx(wrap, display, options = {}) {
 
   for (const node of [caret, ghostCaret]) node.setAttribute('aria-hidden', 'true');
   // A pacer moves at `cps`; a recorded run follows `points`, [ms from the first key, characters typed].
-  const ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false, seeked: 0 };
+  const ghost: Ghost = { cps: 0, points: null, cursor: 0, start: 0, frame: 0, spot: null, armed: false, seeked: 0 };
   const wordGlide = createWordGlide();
-  let glideWord = null;
+  let glideWord: HTMLElement | null = null;
 
   const caretX = spring(1400, 70);
   const caretY = spring(1400, 70);
   const springs = [caretX, caretY];
 
-  let characters = [];
+  let characters: (HTMLElement | undefined)[] = [];
   let position = 0;
   let line = 0;
   let frame = 0;
   let lastTime = 0;
   let needsMeasure = false;
   let snapNext = true;
-  let idleTimer = 0;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
   // Tape mode (one line): the scroll, and what the caret was doing at the last measure.
   let tapeScroll = 0;
-  let tapeWord = null;
+  let tapeWord: HTMLElement | null = null;
   let measuredPosition = 0;
   let wasTape = false;
 
-  function setState(state) {
+  function setState(state: string) {
     wrap.dataset.caret = state;
   }
 
   // Tape mode: a re-layout or restart jumps straight to the new position; only steps use the
   // ~150 ms scroll from the stylesheet.
-  function setScroll(transform, instant) {
+  function setScroll(transform: string, instant: boolean) {
     if (!instant) {
       if (display.style.transform !== transform) display.style.transform = transform;
 
@@ -155,7 +166,7 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   // One line: the caret travels right, and the tape steps by whole words near the right edge.
-  function measureTape(x, current, lineHeight, realign) {
+  function measureTape(x: number, current: HTMLElement | undefined, lineHeight: number, realign: boolean) {
     const forward = position > measuredPosition;
     measuredPosition = position;
     const word = current?.parentElement?.classList.contains('word') ? current.parentElement : null;
@@ -210,7 +221,7 @@ export function createTypingFx(wrap, display, options = {}) {
 
     if (tape) measureTape(x, current, lineHeight, snapNext);
     else {
-      const spacer = display.querySelector('.passage-spacer');
+      const spacer = display.querySelector<HTMLElement>('.passage-spacer');
       const spacerHeight = spacer?.offsetHeight || 0;
       const logicalTop = top - spacerHeight;
       line = Math.floor((logicalTop + lineHeight * 0.25) / lineHeight);
@@ -228,11 +239,11 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   // The word the highlight is on (body[data-word-highlight]), measured only when it changes.
-  function placeGlide(instant) {
+  function placeGlide(instant: boolean) {
     const { wordHighlight, wordHighlightSlide } = document.body.dataset;
 
     if (wordHighlightSlide !== 'true' || wordHighlight === 'off') return;
-    const word = display.querySelector(wordHighlight === 'next' ? '.word-next' : '.word-current');
+    const word = display.querySelector<HTMLElement>(wordHighlight === 'next' ? '.word-next' : '.word-current');
 
     if (word === glideWord && !instant) return;
     glideWord = word;
@@ -243,7 +254,7 @@ export function createTypingFx(wrap, display, options = {}) {
     caret.style.transform = `translate3d(${caretX.value}px, ${caretY.value}px, 0)`;
   }
 
-  function tick(time) {
+  function tick(time: number) {
     frame = 0;
     const dt = Math.min(0.034, lastTime ? (time - lastTime) / 1000 : 0.016);
     lastTime = time;
@@ -269,8 +280,8 @@ export function createTypingFx(wrap, display, options = {}) {
 
   // Where the ghost sits at `index` (a letter's left edge, or past the last letter), measured
   // once per letter: in between, the frame only moves the caret along that letter's width.
-  function ghostSpot(index) {
-    if (ghost.spot?.index === index && ghost.spot.target?.isConnected) return ghost.spot;
+  function ghostSpot(index: number): GhostSpot {
+    if (ghost.spot?.index === index && ghost.spot.hidden === false && ghost.spot.target.isConnected) return ghost.spot;
     options.ensureCharacters?.(index);
     const target = characters[Math.min(index, characters.length - 1)];
 
@@ -287,7 +298,7 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   // `at` is a position in characters, fractional while the ghost is between two letters.
-  function placeGhost(at) {
+  function placeGhost(at: number) {
     if (!characters.length) return;
     const clamped = Math.max(0, Math.min(at, characters.length));
     const index = Math.floor(clamped);
@@ -300,11 +311,11 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   // A recorded run's position at `elapsed`: still between keys, gliding into the next one.
-  function replayAt(elapsed) {
-    const { points } = ghost;
+  function replayAt(elapsed: number) {
+    const points = ghost.points ?? [];
 
-    while (ghost.cursor < points.length && points[ghost.cursor][0] <= elapsed) ghost.cursor += 1;
-    const [fromTime, from] = ghost.cursor ? points[ghost.cursor - 1] : [0, 0];
+    while (ghost.cursor < points.length && indexed(points, ghost.cursor)[0] <= elapsed) ghost.cursor += 1;
+    const [fromTime, from] = ghost.cursor ? indexed(points, ghost.cursor - 1) : [0, 0];
     const next = points[ghost.cursor];
 
     if (!next || reducedMotion.matches) return from;
@@ -314,7 +325,7 @@ export function createTypingFx(wrap, display, options = {}) {
     return progress > 0 ? from + (next[1] - from) * Math.min(1, progress) : from;
   }
 
-  function ghostTick(now) {
+  function ghostTick(now: number) {
     ghost.frame = 0;
 
     if (!ghost.armed || !ghost.start) return;
@@ -343,7 +354,7 @@ export function createTypingFx(wrap, display, options = {}) {
   }
 
   return {
-    reset(nextCharacters) {
+    reset(nextCharacters: (HTMLElement | undefined)[]) {
       characters = nextCharacters;
       position = 0;
       line = 0;
@@ -371,7 +382,7 @@ export function createTypingFx(wrap, display, options = {}) {
     },
 
     // outcome: 'correct' | 'wrong' | 'blocked' | 'delete'. Only position and blocked affect the caret.
-    update(nextPosition, _outcome, blocked) {
+    update(nextPosition: number, _outcome: string | null, blocked: boolean) {
       position = nextPosition;
       wrap.dataset.blocked = String(Boolean(blocked));
       setState('typing');
@@ -392,7 +403,7 @@ export function createTypingFx(wrap, display, options = {}) {
     ghost: {
       // startTime joins a run already in progress: the next frame places the caret where the
       // pace has reached, so it never jumps back to the start.
-      arm(cps, startTime = 0) {
+      arm(cps: number, startTime = 0) {
         ghost.armed = cps > 0;
         ghost.cps = cps;
         ghost.points = null;
@@ -412,7 +423,7 @@ export function createTypingFx(wrap, display, options = {}) {
         }
       },
       // A friend's recorded run: the ghost glides to where their caret was at each of their keys.
-      replay(points) {
+      replay(points: [number, number][] | null) {
         stopGhost();
         ghost.points = points?.length ? points : null;
         ghost.armed = Boolean(ghost.points);
@@ -426,7 +437,7 @@ export function createTypingFx(wrap, display, options = {}) {
         if (ghost.armed) placeGhost(0);
       },
       // The recorded run where it was `elapsed` ms in, for a replay that keeps its own clock.
-      seek(elapsed) {
+      seek(elapsed: number) {
         if (!ghost.points) return;
         stopGhost();
 
@@ -434,7 +445,7 @@ export function createTypingFx(wrap, display, options = {}) {
         ghost.seeked = elapsed;
         placeGhost(replayAt(elapsed));
       },
-      run(startTime) {
+      run(startTime: number) {
         // The pacer is decoration and stays put under reduced motion. A recorded run is the race
         // itself, so under reduced motion it still steps from key to key, with no glide.
         if (!ghost.armed || (reducedMotion.matches && !ghost.points)) return;
@@ -447,6 +458,15 @@ export function createTypingFx(wrap, display, options = {}) {
         stopGhost();
         ghostCaret.classList.add('is-hidden');
       },
+    },
+
+    dispose() {
+      stopGhost();
+      cancelAnimationFrame(frame);
+      clearTimeout(idleTimer);
+      caret.remove();
+      ghostCaret.remove();
+      wordGlide.element.remove();
     },
 
     relayout() {

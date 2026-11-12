@@ -1,3 +1,10 @@
+export type KeyOutcome = 'correct' | 'wrong' | 'delete' | 'blocked';
+
+export interface SoundSettings { mode: string; volume: number }
+
+interface SoundsOptions { settings?: () => SoundSettings; running?: () => boolean; AudioContextClass?: typeof AudioContext; defer?: (callback: () => void) => void; page?: Pick<Document, 'hidden' | 'addEventListener' | 'removeEventListener'> }
+
+const audioHost: typeof globalThis & { webkitAudioContext?: typeof AudioContext } = globalThis;
 // Typing sounds: a quiet click for each key and, if chosen, a low tick for a mistyped letter.
 // Synthesised with Web Audio, so there are no audio files. Presentational only: the app tells this
 // module what a key did after scoring has handled it, and nothing here is ever read back.
@@ -20,12 +27,12 @@ const TICK_PEAK = 0.45;
 // most) has played out.
 const REST_AFTER_MS = 250;
 
-export function normalizeSoundMode(value) {
-  return SOUND_MODES.includes(value) ? value : DEFAULT_SOUND_MODE;
+export function normalizeSoundMode(value: unknown) {
+  return typeof value === 'string' && SOUND_MODES.includes(value) ? value : DEFAULT_SOUND_MODE;
 }
 
 // Volume is a whole percentage, 0–100. Anything else (missing, text, NaN) falls back to the default.
-export function normalizeSoundVolume(value) {
+export function normalizeSoundVolume(value: unknown) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SOUND_VOLUME;
 
   return Math.min(100, Math.max(0, Math.round(value)));
@@ -34,12 +41,12 @@ export function normalizeSoundVolume(value) {
 // Which sound a key makes, or null for silence. Off and volume 0 are silent. The tick is only for a
 // mistyped letter, and only when the error tick is chosen; every other key is a click. A key refused
 // under stop on error is a click: the tick already marked the letter that needs fixing.
-export function soundFor(mode, volume, outcome) {
+export function soundFor(mode: string, volume: number, outcome: string) {
   if (!SOUND_MODES.includes(mode) || mode === 'off') return null;
 
   if (typeof volume !== 'number' || !(volume > 0)) return null;
 
-  if (!KEY_OUTCOMES.includes(outcome)) return null;
+  if (!KEY_OUTCOMES.some((known) => known === outcome)) return null;
 
   return outcome === KEY_OUTCOME.wrong && mode === 'clicks-errors' ? 'tick' : 'click';
 }
@@ -48,20 +55,20 @@ export function soundFor(mode, volume, outcome) {
 // ("h). Each change is { correct, blocked }: correct is false for a key scored as a mistake (a wrong
 // letter, a refused strict space), and blocked is set for a key that typed nothing. A mistake anywhere
 // in the key outranks the rest; a key whose every character was refused is blocked.
-export function keyOutcome(changes) {
+export function keyOutcome(changes: { correct?: boolean; blocked?: boolean }[]) {
   if (changes.some((change) => change.correct === false)) return KEY_OUTCOME.wrong;
 
   return changes.every((change) => change.blocked) ? KEY_OUTCOME.blocked : KEY_OUTCOME.correct;
 }
 
 // Loudness follows the square of the slider so the low end stays usable.
-export function gainFor(volume) {
+export function gainFor(volume: unknown) {
   const level = normalizeSoundVolume(volume) / 100;
 
   return level * level;
 }
 
-function noiseBuffer(context) {
+function noiseBuffer(context: AudioContext) {
   const length = Math.max(1, Math.round(context.sampleRate * 0.04));
   const buffer = context.createBuffer(1, length, context.sampleRate);
   const data = buffer.getChannelData(0);
@@ -73,7 +80,7 @@ function noiseBuffer(context) {
 
 // A short band-passed noise burst, like a key bottoming out. The band moves a little each time so a
 // run of keys doesn't sound machine-made.
-function playClick(context, gain, noise) {
+function playClick(context: AudioContext, gain: number, noise: AudioBuffer | null) {
   const at = context.currentTime;
   const source = context.createBufferSource();
   source.buffer = noise;
@@ -92,7 +99,7 @@ function playClick(context, gain, noise) {
 }
 
 // A soft, falling low tone: different enough from the click to hear without looking.
-function playTick(context, gain) {
+function playTick(context: AudioContext, gain: number) {
   const at = context.currentTime;
   const tone = context.createOscillator();
   tone.type = 'triangle';
@@ -110,7 +117,7 @@ function playTick(context, gain) {
 
 // After the key's letter has painted: building an AudioContext can hold the main thread for tens of
 // milliseconds, so it never happens inside input handling.
-function afterPaint(callback) {
+function afterPaint(callback: () => void) {
   if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(callback, 0));
   else setTimeout(callback, 0);
 }
@@ -122,18 +129,18 @@ function afterPaint(callback) {
 //   awake   built and running: a key was just typed, or a run is in progress.
 // The context is built after the change that chooses an audible sound (prepare) or, failing that,
 // after the first audible key, which stays silent itself; it is never built inside an event.
-export function createSounds({ settings, running = () => false, AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext, defer = afterPaint, page = globalThis.document } = {}) {
+export function createSounds({ settings = () => ({ mode: 'off', volume: 0 }), running = () => false, AudioContextClass = audioHost.AudioContext || audioHost.webkitAudioContext, defer = afterPaint, page = globalThis.document }: SoundsOptions = {}) {
   let want = 'closed';
-  let context = null;
-  let noise = null;
+  let context: AudioContext | null = null;
+  let noise: AudioBuffer | null = null;
   // The state last requested of this context, null until a request is made. context.state changes
   // only once the audio thread has acted, so a request still in flight is judged by what was asked, and
   // by context.state too, since a context can change state by itself: a new one may report 'suspended'
   // and start running a moment later, so its state at construction says nothing about where it is going.
-  let asked = null;
+  let asked: 'awake' | 'asleep' | null = null;
   let pending = false;
   let failed = false;
-  let resting = null;
+  let resting: ReturnType<typeof setTimeout> | undefined;
 
   const audible = () => {
     const { mode, volume } = settings();
@@ -141,10 +148,10 @@ export function createSounds({ settings, running = () => false, AudioContextClas
     return soundFor(mode, volume, 'correct') !== null;
   };
 
-  const request = (method) => {
+  const request = (method: 'resume' | 'suspend') => {
     asked = method === 'resume' ? 'awake' : 'asleep';
 
-    try { Promise.resolve(context[method]()).catch(() => {}); } catch {}
+    try { Promise.resolve(context?.[method]()).catch(() => {}); } catch {}
   };
 
   function release() {
@@ -170,7 +177,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
   }
 
   function build() {
-    if (context || failed || want === 'closed' || !audible()) return;
+    if (context || failed || want === 'closed' || !audible() || !AudioContextClass) return;
 
     try {
       context = new AudioContextClass({ latencyHint: 'interactive' });
@@ -202,7 +209,7 @@ export function createSounds({ settings, running = () => false, AudioContextClas
   }
 
   // Never throws: a sound that can't play must not disturb input handling.
-  function play(outcome) {
+  function play(outcome: string) {
     try {
       const { mode, volume } = settings();
       const kind = soundFor(mode, volume, outcome);
@@ -267,7 +274,15 @@ export function createSounds({ settings, running = () => false, AudioContextClas
     }, REST_AFTER_MS);
   }
 
-  page?.addEventListener?.('visibilitychange', () => { if (page.hidden) suspend(); });
+  const visibilityChanged = () => { if (page?.hidden) suspend(); };
 
-  return { play, prepare, sync, rest, hasContext: () => Boolean(context) };
+  page?.addEventListener?.('visibilitychange', visibilityChanged);
+
+  function dispose() {
+    want = 'closed';
+    page?.removeEventListener?.('visibilitychange', visibilityChanged);
+    release();
+  }
+
+  return { play, prepare, sync, rest, dispose, hasContext: () => Boolean(context) };
 }
