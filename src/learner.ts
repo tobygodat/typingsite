@@ -445,7 +445,7 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
 
     const slowdown = timing && unit.length === 2 ? (t?.tr || 0) / ((t?.tn || 0) + timingTries) : null;
 
-    const estimate: Estimate = { gain: 0, basis: 'errors', unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
+    const estimate: Omit<Estimate, 'gain' | 'basis'> = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
       slowdown, observed };
 
     if (unit.length === 1) estimate.own = t ? { seen: (t.own?.seen ?? 0), errors: Math.max(0, (t.own?.errors ?? 0) - (t.own?.worst ?? 0)) } : { seen: 0, errors: 0 };
@@ -473,19 +473,21 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
     }
   }
 
-  for (const e of estimates) {
+  const scored = estimates.map((e): Estimate => {
     const gone = released.get(e.unit) || [];
     const missed = gone.includes('errors') ? 0 : Math.max(0, e.error.mean - UNCERTAINTY_Z * e.error.sd - errorRate);
     const slow = e.slowdown === null || gone.includes('slow') ? 0 : Math.max(0, Math.exp(e.slowdown) - 1) / missCost;
 
     if (gone.length) e.letGo = gone;
-    e.gain = e.frequency * (focus === 'speed' ? slow : focus === 'accuracy' ? missed : missed + slow);
-    e.basis = focus === 'speed' || (focus !== 'accuracy' && slow > missed) ? 'slow' : 'errors';
-  }
+    return { ...e,
+      gain: e.frequency * (focus === 'speed' ? slow : focus === 'accuracy' ? missed : missed + slow),
+      basis: focus === 'speed' || (focus !== 'accuracy' && slow > missed) ? 'slow' : 'errors',
+    };
+  });
 
-  estimates.sort((a, b) => b.gain - a.gain || compare(a.unit, b.unit));
+  scored.sort((a, b) => b.gain - a.gain || compare(a.unit, b.unit));
 
-  return { policy, focus, runs: records.length, errorRate, missCost, units: estimates };
+  return { policy, focus, runs: records.length, errorRate, missCost, units: scored };
 }
 
 // Whether a pair's tally holds the evidence to be named, leaving out the slowness floor: the floor of first tries,
