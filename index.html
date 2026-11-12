@@ -678,6 +678,30 @@
             <div class="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" class="btn btn-ghost btn-sm" type="button">Leave race</button></div>
             <p id="online-room-status" class="online-copy" role="status"></p>
             <p id="online-rating-change" class="online-copy" role="status" hidden></p>
+            <div id="online-rank-card" class="rank-card-slot" aria-hidden="true" hidden></div>
+            <template id="rank-card-template">
+              <div class="rank-card">
+                <canvas class="rc-wind"></canvas>
+                <div class="rc-body">
+                  <p class="rc-label" data-rc="label" data-rc-clear data-rc-text></p>
+                  <div class="rc-emblem" data-rc="emblem" data-rc-clear>
+                    <svg viewBox="0 0 132 132" focusable="false">
+                      <defs><linearGradient gradientUnits="userSpaceOnUse" x1="14" y1="6" x2="118" y2="126"><stop class="rc-stop-a" offset="0"/><stop class="rc-stop-b" offset="1"/></linearGradient></defs>
+                      <polygon class="rc-hull" points="66,6 118,36 118,96 66,126 14,96 14,36" stroke-width="4" data-rc-stroke/>
+                      <g class="rc-mark" data-rc="mark" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" data-rc-stroke></g>
+                      <text class="rc-step" data-rc="step" x="66" y="118" text-anchor="middle" font-size="13"></text>
+                    </svg>
+                  </div>
+                  <p class="rc-rank" data-rc="rank" data-rc-clear data-rc-text></p>
+                  <p class="rc-from" data-rc="from" data-rc-clear data-rc-text></p>
+                  <p class="rc-nums" data-rc-clear data-rc-text><span class="rc-rating num" data-rc="rating"></span><span class="rc-delta num" data-rc="delta"></span></p>
+                  <p class="rc-count" data-rc="count" data-rc-clear data-rc-text></p>
+                  <div class="rc-bar" data-rc="bar" data-rc-clear><span class="rc-fill"></span><span class="rc-change"></span></div>
+                  <p class="rc-ends" data-rc="ends" data-rc-clear data-rc-text><span></span><span></span></p>
+                  <p class="rc-why" data-rc="why" data-rc-clear data-rc-text></p>
+                </div>
+              </div>
+            </template>
             <p id="online-connection" class="online-copy" role="status"></p>
             <p id="online-account-invite-status" class="online-copy" role="status" hidden></p>
             <div id="online-share" class="online-share" hidden>
@@ -990,7 +1014,7 @@
       <button id="release-close" type="button" aria-label="Close"><span>esc</span><span aria-hidden="true">×</span></button>
     </header>
     <ul class="release-notes">
-      <li>After 10 rated races your race rating carries a rank, from Whisper through Breeze, Gust, Gale and Tempest to Hurricane.</li>
+      <li>After 10 rated races your race rating carries a rank, from Whisper through Breeze, Gust, Gale and Tempest to Hurricane, and each rated result shows it on a card.</li>
       <li>Quick match races someone near your rating, or your own best run when nobody is waiting.</li>
       <li>Your race rating moves only on quick matches, never your practice.</li>
       <li>In settings, choose Train’s focus, a drill of 15 to 120 seconds, and whether a retest follows.</li>

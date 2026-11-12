@@ -63,7 +63,7 @@ In `src/`:
 - `compose.js`, `compose-view.js`, `compose-caret.js`: composing practice.
 - `profile.js`: profile defaults and `normalizeProfile`.
 - `account.js`: auth, the profile row, `mergeSynced`, `HISTORY`.
-- `online-race.js`, `multiplayer.js`: online races and their RPCs. `quick-match.js`: quick match's standard setup, rating maths, the rank ladder, pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.js`: the quick match control. `race-review.js`: a finished race's graph and two-caret replay. `race-options.js`: what a race is set up as, and its passage.
+- `online-race.js`, `multiplayer.js`: online races and their RPCs. `quick-match.js`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.js`: the quick match control. `rank-card.js`: the rated result card, its colours and its wind. Presentational only. `race-review.js`: a finished race's graph and two-caret replay. `race-options.js`: what a race is set up as, and its passage.
 - `ghost-race.js`: ghost challenges.
 - `inbox.js`, `race-result.js`: the inbox, toast and race results.
 - `friends-board.js`: the friends board and sharing.
