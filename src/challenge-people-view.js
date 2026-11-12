@@ -134,5 +134,7 @@ export function drawPeople(list, rows, { now = Date.now(), fallback = null, deco
   if (!focused || list.contains(document.activeElement)) return;
   const same = focusId && [...list.querySelectorAll('button')].find((button) => `${button.dataset.peopleKey}|${button.dataset.peopleAction}` === focusId);
   const person = items.find((item) => item.dataset.key === focusedRow?.dataset.key);
-  (same || person || items[Math.min(rowAt, items.length - 1)] || fallback)?.focus({ preventScroll: true, focusVisible });
+  // A ring that showed shows again. Otherwise the browser decides, from the last input: Firefox never shows it on a
+  // button focused by script, even after a key pressed it, so passing that state on would hide the ring after Enter.
+  (same || person || items[Math.min(rowAt, items.length - 1)] || fallback)?.focus({ preventScroll: true, ...(focusVisible && { focusVisible }) });
 }

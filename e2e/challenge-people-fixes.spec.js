@@ -146,6 +146,12 @@ test('after Dismiss focus lands on a row, shown, and Tab goes on to its action',
   expect(await focusShows(row(page, 'Lin'))).toBe(true);
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Join Lin’s race' })).toBeFocused();
+
+  // Clicked with the mouse, Dismiss still hands focus to a row, but no ring shows for a pointer.
+  await page.getByRole('button', { name: 'Dismiss Lin’s invitation' }).click();
+  await expect(page.locator('#people-list [data-key^="invite:"]')).toHaveCount(0);
+  await expect(row(page, 'Ada')).toBeFocused();
+  expect(await focusShows(row(page, 'Ada'))).toBe(false);
 });
 
 // A quick double tap is two real presses, so the key-repeat guard doesn't see the second one.
