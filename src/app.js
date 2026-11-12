@@ -6532,7 +6532,7 @@ function bindEvents() {
     if (!changed) return;
     applyPreferences();
     showBest();
-    resetSession(restartKind(), { focus: true });
+    resetForCondition(restartKind());
   });
   onSetting('word-list', (value) => setWordList(value));
   onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
@@ -7258,6 +7258,15 @@ function setWordHighlightSlide(on) {
   saveChoice('wordHighlightSlide');
 }
 
+// A test condition changed in settings prepares the next practice passage wherever the person is, and shows
+// it only where they are already practising (the run card counts: it sits on the practice screen). Train,
+// Progress, Challenge and the lessons stay as they are behind the dialog, with focus left in it.
+function resetForCondition(kind) {
+  const practising = ['practice', 'results'].includes(document.body.dataset.view);
+
+  return resetSession(kind, { focus: practising, show: practising });
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   const changed = prefs.wordList !== id;
@@ -7266,7 +7275,7 @@ function setWordList(id, kind = restartKind()) {
 
   if (!changed) return;
   applyPreferences();
-  resetSession(kind, { focus: true });
+  resetForCondition(kind);
 }
 
 function inPractice(change) {
@@ -7301,7 +7310,7 @@ function setLayout(id, kind = restartKind()) {
   applyPreferences();
   saveChoice('layout');
 
-  if (changed) resetSession(kind, { focus: true });
+  if (changed) resetForCondition(kind);
 }
 
 // The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
