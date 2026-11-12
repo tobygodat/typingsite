@@ -24,4 +24,4 @@ The npm, Node, no-bundler, hosting and lint decisions in 0012 stand.
 - Checks and deploys run whether or not the desktop is on, and jobs from different PRs no longer queue behind each other.
 - A hosted runner has 4 cores where the desktop has 24. A spec that depends on timing can behave differently in CI than locally.
 - The code, PRs and Actions logs are public. Nothing secret may go in a log, a commit or a test fixture.
-- Local runs on tobygdesktop keep `CHROMIUM` and the worker rule in `scripts/e2e-workers.mjs`. CI uses Playwright's bundled browsers.
+- Local runs on tobygdesktop keep `CHROMIUM` and the worker rule in `scripts/e2e-workers.mjs`. CI uses Playwright's bundled browsers. Chromium runs as the full build (`channel: 'chromium'` in `playwright.config.js`), because the headless shell rounds text runs to whole pixels and overflowed layouts that fit in a real browser.
