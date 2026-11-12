@@ -9,13 +9,12 @@ export function isScore(value: unknown): value is Score {
 export function isConditions(value: unknown): value is Conditions {
   if (!isRecord(value)) return false;
 
-  return optional(value, ['mode'], (mode) => typeof mode === 'string' && ['time', 'words', 'quote', 'standard', 'code', 'book', 'custom', 'lesson'].includes(mode))
-    && optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
+  return optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
     && optional(value, ['correctionPolicy'], (policy) => typeof policy === 'string' && ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'].includes(policy))
-    && optional(value, ['quoteLength', 'difficulty', 'wordList'], nullableString)
+    && optional(value, ['wordList'], nullableString)
     && optional(value, ['language', 'corpus', 'metricVersion', 'recipe', 'layout', 'codeLanguage', 'book', 'customOrder', 'lesson'], string)
     && optional(value, ['duration', 'count'], nullableNumber)
-    && optional(value, ['punctuation', 'numbers', 'strictSpace', 'quickEnd', 'onlineRace'], boolean);
+    && optional(value, ['strictSpace', 'quickEnd', 'onlineRace'], boolean);
 }
 
 export function isAttemptEvent(value: unknown): value is AttemptEvent {

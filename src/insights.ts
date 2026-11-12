@@ -451,11 +451,11 @@ const LENGTH_TEXT = {
   standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
 } satisfies Partial<Record<string, (c: Conditions) => string>>;
 
-interface ConditionPart { name: string; text: (c: Conditions) => string | undefined; shown?: (c: Conditions) => boolean }
+interface ConditionPart { name: string; text: (c: Conditions) => unknown; shown?: (c: Conditions) => boolean }
 
 const CONDITION_PARTS: ConditionPart[] = [
   { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
-  { name: 'length', text: (c) => lookup(LENGTH_TEXT, c.mode ?? '')?.(c) ?? c.mode },
+  { name: 'length', text: (c) => lookup(LENGTH_TEXT, String(c.mode ?? ''))?.(c) ?? c.mode },
   { name: 'text', text: (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : `${c.punctuation ? 'punctuation' : 'plain'}${c.numbers ? ' · numbers' : ''}`) },
   { name: 'setting', text: (c) => (c.mode === 'quote' ? `punctuation setting ${c.punctuation ? 'on' : 'off'}` : ''), shown: () => false },
   { name: 'input', text: (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard') },

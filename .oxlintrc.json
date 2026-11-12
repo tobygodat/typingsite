@@ -68,6 +68,13 @@
       }
     },
     {
+      "files": ["src/insights.ts"],
+      "rules": {
+        // Condition labels retain raw historical mode and difficulty values until final text rendering.
+        "anti-slop/no-unknown-returns": "off"
+      }
+    },
+    {
       "files": ["src/domain-values.ts", "src/profile-types.ts", "src/domain-history.ts", "src/monkeytype.ts"],
       "rules": {
         // Historical records and imported settings preserve unknown fields until their boundary parsers narrow them.

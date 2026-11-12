@@ -1,7 +1,7 @@
 import { lookup } from './domain-values.js';
 import type { Conditions, PassageOptions } from './typing.js';
 
-export interface RaceOptions { mode: 'time' | 'words' | 'quote'; duration?: number; count?: number; punctuation?: boolean; numbers?: boolean; wordList?: string; quoteLength?: string; difficulty?: string }
+export interface RaceOptions { mode: 'time' | 'words' | 'quote'; duration?: number; count?: number; punctuation?: boolean; numbers?: boolean; wordList?: string; quoteLength?: unknown; difficulty?: unknown }
 
 export interface RaceConditions extends Conditions { mode: 'time' | 'words' | 'quote'; duration: number; onlineRace: true; correctionPolicy: 'mandatory'; inputClass: 'physical-keyboard' }
 
@@ -66,17 +66,17 @@ export function raceSetupText(conditions: Conditions) {
 
 // A fresh passage for these conditions, never one in seenIds where another can be had. A timed passage is
 // cut at a word boundary to what 400 wpm types on its clock.
-export function racePassage(conditions: RaceConditions, { seenIds = [], random = Math.random }: { seenIds?: string[]; random?: () => number } = {}) {
+export function racePassage(conditions: Pick<Conditions, 'mode' | 'count' | 'duration' | 'punctuation' | 'numbers' | 'wordList' | 'quoteLength' | 'difficulty'>, { seenIds = [], random = Math.random }: { seenIds?: string[]; random?: () => number } = {}) {
   const { mode, count, punctuation = false, numbers = false, wordList, quoteLength = 'any', difficulty = 'any', duration } = conditions;
 
-  const wanted: PassageOptions = { mode, count: count ?? undefined, duration: mode === 'time' ? duration : 0, punctuation, numbers, quoteLength: quoteLength ?? undefined, difficulty: difficulty ?? undefined, seenIds, random };
+  const wanted: PassageOptions = { mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers, quoteLength, difficulty, seenIds, random };
 
   if (wordList) wanted.wordList = wordList;
   const passage = selectPassage(wanted);
 
   if (!passage) return null;
 
-  const limit = Math.min(MAX_TEXT, mode === 'time' ? Math.ceil(duration * CHARS_PER_SECOND) : MAX_TEXT);
+  const limit = Math.min(MAX_TEXT, mode === 'time' ? Math.ceil(Number(duration) * CHARS_PER_SECOND) : MAX_TEXT);
 
   if (passage.text.length <= limit) return passage;
   const end = passage.text.lastIndexOf(' ', limit);

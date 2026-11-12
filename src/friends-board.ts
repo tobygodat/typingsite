@@ -285,7 +285,7 @@ export function boardShapes(rows: readonly BoardRow[]) {
     const conditions = shapeOf(key);
 
     return conditions ? [{ key, conditions }] : [];
-  }).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode ?? '') - SHAPE_MODES.indexOf(b.conditions.mode ?? '')
+  }).sort((a, b) => SHAPE_MODES.indexOf(String(a.conditions.mode ?? '')) - SHAPE_MODES.indexOf(String(b.conditions.mode ?? ''))
     || length(a.conditions) - length(b.conditions) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
@@ -303,7 +303,7 @@ function describedParts(conditions: Conditions) {
 }
 
 // The setting, named short in the picker and in full under it.
-const named = (name: string, value: string, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
+const named = (name: string, value: unknown, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
 
 // A quote has no word list (its language part is plain "english"), and only a quote has that setting, so
 // each is compared, and named, only between the shapes it belongs to.
@@ -346,7 +346,7 @@ export function shapeDescription(shapes: readonly BoardShape[], key: string | nu
   const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
 
   return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
-    && !lookup(USUAL, name)?.includes(value ?? '')).map(([name, value]) => named(name, value ?? '', true)).join(' · ');
+    && !lookup(USUAL, name)?.some((usual) => usual === value)).map(([name, value]) => named(name, value ?? '', true)).join(' · ');
 }
 
 // The shape the picker opens on: the one you have the most best-eligible runs on, then the one the most

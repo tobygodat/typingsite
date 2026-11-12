@@ -11,8 +11,8 @@ export type InputClass = 'physical-keyboard' | 'touch';
 export type CorrectionPolicy = 'relaxed' | 'mandatory' | 'no-backspace' | 'fail-word' | 'fail-any';
 
 export interface Conditions {
-  mode?: TestMode; duration?: number | null; count?: number | null; punctuation?: boolean; numbers?: boolean;
-  quoteLength?: string | null; difficulty?: string | null; wordList?: string | null;
+  mode?: unknown; duration?: number | null; count?: number | null; punctuation?: unknown; numbers?: unknown;
+  quoteLength?: unknown; difficulty?: unknown; wordList?: string | null;
   inputClass?: InputClass; correctionPolicy?: CorrectionPolicy; language?: string; corpus?: string;
   metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: string; book?: string;
   strictSpace?: boolean; quickEnd?: boolean; customOrder?: string; lesson?: string; onlineRace?: boolean;
@@ -41,7 +41,7 @@ export interface Attempt {
 
 export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
 
-export interface CurrentConditions extends Conditions { mode: TestMode; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
+export interface CurrentConditions extends Conditions { mode: TestMode; punctuation?: boolean; numbers?: boolean; quoteLength?: string | null; difficulty?: string | null; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
 
 export type HistoricalAttempt = Partial<Omit<Attempt, 'text' | 'events'>> & Pick<Attempt, 'text' | 'events'>;
 
@@ -53,7 +53,7 @@ export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: number; v
 
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
 
-export interface PassageOptions { mode?: TestMode; count?: number; duration?: number; punctuation?: boolean; numbers?: boolean; quoteLength?: string; difficulty?: string; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
+export interface PassageOptions { mode?: unknown; count?: number | null; duration?: number | null; punctuation?: unknown; numbers?: unknown; quoteLength?: unknown; difficulty?: unknown; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
 
 interface PatternPair { pair: string; observations: number; errors: number; timings: number[] }
 
@@ -168,11 +168,11 @@ function number(random: () => number) {
 
 // A timed passage holds enough text for a 300 WPM typist until the clock runs out: 300 five-character
 // words a minute, or 25 characters a second.
-export function timedCharacterSupply(seconds = 0) {
+export function timedCharacterSupply(seconds: number | null = 0) {
   return Math.ceil(((Number(seconds) || 0) * 300 * 5) / 60);
 }
 
-export function makePassage(mode: TestMode, count: number, punctuation: boolean, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
+export function makePassage(mode: unknown, count: number | null, punctuation: unknown, random = Math.random, list = DEFAULT_WORD_LIST, numbers: unknown = false, seconds: number | null = 0) {
   if (mode === 'quote') return at(quoteCorpus, Math.floor(random() * quoteCorpus.length)).text;
   const bank = wordList(list);
 
@@ -183,8 +183,8 @@ export function makePassage(mode: TestMode, count: number, punctuation: boolean,
 // punctuation, which only appears as "I". Monkeytype compares against the finished words; comparing the
 // drawn ones means a contraction or a number can't hide a repeat. Then punctuation, then 1 word in 10
 // becomes a number.
-function drawnPassage(draw: () => string, mode: TestMode, count: number, punctuation: boolean, random: () => number, numbers: boolean, seconds: number) {
-  const end = mode === 'time' ? Infinity : count;
+function drawnPassage(draw: () => string, mode: unknown, count: number | null, punctuation: unknown, random: () => number, numbers: unknown, seconds: number | null) {
+  const end = mode === 'time' ? Infinity : Number(count);
   const drawn: string[] = [];
   const words: string[] = [];
 
@@ -203,7 +203,7 @@ function drawnPassage(draw: () => string, mode: TestMode, count: number, punctua
 
   // Every timed test starts from 1,600 words: at least 3,199 characters, more than 120 s at 300 WPM needs,
   // so a preset passage is never topped up and stays exactly what it was.
-  add(mode === 'time' ? 1600 : count);
+  add(mode === 'time' ? 1600 : Number(count));
 
   // A passage that drew no number still gets one, so short tests with numbers on always contain a number.
   if (numbers && words.length && !words.some((word) => /^\d+$/.test(word))) words[Math.floor(random() * words.length)] = number(random);
@@ -495,7 +495,7 @@ export const allowsBackspace = (policy: CorrectionPolicy | undefined) => policy 
 // Why inserting `char` at the end of `typed` fails the run, or null. A space or the
 // passage's last letter closes a word; the whole prefix is checked so a letter typed
 // in place of a space can't slip through.
-export function failureFor(policy: CorrectionPolicy, text: string, typed: string, char: string) {
+export function failureFor(policy: CorrectionPolicy | undefined, text: string, typed: string, char: string) {
   if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
 
   if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
@@ -505,7 +505,7 @@ export function failureFor(policy: CorrectionPolicy, text: string, typed: string
 
 // Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
 // passage end) is a word boundary, so an unfinished word with a wrong letter fails.
-export function failureAtEnd(policy: CorrectionPolicy, text: string, typed: string) {
+export function failureAtEnd(policy: CorrectionPolicy | undefined, text: string, typed: string) {
   if (typed === text.slice(0, typed.length)) return null;
 
   if (policy === 'fail-any') return 'wrong key';
