@@ -1,4 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
+import os from 'node:os';
+import { workersFor } from './scripts/e2e-workers.mjs';
 
 // Browser verification for the shipped build. The app is served on 127.0.0.1 (not localhost), so
 // generated runs never land in a real localhost profile, and Supabase is always faked (e2e/fake-supabase.js).
@@ -27,7 +29,8 @@ if (unknown.length) throw new Error(`E2E_BROWSERS: unknown engine ${unknown.join
 export default defineConfig({
   testDir: 'e2e',
   fullyParallel: true,
-  workers: '67%',
+  // The cores nobody is using when the run starts (scripts/e2e-workers.mjs). `--workers` still overrides it.
+  workers: workersFor(os.availableParallelism(), os.loadavg()[0]),
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',

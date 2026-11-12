@@ -19,9 +19,11 @@ A typing-practice web app built around one loop: type a test, see which letter p
 - `npm run lint`
 - `npm test`
 - `npm run build`
-- `npm run test:e2e:quick` while iterating, then `npm run test:e2e`. Set `CHROMIUM` and `E2E_PORT` as `docs/CONVENTIONS.md` says.
-- When a change touches input, layout, motion or anything engine-specific, also run `npm run test:e2e:firefox` and `npm run test:e2e:webkit` by hand, and report both in the PR.
-- "Unit and build checks" and "Browser e2e" run on the self-hosted runner on tobygdesktop, and must be green at your head. Don't trigger the "Browser checks" workflow unless asked.
+- While iterating, run `npm run test:e2e:quick` and `npm run test:e2e:changed` (the specs your branch changed). Set `CHROMIUM` and `E2E_PORT` as `docs/CONVENTIONS.md` says.
+- Don't run the full suite locally. Push, and CI runs it once at your head: "Unit and build checks" and "Browser e2e" (all of Chromium) run on the self-hosted runner on tobygdesktop, and must be green at your head. Run `npm run test:e2e` yourself only when the runner is down.
+- When a change touches input, layout, motion or anything engine-specific, run the other engines once, when the PR is otherwise ready: `gh workflow run ci.yml --ref <branch> -f browsers=all`. Report that run in the PR. To chase one engine's failure, run that spec alone: `E2E_BROWSERS=firefox npx playwright test e2e/<spec>`.
+- A checker reads those runs at the PR's head (`gh run list --workflow=ci.yml --commit <sha>`) and doesn't repeat them. It runs the specs the PR changed and drives the flows below.
+- Don't trigger the "Browser checks" workflow unless asked.
 - Drive these flows with `agent-browser` against `npm run dev`, and attach screenshots:
   - **Practice.** Open `/`, pick words 10, and type the passage. The results card shows wpm, accuracy, time and the speed trace, and Run again starts a fresh passage.
   - **Train.** Start Train. It runs a 30-second drill, then a retest on fresh text, and shows the comparison.
