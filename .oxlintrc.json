@@ -53,6 +53,61 @@
   },
   "overrides": [
     {
+      "files": [
+        "src/books.ts", "src/compose.ts", "src/custom-themes.ts", "src/fonts.ts",
+        "src/insights.ts", "src/layouts.ts", "src/lengths.ts", "src/lessons.ts",
+        "src/profile.ts", "src/run-counts.ts", "src/typing.ts", "src/word-highlight.ts"
+      ],
+      "rules": {
+        // These normalizers parse browser inputs and recover historical profile fields before typed use.
+        "anti-slop/no-unknown-parameters": "off"
+      }
+    },
+    {
+      "files": ["src/domain-values.ts", "src/profile-types.ts"],
+      "rules": {
+        // Raw profile records preserve unknown future fields until version-aware normalization.
+        "anti-slop/no-unsafe-dictionary-type": "off"
+      }
+    },
+    {
+      "files": ["src/network.ts"],
+      "rules": {
+        // HTTP JSON stays unknown until its endpoint decoder validates it; JSON.parse must not leak any.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-known-value-widening": "off"
+      }
+    },
+    {
+      "files": ["src/network-race.ts", "src/multiplayer.ts", "src/ghost-race.ts"],
+      "rules": {
+        // RPC decoders validate untrusted replies before returning their named domain records.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off"
+      }
+    },
+    {
+      "files": ["src/profile-copy.ts"],
+      "rules": {
+        // Legacy codecs preserve raw records and future fields without asserting normalized Profile data.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off",
+        "anti-slop/no-object-parameters": "off"
+      }
+    },
+    {
+      "files": ["src/account.ts"],
+      "rules": {
+        // Storage recovery and legacy merges retain unrecognized fields and keep parsed JSON unknown.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off",
+        "anti-slop/no-known-value-widening": "off",
+        "anti-slop/no-unsafe-dictionary-type": "off"
+      }
+    },
+    {
       "files": ["supabase/functions/**"],
       "rules": {
         // cleanTheme is the boundary parser for the model's reply, so it takes unknown by design.

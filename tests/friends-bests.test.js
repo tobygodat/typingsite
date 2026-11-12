@@ -1,4 +1,5 @@
 import test, { mock } from 'node:test';
+import { settingsMarkup } from './rendered-markup.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CORPUS_VERSION, CORRECTION_POLICIES, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS,
@@ -206,7 +207,7 @@ test('a condition key is compared only when this build writes it the same way', 
 });
 
 test('every key this build can write is listed, read back as the conditions it was written from', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const html = settingsMarkup();
   const wordList = html.match(/<fieldset[^>]*id="word-list"[^>]*>([^]*?)<\/fieldset>/)[1];
 
   const offeredWords = [...wordList.matchAll(/<input[^>]*value="([^"]*)"[^>]*>/g)]

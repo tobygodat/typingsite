@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { settingsMarkup } from './rendered-markup.js';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { APP_FONTS, DEFAULT_FONT, TYPING_FONTS } from '../src/fonts.js';
@@ -24,7 +25,8 @@ test('the paint script, settings and stylesheet offer exactly the fonts src/font
   const listBefore = (key) => JSON.parse(script.match(new RegExp(`(\\[[^\\]]*\\])\\.includes\\(preferences\\?\\.${key}\\)`))[1].replaceAll("'", '"'));
   assert.deepEqual(listBefore('typingFont'), TYPING_FONTS);
   assert.deepEqual(listBefore('appFont'), APP_FONTS);
-  const radios = (name) => [...html.matchAll(new RegExp(`name="${name}" value="([a-z-]+)"`, 'g'))].map((match) => match[1]);
+  const settings = settingsMarkup();
+  const radios = (name) => [...settings.matchAll(/<input\b[^>]*>/g)].flatMap(([input]) => (input.includes(`name="${name}"`) ? [input.match(/\bvalue="([^"]+)"/)[1]] : []));
   assert.deepEqual(radios('typing-font'), TYPING_FONTS);
   assert.deepEqual(radios('app-font'), APP_FONTS);
 
