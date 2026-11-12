@@ -59,22 +59,24 @@ jobs:
           wranglerVersion: "4.151.0"
 
   e2e:
-    name: Browser e2e (${{ matrix.shard }}/6)
+    name: Browser e2e (${{ matrix.engine }} ${{ matrix.shard }}/6)
     # After the deploy, so on master it reports without delaying it.
     needs: [unit, deploy]
     if: ${{ !cancelled() && needs.unit.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # One group per shard: in a shared group the shards would cancel each other.
+    # One group per engine and shard: in a shared group the jobs would cancel each other.
     concurrency:
-      group: e2e-${{ github.ref }}-${{ matrix.shard }}
+      group: e2e-${{ github.ref }}-${{ matrix.engine }}-${{ matrix.shard }}
       cancel-in-progress: true
     strategy:
       fail-fast: false
+      # One engine per job, so a slow engine never shares a shard with a fast one.
       matrix:
+        engine: ${{ fromJSON((github.event_name == 'push' || inputs.browsers == 'all') && '["chromium", "firefox", "webkit"]' || '["chromium"]') }}
         shard: [1, 2, 3, 4, 5, 6]
     env:
-      E2E_BROWSERS: ${{ github.event_name == 'push' && 'all' || inputs.browsers || 'chromium' }}
+      E2E_BROWSERS: ${{ matrix.engine }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -82,11 +84,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npx playwright install --with-deps ${{ env.E2E_BROWSERS == 'all' && 'chromium firefox webkit' || 'chromium' }}
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
       - run: npx playwright test --shard=${{ matrix.shard }}/6
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failures-${{ matrix.shard }}
+          name: e2e-failures-${{ matrix.engine }}-${{ matrix.shard }}
           path: test-results/
           retention-days: 7
