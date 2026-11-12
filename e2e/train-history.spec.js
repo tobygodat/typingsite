@@ -1,3 +1,5 @@
+import { trainPath, aheadCopy, behindCopy, evidenceCopy, sinceCopy } from '../src/train-path.js';
+import { DEFAULT_POLICY, keyboardOf, recommendFor } from '../src/learner.js';
 // Train follows the history this tab holds (TOB-420): a merge, a clear or its undo, made here or in another tab,
 // redraws the path and every other training surface, never mid-run, and never takes focus or scroll from someone
 // using the page. Two tabs of one account share the device cache, so each hears the other's saves.
@@ -46,12 +48,16 @@ const drawn = (page) => page.evaluate(() => {
 
 // The path trainPath gives for the history stored on this device, at the run's conditions and the stored focus, in
 // the same form.
-const stored = (page, after = null) => page.evaluate(async ({ source, after }) => {
-  const { trainPath, aheadCopy, behindCopy, evidenceCopy, sinceCopy } = await import('/src/train-path.js');
-  const { DEFAULT_POLICY, keyboardOf, recommendFor } = await import('/src/learner.js');
-  const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
-  const { runs = [], loops = [], attempts = [], preferences = {} } = JSON.parse(localStorage.getItem(key));
-  const recommendation = recommendFor(DEFAULT_POLICY, { runs, loops, traces: attempts, source, now: Date.now(), focus: preferences.trainFocus || 'balanced' });
+const stored = async (page, after = null) => {
+  const { data, now } = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
+
+    return { data: JSON.parse(localStorage.getItem(key)), now: Date.now() };
+  });
+
+  const { runs = [], loops = [], attempts = [], preferences = {} } = data;
+  const source = conditions;
+  const recommendation = recommendFor(DEFAULT_POLICY, { runs, loops, traces: attempts, source, now, focus: preferences.trainFocus || 'balanced' });
   const path = trainPath({ recommendation, loops, runs, keyboard: keyboardOf(source), after });
   const { current } = path;
   const since = sinceCopy(current.since);
@@ -64,7 +70,7 @@ const stored = (page, after = null) => page.evaluate(async ({ source, after }) =
     },
     queue: recommendation.queue.map((item) => item.unit),
   };
-}, { source: conditions, after });
+};
 
 // Drawn as stored, once the merge has landed.
 async function expectStoredPath(page, after = null) {
