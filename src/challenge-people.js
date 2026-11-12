@@ -123,8 +123,9 @@ export function peopleRows({ friends = [], invites = [], challenges = [], links 
 
   const rows = [...people.values()].map(rowOf);
 
-  // Two people with one name are told apart by the email typed for them, the one thing recorded that can; a friend
-  // saved from a race has none, so two of those stay alike.
+  // Two people with one name are told apart by the email typed for them, the one thing recorded that can. A friend
+  // saved from a race has none: two of those differ only by what their rows already show (the newest thing between
+  // you, the tally), and with neither they stay alike. The friend list carries no date, and race_people only the tally.
   const named = new Map();
 
   for (const row of rows) named.set(sameName(row.name), (named.get(sameName(row.name)) || 0) + 1);

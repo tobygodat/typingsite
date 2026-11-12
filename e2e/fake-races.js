@@ -61,11 +61,12 @@ export class FakeRaces {
     player.trace = trace;
   }
 
-  // Holds the reply to the next request with this action: the service applies it on arrival, and the
-  // answer comes back only once the test calls the returned release, while later requests go through.
-  hold(action) {
+  // Holds the reply to the next request with this action (from `caller` alone, when given, so another racer's
+  // request can't take the hold): the service applies it on arrival, and the answer comes back only once the test
+  // calls the returned release, while later requests go through.
+  hold(action, caller = null) {
     let release;
-    this.holds.set(action, new Promise((resolve) => { release = resolve; }));
+    this.holds.set(action, { caller, until: new Promise((resolve) => { release = resolve; }) });
 
     return () => release();
   }
@@ -208,8 +209,10 @@ export class FakeRaces {
 
   handle(caller, { p_action: action, p_room_id: id, p_data: data = {}, p_guest_token: guestToken }, send) {
     // Two ways to hold a reply: hold(action) for the next request with it, or held/holding (see constructor).
-    const once = this.holds.get(action);
-    this.holds.delete(action);
+    const hold = this.holds.get(action);
+    const once = hold && (!hold.caller || hold.caller === caller) ? hold.until : null;
+
+    if (once) this.holds.delete(action);
 
     const answer = (status, json) => (status === 200 && this.held && this.holding.has(action)
       ? new Promise((release) => this.held.push(release)).then(() => send(status, json)) : send(status, json));

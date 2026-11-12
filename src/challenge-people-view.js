@@ -1,6 +1,6 @@
 // Draws Challenge's people list (src/challenge-people.js) into #people-list: each row its name, its quiet line, the
 // pair's tally and one action. A row that stays keeps its element, so only a person who arrives eases in, and keyboard
-// focus stays on the same action, or on the action now in its place when its row has gone.
+// focus stays on the same action, or moves to a row (never an action in it) when that action has gone.
 import { lineParts, tallyLabel } from './challenge-people.js';
 import { speedFigure } from './units.js';
 
@@ -37,6 +37,8 @@ function lineNode(row, now) {
 function build(row, now) {
   const item = document.createElement('li');
   item.className = 'people-row';
+  // Focus can be put on the row itself (see drawPeople), though Tab passes over it to its action.
+  item.tabIndex = -1;
   item.dataset.key = row.key;
   item.dataset.state = row.state;
   const who = document.createElement('div');
@@ -95,14 +97,16 @@ function build(row, now) {
 const look = (row, now) => JSON.stringify([row.name, row.detail, row.state, row.kind, row.tally, row.inviteId, row.challengeId, row.friendId,
   lineParts(row.line, now).map((part) => (typeof part === 'string' ? part : [part.wpm, part.bare]))]);
 
-// Focus stays on the same action. When that action has gone (a Dismiss, or a row that left), it moves to the main
-// action of the same person's row if it stays, else of the row now in its place, else of the last row, else to
-// `fallback`; never onto a Dismiss, so a repeated press can't take a second invitation.
+// Focus stays on the same action. When that action has gone (a Dismiss, or a row that left or changed what it offers),
+// focus moves to a row, not to an action in it: the same person's row if it stays, else the row now in its place,
+// else the last row, else `fallback`, which is never an action either. Enter and Space press nothing on a row, so a
+// second press of the key that pressed Dismiss (a double tap, or a held key) can't join the next race, race a ghost
+// or send an invitation. Tab from the row reaches its action.
 export function drawPeople(list, rows, { now = Date.now(), fallback = null, decorate = () => {} } = {}) {
   const focused = list.contains(document.activeElement) ? document.activeElement : null;
   const focusedRow = focused?.closest('.people-row');
   const rowAt = focusedRow ? [...list.children].indexOf(focusedRow) : -1;
-  const focusId = focused && `${focused.dataset.peopleKey}|${focused.dataset.peopleAction}`;
+  const focusId = focused?.matches('button') ? `${focused.dataset.peopleKey}|${focused.dataset.peopleAction}` : null;
   const focusVisible = focused?.matches(':focus-visible');
   const kept = new Map([...list.children].map((item) => [item.dataset.key, item]));
 
@@ -128,8 +132,7 @@ export function drawPeople(list, rows, { now = Date.now(), fallback = null, deco
   for (const button of list.querySelectorAll('button')) decorate(button);
 
   if (!focused || list.contains(document.activeElement)) return;
-  const same = [...list.querySelectorAll('button')].find((button) => `${button.dataset.peopleKey}|${button.dataset.peopleAction}` === focusId);
+  const same = focusId && [...list.querySelectorAll('button')].find((button) => `${button.dataset.peopleKey}|${button.dataset.peopleAction}` === focusId);
   const person = items.find((item) => item.dataset.key === focusedRow?.dataset.key);
-  const near = person || items[Math.min(rowAt, items.length - 1)];
-  (same || near?.querySelector('.people-action') || fallback)?.focus({ preventScroll: true, focusVisible });
+  (same || person || items[Math.min(rowAt, items.length - 1)] || fallback)?.focus({ preventScroll: true, focusVisible });
 }
