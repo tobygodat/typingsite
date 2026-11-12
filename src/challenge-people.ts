@@ -1,3 +1,21 @@
+import { isRecord } from './domain-values.js';
+
+interface Friend { id: string; name: string; account: boolean; email: string }
+
+interface Invite { id: string; hostName: string; createdAt: string; expiresAt: string; rematch?: unknown }
+
+interface GhostScore { wpm: number; elapsedMs: number; correct: number }
+
+type GhostChallenge = { id: string; name: string; role: 'sent' | 'received'; sender: GhostScore; createdAt?: unknown; expiresAt: string; status: 'open' } | { id: string; name: string; role: 'sent' | 'received'; sender: GhostScore; result: GhostScore; status: 'done'; completedAt: string };
+
+export type PersonFact = { kind: 'invited'; at: number; until: number; rematch: boolean } | { kind: 'ghost'; at: number; until: number; wpm: number } | { kind: 'ghost-sent'; at: number; until: number } | { kind: 'ghost-result'; at: number; outcome: string; mine: number; theirs: number };
+
+export type PersonLine = PersonFact | { kind: 'email'; email: string };
+
+interface Person { key: string; name: string; friendId: string | null; email: string; invites: { id: string; fact: Extract<PersonFact, { kind: 'invited' }> }[]; ghosts: { id: string; fact: PersonFact }[]; facts: PersonFact[]; tally: { mine: number; theirs: number } | null }
+
+export interface PersonRow { key: string; name: string; detail: string | null; email?: string; state: 'invited' | 'ghost' | 'friend'; friendId: string | null; inviteId: string | null; challengeId: string | null; line: PersonLine | null; tally: { mine: number; theirs: number } | null; until: number | null; latest: number | null }
+
 // Challenge's list of people: one row per person you race, built only from what the race service lists for
 // this account (friends, open invitations, ghost challenges, and the links that tie those to a friend row) and
 // the invitations dismissed on this device. The page draws exactly what peopleRows returns, so the list is a
@@ -13,57 +31,74 @@ const DAY = 24 * HOUR;
 // minutes, a ghost in days, and racing a friend never lapses.
 export const ROW_STATES = Object.freeze(['invited', 'ghost', 'friend']);
 
-const stamp = (value) => (typeof value === 'string' ? Date.parse(value) : NaN);
-const dated = (value) => Number.isFinite(stamp(value));
-const text = (value) => (typeof value === 'string' && value.trim() ? value.trim() : '');
+const stamp = (value: unknown) => (typeof value === 'string' ? Date.parse(value) : NaN);
+const dated = (value: unknown) => Number.isFinite(stamp(value));
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : '');
 
 // The service's records, as this module trusts them; anything malformed is left out rather than guessed at.
-function parseFriends(list) {
-  return (Array.isArray(list) ? list : []).filter((friend) => text(friend?.id) && text(friend?.name))
+function parseFriends(list: unknown): Friend[] {
+  return (Array.isArray(list) ? list : []).filter(isFriend)
     .map((friend) => ({ id: friend.id, name: text(friend.name), account: Boolean(friend.account), email: text(friend.email) }));
 }
 
-function parseInvites(list, dismissed, now) {
-  return (Array.isArray(list) ? list : []).filter((invite) => text(invite?.id) && text(invite?.hostName)
-    && dated(invite.createdAt) && dated(invite.expiresAt) && stamp(invite.expiresAt) > now && !dismissed.has(invite.id));
+function isFriend(value: unknown): value is { id: string; name: string; account?: unknown; email?: unknown } {
+  return isRecord(value) && typeof value.id === 'string' && Boolean(text(value.id)) && typeof value.name === 'string' && Boolean(text(value.name));
+}
+
+function isInvite(value: unknown): value is Invite {
+  return isRecord(value) && typeof value.id === 'string' && Boolean(text(value.id)) && typeof value.hostName === 'string' && Boolean(text(value.hostName))
+    && typeof value.createdAt === 'string' && dated(value.createdAt) && typeof value.expiresAt === 'string' && dated(value.expiresAt);
+}
+
+function parseInvites(list: unknown, dismissed: Set<string>, now: number): Invite[] {
+  return (Array.isArray(list) ? list : []).filter(isInvite).filter((invite) => stamp(invite.expiresAt) > now && !dismissed.has(invite.id));
 }
 
 const SCORE_KEYS = ['wpm', 'elapsedMs', 'correct'];
-const score = (value) => Boolean(value) && SCORE_KEYS.every((key) => Number.isFinite(value[key]) && value[key] >= 0);
+const score = (value: unknown): value is GhostScore => isRecord(value) && SCORE_KEYS.every((key) => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0);
 
 // An open ghost is one still to be raced; a done one carries both scores. An expired ghost is not something that
 // happened between two people, so it is left out.
-function parseChallenges(list, now) {
-  return (Array.isArray(list) ? list : []).filter((challenge) => text(challenge?.id) && text(challenge?.name)
-    && ['sent', 'received'].includes(challenge.role) && score(challenge.sender))
-    .filter((challenge) => (challenge.status === 'open' && dated(challenge.expiresAt) && stamp(challenge.expiresAt) > now)
-      || (challenge.status === 'done' && score(challenge.result) && dated(challenge.completedAt)));
+function isChallenge(value: unknown): value is GhostChallenge {
+  return isRecord(value) && typeof value.id === 'string' && Boolean(text(value.id)) && typeof value.name === 'string' && Boolean(text(value.name))
+    && (value.role === 'sent' || value.role === 'received') && score(value.sender)
+    && ((value.status === 'open' && typeof value.expiresAt === 'string' && dated(value.expiresAt))
+      || (value.status === 'done' && score(value.result) && typeof value.completedAt === 'string' && dated(value.completedAt)));
 }
 
-function parseLinks(links) {
-  const of = (list) => (Array.isArray(list) ? list : []).filter((link) => text(link?.id));
-  const tallies = new Map();
+function parseChallenges(list: unknown, now: number) {
+  return (Array.isArray(list) ? list : []).filter(isChallenge).filter((challenge) => challenge.status === 'done' || stamp(challenge.expiresAt) > now);
+}
 
-  for (const link of of(links?.friends)) {
+function isLink(value: unknown): value is { id: string; friendId?: unknown; tally?: unknown } {
+  return isRecord(value) && typeof value.id === 'string' && Boolean(text(value.id));
+}
+
+function parseLinks(links: unknown) {
+  const source = isRecord(links) ? links : {};
+  const of = (list: unknown) => (Array.isArray(list) ? list : []).filter(isLink);
+  const tallies = new Map<string, { mine: number; theirs: number }>();
+
+  for (const link of of(source.friends)) {
     const tally = link.tally;
 
     // A tally is shown once either side has a win: after only ties it would read 0–0 beside results that aren't it.
-    if (Array.isArray(tally) && tally.length === 2 && tally.every((value) => Number.isSafeInteger(value) && value >= 0) && tally[0] + tally[1] > 0) {
+    if (Array.isArray(tally) && tally.length === 2 && tally.every((value) => Number.isSafeInteger(value) && value >= 0) && typeof tally[0] === 'number' && typeof tally[1] === 'number' && tally[0] + tally[1] > 0) {
       tallies.set(link.id, { mine: tally[0], theirs: tally[1] });
     }
   }
 
-  const friendOf = (list) => new Map(of(list).filter((link) => text(link.friendId)).map((link) => [link.id, link.friendId]));
+  const friendOf = (list: unknown) => new Map(of(list).flatMap((link) => typeof link.friendId === 'string' && text(link.friendId) ? [[link.id, link.friendId]] : []));
 
-  return { tallies, invites: friendOf(links?.invites), challenges: friendOf(links?.challenges) };
+  return { tallies, invites: friendOf(source.invites), challenges: friendOf(source.challenges) };
 }
 
 // The facts a record states, each with the time it happened (`at`) where it has one.
-function inviteFact(invite) {
+function inviteFact(invite: Invite): Extract<PersonFact, { kind: 'invited' }> {
   return { kind: 'invited', at: stamp(invite.createdAt), until: stamp(invite.expiresAt), rematch: Boolean(invite.rematch) };
 }
 
-function ghostFact(challenge) {
+function ghostFact(challenge: GhostChallenge): PersonFact {
   if (challenge.status === 'open') {
     return challenge.role === 'received'
       ? { kind: 'ghost', at: stamp(challenge.createdAt), until: stamp(challenge.expiresAt), wpm: challenge.sender.wpm }
@@ -78,25 +113,25 @@ function ghostFact(challenge) {
   return { kind: 'ghost-result', at: stamp(challenge.completedAt), outcome, mine: mineWpm, theirs: theirsWpm };
 }
 
-const newest = (facts) => facts.filter((fact) => Number.isFinite(fact.at)).sort((a, b) => b.at - a.at)[0] || null;
+const newest = (facts: PersonFact[]) => facts.filter((fact) => Number.isFinite(fact.at)).sort((a, b) => b.at - a.at)[0] || null;
 
 // The list. A person is a friend row when a record links to one; a record no link ties to a friend row is a
 // person of its own, since nothing says who else it could be. A received ghost or an invitation with no friend
 // row gets its own row; a sent ghost or a finished one with no friend row is history, kept in the inbox.
-export function peopleRows({ friends = [], invites = [], challenges = [], links = null, dismissed = new Set(), now = Date.now() } = {}) {
+export function peopleRows({ friends = [], invites = [], challenges = [], links = null, dismissed = new Set(), now = Date.now() }: { friends?: unknown; invites?: unknown; challenges?: unknown; links?: unknown; dismissed?: Set<string>; now?: number } = {}) {
   const linked = parseLinks(links);
-  const people = new Map();
+  const people = new Map<string, Person>();
 
   for (const friend of parseFriends(friends)) {
     people.set(`friend:${friend.id}`, { key: `friend:${friend.id}`, name: friend.name, friendId: friend.id, email: friend.email,
       invites: [], ghosts: [], facts: [], tally: linked.tallies.get(friend.id) || null });
   }
 
-  const personFor = (friendId, key, name) => {
+  const personFor = (friendId: string | undefined, key: string, name: string) => {
     const friend = friendId && people.get(`friend:${friendId}`);
 
     if (friend) return friend;
-    const person = { key, name, friendId: null, email: '', invites: [], ghosts: [], facts: [], tally: null };
+    const person: Person = { key, name, friendId: null, email: '', invites: [], ghosts: [], facts: [], tally: null };
     people.set(key, person);
 
     return person;
@@ -126,12 +161,12 @@ export function peopleRows({ friends = [], invites = [], challenges = [], links 
   // Two people with one name are told apart by the email typed for them, the one thing recorded that can. A friend
   // saved from a race has none: two of those differ only by what their rows already show (the newest thing between
   // you, the tally), and with neither they stay alike. The friend list carries no date, and race_people only the tally.
-  const named = new Map();
+  const named = new Map<string, number>();
 
   for (const row of rows) named.set(sameName(row.name), (named.get(sameName(row.name)) || 0) + 1);
 
   for (const row of rows) {
-    if (named.get(sameName(row.name)) > 1 && row.email) {
+    if ((named.get(sameName(row.name)) ?? 0) > 1 && row.email) {
       row.detail = row.email;
 
       if (row.line?.kind === 'email') row.line = null;
@@ -143,9 +178,9 @@ export function peopleRows({ friends = [], invites = [], challenges = [], links 
   return rows.sort(compareRows);
 }
 
-const bySoonest = (a, b) => a.fact.until - b.fact.until || a.fact.at - b.fact.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+const bySoonest = (a: { id: string; fact: PersonFact }, b: { id: string; fact: PersonFact }) => ('until' in a.fact ? a.fact.until : NaN) - ('until' in b.fact ? b.fact.until : NaN) || a.fact.at - b.fact.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-function rowOf(person) {
+function rowOf(person: Person): PersonRow {
   const invite = [...person.invites].sort(bySoonest)[0];
   const ghost = [...person.ghosts].sort(bySoonest)[0];
   const state = invite ? 'invited' : ghost ? 'ghost' : 'friend';
@@ -165,27 +200,27 @@ function rowOf(person) {
     line,
     tally: person.friendId ? person.tally : null,
     // How the list orders this row: what waits for you lapses at `until`; everything else by its newest fact.
-    until: invite?.fact.until ?? ghost?.fact.until ?? null,
+    until: invite?.fact.until ?? (ghost && 'until' in ghost.fact ? ghost.fact.until : null) ?? null,
     latest: newest(person.facts)?.at ?? null,
   };
 }
 
-const sameName = (name) => name.toLocaleLowerCase();
+const sameName = (name: string) => name.toLocaleLowerCase();
 
 const RANK = { invited: 0, ghost: 1, friend: 2 };
 
 // The order, in one place: invitations, soonest to lapse first; then waiting ghosts, soonest to lapse first; then
 // everyone else, the most recent thing between you first, and those with nothing dated by name.
-export function compareRows(a, b) {
+export function compareRows(a: PersonRow, b: PersonRow) {
   return RANK[a.state] - RANK[b.state]
-    || (a.state === 'friend' ? 0 : a.until - b.until)
+    || (a.state === 'friend' ? 0 : (a.until ?? 0) - (b.until ?? 0))
     || (b.latest ?? -Infinity) - (a.latest ?? -Infinity)
     || (a.latest === null && b.latest === null ? a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) : 0)
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
 // "6 days left", "3 h left", "12 min left": how long until a waiting thing lapses, rounded up.
-export function timeLeft(until, now = Date.now()) {
+export function timeLeft(until: number, now = Date.now()) {
   const ms = Math.max(0, until - now);
 
   if (ms >= DAY) {
@@ -200,7 +235,7 @@ export function timeLeft(until, now = Date.now()) {
 }
 
 // A row's quiet line as parts: text, and speeds as { wpm, bare } for the page to show in the chosen unit.
-export function lineParts(line, now = Date.now()) {
+export function lineParts(line: PersonLine | null, now = Date.now()) {
   if (!line) return [];
 
   switch (line.kind) {
@@ -214,6 +249,6 @@ export function lineParts(line, now = Date.now()) {
 }
 
 // The tally as a screen reader hears it: "3 wins, 4 losses".
-export function tallyLabel({ mine, theirs }) {
+export function tallyLabel({ mine, theirs }: { mine: number; theirs: number }) {
   return `${mine} ${mine === 1 ? 'win' : 'wins'}, ${theirs} ${theirs === 1 ? 'loss' : 'losses'}`;
 }
