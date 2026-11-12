@@ -189,7 +189,7 @@ test('local challenge uses restart while setup fields preserve normal keyboard i
   await editBindings(page, { restart: 'F2' });
   await saveBindings(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Toby');
   await page.keyboard.press('F2');
   await expect(page.locator('#player-one-name')).toHaveValue('Toby');

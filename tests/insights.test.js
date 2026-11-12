@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
@@ -218,6 +218,15 @@ test('trends never mix correction rules, word lists, drills, interruptions, or d
   assert.deepEqual(filterRuns(runs.filter(trendRun), conditionKey(conditions)).map((r) => r.id), ['a']);
 });
 
+test('a code run is a trend run but never sets a best', () => {
+  const code = run('code', { conditions: { ...conditions, mode: 'code' } });
+  const words = run('words', { conditions: { ...conditions, mode: 'words' } });
+  assert.equal(trendRun(code), true);
+  assert.equal(bestRun(code), false);
+  assert.equal(trendRun(words), true);
+  assert.equal(bestRun(words), true);
+});
+
 test('weekly medians require evidence in both weeks, and do not invent dates for old runs', () => {
   const date = new Date('2026-09-30T12:00:00Z');
   const recent = run('now', { score: { wpm: 70, accuracy: 97 } });
@@ -267,6 +276,22 @@ test('correction times stay only on the runs that keep their pattern counts, the
   assert.deepEqual(kept.filter((r) => 'corrections' in r).map((r) => r.id), kept.filter((r) => r.patterns.length).map((r) => r.id));
   assert.deepEqual(kept.at(-1).corrections, [3, 410]);
   assert.deepEqual(learnerEvidence(kept, keyboardOf(conditions)).map((r) => r.id), kept.slice(-120).map((r) => r.id));
+});
+
+test('a drill between tests takes no place in the pattern window', () => {
+  // A real drill record carries no counts: its synthetic text is never evidence.
+  const alternating = (length) => Array.from({ length }, (_, i) => (i % 2 ? run(`d${i}`, { kind: 'drill', patterns: [], keys: [] }) : run(`t${i}`)));
+  const runs = alternating(200);
+  const kept = retainRuns(runs);
+  assert.equal(kept.filter((r) => r.kind === 'test' && r.patterns.length === 1).length, 100);
+  assert.deepEqual(kept.filter((r) => r.kind === 'drill'), runs.filter((r) => r.kind === 'drill'));
+
+  // The bound still holds: of 150 tests, the newest 120 keep their counts.
+  const longer = retainRuns(alternating(300));
+  const tests = longer.filter((r) => r.kind === 'test');
+  assert.equal(tests.length, 150);
+  assert.deepEqual(tests.filter((r) => r.patterns.length === 1).map((r) => r.id), tests.slice(-120).map((r) => r.id));
+  assert.deepEqual(retainRuns(kept), kept);
 });
 
 test('daily passage is stable within a UTC day, changes at midnight, and states its reset', () => {
@@ -606,7 +631,7 @@ test('ghost races keep no trace or patterns and never displace practice evidence
   assert.equal(kept.some((r) => r.kind === 'challenge' && 'patterns' in r), false);
 });
 
-test('a profile with only comparable runs is retained exactly as before', () => {
+test('a profile whose comparable runs all carry counts is retained exactly as before', () => {
   // The retention rule as it stood before custom text existed (per-key counts age out with patterns).
   const previous = (runs) => {
     const kept = runs.slice(-1000);
@@ -616,11 +641,26 @@ test('a profile with only comparable runs is retained exactly as before', () => 
 
   const kinds = ['test', 'retest', 'drill', 'daily'];
   const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
-  legacy[1050] = { ...legacy[1050], patterns: undefined };
-  legacy[500] = { ...legacy[500], patterns: undefined };
   assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(previous(legacy)));
   const short = legacy.slice(0, 40);
   assert.equal(JSON.stringify(retainRuns(short)), JSON.stringify(previous(short)));
+});
+
+test('a run that carries no counts takes no place and is left as stored', () => {
+  const carries = (r) => Boolean(r.patterns?.length || r.keys?.length || 'corrections' in r);
+
+  const expected = (runs) => {
+    const kept = runs.slice(-1000);
+    const inWindow = new Set(kept.filter(carries).slice(-120));
+
+    return kept.map((r) => (carries(r) && !inWindow.has(r) ? { ...r, patterns: [], keys: [] } : r));
+  };
+
+  const kinds = ['test', 'retest', 'drill', 'daily'];
+  const legacy = Array.from({ length: 1100 }, (_, i) => run(String(i), { kind: kinds[i % kinds.length] }));
+  legacy[1050] = { ...legacy[1050], patterns: undefined };
+  legacy[500] = { ...legacy[500], patterns: undefined };
+  assert.equal(JSON.stringify(retainRuns(legacy)), JSON.stringify(expected(legacy)));
 });
 
 // A timed run as app.js stores it: one insert per letter, and every 20th letter (5%) mistyped, deleted and retyped,

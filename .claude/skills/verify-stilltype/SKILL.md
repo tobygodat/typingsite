@@ -97,7 +97,9 @@ $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # 
 $V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every typing font: caret, tape, pace caret measured
 $V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs     # background image: settings without/with one, each style idle, dimmed mid-run
 $V drive .claude/skills/verify-stilltype/flows/online-rematch.mjs --full-page   # two accounts race: results, graph, replay, each Rematch state
-$V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs   # Challenge page: Challenge and Customize, closed and open
+$V drive .claude/skills/verify-stilltype/flows/challenge-people.mjs   # Challenge's people list: every row state, forced colours, an invitation arriving, Race setup, Race into the room
+$V drive .claude/skills/verify-stilltype/flows/challenge-people-states.mjs   # guest, empty list, quick match searching, Add a friend, daily and One keyboard and Back, a guest joining by link
+$V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs   # Race setup: the practice setup, then changed with Match practice offered
 $V drive .claude/skills/verify-stilltype/flows/quick-match.mjs   # two strangers matched and raced: the rated win and loss, Add to friends
 $V drive .claude/skills/verify-stilltype/flows/quick-match-abandon.mjs   # one racer closes the page: the other's rated win, the leaver's loss on return
 $V drive .claude/skills/verify-stilltype/flows/quick-match-unchecked.mjs   # both runs fail the trace check: unrated, and why
@@ -129,9 +131,10 @@ for finite animations, at most 2 s) and `text(selector)`. Keep a flow worth repe
 
 Stable handles: the dock is `getByRole('navigation', { name: 'Main navigation' })` with buttons Practice,
 Train, Progress, Challenge, Commands (below 360px the names are "type practice", "train", "track progress",
-"race challenge"; the default substring match on the full word finds them at every width); the challenge
-tabs are `.challenge-modes` with `#challenge-online`, `#challenge-daily`, `#challenge-friends`,
-`#challenge-local` (`aria-pressed`); key hints carry `.key-hint` and hide under `--mobile`; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
+"race challenge"; the default substring match on the full word finds them at every width); Challenge is
+`#challenge-people` (quick match `#quick-match`, rows `#people-list .people-row[data-state]`, foot links `#people-add`,
+`#people-race-link`, `#people-setup`, `#open-daily`, `#open-local`) and its views `#people-add-view`,
+`#people-setup-view`, `#challenge-daily-view`, `#challenge-local-view` (`[data-challenge-back]` returns); key hints carry `.key-hint` and hide under `--mobile`; the practice rail is `.practice-rail` with `#mode-time`, `#mode-words`,
 `#mode-quote`, `#mode-more` / `#mode-more-label`, `#duration-options [data-length="N"]`, the book mode's
 `#book-options` (its dropdown is the combobox named "book", the page number `#book-page`) and
 `#punctuation-switch`; the passage is `#accessible-passage` and input `#typing-input`; the view is

@@ -1,6 +1,6 @@
 import { createAttempt, replayAttempt } from './typing.js';
 import { LENGTHS } from './lengths.js';
-import { raceConditions, raceOptions, racePassage } from './race-options.js';
+import { raceConditions, raceOptions, racePassage, raceSetupText } from './race-options.js';
 import { createTypingFx } from './motion.js';
 import { encodeTrace, standIn, validTrace } from './ghost-race.js';
 import * as multiplayer from './multiplayer.js';
@@ -11,6 +11,8 @@ import { createRaceReview } from './race-review.js';
 import { cardOutcome, ratingResult } from './quick-match.js';
 import { createRankCard } from './rank-card.js';
 import { createQuickMatch } from './quick-match-view.js';
+import { peopleRows } from './challenge-people.js';
+import { drawPeople } from './challenge-people-view.js';
 
 const $ = (id) => document.getElementById(id);
 const stamp = (value) => typeof value === 'number' ? value : Date.parse(value);
@@ -27,6 +29,22 @@ const TRACE_RETRY_MS = 2000;
 const terminal = (room) => ['finished', 'cancelled', 'expired'].includes(room?.status);
 const PENDING_INVITE = 'stilltype-race-invite-tab-v1';
 
+// The race setup chosen in Race setup holds for this tab, a reload included; a new tab starts from practice.
+const RACE_SETUP = 'stilltype-race-setup-tab-v1';
+
+// Invitations dismissed from the people list on this device, per account. The service has no decline, so a dismissed
+// invitation only leaves this list; it still lapses on its own, and the inbox keeps its entry.
+const DISMISSED = 'stilltype-dismissed-invites-v1:';
+
+// Tabs of this browser tell each other when a friend list changed, so every open Challenge redraws without a reload.
+const PEOPLE_CHANNEL = 'stilltype-people';
+
+// The views of the Challenge screen besides a race: the people list and what its foot links open.
+const VIEWS = ['people', 'add', 'setup', 'daily', 'local'];
+const VIEW_IDS = { people: 'challenge-people', add: 'people-add-view', setup: 'people-setup-view', daily: 'challenge-daily-view', local: 'challenge-local-view' };
+const VIEW_FOCUS = { add: 'people-add-heading', setup: 'people-setup-heading', daily: 'daily-heading', local: 'local-heading' };
+const OPENERS = { add: 'people-add', setup: 'people-setup', daily: 'open-daily', local: 'open-local' };
+
 function pendingInvite() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(PENDING_INVITE));
@@ -42,7 +60,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest }) {
+export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -62,24 +80,50 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let changingFriends = false;
   let networkBusy = false;
   let dirty = false;
+  // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
+  let refused = false;
   let finishRequested = false;
   let baseKeystrokes = 0;
   let baseErrors = 0;
   let baseTyped = '';
   let lastClock = '';
   let lastAnnouncement = '';
-  let mode = 'online';
+  let view = 'people';
   let friends = [];
   let friendsLoaded = false;
+  // What the people list is drawn from: the inbox's invitations and ghost challenges, the service's links between them
+  // and friend rows (null before its migration), and the invitations dismissed here.
+  let invites = [];
+  let challenges = [];
+  let links = null;
+  let linkedIds = '';
+  let linksBusy = false;
+  let linksAgain = false;
+  // Set once the service says it has no race_people: it isn't asked again until the page loads again.
+  let linksMissing = false;
+  let dismissed = new Set();
+  // Why the list can't be complete: the friend list's last read, and the invitations' last poll.
+  let friendsFailure = null;
+  let invitesFailure = null;
+  const channel = typeof BroadcastChannel === 'function' ? new BroadcastChannel(PEOPLE_CHANNEL) : null;
   // The rematch room this tab is moving to, and the room whose traces it has read.
   let following = null;
   let tracesRead = null;
   const review = createRaceReview({ renderText });
-  // The empty list's copy from index.html; a failed first read shows its error there until a read succeeds.
-  const noFriends = $('online-friends-empty').textContent;
 
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
-  const friendRequests = multiplayer.queueFriendRequests((list) => { friends = list; friendsLoaded = true; renderFriends(); },
+  // A friend list that changed (here, from another tab, or on the service) is read against the links again, so an
+  // invitation or ghost from someone just saved joins their row, with the pair's tally.
+  const friendRequests = multiplayer.queueFriendRequests((list) => {
+    const changed = JSON.stringify(list.map((friend) => friend.id).sort()) !== JSON.stringify(friends.map((friend) => friend.id).sort());
+    friends = list;
+    friendsLoaded = true;
+    friendsFailure = null;
+    renderFriends();
+    renderPeople();
+
+    if (changed) refreshLinks();
+  },
     { load: (signal) => multiplayer.listFriends(getSession(), signal) });
 
   let befriended = false;
@@ -132,75 +176,148 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     announce(message);
   }
 
-  function setMode(value) {
-    mode = value;
-    $('online-challenge').hidden = value !== 'online';
-    $('local-challenge').hidden = value !== 'local';
-    $('daily-challenge').hidden = value !== 'daily';
-    $('friends-board').hidden = value !== 'friends';
-    $('challenge-online').setAttribute('aria-pressed', String(value === 'online'));
-    $('challenge-local').setAttribute('aria-pressed', String(value === 'local'));
-    $('challenge-daily').setAttribute('aria-pressed', String(value === 'daily'));
-    $('challenge-friends').setAttribute('aria-pressed', String(value === 'friends'));
+  // A race (waiting, racing or its results) or a guest's invitation takes the people view's place. The other views
+  // open from the people list's foot and come back to it; none opens while a race is under way.
+  const live = () => Boolean(room && !terminal(room));
+
+  function show(next, { focus = false } = {}) {
+    if (!VIEWS.includes(next) || (next !== 'people' && live())) return;
+    const from = view;
+    view = next;
     setRunning(false);
+    renderHome();
 
-    if (value === 'online') { fx.relayout(); refreshInvites(); quick.refresh(); }
+    if (view === 'people') { fx.relayout(); refreshInvites(); quick.refresh(); refreshLinks(); }
 
+    if (view === 'setup') renderCustomize();
     onModeChange?.();
 
-    if (value === 'friends') board?.show(); else board?.hide();
+    if (view === 'daily') board?.show(); else board?.hide();
+
+    if (!focus) return;
+
+    if (VIEW_FOCUS[view]) $(VIEW_FOCUS[view]).focus();
+    else if (OPENERS[from] && !$(OPENERS[from]).hidden) $(OPENERS[from]).focus();
+    else $('compete-heading').focus();
   }
 
   function renderHome() {
     const signedIn = Boolean(getSession());
-    $('online-host').hidden = Boolean(room || joinLink);
-    $('online-guest-join').hidden = !joinLink || Boolean(room);
+    const joining = Boolean(joinLink) && !room;
+
+    if (!signedIn && ['add', 'setup'].includes(view)) view = 'people';
+
+    for (const [name, id] of Object.entries(VIEW_IDS)) $(id).hidden = view !== name || (name === 'people' && Boolean(room || joining));
+    $('online-challenge').hidden = view !== 'people' || !(room || joining);
+    $('online-guest-join').hidden = !joining;
     $('online-room').hidden = !room;
     quick.render();
-    $('online-account-required').hidden = signedIn;
-    $('online-setup').hidden = !signedIn;
-    $('online-inbox').hidden = !signedIn;
-    $('online-friends').hidden = !signedIn;
+
+    for (const node of $('challenge-people').querySelectorAll('[data-signed-in]')) node.hidden = !signedIn;
+
+    for (const node of $('challenge-people').querySelectorAll('[data-guest]')) node.hidden = signedIn;
 
     if (!$('online-name').value) $('online-name').value = getSession()?.user.email.split('@')[0].slice(0, 24) || '';
 
     if (!$('online-guest-name').value) $('online-guest-name').value = $('online-name').value;
+    renderPeople();
   }
 
-  // The inbox polls invitations for every view; this screen lists the same ones.
-  function renderInvites(invitations, failure) {
-    if (failure) {
-      $('online-invites-empty').hidden = false;
-      $('online-invites-empty').textContent = failure.message;
+  // The people list, drawn from the records as they stand now. A guest has no list.
+  function renderPeople() {
+    const signedIn = Boolean(getSession());
+    renderSetupLink();
+    const rows = signedIn ? peopleRows({ friends, invites, challenges, links, dismissed, now: Date.now() }) : [];
+
+    // With nobody to list yet, the list offers the race anyone can join, and the foot leaves it out.
+    if (signedIn && !rows.length && friendsLoaded) rows.push({ key: 'link', kind: 'link', state: 'link', name: 'A friend', line: null, tally: null });
+    $('people-race-link').hidden = !signedIn || rows.some((row) => row.kind === 'link');
+    $('people-list').hidden = !rows.length;
+    drawPeople($('people-list'), rows, { fallback: $('quick-match').querySelector('[data-quick="toggle"]'),
+      decorate: (button) => { if (button.matches(RACE_CONTROLS)) markBusy(button); } });
+    const message = signedIn ? (friendsFailure || invitesFailure)?.message || '' : '';
+
+    if ($('people-status').textContent !== message) $('people-status').textContent = message;
+  }
+
+  // The inbox polls invitations and ghost challenges for every view; the people list reads the same lists.
+  function onInbox(invitations, failure, listed) {
+    invites = invitations;
+    challenges = Array.isArray(listed) ? listed : challenges;
+    invitesFailure = failure;
+    pruneDismissed();
+    renderPeople();
+    const ids = [...invites.map((invite) => invite.id), ...challenges.map((challenge) => challenge.id)].sort().join();
+
+    if (ids !== linkedIds) refreshLinks();
+  }
+
+  // The service's links, read again when the records they tie together change. One read at a time; a change while
+  // one is out reads once more after it.
+  async function refreshLinks() {
+    const session = getSession();
+
+    if (!session || linksMissing || document.body.dataset.view !== 'compete') return;
+
+    if (linksBusy) {
+      linksAgain = true;
 
       return;
     }
 
-    $('online-invites-empty').textContent = 'No invitations yet.';
-    $('online-invites-empty').hidden = invitations.length > 0;
-    redrawList($('online-invites'), invitations.map((invite) => {
-      const row = document.createElement('div');
-      row.className = 'online-invite-row';
-      const copy = document.createElement('p');
-      copy.textContent = invite.rematch ? `${invite.hostName} wants a rematch.` : `${invite.hostName} invited you to race.`;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn-secondary btn-sm';
-      button.dataset.acceptInvite = invite.id;
-      button.textContent = 'Join race';
-      markBusy(button);
-      button.addEventListener('click', () => joinInvite(invite.id));
-      row.append(copy, button);
+    linksBusy = true;
+    const ids = [...invites.map((invite) => invite.id), ...challenges.map((challenge) => challenge.id)].sort().join();
 
-      return row;
-    }));
+    try {
+      const read = await multiplayer.listPeopleLinks(session);
+
+      linksMissing = read === null;
+
+      if (getSession() === session) { links = read; linkedIds = ids; renderPeople(); }
+    } catch {} finally {
+      linksBusy = false;
+
+      if (linksAgain) { linksAgain = false; refreshLinks(); }
+    }
+  }
+
+  const dismissedKey = () => `${DISMISSED}${getSession()?.user.id}`;
+
+  function loadDismissed() {
+    dismissed = new Set();
+
+    if (!getSession()) return;
+
+    try {
+      const saved = JSON.parse(localStorage.getItem(dismissedKey()));
+
+      if (Array.isArray(saved)) dismissed = new Set(saved.filter((id) => typeof id === 'string'));
+    } catch {}
+  }
+
+  function saveDismissed() {
+    try { localStorage.setItem(dismissedKey(), JSON.stringify([...dismissed])); } catch {}
+  }
+
+  // Only invitations the service still lists need remembering.
+  function pruneDismissed() {
+    const listed = new Set(invites.map((invite) => invite.id));
+
+    if ([...dismissed].every((id) => listed.has(id))) return;
+    dismissed = new Set([...dismissed].filter((id) => listed.has(id)));
+    saveDismissed();
+  }
+
+  function dismissInvite(roomId) {
+    dismissed.add(roomId);
+    saveDismissed();
+    inbox.settle(`invite:${roomId}`);
+    renderPeople();
   }
 
   async function refreshInvites() {
     if (!getSession()) return;
-    $('refresh-race-invites').disabled = true;
-
-    try { await inbox.refresh(); } finally { $('refresh-race-invites').disabled = false; }
+    await inbox.refresh();
   }
 
   function racerName() {
@@ -212,7 +329,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   function joinInvite(roomId) {
     if (busy) return;
     navigate('compete');
-    setMode('online');
+    show('people');
 
     if (room && !terminal(room)) {
       if (room.id !== roomId) error('Leave your current race before joining another.');
@@ -236,7 +353,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   function pickRematch(from, conditions, want = true) {
     if (busy) return;
     navigate('compete');
-    setMode('online');
+    show('people');
 
     if (room && !terminal(room)) {
       error('Leave your current race before starting another.');
@@ -269,10 +386,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       });
   }
 
-  function renderFriends(failure = null) {
-    $('online-friends-empty').hidden = friends.length > 0 && !failure;
-    $('online-friends-empty').textContent = failure ? failure.message : noFriends;
-    // A friend whose row goes (just removed) hands keyboard focus to the name field.
+  // Add a friend's list: each friend with Remove. A friend whose row goes (just removed) hands keyboard focus to
+  // the email field.
+  function renderFriends() {
     redrawList($('online-friend-list'), friends.map((friend) => {
       const row = document.createElement('li');
       row.className = 'online-friend-row';
@@ -280,26 +396,14 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       name.className = 'online-friend-name';
       const strong = document.createElement('strong');
       strong.textContent = friend.name;
-      const detail = document.createElement('span');
-      detail.textContent = friend.email || 'raced before';
-      name.append(strong, detail);
-      const actions = document.createElement('div');
-      actions.className = 'online-actions';
-      const race = document.createElement('button');
-      race.type = 'button';
-      race.className = 'btn btn-secondary btn-sm';
-      race.dataset.raceFriend = friend.id;
-      race.textContent = 'Challenge';
-      race.setAttribute('aria-label', `Challenge ${friend.name}`);
-      markBusy(race);
-      race.addEventListener('click', () => perform(async () => {
-        const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: racerName(), friendId: friend.id });
-        enterRoom(result);
-        $('online-account-invite-status').hidden = false;
-        $('online-account-invite-status').textContent = friend.email
-          ? `If ${friend.email} has an account, the challenge is waiting in their inbox.`
-          : `The challenge is waiting in ${friend.name}’s inbox.`;
-      }));
+      name.append(strong);
+
+      if (friend.email) {
+        const detail = document.createElement('span');
+        detail.textContent = friend.email;
+        name.append(detail);
+      }
+
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'btn btn-ghost btn-sm';
@@ -308,23 +412,77 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       remove.setAttribute('aria-label', `Remove ${friend.name} from friends`);
       markBusy(remove);
       remove.addEventListener('click', () => changeFriends((signal) => multiplayer.removeFriend(getSession(), friend.id, signal)));
-      actions.append(race, remove);
-      row.append(name, actions);
+      row.append(name, remove);
 
       return row;
-    }), $('online-name'));
+    }), $('online-invite-email'));
+  }
+
+  // One press on a friend's Race invites them to a race on the race setup.
+  function raceFriend(friendId) {
+    const friend = friends.find((value) => value.id === friendId);
+
+    if (!friend) return;
+    perform(async () => {
+      const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: racerName(), friendId: friend.id });
+      enterRoom(result);
+      $('online-account-invite-status').hidden = false;
+      $('online-account-invite-status').textContent = friend.email
+        ? `If ${friend.email} has an account, the challenge is waiting in their inbox.`
+        : `The challenge is waiting in ${friend.name}’s inbox.`;
+    });
+  }
+
+  // One press opens a race anyone with its link can join, and copies the link.
+  function raceLink() {
+    perform(async () => {
+      const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: racerName() });
+      enterRoom(result);
+      await copyLink();
+    });
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText($('online-guest-link').value);
+      $('online-invite-sent').textContent = 'Link copied. Anyone with it can join for 15 minutes.';
+    } catch {
+      $('online-guest-link').focus();
+      $('online-guest-link').select();
+      $('online-invite-sent').textContent = 'Select and copy the link above. Anyone with it can join for 15 minutes.';
+    }
   }
 
   async function loadFriends() {
     if (!getSession()) return;
 
     try { await friendRequests.reload(); }
-    catch (failure) { if (!friendsLoaded) renderFriends(failure); }
+    catch (failure) {
+      if (!friendsLoaded) { friendsFailure = failure; renderPeople(); }
+    }
   }
 
-  // A race takes the practice setup, or what Customize holds while it is open. Customize is for one race:
-  // creating it closes Customize and drops its choices.
-  let customized = null;
+  // A race takes the practice setup until Race setup changes it; the change holds for this tab's races, reloads
+  // included, until Match practice puts the practice setup back. A saved setup is read back through raceOptions, so
+  // only a setup a race can take returns.
+  let customized = (() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(RACE_SETUP));
+
+      return saved && typeof saved === 'object' ? raceOptions({ ...saved, session: 'practice', adaptive: false }) : null;
+    } catch { return null; }
+  })();
+
+  function setCustomized(value) {
+    customized = value;
+
+    try {
+      if (value) sessionStorage.setItem(RACE_SETUP, JSON.stringify(value));
+      else sessionStorage.removeItem(RACE_SETUP);
+    } catch {}
+
+    renderSetupLink();
+  }
 
   function newRace() {
     const conditions = raceConditions(customized ?? raceOptions(practice()));
@@ -332,8 +490,22 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     return { passage: racePassage(conditions), conditions };
   }
 
-  // The practice row's own controls (mode, length, punctuation), cloned from it, so Customize looks and
-  // works like practice but changes only this race.
+  // What the race setup shows and races start from: the setup chosen here, or else practice's.
+  const raceSetup = () => customized ?? raceOptions(practice());
+
+  // The same setup, whatever order its options were written in.
+  const sameSetup = (a, b) => JSON.stringify(Object.entries(raceConditions(a)).sort()) === JSON.stringify(Object.entries(raceConditions(b)).sort());
+
+  // The Race setup link names what a one-press Race (and Copy a race link, and Race once) uses, as a conditions line.
+  function renderSetupLink() {
+    const text = raceSetupText(raceConditions(raceSetup()));
+    const node = $('people-setup-conditions');
+
+    if (node.textContent !== text) node.textContent = text;
+  }
+
+  // The practice row's own controls (mode, length, punctuation), cloned from it, so Race setup looks and
+  // works like practice but changes only races.
   function buildCustomize() {
     const options = $('online-options');
 
@@ -356,40 +528,49 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     modes.addEventListener('click', (event) => {
       const mode = event.target.closest('[data-mode]')?.dataset.mode;
 
-      if (!mode || mode === customized.mode) return;
-      const { punctuation: marks = false } = customized;
-      customized = mode === 'quote' ? raceOptions({ mode, quoteLength: practice().quoteLength })
-        : raceOptions({ ...practice(), mode, punctuation: marks, session: 'practice', adaptive: false });
+      const shown = raceSetup();
+
+      if (!mode || mode === shown.mode) return;
+      const { punctuation: marks = false } = shown;
+      setCustomized(mode === 'quote' ? raceOptions({ mode, quoteLength: practice().quoteLength })
+        : raceOptions({ ...practice(), mode, punctuation: marks, session: 'practice', adaptive: false }));
       renderCustomize();
     });
     lengths.addEventListener('click', (event) => {
       const length = Number(event.target.closest('[data-length]')?.dataset.length);
 
-      if (!length) return;
-      customized = { ...customized, [LENGTHS[customized.mode].key]: length };
+      const shown = raceSetup();
+
+      if (!length || length === shown[LENGTHS[shown.mode].key]) return;
+      setCustomized({ ...shown, [LENGTHS[shown.mode].key]: length });
       renderCustomize();
     });
     punctuation.querySelector('input').addEventListener('change', (event) => {
-      customized = { ...customized, punctuation: event.target.checked };
+      setCustomized({ ...raceSetup(), punctuation: event.target.checked });
+      renderCustomize();
     });
   }
 
   function renderCustomize() {
+    buildCustomize();
+    const shown = raceSetup();
+    // Match practice shows whenever the setup races would use isn't practice's.
+    $('online-customize-reset').hidden = !customized || sameSetup(customized, raceOptions(practice()));
     const options = $('online-options');
     const modes = options.querySelector('[data-race-modes]');
     modes.querySelectorAll('[data-mode]').forEach((button) => {
-      const on = button.dataset.mode === customized.mode;
+      const on = button.dataset.mode === shown.mode;
       button.setAttribute('aria-pressed', String(on));
       button.classList.toggle('is-active', on);
     });
-    const spec = LENGTHS[customized.mode];
+    const spec = LENGTHS[shown.mode];
     const lengths = options.querySelector('[data-race-lengths]');
     lengths.hidden = !spec;
 
     if (spec) {
       lengths.querySelectorAll('[data-length]').forEach((button, index) => {
         const value = spec.presets[index];
-        const on = value === customized[spec.key];
+        const on = value === shown[spec.key];
         button.dataset.length = String(value);
         button.textContent = String(value);
         button.setAttribute('aria-label', `${value} ${spec.unit}`);
@@ -399,17 +580,11 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     }
 
     const punctuation = options.querySelector('[data-race-punctuation]');
-    punctuation.hidden = customized.mode === 'quote';
-    punctuation.querySelector('input').checked = Boolean(customized.punctuation);
+    punctuation.hidden = shown.mode === 'quote';
+    punctuation.querySelector('input').checked = Boolean(shown.punctuation);
     updateGlide(modes);
 
     if (spec) updateGlide(lengths);
-  }
-
-  function closeCustomize() {
-    customized = null;
-    $('online-options').hidden = true;
-    $('online-customize').setAttribute('aria-expanded', 'false');
   }
 
   // One race action at a time, and apart from those, one friend-list change at a time. While one is
@@ -417,8 +592,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // toast) is aria-disabled and its press is ignored: aria-disabled, not disabled, so the control just
   // pressed keeps keyboard focus, and no press is dropped unseen. A friend change waiting its turn
   // behind a slow friend-list read holds up no race.
-  const RACE_CONTROLS = '#create-online-race, #join-online-race, #online-ready, #online-leave, #online-rematch, [data-race-friend], [data-accept-invite]';
-  const FRIEND_CONTROLS = '#online-befriend, [data-remove-friend]';
+  const RACE_CONTROLS = '#create-online-race, #join-online-race, #online-ready, #online-leave, #online-rematch, #people-race-link, [data-race-friend], [data-accept-invite], [data-race-link]';
+  const FRIEND_CONTROLS = '#online-befriend, #add-friend, [data-remove-friend]';
 
   function markBusy(control) {
     if ((control.matches(FRIEND_CONTROLS) ? changingFriends : busy) || control.dataset.state === 'inactive') control.setAttribute('aria-disabled', 'true');
@@ -426,7 +601,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   }
 
   function renderBusy() {
-    for (const control of $('online-challenge').querySelectorAll(`${RACE_CONTROLS}, ${FRIEND_CONTROLS}`)) markBusy(control);
+    for (const control of $('compete-screen').querySelectorAll(`${RACE_CONTROLS}, ${FRIEND_CONTROLS}`)) markBusy(control);
     inbox.wait(busy ? ['invite', 'result'] : []);
   }
 
@@ -438,6 +613,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     try {
       await friendRequests.change(send);
+      channel?.postMessage({ user: getSession()?.user.id, friends: true });
+      refreshLinks();
 
       return true;
     }
@@ -472,6 +649,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     baseKeystrokes = 0;
     baseErrors = 0;
     dirty = false;
+    refused = false;
     finishRequested = false;
     lastClock = '';
     lastAnnouncement = '';
@@ -514,13 +692,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (result.inviteToken) $('online-guest-link').value = multiplayer.makeGuestRaceLink({ roomId: credentials.roomId, inviteToken: result.inviteToken }, location.href);
     room = result.room;
 
-    if (customized) closeCustomize();
     inbox.settle(`invite:${room.id}`);
     renderHome();
     applyRoom(room, { entering: true });
     pollTimer = setTimeout(poll, 150);
     navigate('compete');
-    setMode('online');
+    show('people');
   }
 
   function self() { return room?.players.find((player) => player.slot === room.selfSlot); }
@@ -574,7 +751,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     updateClock();
 
     if (terminal(room)) {
-      setRunning(false);
+      // A closed room is polled for about a day, for the other racer's Rematch pick. Only the reply that
+      // closes it ends this race's run, and only on Challenge: on any other view the run in progress is
+      // the person's own (leaving Challenge already ended this one, in onViewChange).
+      if (previousStatus !== room.status && document.body.dataset.view === 'compete') setRunning(false);
       $('online-input').disabled = true;
 
       if (room.status === 'finished') renderResults();
@@ -672,6 +852,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     };
 
     $('online-room-status').textContent = copy[room.status] ?? 'Connecting to the race…';
+    const setup = room.conditions?.mode ? raceSetupText(room.conditions) : '';
+
+    if ($('online-room-conditions').textContent !== setup) $('online-room-conditions').textContent = setup;
     // A settled quick match says how the rating moved, or why it didn't. A rated result shows the rank card, and
     // the sentence stays in the status region for a screen reader, the card being decoration.
     const result = room.quick ? ratingResult(room.rating, opponent?.name) : null;
@@ -693,9 +876,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const leaveLabel = terminal(room) ? 'Close race' : 'Leave race';
 
     if ($('online-leave').textContent !== leaveLabel) $('online-leave').textContent = leaveLabel;
-    $('challenge-local').disabled = !terminal(room);
-    $('challenge-daily').disabled = !terminal(room);
-    $('challenge-friends').disabled = !terminal(room);
     $('online-share').hidden ||= room.status !== 'waiting';
     const container = $('online-players');
 
@@ -758,7 +938,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const wasDisabled = $('online-input').disabled;
     $('online-input').disabled = !canType;
 
-    if (canType && wasDisabled && document.body.dataset.view === 'compete' && mode === 'online') {
+    if (canType && wasDisabled && document.body.dataset.view === 'compete' && view === 'people') {
       fx.relayout();
       $('online-input').focus({ preventScroll: true });
       say('The race has started. Type the passage.');
@@ -768,7 +948,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       finishRequested = true;
       attempt.endedAt = (room.duration || 60) * 1000;
       dirty = true;
-      setRunning(false);
+
+      if (document.body.dataset.view === 'compete') setRunning(false);
+
       $('online-help').textContent = 'Time’s up. Sending your result…';
       poll();
     }
@@ -779,7 +961,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   const watchingRematch = () => terminal(room) && room.players.length === 2
     && Date.now() < Date.parse(room.expiresAt) + RESULT_RETAINED_MS;
 
-  const resultsInView = () => room?.status === 'finished' && !away() && mode === 'online';
+  const resultsInView = () => room?.status === 'finished' && !away() && view === 'people';
 
   async function poll() {
     if (!credentials || networkBusy || (terminal(room) && !watchingRematch())) return;
@@ -787,11 +969,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const currentGeneration = generation;
     const currentCredentials = credentials;
     networkBusy = true;
+    let failed = false;
 
     try {
       let next;
 
-      if (dirty && attempt && room.status === 'racing') {
+      if (dirty && attempt && room.status === 'racing' && !refused) {
         const replay = replayAttempt(attempt);
         const prefixErrors = [...baseTyped].filter((char, index) => char !== attempt.text[index]).length;
         // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
@@ -803,19 +986,26 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
         next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
-      } else next = await multiplayer.getRace(getSession(), currentCredentials);
+      } else {
+        next = await multiplayer.getRace(getSession(), currentCredentials);
+        refused = false;
+      }
 
       if (currentGeneration !== generation) return;
       $('online-connection').textContent = '';
       applyRoom(next.room || next);
     } catch (failure) {
       if (currentGeneration !== generation) return;
+      failed = true;
+      // A refusal is the service's answer about the room (cancelled, expired, out of limits), so the next
+      // poll reads the room instead of sending the same progress again. A lost connection just retries.
+      refused = failure.status >= 400 && failure.status < 500;
       dirty ||= Boolean(attempt);
-      $('online-connection').textContent = `Connection interrupted. Retrying… ${failure.message || ''}`;
+      $('online-connection').textContent = refused ? '' : `Connection interrupted. Retrying… ${failure.message || ''}`;
     } finally {
       networkBusy = false;
 
-      if (credentials && !terminal(room)) pollTimer = setTimeout(poll, dirty && finishRequested ? 0 : 650);
+      if (credentials && !terminal(room)) pollTimer = setTimeout(poll, dirty && finishRequested && !failed ? 0 : 650);
       else if (credentials && watchingRematch()) pollTimer = setTimeout(poll, resultsInView() ? PICK_WATCH_MS : CLOSED_WATCH_MS);
     }
   }
@@ -910,9 +1100,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     resetAttempt();
     $('online-players').replaceChildren();
     $('online-share').hidden = true;
-    $('challenge-local').disabled = false;
-    $('challenge-daily').disabled = false;
-    $('challenge-friends').disabled = false;
     renderHome();
 
     if (previous) {
@@ -923,28 +1110,65 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (rated) quick.refresh();
   }
 
-  $('challenge-online').addEventListener('click', () => setMode('online'));
-  $('challenge-local').addEventListener('click', () => setMode('local'));
-  $('challenge-daily').addEventListener('click', () => setMode('daily'));
-  $('challenge-friends').addEventListener('click', () => setMode('friends'));
   $('online-signin').addEventListener('click', signIn);
-  $('refresh-race-invites').addEventListener('click', refreshInvites);
-  $('online-setup').addEventListener('submit', (event) => {
+  $('people-add').addEventListener('click', () => show('add', { focus: true }));
+  $('people-setup').addEventListener('click', () => show('setup', { focus: true }));
+  $('open-daily').addEventListener('click', () => show('daily', { focus: true }));
+  $('open-local').addEventListener('click', () => show('local', { focus: true }));
+  $('people-race-link').addEventListener('click', () => { if (!$('people-race-link').hasAttribute('aria-disabled')) raceLink(); });
+  $('online-setup-done').addEventListener('click', () => show('people', { focus: true }));
+  $('online-customize-reset').addEventListener('click', () => {
+    setCustomized(null);
+    renderCustomize();
+    $('online-setup-done').focus();
+  });
+
+  for (const back of document.querySelectorAll('[data-challenge-back]')) back.addEventListener('click', () => show('people', { focus: true }));
+  // A key held down repeats. After Dismiss, focus moves to another row's action, and the repeat would press that
+  // too: join a race, or send an invitation. After Done, it would press the link that opened the view. So a repeat
+  // presses no button or link anywhere on Challenge. Fields are left alone: the race's own typing rules hold there.
+  $('compete-screen').addEventListener('keydown', (event) => {
+    const pressing = event.key === 'Enter' || event.key === ' ';
+
+    if (event.repeat && pressing && event.target.closest('button, a[href], summary')) event.preventDefault();
+  });
+  $('people-list').addEventListener('click', (event) => {
+    const button = event.target.closest('[data-people-action]');
+
+    if (!button || button.getAttribute('aria-disabled') === 'true') return;
+    const { peopleAction: action } = button.dataset;
+
+    if (action === 'join') joinInvite(button.dataset.acceptInvite);
+    else if (action === 'dismiss') dismissInvite(button.dataset.dismissInvite);
+    else if (action === 'ghost') raceGhost?.(button.dataset.raceGhost);
+    else if (action === 'race') raceFriend(button.dataset.raceFriend);
+    else if (action === 'link') raceLink();
+  });
+  // Add a friend: saved to the list, where their row offers Race. Race once invites the same account without saving.
+  $('online-setup').addEventListener('submit', async (event) => {
     event.preventDefault();
+    const email = $('online-invite-email').value.trim();
+
+    if (!email || !(await changeFriends((signal) => multiplayer.addFriend(getSession(), { email }, signal)))) return;
+    $('online-invite-email').value = '';
+    announce(`${email} is on your friends list.`);
+  });
+  $('create-online-race').addEventListener('click', () => {
+    if (!$('online-invite-email').reportValidity()) return;
+    const inviteEmail = $('online-invite-email').value.trim();
     perform(async () => {
-      const inviteEmail = $('online-invite-email').value.trim();
-      const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: $('online-name').value.trim(), inviteEmail });
+      const result = await multiplayer.createRace(getSession(), { ...newRace(), displayName: racerName(), inviteEmail });
       enterRoom(result);
-
-      if (inviteEmail && $('online-save-friend').checked) {
-        // Saving is a convenience; the race already exists if it fails.
-        friendRequests.change((signal) => multiplayer.addFriend(getSession(), { email: inviteEmail }, signal)).catch(() => {});
-      }
-
-      $('online-account-invite-status').hidden = !inviteEmail;
-      $('online-account-invite-status').textContent = inviteEmail ? 'If that account exists, its invitation is waiting in their inbox.' : '';
-      $('online-invite-sent').textContent = 'Anyone with the link can join. It expires in 15 minutes.';
+      $('online-invite-email').value = '';
+      $('online-account-invite-status').hidden = false;
+      $('online-account-invite-status').textContent = 'If that account exists, its invitation is waiting in their inbox.';
     });
+  });
+  channel?.addEventListener('message', ({ data }) => { if (data?.friends && data.user === getSession()?.user.id) loadFriends(); });
+  addEventListener('storage', (event) => {
+    if (event.key !== dismissedKey()) return;
+    loadDismissed();
+    renderPeople();
   });
   $('online-guest-join').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -984,25 +1208,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     announce(`${name} is on your friends list.`);
   });
-  $('online-customize').addEventListener('click', () => {
-    if (customized) {
-      closeCustomize();
-
-      return;
-    }
-
-    buildCustomize();
-    customized = raceOptions(practice());
-    $('online-options').hidden = false;
-    $('online-customize').setAttribute('aria-expanded', 'true');
-    renderCustomize();
-  });
-  $('online-invite-email').addEventListener('input', () => { $('online-save-friend-row').hidden = !$('online-invite-email').value.trim(); });
-  inbox.subscribe(renderInvites);
-  $('copy-race-link').addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText($('online-guest-link').value); $('online-invite-sent').textContent = 'Link copied.'; }
-    catch { $('online-guest-link').focus(); $('online-guest-link').select(); $('online-invite-sent').textContent = 'Select and copy the guest link above.'; }
-  });
+  inbox.subscribe(onInbox);
+  $('copy-race-link').addEventListener('click', copyLink);
   $('online-input').addEventListener('keydown', (event) => {
     if (event.repeat || ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
     typing.keydown(event);
@@ -1015,9 +1222,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   document.fonts?.ready.then(() => fx.relayout());
   document.fonts?.addEventListener?.('loadingdone', () => fx.relayout());
   setInterval(updateClock, 100);
+  loadDismissed();
   renderHome();
 
-  if (joinLink) { navigate('compete'); setMode('online'); $('online-guest-name').focus(); }
+  if (joinLink) { navigate('compete'); show('people'); $('online-guest-name').focus(); }
   else {
     const saved = multiplayer.recallRace();
 
@@ -1038,29 +1246,36 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     rematchRoom: (roomId, conditions) => pickRematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions),
     // The race this tab is seated in and still waiting or racing, if any.
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
-    // Which Challenge tab shows: online, daily or local (one keyboard).
-    get mode() { return mode; },
+    // Which Challenge view shows: people, add, setup, daily or local (one keyboard).
+    get mode() { return view; },
     // A request made from this screen is still in flight (a room being created, joined or rematched, or a
     // seat, friend or readiness change), or this tab's room is being restored. A room either opens moves
     // the person to it.
     get pending() { return busy || restoring; },
-    open() { navigate('compete'); setMode('online'); },
+    open() { navigate('compete'); show('people'); },
+    // Opens Add a friend with its field focused (the friends board's button for when nobody else is on it).
+    openAdd() { navigate('compete'); show('add'); $('online-invite-email').focus(); },
     // A new typing font moves every letter.
     relayout: () => fx.relayout(),
-    // A live race keeps the Online view; the board waits until it closes.
+    // The friends board sits with the daily passage. A live race keeps its view; the board waits until it closes.
     openBoard() {
       navigate('compete');
 
-      if (!room || terminal(room)) setMode('friends');
+      if (!live()) show('daily');
     },
-    onViewChange(view) {
-      if (view === 'compete') {
+    // Challenge opens on the people list, unless `keep` holds the view it shows; a race shows where the list would.
+    onViewChange(screen, { keep = false } = {}) {
+      if (screen === 'compete') {
+        if (!keep && view !== 'people') { view = 'people'; onModeChange?.(); board?.hide(); }
+
         renderHome();
 
-        if (mode === 'online') { refreshInvites(); loadFriends(); fx.relayout(); quick.refresh(); }
+        if (view === 'people') { refreshInvites(); loadFriends(); refreshLinks(); fx.relayout(); quick.refresh(); }
 
-        if (mode === 'friends') board?.show();
+        if (view === 'daily') board?.show();
       } else { setRunning(false); board?.hide(); }
     },
+    // Ages and time left move on.
+    tick() { if (document.body.dataset.view === 'compete' && view === 'people') renderPeople(); },
   };
 }

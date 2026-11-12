@@ -1,5 +1,5 @@
 import { conditionKey, standardConditions } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, openSettings, completePassage, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
 
 // Committed docs images are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/standard-test/${name}` : testInfo.outputPath(name));
@@ -146,12 +146,15 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('60');
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-median + span')).toBeHidden();
   await expect(page.locator('#standard-median-label')).toHaveText('median');
   await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
   await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error`);
+  await openProgressDetail(page, 'runs');
+  await page.locator('.conditions-disclosure > summary').click();
   await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
   await expect(page.locator('#run-history .run-row').first()).toContainText('standard');
   await page.screenshot({ path: shot(testInfo, 'progress-first-run-dark.png') });
@@ -198,6 +201,7 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('60');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 
@@ -217,15 +221,12 @@ test('Progress shows the standard best and the median of recent runs with its co
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-median')).toHaveText('63');
   await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
   await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Your touch best is 41 wpm.');
   await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-  // With history, the filtered figures and charts head the page and the standard score follows them.
-  await expect(page.locator('#progress-empty')).toBeHidden();
-  const trend = await page.locator('#progress-trend').boundingBox();
-  expect(trend.y + trend.height).toBeLessThanOrEqual((await page.locator('#standard-score').boundingBox()).y);
 
   await page.locator('#take-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
@@ -236,33 +237,31 @@ test('Progress shows the standard best and the median of recent runs with its co
 
 const NO_STANDARD_RUNS = 'No standard runs yet.';
 
-// The standard score heads Progress on its own: with no practice history it sits above the empty state.
-async function expectStandardAboveEmptyState(page) {
-  await expect(page.locator('#progress-empty')).toBeVisible();
-  await expect(page.locator('#progress-content')).toBeHidden();
+// With no standard run, the standard score says so and offers the test.
+async function expectNoStandardScore(page) {
   await expect(page.locator('#standard-score')).toBeVisible();
   await expect(page.locator('#standard-best')).toHaveText('—');
   await expect(page.locator('#standard-median')).toHaveText('—');
   await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
   await expect(page.locator('#take-standard')).toBeVisible();
-  const standard = await page.locator('#standard-score').boundingBox();
-  const empty = await page.locator('#progress-empty').boundingBox();
-  expect(standard.y + standard.height).toBeLessThanOrEqual(empty.y);
 }
 
 test('a fresh profile can find and start the standard test from Progress', async ({ page }, testInfo) => {
   await openApp(page);
   await openView(page, 'Progress');
-  await expectStandardAboveEmptyState(page);
-  // One filled action: the empty state's primary button. The standard test stays secondary.
+  // Nothing to compare yet: the empty lead offers a test and the standard test, and no link leads to an empty view.
+  await expect(page.locator('#progress-empty')).toBeVisible();
+  await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
+  await expect(page.locator('#progress-more')).toBeHidden();
+  // One filled action: the empty state's primary button. The standard test stays quiet.
   await expect(page.locator('#progress-screen .btn-primary:visible')).toHaveCount(1);
-  await expect(page.locator('#take-standard')).toHaveClass(/btn-secondary/);
+  await expect(page.locator('#empty-standard')).toHaveClass(/btn-ghost/);
 
   for (const [width, height] of [[1280, 800], [320, 568]]) {
     await page.setViewportSize({ width, height });
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
-    for (const id of ['#take-standard', '#standard-score-note', '#progress-empty .btn-primary']) {
+    for (const id of ['#empty-standard', '#progress-empty .btn-primary']) {
       const box = await page.locator(id).boundingBox();
       expect(box.x + box.width, id).toBeLessThanOrEqual(width);
     }
@@ -272,22 +271,11 @@ test('a fresh profile can find and start the standard test from Progress', async
       await page.mouse.move(0, 0);
       await page.evaluate(() => window.scrollTo(0, 0));
       await settle(page);
-
-      if (width > 320) {
-        await page.screenshot({ path: shot(testInfo, `progress-fresh-${theme}.png`) });
-        continue;
-      }
-
-      // At 320px the empty state is below the fold: one shot from the top, one where the two meet.
-      await page.screenshot({ path: shot(testInfo, `progress-fresh-320-${theme}.png`) });
-      await page.locator('#standard-score-note').evaluate((node) => window.scrollTo(0, node.getBoundingClientRect().top + window.scrollY - 16));
-      await page.screenshot({ path: shot(testInfo, `progress-fresh-320-empty-${theme}.png`) });
+      await page.screenshot({ path: shot(testInfo, width > 320 ? `progress-fresh-${theme}.png` : `progress-fresh-320-${theme}.png`) });
     }
   }
 
-  await page.evaluate(() => window.scrollTo(0, 0));
-
-  await page.locator('#take-standard').click();
+  await page.locator('#empty-standard').click();
   await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
@@ -304,9 +292,11 @@ test('a profile with only an interrupted standard run still shows the standard s
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await expectStandardAboveEmptyState(page);
+  await expect(page.locator('#progress-empty')).toBeVisible();
   // There is history to clear, even though none of it counts.
   await expect(page.locator('#clear-history')).toBeVisible();
+  await openProgressDetail(page, 'standard');
+  await expectNoStandardScore(page);
   await page.locator('#take-standard').click();
   await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
 });
@@ -323,6 +313,7 @@ test('a standard best that outlives its runs in the kept history says so, not "n
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('66');
   await expect(page.locator('#standard-best + span')).toBeVisible();
   await expect(page.locator('#standard-median')).toHaveText('—');
@@ -347,6 +338,7 @@ async function openProgressAs(page, supabase, email, data) {
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
 }
 
 test('when only some standard runs are kept, the note counts kept runs and says the best is older', async ({ page, supabase }) => {
@@ -457,6 +449,7 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('#result-conditions')).not.toContainText('standard');
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('—');
   await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
 
@@ -477,13 +470,13 @@ test('the daily challenge keeps its own conditions while standard is selected', 
   await openApp(page);
   await chooseMore(page, 'mode-standard');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#condition-line')).not.toContainText('standard');
   await expect(page.locator('#condition-line')).toContainText('continue on error');
   await completePassage(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('Today’s best');
   await expect(page.locator('.daily-result')).toHaveCount(1);
 });
@@ -501,6 +494,7 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });
     await openView(page, 'Progress');
+    await openProgressDetail(page, 'standard');
     await expect(page.locator('#standard-median')).toHaveText('60');
     await page.mouse.move(0, 0);
     await page.screenshot({ path: shot(testInfo, `progress-${theme}.png`) });

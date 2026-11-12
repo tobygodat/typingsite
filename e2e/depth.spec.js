@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { dailyPassage, runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressDetail, openProgressView, chooseWords, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 const conditions = { mode: 'words', count: 25, duration: null, punctuation: false, quoteLength: null,
   difficulty: null, wordList: '1k', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -20,11 +20,15 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await openApp(page);
   await freshTextCheck(page);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
+  // A point on the full speed chart opens its run among the runs.
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend svg')).toHaveCount(1);
   const point = page.locator('#progress-trend .trend-dot').first();
   await point.focus();
   await page.keyboard.press('Enter');
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'runs');
   await expect(page.locator('#run-history details[open]')).toHaveCount(1);
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText('before');
@@ -36,13 +40,15 @@ test('Progress filters comparable runs, opens chart points, and explains a saved
   await chooseWords(page, 25);
   await completePassage(page);
   await openView(page, 'Progress');
+  await page.locator('.conditions-disclosure > summary').click();
   await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).click();
   await expect(page.locator('#progress-conditions')).toContainText('25 words');
+  // One run this week at 25 words and none the week before: the lead shows the run and says what a median needs.
+  await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'thin');
+  await expect(page.locator('#lead-note')).toHaveText('A week has a median from 3 runs.');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();
-  const lastWeek = page.locator('#progress-stats .progress-figure').nth(1);
-  await expect(lastWeek).toContainText('Last week');
-  await expect(lastWeek).toContainText('no runs');
 });
 
 test('daily passage ignores practice settings, labels repeats, and saves scores separately across reload', async ({ page, supabase }) => {
@@ -52,7 +58,7 @@ test('daily passage ignores practice settings, labels repeats, and saves scores 
   await signInWithEmail(page, 'daily@stilltype.test');
   await chooseWords(page, 10);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   await expect(page.locator('.practice-controls')).toBeHidden();
@@ -63,7 +69,7 @@ test('daily passage ignores practice settings, labels repeats, and saves scores 
   await expect(page.locator('#result-delta')).toHaveText('Daily challenge complete');
   await expect(page.locator('#best')).toHaveText('No best yet');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('Today’s best');
   await expect(page.locator('.daily-result')).toHaveCount(1);
   await page.locator('#start-daily').click();
@@ -76,7 +82,7 @@ test('daily passage ignores practice settings, labels repeats, and saves scores 
 
   await page.reload();
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#daily-history-panel summary').click();
   await expect(page.locator('.daily-result')).toHaveCount(2);
   await expect(page.locator('.daily-result').first()).toContainText('repeat attempt');
@@ -88,7 +94,7 @@ test('a UTC midnight refresh selects the next shared daily passage', async ({ pa
   await page.clock.install({ time: new Date('2026-09-30T23:59:50Z') });
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-date')).toContainText('2026-09-30');
   await page.clock.fastForward(35_000);
   await expect(page.locator('#daily-date')).toContainText('2026-10-01');
@@ -99,11 +105,11 @@ test('a UTC midnight refresh selects the next shared daily passage', async ({ pa
 test('daily interruption does not create a counted score', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await typeInto(page, (await passageText(page)).slice(0, 5));
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('No completed');
   await expect(page.locator('#daily-history-panel')).toBeHidden();
   await expect(page.locator('#best')).toHaveText('No best yet');
@@ -121,6 +127,7 @@ test('older compact history survives without full traces and offers an honest st
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(10);
   await page.getByRole('button', { name: 'Show all 30 runs' }).click();
   await expect(page.locator('#run-history .run-row')).toHaveCount(30);
@@ -139,7 +146,7 @@ test('older compact history survives without full traces and offers an honest st
 test('clear and undo include daily history, which guests do not retain after reload', async ({ page }) => {
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await completePassage(page);
   await openView(page, 'Progress');
@@ -147,14 +154,14 @@ test('clear and undo include daily history, which guests do not retain after rel
   await page.locator('#confirm-clear-input').fill('clear');
   await page.locator('#confirm-clear').click();
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('No completed');
   await page.locator('#undo-clear').click();
   await expect(page.locator('#daily-status')).toContainText('Today’s best');
   await expect(page.locator('.daily-result')).toHaveCount(1);
   await page.reload();
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await expect(page.locator('#daily-status')).toContainText('No completed');
 });
 
@@ -162,12 +169,12 @@ test('a returning daily passage is a first attempt today but is not labelled fre
   await page.clock.install({ time: new Date('2026-09-30T12:00:00Z') });
   await openApp(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   const text = await completePassage(page);
   await page.clock.setSystemTime(new Date('2026-10-14T12:00:00Z'));
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   expect(await passageText(page)).toBe(text);
   await expect(page.locator('#session-description')).toContainText('first attempt');

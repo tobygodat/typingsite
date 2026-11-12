@@ -179,7 +179,7 @@ test('a drill offers no word practice, while a daily run does', async ({ page })
   await expect(page.locator('#practice-words')).toBeHidden();
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
   const daily = await passageText(page);
@@ -198,7 +198,7 @@ test('a daily passage shown before offers no word practice', async ({ page }) =>
 
   const daily = async () => {
     await openView(page, 'Challenge');
-    await page.locator('#challenge-daily').click();
+    await page.locator('#open-daily').click();
     await page.locator('#start-daily').click();
     await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'daily');
     const text = await passageText(page);

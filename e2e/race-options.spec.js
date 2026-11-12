@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseWords, chooseMore } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, chooseWords, chooseMore, setRaceName, openRaceLink } from './fixtures.js';
 
 test.setTimeout(90000);
 
@@ -11,8 +11,8 @@ async function host(page, supabase) {
 // Creates a guest-link race from the Challenge page and seats a guest in a second browser context.
 async function challengeWithGuest(page, browser, supabase) {
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await openRaceLink(page);
   const field = page.locator('#online-guest-link');
   await expect(field).toHaveValue(/#race=/);
   const room = [...supabase.races.rooms.values()].at(-1);
@@ -34,7 +34,6 @@ test('plain Challenge races the practice setup, both players get the same text, 
   await host(page, supabase);
   await chooseWords(page, 10);
   await page.locator('#punctuation-switch').click();
-  await expect(page.locator('#create-online-race')).toHaveText('Challenge');
   const { room, context, guest } = await challengeWithGuest(page, browser, supabase);
 
   try {
@@ -61,15 +60,16 @@ test('plain Challenge races the practice setup, both players get the same text, 
   } finally { await context.close(); }
 });
 
-test('Customize opens the practice controls under the buttons and sets this race only', async ({ page, browser, supabase }) => {
+test('Race setup shows the practice setup in the practice controls, and what it sets holds for races until Match practice', async ({ page, browser, supabase }) => {
   await host(page, supabase);
   await chooseWords(page, 25);
   await openView(page, 'Challenge');
   const options = page.locator('#online-options');
   await expect(options).toBeHidden();
-  await page.locator('#online-customize').click();
-  await expect(page.locator('#online-customize')).toHaveAttribute('aria-expanded', 'true');
+  await page.locator('#people-setup').click();
+  await expect(page.locator('#people-setup-heading')).toBeFocused();
   await expect(options).toBeVisible();
+  await expect(page.locator('#online-customize-reset')).toBeHidden();
   // It opens on the practice setup, in the practice row's own controls.
   const mode = (name) => options.getByRole('button', { name, exact: true });
   await expect(mode('words')).toHaveAttribute('aria-pressed', 'true');
@@ -81,6 +81,8 @@ test('Customize opens the practice controls under the buttons and sets this race
   await options.getByRole('button', { name: '15 seconds' }).click();
   await options.locator('.compact-switch').click();
   await expect(options.getByRole('button', { name: '15 seconds' })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#online-setup-done').click();
+  await expect(page.locator('#people-setup')).toBeFocused();
   const { room, context, guest } = await challengeWithGuest(page, browser, supabase);
 
   try {
@@ -92,12 +94,15 @@ test('Customize opens the practice controls under the buttons and sets this race
     await expect(page.locator('#mode-words')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#duration-options [data-length="25"]')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
-    // The choices were for that race: once it is closed, Customize is closed and empty again.
+    // The setup holds for the next race too, until Match practice puts the practice setup back.
     await page.locator('#online-leave').click();
-    await expect(page.locator('#online-customize')).toHaveAttribute('aria-expanded', 'false');
-    await expect(options).toBeHidden();
-    await page.locator('#online-customize').click();
+    await page.locator('#people-setup').click();
+    await expect(mode('time')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#online-customize-reset').click();
     await expect(mode('words')).toHaveAttribute('aria-pressed', 'true');
+    await expect(options.getByRole('button', { name: '25 words' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#online-customize-reset')).toBeHidden();
+    await expect(page.locator('#online-setup-done')).toBeFocused();
     // Quote has no length to pick, and no punctuation switch.
     await mode('quote').click();
     await expect(options.locator('[data-race-lengths]')).toBeHidden();

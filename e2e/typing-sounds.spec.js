@@ -3,7 +3,7 @@
 // AudioContext is stubbed so each test can count what would have played. Choosing an audible sound
 // builds the context just after the change, so the next key clicks; a sound that arrives any other way
 // (a reload, an import) waits for the first key, which is silent. Never built inside an event.
-import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail, chooseSetting, setRaceName, openRaceLink } from './fixtures.js';
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
@@ -560,8 +560,8 @@ async function hostOnlineRace(page, browser, supabase) {
   await signInWithEmail(page, 'host@stilltype.test');
   await chooseSound(page, 'clicks-errors');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await openRaceLink(page);
   await expect(page.locator('#online-room')).toBeVisible();
   const context = await browser.newContext();
   const guest = await context.newPage();
@@ -606,7 +606,7 @@ test('a one-keyboard challenge plays once per key', async ({ page }) => {
   await openApp(page);
   await chooseSound(page, 'clicks-errors');
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');
   await page.locator('#start-local-race').click();

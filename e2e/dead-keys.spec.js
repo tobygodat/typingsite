@@ -1,4 +1,4 @@
-import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter } from './fixtures.js';
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter, setRaceName, openRaceLink } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -1275,7 +1275,7 @@ test('both one-keyboard race players can type with accent keys', async ({ page }
   await openApp(page);
   const keys = await accentKeys(page);
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#player-one-name').fill('Ada');
   await page.locator('#player-two-name').fill('Lin');
   await page.locator('#start-local-race').click();
@@ -1358,8 +1358,8 @@ async function onlineRace(page, browser, supabase, duration = 60) {
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+  await openRaceLink(page);
   await expect(page.locator('#online-room')).toBeVisible();
   const room = [...supabase.races.rooms.values()][0];
   Object.assign(room, { passage: RACE_TEXT, duration });

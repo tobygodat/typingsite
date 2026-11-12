@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, openSettings, chooseSetting, setRaceName, inviteByEmail, openRaceLink } from './fixtures.js';
 
 test.setTimeout(60000);
 
@@ -7,11 +7,12 @@ async function hostRace(page, supabase, email = '') {
   await openApp(page);
   await signInWithEmail(page, 'host@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
-  await page.locator('#online-invite-email').fill(email);
-  await page.locator('#create-online-race').click();
+  await setRaceName(page, 'Ada');
+
+  if (email) await inviteByEmail(page, email);
+  else await openRaceLink(page);
   await expect(page.locator('#online-room')).toBeVisible();
-  await expect(page.locator('#challenge-daily')).toBeDisabled();
+  await expect(page.locator('#open-daily')).toBeHidden();
 
   return [...supabase.races.rooms.values()][0];
 }
@@ -146,7 +147,7 @@ test('account invitations appear only in the invited account inbox', async ({ pa
     await openApp(friend);
     await signInWithEmail(friend, 'friend@stilltype.test');
     await openView(friend, 'Challenge');
-    await expect(friend.locator('#online-invites')).toContainText('Ada');
+    await expect(friend.locator('#people-list')).toContainText('Ada');
     await friend.locator('[data-accept-invite]').click();
     await expect(friend.locator('#online-room')).toBeVisible();
     await expect.poll(() => room.players.length).toBe(2);
@@ -171,8 +172,8 @@ test('a guest resumes the same seat after reload and sees host cancellation', as
     await expect(guest.locator('#online-room')).toBeVisible();
     expect(room.players).toHaveLength(2);
     await page.locator('#online-leave').click();
-    await expect(page.locator('#challenge-daily')).toBeEnabled();
-    await page.locator('#challenge-daily').click();
+    await expect(page.locator('#open-daily')).toBeVisible();
+    await page.locator('#open-daily').click();
     await expect(page.locator('#daily-challenge')).toBeVisible();
     await expect(page.locator('#online-challenge')).toBeHidden();
     await expect(guest.locator('#online-room-status')).toContainText(/cancel|left/i);

@@ -1,6 +1,6 @@
 // Accounts against the fake Supabase in e2e/fake-supabase.js: guest mode, sign-up, sign-in, Google (PKCE),
 // sync, sign-out and the one-off import of the pre-accounts profile.
-import { test, expect, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, freshTextCheck, openView, openSettings, signInWithEmail, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
 
 const account = (page) => page.locator('#account');
 
@@ -37,6 +37,34 @@ test('sign-up that needs confirmation shows the check-your-email step', async ({
   await page.locator('#account-confirm-done').click();
   await expect(page.locator('#account-dialog')).toBeHidden();
   await expect(account(page)).toHaveAttribute('data-state', 'guest');
+});
+
+const tokenLink = ({ access_token, refresh_token }) => `/#access_token=${access_token}&refresh_token=${refresh_token}&expires_in=3600&type=signup`;
+
+test('the confirmation link signs in the browser that signed up', async ({ page, supabase }) => {
+  supabase.confirmSignups = true;
+  await openApp(page);
+  await page.locator('#account-trigger').click();
+  await page.locator('#account-create').click();
+  await page.locator('#account-email-input').fill('new@stilltype.test');
+  await page.locator('#account-password').fill('a long passphrase');
+  await page.locator('#account-submit').click();
+  await expect(page.locator('#account-confirm')).toBeVisible();
+  await page.locator('#account-confirm-done').click();
+  await expect(account(page)).toHaveAttribute('data-state', 'guest');
+
+  // The link opens as a fresh page load (going straight from / would only change the hash), and signing in reloads it.
+  await page.goto('about:blank');
+  await page.goto(tokenLink(supabase.issueSession(supabase.users.get('new@stilltype.test'))));
+  await expect(account(page)).toHaveAttribute('data-state', 'member');
+});
+
+test('a token link nobody here asked for signs nobody in', async ({ page, supabase }) => {
+  const user = supabase.addUser('someone@stilltype.test');
+  await openApp(page, tokenLink(supabase.issueSession(user)));
+  await expect(page.locator('#account-feedback')).toHaveText('That link can’t sign you in here. Sign in with your email and password.');
+  await expect(account(page)).toHaveAttribute('data-state', 'guest');
+  expect(page.url()).not.toContain('access_token');
 });
 
 test('creating an account signs in and syncs a first profile row', async ({ page, supabase }) => {
@@ -128,6 +156,7 @@ test('a member’s progress and settings survive reload and follow the account',
   await signInWithEmail(page, 'ada@stilltype.test');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-row')).toHaveCount(1);
 });
 
@@ -201,6 +230,7 @@ test('the pre-accounts profile moves into the first empty account', async ({ pag
 
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '22');
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-row')).toHaveCount(1);
   await expect(page.locator('.history-timing')).toHaveText('+4 wpm');
   expect(await storageKeys(page)).not.toContain('stilltype-profile-v2');

@@ -16,7 +16,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await h.openApp();
     await h.signIn('toby@stilltype.test');
     await h.openView('Challenge');
+    await page.locator('#people-setup').click();
     await page.locator('#online-name').fill('Toby');
+    await page.locator('#online-setup-done').click();
     await page.locator('#quick-match [data-quick="toggle"]').click();
     await page.locator('#quick-match [data-quick="toggle"]', { hasText: 'Stop looking' }).waitFor();
 
@@ -29,7 +31,9 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await Promise.all([mara.waitForEvent('load'), mara.locator('#account-submit').click()]);
     await mara.locator('#account[data-state="member"]').waitFor();
     await mara.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Challenge' }).click();
+    await mara.locator('#people-setup').click();
     await mara.locator('#online-name').fill('Mara');
+    await mara.locator('#online-setup-done').click();
     await mara.locator('#quick-match [data-quick="toggle"]').click();
     await page.locator('#online-input:enabled').waitFor({ timeout: 15000 });
     await mara.locator('#online-input:enabled').waitFor();

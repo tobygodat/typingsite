@@ -49,7 +49,7 @@ for (const [name, viewport] of [['phone', { width: 390, height: 844 }], ['narrow
         for (const view of ['Progress', 'Train', 'Challenge']) {
           await openView(page, view);
 
-          if (view === 'Challenge') await page.locator('#challenge-daily').click();
+          if (view === 'Challenge') await page.locator('#open-daily').click();
           expect(await overflow(page), `${view} with a run`).toBeLessThanOrEqual(0);
         }
       }

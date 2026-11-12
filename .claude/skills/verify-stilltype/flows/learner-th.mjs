@@ -65,6 +65,9 @@ export default async ({ page, h, shot, note, check }) => {
 
   // Named for its misses, so Progress reads back its misses, as the comparison did.
   await h.openView('Progress');
+  // The drills and retests list lives in the runs view, one step from the overview.
+  await page.locator('[data-progress-open="runs"]').click();
+  await h.attr('#progress-screen', 'data-detail', 'runs');
   await h.settle();
   await page.locator('.history-conditions').first().scrollIntoViewIfNeeded();
   const row = await page.locator('.history-conditions').first().innerText();

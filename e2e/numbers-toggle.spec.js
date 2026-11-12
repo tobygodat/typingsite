@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings, freshTextCheck } from './fixtures.js';
 import { dailyPassage } from '../src/insights.js';
 import { quoteCorpus } from '../src/typing.js';
 
@@ -48,8 +48,9 @@ test('numbers live in test content settings, default off, and keep practice best
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
   await openView(page, 'Progress');
-  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
+  await openProgressDetail(page, 'runs');
   await page.locator('.conditions-disclosure > summary').click();
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
   const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants.locator('option')).toHaveCount(2);
 
@@ -125,7 +126,7 @@ test('account reload retains numbers while daily text and scores stay unchanged'
   await openSettings(page, 'appearance');
   await expect(page.locator('#settings-practice')).toBeHidden();
   await openView(page, 'Challenge');
-  await page.locator('#challenge-daily').click();
+  await page.locator('#open-daily').click();
   await page.locator('#start-daily').click();
   expect(await passageText(page)).toBe(dailyPassage(day).text);
   await expect(page.locator('#condition-line')).not.toContainText('numbers');
@@ -191,4 +192,18 @@ test('screenshots', async ({ page }, testInfo) => {
   await openView(page, 'Practice');
   await openTestContent(page);
   await page.screenshot({ path: shot(testInfo, 'settings-mobile.png') });
+});
+
+test('turning numbers on from Train keeps Train and its comparison, and the next practice passage has numbers', async ({ page }) => {
+  await openApp(page);
+  await freshTextCheck(page);
+
+  await chooseSetting(page, 'numbers-toggle', true);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
+
+  await closeSettings(page);
+  await openView(page, 'Practice');
+  await expect(page.locator('#condition-line')).toContainText('numbers');
 });

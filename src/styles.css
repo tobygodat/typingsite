@@ -2962,18 +2962,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
-/* Standard score: the one fixed recipe's best and recent median. It follows the filtered figures and
-   charts when there is history, and heads the page above the empty state when there is none. */
-.standard-score {
-  margin-bottom: var(--space-8);
-  padding-bottom: var(--space-8);
-  border-bottom: 1px solid var(--hairline);
-  display: grid;
-  gap: var(--space-3);
-}
-
-.standard-score-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-4); }
-.standard-score h2 { margin: 0; font-size: var(--text-title); font-weight: 400; }
 .standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
 .standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
 .standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
@@ -2981,14 +2969,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .standard-figures strong { color: var(--text); font-family: var(--font-app); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
 .standard-score p { max-width: 64ch; margin: 0; }
 .standard-score .result-note { color: var(--muted); }
-/* With nothing scored, the section is one line: its name, the note, the action. */
-.standard-score.is-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-4); }
-.standard-score.is-empty .standard-score-heading { display: contents; }
-.standard-score.is-empty #take-standard { order: 2; margin-left: auto; align-self: center; }
-.standard-score.is-empty #standard-score-note { order: 1; }
-.standard-figures[hidden] { display: none; }
-/* The standard score's rule already divides it from the empty state, so the empty state drops its own. */
-.standard-score + .empty-state { padding-top: 0; border-top: 0; }
 
 .pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pill {
@@ -3011,42 +2991,18 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .pill:disabled { color: var(--outline); cursor: default; }
 .pill-rule { width: 1px; height: var(--space-6); margin: 0 var(--space-2); background: var(--hairline-strong); }
 .view-pill { font-size: var(--text-body); }
-.progress-heading { align-items: center; }
-.progress-heading h1 { margin: 0; font-size: var(--text-display); }
-.progress-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); margin-bottom: var(--space-3); }
-.progress-filters > .pill-row { min-width: 0; max-width: 100%; }
-#progress-tests { flex: 1; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-#progress-tests > * { flex: none; }
-#progress-period { flex-wrap: nowrap; }
-#progress-tests:empty { display: none; }
 .variant-select { field-sizing: content; min-width: var(--control); max-width: 100%; height: var(--control); padding: 0 var(--space-2) 0 0; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); text-overflow: ellipsis; transition: color var(--dur-quick) var(--ease-out); }
 .variant-select:hover, .variant-select:focus-visible { color: var(--text); }
 .variant-select option { background: var(--raised); color: var(--text); }
-.conditions-disclosure { min-width: 0; max-width: 100%; margin-left: auto; }
-.conditions-disclosure > summary { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
-.conditions-disclosure > summary::-webkit-details-marker { display: none; }
-.conditions-disclosure > summary:hover { color: var(--text); }
-.conditions-disclosure[open] { flex-basis: 100%; }
-.conditions-disclosure[open] > summary { display: flex; width: fit-content; margin-left: auto; }
-.progress-conditions { margin: 0 0 var(--space-2); }
-/* Overview and practice figures: no boxes. A label, the numeral in Literata with its unit, a line under it. */
-.progress-stats { margin: var(--space-8) 0 var(--space-4); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-6) var(--space-6); }
+.progress-stats { display: grid; gap: var(--space-6); }
 .progress-figure { min-width: 0; display: grid; align-content: start; gap: var(--space-1); }
 .progress-figure dt { color: var(--muted); font-size: var(--text-small); }
 .progress-figure dd { margin: 0; }
 .figure-value { display: flex; align-items: baseline; gap: var(--space-2); font-size: var(--text-display); font-weight: 300; line-height: 1.1; letter-spacing: -0.02em; white-space: nowrap; }
-#progress-stats .figure-value { font-size: var(--text-title); }
 .figure-value [data-speed-unit], .figure-unit { color: var(--muted); font-size: var(--text-body); letter-spacing: 0; }
 /* A percent sign sits closer to its number than a word does. */
 .figure-percent { margin-inline-start: calc(var(--space-1) * -1); }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
-/* Progress opens on the filtered runs: the filters and the period's figures, then the views, ruled off
-   from the standard score below. */
-#progress-content { padding-bottom: var(--space-4); }
-.progress-views { margin-bottom: var(--space-8); padding: var(--space-8) 0; border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline); }
-#progress-content[hidden] + .progress-views { border-top: 0; padding-top: 0; }
-.view-tabs { margin-bottom: var(--space-6); }
-.view-heading { margin: 0 0 var(--space-3); font-size: var(--text-lead); font-weight: 400; }
 .view-panel:focus-visible { outline-offset: var(--space-2); }
 /* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
 .practice-goal { display: grid; gap: var(--space-8); }
@@ -3108,12 +3064,101 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .spread-bar { fill: var(--outline); opacity: 0.6; }
 .spread-median { stroke: var(--accent); stroke-width: 2; }
 .strip-bar { fill: var(--outline); opacity: 0.6; }
-.progress-danger { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
-.progress-danger:has(> [hidden]) { display: none; }
-.progress-section, .training-memory, .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
-/* The standard score's rule and space already divide it from the first history section. */
-#progress-history > .progress-section:first-child { padding-top: 0; border-top: 0; }
-.progress-section h2, .training-memory h2, .daily-challenge h2 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+
+.daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
+.daily-challenge h2 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+
+/* Progress (TOB-420): what changed since last week. No visible heading: the dock names the page. The lead figure,
+   then the list of what moved it, then two small charts, then quiet links to everything else, each a detail view
+   one step away. Rules and space, no boxes. */
+.progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
+.progress-overview > [hidden], .progress-detail > [hidden] { display: none; }
+
+.week-lead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: var(--space-3) var(--space-8); padding-top: var(--space-6); }
+/* The run card's numeral: the same size, weight, leading and tracking. */
+.lead-figure { margin: 0; display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-app); font-size: var(--text-numeral); font-weight: 400; line-height: 0.76; letter-spacing: -0.035em; white-space: nowrap; }
+.lead-unit { color: var(--muted); font-size: var(--text-lead); font-style: italic; letter-spacing: 0; }
+.week-lead[data-tone="gain"] .lead-number { color: var(--accent); }
+.week-lead[data-tone="drop"] .lead-number { color: var(--danger); }
+/* No figure to state: a muted rule where the number would stand, at the numeral's baseline. */
+.lead-dash { display: block; width: var(--space-16); height: var(--space-1); border-radius: var(--radius-full); background: var(--outline); }
+.week-lead:has(.lead-dash) { align-items: center; }
+.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.progress-empty { display: grid; justify-items: start; gap: var(--space-6); }
+.progress-empty[hidden] { display: none; }
+.lead-context { min-width: 0; display: grid; gap: var(--space-2); padding-bottom: var(--space-2); }
+.lead-sentence { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
+.lead-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.lead-sample:not([hidden])::after { content: "·"; margin-inline: var(--space-2); }
+.conditions-disclosure > summary::after { display: inline-block; margin-left: var(--space-2); }
+.detail-filters .lead-sample { display: none; }
+.lead-note { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.trend-figures { margin: var(--space-4) 0 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
+.trend-figures > span { white-space: nowrap; }
+.progress-filters { min-width: 0; max-width: 100%; display: flex; align-items: center; }
+.progress-filters[hidden] { display: none; }
+.conditions-disclosure { min-width: 0; max-width: 100%; }
+/* The line reads as text, so a long line wraps like one and the chevron trails its last word. The padding keeps a
+   44px target. */
+.conditions-disclosure > summary { display: block; padding-block: calc((var(--control) - 1lh) / 2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
+.conditions-disclosure > summary::-webkit-details-marker { display: none; }
+.conditions-disclosure > summary:hover { color: var(--text); }
+.conditions-panel { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-2); padding-bottom: var(--space-2); }
+.conditions-panel > * { max-width: 100%; }
+#progress-tests:empty { display: none; }
+.progress-conditions { margin: 0; }
+
+.week-movers { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.mover {
+  display: grid; grid-template-columns: calc(var(--space-16) * 2) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-6);
+  min-height: calc(var(--control) + var(--space-6)); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline);
+}
+.mover[hidden] { display: none; }
+.mover-unit { font-size: var(--text-title); font-weight: 400; line-height: 1.2; overflow-wrap: anywhere; }
+.mover-change { margin: 0; font-size: var(--text-lead); line-height: 1.4; }
+.mover-before, .mover-arrow, .mover-tail { color: var(--muted); }
+.mover.is-fixed .mover-after { color: var(--accent); }
+.mover-status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.is-practice .mover-unit, .is-practice .mover-change { color: var(--muted); }
+.is-practice .mover-unit { font-size: var(--text-lead); }
+.mover-link { min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted); font-family: var(--font-app); text-align: start; cursor: pointer;
+  text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 0.2em; transition: color var(--dur-quick) var(--ease-out); }
+.mover-link:hover { color: var(--text); text-decoration-color: currentColor; }
+.more-movers { justify-self: start; margin-top: calc(var(--space-6) * -1); }
+
+.week-charts-head { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+.week-chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
+.week-chart-slot { min-width: 0; }
+.week-chart { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: inherit; cursor: pointer; }
+.week-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.week-chart:hover .trend-rule { stroke: var(--outline); }
+.week-chart-end { fill: var(--ground); stroke: var(--accent); stroke-width: 2; }
+.week-chart-value { fill: var(--text); font: var(--text-lead) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+.week-chart-unit { fill: var(--muted); font-size: var(--text-small); }
+.week-chart-runs { fill: var(--muted); font: var(--text-label) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+/* Speed draws in the accent, accuracy in the text colour, so the two small charts read apart at a glance. */
+.trend-line.trend-accuracy, .week-chart-end.trend-accuracy, .trend-dot.trend-accuracy { stroke: var(--text); }
+.trend-dot.trend-accuracy:is(:hover, :focus) { fill: var(--text); }
+
+.progress-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-6); border-top: 1px solid var(--hairline); }
+.progress-more > [hidden] { display: none; }
+.progress-more:not(:has(> :not([hidden]))) { display: none; }
+.progress-more .btn-ghost { padding-inline: var(--space-4); }
+.clear-history { margin-left: auto; }
+
+.detail-head { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-3); padding-top: var(--space-4); }
+.detail-back { padding-left: var(--space-2); gap: var(--space-1); }
+.detail-back svg { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.detail-heading { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
+.detail-heading:focus { outline: none; }
+.detail-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); width: 100%; }
+.detail-filters:empty { display: none; }
+.detail-filters .lead-meta { font: inherit; }
+.view-tabs { margin-bottom: var(--space-6); }
+.detail-panel h3 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
+.progress-section, .training-memory { padding: var(--space-8) 0 0; margin-top: var(--space-8); border-top: 1px solid var(--hairline); }
+.standard-score { display: grid; justify-items: start; gap: var(--space-3); }
+.standard-figures[hidden] { display: none; }
 
 /* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
 .key-heatmap { justify-content: center; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
@@ -3258,40 +3303,76 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-.challenge-modes { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-8); }
-.challenge-modes [aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
-/* Online opens under the same rule as Daily, Friends and One keyboard, so the tabs never lose their floor. */
-#online-challenge { padding-top: var(--space-8); border-top: 1px solid var(--hairline); }
+/* Challenge is the people you race: quick match on top, one row per person, quiet links at the foot. The dock names
+   the page, so it has no visible heading. A race, a guest's invitation or a foot link's view takes the list's place. */
 .online-copy { color: var(--muted); font-size: var(--text-small); }
-/* Quick match sits above hosting, on the same rules-and-space footing, and moves as one element. */
-.quick-match { margin-bottom: var(--space-8); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
-.quick-match > .online-actions:first-child { margin-top: 0; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
+.quick-match { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2) var(--space-6); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
+.quick-match-head { min-width: 0; display: grid; gap: var(--space-1); }
+.quick-match-head h2 { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
 .quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.quick-match-status, .quick-match-lonely { grid-column: 1 / -1; }
+.quick-match-status { margin: var(--space-2) 0 0; }
+.quick-match-lonely { margin-top: 0; flex-wrap: wrap; }
 .quick-match [data-quick-part="status"]:empty { display: none; }
-.quick-match [data-quick-part="lonely"] { margin-top: var(--space-3); flex-wrap: wrap; }
-.quick-match [data-quick-part="lonely"][hidden], .quick-match [hidden] { display: none; }
-.online-optional { font-size: var(--text-fine); }
-.online-setup { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4) var(--space-6); }
-.online-setup-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-4); }
-/* Customize opens the practice row's own controls under the buttons, for this race only. */
-#online-customize[aria-expanded="true"] { color: var(--text); background: var(--raised-2); }
-.online-customize-chevron { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur-quick) var(--ease-out); }
-#online-customize[aria-expanded="true"] .online-customize-chevron { transform: rotate(180deg); }
-.online-options { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
-.online-options[hidden] { display: none; }
+
+.people-list { list-style: none; margin: 0; padding: 0; }
+.people-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4) var(--space-6);
+  padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+/* A person who arrives eases in; a row redrawn in place doesn't arrive again. */
+@starting-style {
+  .people-row:not([data-settled]) { opacity: 0; transform: translateY(var(--space-1)); }
+}
+.people-who { min-width: 0; display: grid; gap: var(--space-1); }
+.people-name { margin: 0; font-size: var(--text-lead); line-height: 1.3; overflow-wrap: anywhere; }
+.people-line { margin: 0; color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+.people-line:empty { display: none; }
+/* Something waiting for you reads in the text colour; history stays muted. */
+.people-row:is([data-state="invited"], [data-state="ghost"]) .people-line { color: var(--text); }
+.people-side { flex: none; display: flex; align-items: center; gap: var(--space-6); }
+.people-tally { margin: 0; font-size: var(--text-lead); line-height: 1; white-space: nowrap; }
+.people-actions { display: flex; align-items: center; gap: var(--space-2); }
+.people-status { margin: var(--space-4) 0 0; }
+.people-status:empty { display: none; }
+.people-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-6); padding-top: var(--space-4); }
+.people-foot-group { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
+.people-link {
+  min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: var(--text-body); cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.people-link:hover { color: var(--text); }
+/* Race setup carries what a one-press Race uses, as a conditions line. */
+.people-setup-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; align-content: center; justify-content: flex-start; column-gap: var(--space-2); text-align: start; }
+.people-conditions { font: var(--text-mono)/1.5 var(--font-mono); letter-spacing: 0.01em; }
+.people-conditions:empty { display: none; }
+.people-detail { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
+#online-room-conditions { margin-top: var(--space-2); }
+#online-room-conditions:empty { display: none; }
+.people-link:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius-sm); }
+
+/* Add a friend, Race setup, the daily passage with the friends board, and One keyboard: one step from the list. */
+.challenge-view > h2 { margin: var(--space-4) 0 var(--space-6); font-size: var(--text-title); font-weight: 400; }
+.challenge-view h2[tabindex="-1"]:focus { outline: 0; }
+.challenge-back { margin-left: calc(var(--space-3) * -1); }
+.challenge-view > .challenge-back + .daily-challenge { border-top: 0; padding-top: var(--space-4); }
+.challenge-view > .online-actions { margin-top: var(--space-8); }
+.online-name-field { max-width: calc(var(--content-max) / 2); margin-bottom: var(--space-6); }
+.online-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-4) var(--space-6); max-width: calc(var(--content-max) * 0.75); }
+.online-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.online-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
 .online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
 .online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
-.online-inbox, .online-friends, .online-room, .online-join { border-top: 1px solid var(--hairline); padding-top: var(--space-8); margin-top: var(--space-8); }
 .online-join .player-field { max-width: calc(var(--content-max) / 2); }
 .online-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
-.online-invite-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
-.online-invite-row p { margin: 0; }
-.online-friend-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
-.online-friend-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
+.online-friend-list { list-style: none; margin: var(--space-8) 0 0; padding: 0; }
+.online-friend-list:not(:empty) { border-top: 1px solid var(--hairline); }
+.online-friend-row { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline); }
 .online-friend-name { min-width: 0; display: grid; gap: 2px; }
 .online-friend-name strong { font-weight: 400; overflow-wrap: anywhere; }
 .online-friend-name span { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
-.online-friend-row .online-actions { margin: 0; flex: none; gap: var(--space-2); }
 .online-after { margin-top: var(--space-6); }
 .online-after > p { margin: 0 0 var(--space-3); }
 .online-after .online-actions { margin-top: 0; flex-wrap: wrap; }
@@ -3444,6 +3525,12 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 760px) {
   .online-setup, .online-players { grid-template-columns: 1fr; }
+  .quick-match { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-4); padding-bottom: var(--space-6); }
+  .quick-match-head h2 { font-size: var(--text-title); }
+  .people-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-3) var(--space-4); }
+  .people-side { display: contents; }
+  .people-tally { grid-column: 2; grid-row: 1; align-self: start; padding-top: var(--space-1); }
+  .people-actions { grid-column: 1 / -1; grid-row: 2; }
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
   .online-section-heading { flex-wrap: wrap; }
@@ -4080,22 +4167,21 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   }
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
-  .progress-filters > #progress-tests, .progress-filters > #progress-period { flex-basis: 100%; }
-  .progress-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  /* On a phone the chart comes straight after the filters, so it starts on the first screen; the
-     period's figures follow it, before the standard score and the runs. */
-  .progress-screen:not([hidden]) { display: flex; flex-direction: column; }
-  #progress-content:not([hidden]) { display: contents; }
-  #progress-stats, #progress-trend-note { order: 1; }
-  .progress-screen > :is(.standard-score, #progress-empty, #progress-history, #compose-history, .progress-danger) { order: 2; }
-  .progress-views { margin-bottom: 0; }
-  #progress-trend-note:not(:empty) { margin-bottom: var(--space-8); }
   .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .figure-value { font-size: var(--text-title); }
+  .week-lead { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
+  .lead-figure { font-size: var(--text-numeral-mobile); }
+  .lead-context { padding-bottom: 0; }
+  .mover { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "unit status" "change change"; row-gap: var(--space-1); }
+  .mover-unit { grid-area: unit; }
+  .mover-change { grid-area: change; }
+  .mover-status { grid-area: status; justify-self: end; }
+  .week-chart-pair { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
+  .detail-heading { font-size: var(--text-title); }
   .practice-layout, .progress-spread { grid-template-columns: minmax(0, 1fr); }
   .progress-spread { gap: var(--space-8); }
   .trend-figure { grid-template-columns: minmax(0, 1fr); }
   .trend-legend { margin-bottom: var(--space-3); }
-  .figure-value { font-size: var(--text-title); }
   .training-target { grid-template-columns: 1fr; }
   .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
@@ -4114,14 +4200,12 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 360px) {
   #result-wpm { font-size: var(--text-numeral-narrow); }
+  .lead-figure { font-size: var(--text-numeral-narrow); }
   /* Three tracks are about 76px here: values step down a size so "120.0 s" fits. */
   .run-card { padding: var(--space-4); }
   .run-card-facts dd { font-size: var(--text-lead); }
 }
 
-@media (max-width: 1000px) and (min-width: 761px) {
-  .progress-stats:not(.practice-stats) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
 
 /* All five practice figures in one row from 1001 px. A unit too wide for its column ("412 finished" beside
    999) drops under its numeral instead of running into the next column. */

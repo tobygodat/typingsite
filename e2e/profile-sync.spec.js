@@ -1,6 +1,6 @@
 // One account in two tabs or on two devices, against the fake Supabase in e2e/fake-supabase.js: a save
 // from a copy that is out of date merges with the other copy instead of replacing it.
-import { test, expect, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, openSettings, chooseWords, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, finishDrill } from './fixtures.js';
 import { CONDITION_SETS_FROM, textStamp } from '../src/account.js';
 
 test.setTimeout(90000);
@@ -60,6 +60,7 @@ async function expectBothRuns(page, { runs, best }) {
   await expect(page.locator('#account')).toHaveAttribute('data-sync', 'synced');
   await expect(page.locator('#best')).toHaveText(`Best · ${best} wpm`);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(runs);
 }
 
@@ -345,6 +346,7 @@ test('runs made after the session ends stay on the device and reach the account 
   await signInWithEmail(page, EMAIL);
   await expect.poll(() => runIds(cloud(supabase)).length).toBe(3);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(3);
 });
 
@@ -384,7 +386,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await page.route(/\/rest\/v1\/profiles/, (route) => route.abort());
 
   await openView(page, 'Challenge');
-  await page.locator('#challenge-local').click();
+  await page.locator('#open-local').click();
   await page.locator('#start-local-race').click();
   const text = await page.locator('#race-accessible-passage').textContent();
   await typeInto(page, text.slice(0, 5), '#race-input');
@@ -408,6 +410,7 @@ test('changes another tab saved during a one-keyboard race apply once the race i
   await expect(page.locator('.race-result-row').first()).toContainText(/\d+ wpm/);
   await expect(page.locator('.race-result-row').last()).toContainText(/\d+ wpm/);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
@@ -754,8 +757,10 @@ test('undo brings back a run the clearing device never saw, after another device
     await expect.poll(() => runIds(cloud(supabase)).length).toBe(2);
     const both = runIds(cloud(supabase));
     await openView(page, 'Progress');
+    await openProgressDetail(page, 'runs');
     await expect(page.locator('#run-history .run-row')).toHaveCount(1);
 
+    await page.locator('#progress-back').click();
     await page.locator('#clear-history').click();
     await page.locator('#confirm-clear-input').fill('clear');
     await page.locator('#confirm-clear').click();
@@ -873,6 +878,7 @@ test('a run another tab saved but could not send goes up with this tab’s next 
   await other.route(/\/rest\/v1\/profiles/, (route) => route.abort());
   await finishRun(other);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(1);
   await other.close();
   expect(runIds(cloud(supabase))).toEqual([]);
@@ -979,7 +985,7 @@ for (const kind of ['daily', 'interrupted']) {
 
       if (kind === 'daily') {
         await openView(phone, 'Challenge');
-        await phone.locator('#challenge-daily').click();
+        await phone.locator('#open-daily').click();
         await phone.locator('#start-daily').click();
         await expect(phone.locator('#session-description')).toContainText('first attempt');
       } else {

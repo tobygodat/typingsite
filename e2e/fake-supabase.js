@@ -51,6 +51,7 @@ export class FakeSupabase {
     this.holdProfileWrite = null;
     // Set to stand in for a project without the friends board's `board` column on profiles yet.
     this.boardColumnMissing = false;
+    this.peopleMissing = false;
     // Every profile write the fake took: { caller, method, updated_at, board } (board undefined when the
     // write left it out).
     this.profileWrites = [];
@@ -174,6 +175,13 @@ export class FakeSupabase {
     switch (`${method} ${url.pathname}`) {
       case 'POST /rest/v1/rpc/race_action':
         return this.races.handle(caller, body, reply);
+      case 'POST /rest/v1/rpc/race_people':
+        // Set peopleMissing to answer as a project without the race_people migration.
+        if (this.peopleMissing) return reply(404, { code: 'PGRST202', message: 'Could not find the function public.race_people without parameters in the schema cache' });
+
+        if (!caller) return reply(400, { message: 'Sign in to see the people you race.' });
+
+        return reply(200, this.races.people(caller, this.challenges));
       case 'POST /rest/v1/rpc/quick_match':
         return this.races.quick.handle(caller, body, reply);
       case 'POST /rest/v1/rpc/challenge_action':

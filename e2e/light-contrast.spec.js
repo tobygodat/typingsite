@@ -150,7 +150,7 @@ for (const theme of ['light', 'dark']) {
     test('input placeholders read at 4.5:1 with no extra fade', async ({ page }, testInfo) => {
       await open(page, theme);
       await page.locator('.nav-item[data-nav="compete"]').click();
-      await page.locator('#challenge-local').click();
+      await page.locator('#open-local').click();
       const name = page.locator('#player-one-name');
       await expect(name).toBeVisible();
       await expect(name).toHaveValue('');
