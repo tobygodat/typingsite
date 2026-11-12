@@ -1,8 +1,8 @@
-# 0018. learner-let-go@2: a drilled target is let go on the evidence since its drill
+# 0019. learner-let-go@2: a drilled target is let go on the evidence since its drill
 
 Status: Accepted, 2026-11-11. TOB-419. The candidate failed the rule below; the default is unchanged.
 
-Written and committed as ADR 0017; renumbered 0018 when [ADR 0017](0017-design-note-keeps-floors-only.md) landed on master first. Nothing else in the rule changed.
+Written and committed as ADR 0017; renumbered 0018 when [ADR 0017](0017-design-note-keeps-floors-only.md) landed on master first, and 0019 when [ADR 0018](0018-ci-on-hosted-runners.md) did the same. Nothing else in the rule changed.
 
 ## Context
 
@@ -112,7 +112,7 @@ Shares get a 95% Wilson interval.
 
 ## Results
 
-The rule was committed (commit "Write learner-let-go@2's decision rule before any code or run") before any code and before any run. Validation chose the constants, the test seeds ran once, and the run is recorded in [`0018-evaluation.json`](0018-evaluation.json). `npm run evaluate:learner -- --rule 0018` reproduces it byte for byte, and ADR 0013's and 0015's records still reproduce byte for byte.
+The rule was committed (commit "Write learner-let-go@2's decision rule before any code or run") before any code and before any run. Validation chose the constants, the test seeds ran once, and the run is recorded in [`0019-evaluation.json`](0019-evaluation.json). `npm run evaluate:learner -- --rule 0019` reproduces it byte for byte, and ADR 0013's and 0015's records still reproduce byte for byte.
 
 **Disclosure.** Before the judging run, a unit test I wrote ran four season cells of test seed 301 (25 words, five a day, average and careless typists) under placeholder constants (R = 4, q0 = 0.85, H = 10⁴), and I saw its nine targets' results. No constant was chosen from them, the constants below come from validation alone, and the test now uses seed 9001.
 

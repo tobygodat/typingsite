@@ -30,7 +30,7 @@ export const BASELINE_POLICY = 'counting@1';
 // worse on captured gain at 10 runs, by 0.3 points, and rule v2 would leave it out. It replaced counting@1
 // because it was not really worse on captured time lost. ADR 0015 kept it on typists whose miss costs 1 to 8
 // intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
-// worse on a guard. ADR 0018 kept it again: letting a drilled target go on the evidence since its drill
+// worse on a guard. ADR 0019 kept it again: letting a drilled target go on the evidence since its drill
 // (LET_GO_POLICY) harmed nothing, but on simulated seasons took a median of 100 runs at 25 words to let a fixed target
 // go, and let 2.3% of still-weak targets go. It is provisional until a learning study can run, and says nothing
 // about learning.
@@ -59,14 +59,14 @@ export const MISS_INTERVALS = 2;
 // from {1, 5, 10, 20, 40, 80} by cost error on validation typists, where 1, 5 and 10 tied (ADR 0015).
 export const COST_CORRECTIONS = 1;
 
-// Letting go of a drilled target (ADR 0018). Since its drill, a walk adds each run's log likelihood ratio between
+// Letting go of a drilled target (ADR 0019). Since its drill, a walk adds each run's log likelihood ratio between
 // "fixed" and "still weak" and lets go once it reaches ln LET_GO_ODDS, so a target still weak is let go by luck
 // about once in LET_GO_ODDS over its whole future, however many runs are read. Fixed by that ceiling, not tuned.
 // For misses, "fixed" is the person's typical miss rate and "still weak" WEAK_RATIO times it. For pace, whose
 // spread is not recorded, the walk reads only whether each run had the pair slower than the person's pace:
 // "fixed" is slower in half the runs, "still slow" in SLOW_SHARE of them. Once let go, a target comes back when a
 // second walk, of the opposite ratio and never below zero, reaches ln RETURN_ODDS. The three were chosen on
-// validation typists (ADR 0018).
+// validation typists (ADR 0019).
 export const LET_GO_ODDS = 100;
 export const WEAK_RATIO = 3;
 export const SLOW_SHARE = 0.75;
@@ -83,7 +83,7 @@ const TYPICAL_FLOOR = 0.01;
 
 // The learner's policies, one line each: with or without decay (old runs fade), the timing term (slow pairs
 // rank on the time they lose), the person's own cost of a miss, and letting go of drilled targets on the evidence
-// since their drill (both kinds, or misses only). ADRs 0013, 0015 and 0018 keep the variants the default does not use
+// since their drill (both kinds, or misses only). ADRs 0013, 0015 and 0019 keep the variants the default does not use
 // as named variants.
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare: SLOW_SHARE, returnOdds: RETURN_ODDS };
@@ -274,8 +274,8 @@ export function letGoIndex(evidence) {
 // Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
 export const drillSplit = (loop, index) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at);
 
-// The one rule for letting go of a drilled target (ADR 0018), of one kind, at one split: the let-go variants drop that
-// part of the target's gain. It failed ADR 0018's rule, so no default reads it and Train keeps its own "fixed"; a
+// The one rule for letting go of a drilled target (ADR 0019), of one kind, at one split: the let-go variants drop that
+// part of the target's gain. It failed ADR 0019's rule, so no default reads it and Train keeps its own "fixed"; a
 // variant that passes would have Train read it too, as "let go and not queued". Every run since the split that
 // holds an observation of the kind steps the walk; see LET_GO_ODDS. True when it is let go after the newest run.
 export function letGo(index, unit, basis, split, k = LET_GO) {
@@ -427,7 +427,7 @@ export function fitLearner(evidence, now, variant = LEARNER_VARIANTS[DEFAULT_POL
   const errorRate = pairs.reduce((s, e) => s + e.frequency * e.error.mean, 0) / pairs.reduce((s, e) => s + e.frequency, 0);
   const missCost = ownCost && corrections.count >= costCorrections ? Math.max(1, Math.exp(corrections.ratio / corrections.weight) - 1) : MISS_INTERVALS;
 
-  // A drilled target let go on the evidence since its drill loses that part of its gain (ADR 0018).
+  // A drilled target let go on the evidence since its drill loses that part of its gain (ADR 0019).
   const released = new Map();
 
   if (settings.letGo && drills.length) {

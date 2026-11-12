@@ -270,7 +270,7 @@ test('the let-go learner is the same whatever order runs and loops arrive in, an
   }
 });
 
-// ADR 0018 records that a let-go can flicker for a run as the typical rate moves or old runs leave the kept window, so
+// ADR 0019 records that a let-go can flicker for a run as the typical rate moves or old runs leave the kept window, so
 // this holds only the part that held: a target the drill left weak is never let go here, and most fixed ones are.
 test('over a simulated season, a target the drill left weak is never let go, and most fixed targets are', () => {
   const policies = [{ name: 'let-go', policy: LET_GO_POLICY, constants: {} }];
