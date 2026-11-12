@@ -62,6 +62,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   let changingFriends = false;
   let networkBusy = false;
   let dirty = false;
+  // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
+  let refused = false;
   let finishRequested = false;
   let baseKeystrokes = 0;
   let baseErrors = 0;
@@ -472,6 +474,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     baseKeystrokes = 0;
     baseErrors = 0;
     dirty = false;
+    refused = false;
     finishRequested = false;
     lastClock = '';
     lastAnnouncement = '';
@@ -574,7 +577,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     updateClock();
 
     if (terminal(room)) {
-      setRunning(false);
+      // A closed room is polled for about a day, for the other racer's Rematch pick. Only the reply that
+      // closes it ends this race's run, and only on Challenge: on any other view the run in progress is
+      // the person's own (leaving Challenge already ended this one, in onViewChange).
+      if (previousStatus !== room.status && document.body.dataset.view === 'compete') setRunning(false);
       $('online-input').disabled = true;
 
       if (room.status === 'finished') renderResults();
@@ -768,7 +774,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       finishRequested = true;
       attempt.endedAt = (room.duration || 60) * 1000;
       dirty = true;
-      setRunning(false);
+
+      if (document.body.dataset.view === 'compete') setRunning(false);
+
       $('online-help').textContent = 'Time’s up. Sending your result…';
       poll();
     }
@@ -787,11 +795,12 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const currentGeneration = generation;
     const currentCredentials = credentials;
     networkBusy = true;
+    let failed = false;
 
     try {
       let next;
 
-      if (dirty && attempt && room.status === 'racing') {
+      if (dirty && attempt && room.status === 'racing' && !refused) {
         const replay = replayAttempt(attempt);
         const prefixErrors = [...baseTyped].filter((char, index) => char !== attempt.text[index]).length;
         // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
@@ -803,19 +812,26 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
         next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
-      } else next = await multiplayer.getRace(getSession(), currentCredentials);
+      } else {
+        next = await multiplayer.getRace(getSession(), currentCredentials);
+        refused = false;
+      }
 
       if (currentGeneration !== generation) return;
       $('online-connection').textContent = '';
       applyRoom(next.room || next);
     } catch (failure) {
       if (currentGeneration !== generation) return;
+      failed = true;
+      // A refusal is the service's answer about the room (cancelled, expired, out of limits), so the next
+      // poll reads the room instead of sending the same progress again. A lost connection just retries.
+      refused = failure.status >= 400 && failure.status < 500;
       dirty ||= Boolean(attempt);
-      $('online-connection').textContent = `Connection interrupted. Retrying… ${failure.message || ''}`;
+      $('online-connection').textContent = refused ? '' : `Connection interrupted. Retrying… ${failure.message || ''}`;
     } finally {
       networkBusy = false;
 
-      if (credentials && !terminal(room)) pollTimer = setTimeout(poll, dirty && finishRequested ? 0 : 650);
+      if (credentials && !terminal(room)) pollTimer = setTimeout(poll, dirty && finishRequested && !failed ? 0 : 650);
       else if (credentials && watchingRematch()) pollTimer = setTimeout(poll, resultsInView() ? PICK_WATCH_MS : CLOSED_WATCH_MS);
     }
   }

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  challengeFor, cleanRedirectUrl, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
-  sameProfile, sameSignIn, SESSION_KEY, signedOutKey, signIn, signOut, suggestionRow, textStamp, unsentCopy,
+  AuthError, challengeFor, cleanRedirectUrl, completeRedirect, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
+  sameProfile, sameSignIn, SESSION_KEY, signedOutKey, signIn, signOut, signUp, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
 import { MAX_RUN_SUMMARIES, minutesByDay, retainHistory } from '../src/insights.js';
 
@@ -844,4 +844,75 @@ test('an account with archived practice keeps its settings during legacy adoptio
   const base = { ...stored([]), preferences: { theme: 'dark' }, practiceDays: { '2026-10-01': 60000 } };
   const legacy = { ...stored([]), preferences: { theme: 'light' } };
   assert.equal(mergeProfiles(base, legacy).preferences.theme, 'dark');
+});
+
+// Stubs the browser for completeRedirect: storage, the service (answer(url) gives the JSON body) and history.
+async function withBrowser(answer, run) {
+  const store = new Map();
+  const calls = [];
+  const originals = { localStorage: globalThis.localStorage, fetch: globalThis.fetch, history: globalThis.history };
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async (url) => {
+    calls.push(url);
+
+    return { ok: true, status: 200, text: async () => JSON.stringify(answer.current(url)) };
+  };
+
+  globalThis.history = { state: null, replaceState() {} };
+
+  try {
+    await run({ store, calls });
+  } finally {
+    Object.assign(globalThis, originals);
+  }
+}
+
+const TOKEN_LINK = 'https://stilltype.test/#access_token=t&refresh_token=r&expires_in=60&type=signup';
+const REFUSED = 'That link can’t sign you in here. Sign in with your email and password.';
+const refused = (error) => error instanceof AuthError && error.message === REFUSED;
+
+test('a token link signs nobody in when this browser started no sign-up', async () => {
+  const answer = { current: () => ({ id: 'u1', email: 'new@stilltype.test' }) };
+  await withBrowser(answer, async ({ store, calls }) => {
+    await assert.rejects(completeRedirect(TOKEN_LINK), refused);
+    assert.equal(calls.length, 0);
+    assert.equal(store.has(SESSION_KEY), false);
+  });
+});
+
+test('a token link signs in the address this browser signed up with, once', async () => {
+  const answer = { current: () => ({ id: 'u1', email: 'new@stilltype.test' }) };
+  await withBrowser(answer, async ({ store }) => {
+    assert.deepEqual(await signUp(' New@Stilltype.test ', 'pw', 'https://stilltype.test/'), { confirm: true });
+    assert.equal((await completeRedirect(TOKEN_LINK)).user.id, 'u1');
+    store.delete(SESSION_KEY);
+    await assert.rejects(completeRedirect(TOKEN_LINK), refused);
+    assert.equal(store.has(SESSION_KEY), false);
+  });
+});
+
+test('a token link for another address, or an old sign-up, signs nobody in', async () => {
+  const answer = { current: () => ({ id: 'u1', email: 'new@stilltype.test' }) };
+  await withBrowser(answer, async ({ store }) => {
+    await signUp('new@stilltype.test', 'pw', 'https://stilltype.test/');
+    answer.current = () => ({ id: 'u2', email: 'other@stilltype.test' });
+    await assert.rejects(completeRedirect(TOKEN_LINK), refused);
+    assert.equal(store.has(SESSION_KEY), false);
+
+    answer.current = () => ({ id: 'u1', email: 'new@stilltype.test' });
+    await signUp('new@stilltype.test', 'pw', 'https://stilltype.test/');
+    const [key, value] = [...store].find(([, stored]) => stored.includes('new@stilltype.test'));
+    store.set(key, JSON.stringify({ ...JSON.parse(value), at: Date.now() - 25 * 60 * 60 * 1000 }));
+    await assert.rejects(completeRedirect(TOKEN_LINK), refused);
+    assert.equal(store.has(SESSION_KEY), false);
+  });
+});
+
+test('a redirect error shows fixed words, not the link’s', async () => {
+  await withBrowser({ current: () => null }, async () => {
+    await assert.rejects(
+      completeRedirect('https://stilltype.test/?error=access_denied&error_description=Anything+at+all'),
+      (error) => error instanceof AuthError && error.message === 'That sign-in link didn’t work. Try signing in again.',
+    );
+  });
 });

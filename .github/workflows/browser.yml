@@ -1,8 +1,8 @@
 name: Browser checks
 
-# The Playwright suite runs only when asked: Actions → Browser checks → Run workflow (pick the
-# branch), or `gh workflow run browser.yml --ref <branch>`. Every push runs only ci.yml, which
-# keeps Actions minutes down; run `npm run test:e2e` locally before merging.
+# For GitHub-hosted runners, which are blocked by billing (docs/adr/0012). ci.yml runs the suite on
+# the self-hosted runner for every PR head, so this workflow is a fallback: run it only when asked
+# (`gh workflow run browser.yml --ref <branch>`).
 on:
   workflow_dispatch:
 

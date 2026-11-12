@@ -1,4 +1,4 @@
-import { test, expect, openProgressDetail, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings, freshTextCheck } from './fixtures.js';
 import { dailyPassage } from '../src/insights.js';
 import { quoteCorpus } from '../src/typing.js';
 
@@ -192,4 +192,18 @@ test('screenshots', async ({ page }, testInfo) => {
   await openView(page, 'Practice');
   await openTestContent(page);
   await page.screenshot({ path: shot(testInfo, 'settings-mobile.png') });
+});
+
+test('turning numbers on from Train keeps Train and its comparison, and the next practice passage has numbers', async ({ page }) => {
+  await openApp(page);
+  await freshTextCheck(page);
+
+  await chooseSetting(page, 'numbers-toggle', true);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('#settings-dialog')).toBeVisible();
+
+  await closeSettings(page);
+  await openView(page, 'Practice');
+  await expect(page.locator('#condition-line')).toContainText('numbers');
 });

@@ -70,7 +70,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { aheadCopy, behindCopy, evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, bestRun, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
@@ -2712,7 +2712,7 @@ function storeAttempt(completed) {
   const score = completed.summary.score;
   // Repeated text is saved and listed, but only fresh text can set a best. Bests stored before repeat quotes
   // are left as they are, whatever text set them. Code runs are their own condition and never set a best.
-  const eligibleBest = trendRun(completed) && completed.conditions?.mode !== 'code';
+  const eligibleBest = bestRun(completed);
   resultBestBefore = profile.bests[key] || null;
   // A custom passage is never fresh either, but it is never compared, so it has no passage best to chase.
   resultPassageBefore = completed.fresh === false && comparableKind(completed.kind) ? passageBest(profile.runs, completed) : null;
@@ -5093,7 +5093,7 @@ async function startGhostRace(id) {
     return;
   }
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
@@ -5130,7 +5130,7 @@ function startOwnGhost() {
 
   if (!best || onlineRoomFirst()) return;
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
@@ -6189,6 +6189,16 @@ function closeAccountMenu() {
   $('account').open = false;
 }
 
+// Saves this device's copy of the profile as a file. Nothing is sent anywhere: the browser builds the file.
+function exportData() {
+  const file = account.exportCopy(profile);
+  const url = URL.createObjectURL(new Blob([file.text], { type: 'application/json' }));
+  const link = Object.assign(document.createElement('a'), { href: url, download: file.name });
+  link.click();
+  URL.revokeObjectURL(url);
+  announce('Your data was saved as a file on this device.');
+}
+
 // Account deletion. The server deletes first (account.deleteAccount); only a confirmed deletion
 // signs this device out and clears it. Any failure leaves the session, cache and history untouched.
 const DELETE_WORD = 'delete';
@@ -6363,6 +6373,7 @@ function bindAccount() {
   $('account-google').addEventListener('click', continueWithGoogle);
   $('account-dialog-google').addEventListener('click', continueWithGoogle);
   $('account-signout').addEventListener('click', signOutAccount);
+  $('account-export').addEventListener('click', exportData);
   $('account-delete').addEventListener('click', openDeleteAccount);
   $('confirm-delete-input').addEventListener('input', (event) => {
     if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
@@ -6763,7 +6774,7 @@ function bindEvents() {
     if (!changed) return;
     applyPreferences();
     showBest();
-    resetSession(restartKind(), { focus: true });
+    resetForCondition(restartKind());
   });
   onSetting('word-list', (value) => setWordList(value));
   onSetting('repeat-quotes-toggle', (value) => setRepeatQuotes(value === 'true'));
@@ -7502,6 +7513,15 @@ function setWordHighlightSlide(on) {
   saveChoice('wordHighlightSlide');
 }
 
+// A test condition changed in settings prepares the next practice passage wherever the person is, and shows
+// it only where they are already practising (the run card counts: it sits on the practice screen). Train,
+// Progress, Challenge and the lessons stay as they are behind the dialog, with focus left in it.
+function resetForCondition(kind) {
+  const practising = ['practice', 'results'].includes(document.body.dataset.view);
+
+  return resetSession(kind, { focus: practising, show: practising });
+}
+
 function setWordList(id, kind = restartKind()) {
   if (!wordListIds.includes(id)) return;
   const changed = prefs.wordList !== id;
@@ -7510,7 +7530,7 @@ function setWordList(id, kind = restartKind()) {
 
   if (!changed) return;
   applyPreferences();
-  resetSession(kind, { focus: true });
+  resetForCondition(kind);
 }
 
 function inPractice(change) {
@@ -7545,7 +7565,7 @@ function setLayout(id, kind = restartKind()) {
   applyPreferences();
   saveChoice('layout');
 
-  if (changed) resetSession(kind, { focus: true });
+  if (changed) resetForCondition(kind);
 }
 
 // The finger map is drawn on the on-screen keyboard, so turning it on shows the keyboard too.
@@ -7639,6 +7659,7 @@ function paletteCommands(query) {
     ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
     ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
     { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
+    { group: 'account', label: 'export my data', keywords: 'download backup json history runs take out privacy', run: exportData },
     ...(session
       ? [
         { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
