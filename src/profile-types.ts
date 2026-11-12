@@ -1,0 +1,57 @@
+import type { Attempt, Conditions, InputClass, Minimums, Score } from './typing.js';
+export type RunCounts = Record<string, Record<string, [started: number, finished: number]>>;
+export interface LessonScore extends Score { at: string | null; inputClass: string }
+export type LessonProgress = Record<string, { tries: number; last: LessonScore | null; passed: LessonScore | null }>;
+export interface CompositionRecord { id: string; at: string | null; version: string; promptId: string | null; inputClass: 'touch' | 'physical-keyboard'; endedBy: 'time' | 'done'; characters: number; words: number; keystrokes: number; backspaces: number; activeMs: number; elapsedMs: number; wpm: number | null; backspaceRate: number | null }
+export type KeyCounts = [letter: string, tries: number, errors: number];
+export type PatternCounts = [pair: string, observations: number, errors: number, timings: number, medianMs: number | null, slowdownMs: number | null];
+export interface RunRecord {
+  id: string; at: string | null; kind: Attempt['kind']; status: Attempt['status']; conditions: Conditions; textId: string;
+  day?: string | null; fresh?: boolean; interrupted: boolean; score: Score; elapsedMs: number; errors: number;
+  target: string | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
+  minimums?: Minimums; stopped?: unknown; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
+  corrections?: [number, number | null]; missedWords?: string[];
+}
+
+export interface Preferences {
+  mode: 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom';
+  duration: number; count: number; customDuration: number | null; customCount: number | null;
+  punctuation: boolean; numbers: boolean; adaptive: boolean; quoteLength: string; difficulty: string;
+  wordList: string; speedUnit: 'wpm' | 'cpm'; codeLanguage: string; book: string; repeatQuotes: boolean;
+  layout: string; fingerMap: boolean; fontSize: string; typingFont: string; appFont: string;
+  wordHighlight: string; wordHighlightSlide: boolean; tape: boolean; liveMetrics: boolean; keyboard: boolean;
+  stopOnError: boolean; correction: import('./typing.js').CorrectionPolicy; strictSpace: boolean; quickEnd: boolean;
+  focusMode: boolean; sound: string; soundVolume: number; minAccuracy: number; minWpm: number;
+  keybindings: ReturnType<typeof import('./keybindings.js').normalizeKeybindings>;
+  theme: string; darkTheme: string; lightTheme: string; customThemes: string; dailyGoal: number;
+  customText: string; customOrder: string; paceCaret: string; paceWpm: number; trainFocus: string;
+  drillSeconds: number; retest: boolean;
+}
+export interface Best extends Score { attemptId: string; at: string | null; conditions?: Conditions }
+export interface TargetCounts { errors: number; observations: number }
+export interface TargetPace { slowMs: number; timed?: number; timedRuns?: number; slowRuns?: number }
+export interface TrainingLoop {
+  id: string; at: string; conditions: Conditions; target: string | null; beforeAttemptId: string; afterAttemptId: string;
+  drillAttemptId?: string; drillCompleted?: boolean; targetBasis?: 'errors' | 'slow';
+  targetMisses?: { was: TargetCounts; now: TargetCounts };
+  targetPace?: { was: TargetPace; now: TargetPace };
+  comparison?: import('./typing.js').AttemptComparison;
+  minimums?: Minimums; inputClass?: InputClass;
+}
+export interface Profile {
+  version: 2; profileId: string; preferences: Partial<Preferences>; preferencesAt?: Record<string, string>;
+  attempts: Attempt[]; runs: RunRecord[]; practiceDays: Record<string, number>; runCounts: RunCounts;
+  loops: TrainingLoop[]; seenTextIds: string[]; bests: Record<string, Best>; lessons: LessonProgress;
+  compositions: CompositionRecord[]; updatedAt?: string; clearedAt?: string; resetAt?: string;
+}
+
+export type LoopRecord = TrainingLoop;
+export interface ProfileCopy {
+  [key: string]: unknown;
+  version?: unknown; profileId?: unknown; preferences?: Record<string, unknown>;
+  preferencesAt?: Record<string, unknown>; attempts?: Record<string, unknown>[]; runs?: Record<string, unknown>[];
+  loops?: Record<string, unknown>[]; bests?: Record<string, unknown>; seenTextIds?: unknown[];
+  practiceDays?: Record<string, unknown>; runCounts?: unknown; lessons?: unknown; compositions?: unknown;
+}
+export interface StoredProfileCopy extends ProfileCopy { conditionSets?: unknown }
+export type CloudProfileData = Omit<Profile, 'attempts'>;

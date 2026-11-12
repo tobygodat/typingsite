@@ -1,3 +1,40 @@
+import { at } from './domain-values.js';
+export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
+export type AttemptKind = 'test' | 'drill' | 'missed' | 'race' | 'lesson' | 'challenge' | 'retest' | 'daily' | 'custom';
+export type InputClass = 'physical-keyboard' | 'touch';
+export type CorrectionPolicy = 'relaxed' | 'mandatory' | 'no-backspace' | 'fail-word' | 'fail-any';
+export interface Conditions {
+  mode?: TestMode; duration?: number | null; count?: number | null; punctuation?: boolean; numbers?: boolean;
+  quoteLength?: string | null; difficulty?: string | null; wordList?: string | null;
+  inputClass?: InputClass; correctionPolicy?: CorrectionPolicy; language?: string; corpus?: string;
+  metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: string; book?: string;
+  strictSpace?: boolean; quickEnd?: boolean;
+}
+export type AttemptEvent =
+  | { type: 'insert' | 'blocked-insert'; text: string; offsetMs: number; position?: number; accepted?: boolean }
+  | { type: 'delete'; count?: number; offsetMs: number }
+  | { type: 'focus-lost' | 'composition' | 'focus' | 'focus-returned'; offsetMs: number };
+export interface FirstAttempt { position: number; expected: string | undefined; actual: string; correct: boolean; offsetMs: number }
+export interface PairTiming { pair: string; durationMs: number; position: number }
+export interface Score { wpm: number; accuracy: number }
+export interface Replay { typed: string; insertions: number; correctInsertions: number; mistakes: number; elapsedMs: number; score: Score; firstAttempts: FirstAttempt[]; pairTimings: PairTiming[] }
+export interface Attempt {
+  id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string;
+  conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
+  typed: string; startedAt: number | null; endedAt: number | null; interrupted: boolean; unsupportedInput: boolean;
+  summary?: Replay; fresh?: boolean; at?: string | null; stopped?: unknown; dailyDate?: string; dailyFirst?: boolean;
+  textVersion?: string; target?: string | null; minimums?: Minimums; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
+}
+export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
+export interface CurrentConditions extends Conditions { mode: TestMode; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
+export type HistoricalAttempt = Partial<Omit<Attempt, 'text' | 'events'>> & Pick<Attempt, 'text' | 'events'>;
+export interface WeightedUnit { unit: string; weight: number }
+export interface Minimums { accuracy?: number; wpm?: number }
+export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
+export interface PassageOptions { mode?: TestMode; count?: number; duration?: number; punctuation?: boolean; numbers?: boolean; quoteLength?: string; difficulty?: string; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
+interface PatternPair { pair: string; observations: number; errors: number; timings: number[] }
+interface WeightedWords { words: string[]; weight: number }
+
 import { DEFAULT_WORD_LIST, wordList } from './words.js';
 import { additionalQuotes, drillWords } from './corpus.js';
 import { isDefaultLayout } from './layouts.js';
@@ -10,7 +47,7 @@ const MAX_PAIR_PAUSE_MS = 2000;
 // The standard word for speed: five characters, spaces and punctuation included.
 export const CHARS_PER_WORD = 5;
 
-export function metrics(target, typed, attempts, mistakes, elapsedMs) {
+export function metrics(target: string, typed: string, attempts: number, mistakes: number, elapsedMs: number) {
   const correct = [...typed].reduce((sum, char, i) => sum + (char === target[i] ? 1 : 0), 0);
 
   return {
@@ -19,7 +56,7 @@ export function metrics(target, typed, attempts, mistakes, elapsedMs) {
   };
 }
 
-export function editStats(previous, next, target) {
+export function editStats(previous: string, next: string, target: string) {
   let prefix = 0;
 
   while (prefix < previous.length && prefix < next.length && previous[prefix] === next[prefix]) prefix += 1;
@@ -61,10 +98,10 @@ const CONTRACTIONS = new Map(Object.entries({
 
 // A sentence starts with a capital; otherwise each mark in turn gets its chance, at Monkeytype's rates.
 // `end` is a word test's length, so its last word ends a sentence and the one before never does.
-function punctuateWord(word, previous, index, end, random) {
+function punctuateWord(word: string, previous: string | undefined, index: number, end: number, random: () => number) {
   const lastChar = previous?.at(-1);
 
-  if (index === 0 || /[.?!]/.test(lastChar)) return word[0].toUpperCase() + word.slice(1);
+  if (index === 0 || /[.?!]/.test(lastChar ?? '')) return word.charAt(0).toUpperCase() + word.slice(1);
 
   if ((random() < 0.1 && lastChar !== ',' && index !== end - 2) || index === end - 1) {
     const mark = random();
@@ -78,17 +115,17 @@ function punctuateWord(word, previous, index, end, random) {
 
   if (random() < 0.012 && lastChar !== ',') return `(${word})`;
 
-  if (random() < 0.013 && ![',', ';', ':'].includes(lastChar)) return `${word}:`;
+  if (random() < 0.013 && ![',', ';', ':'].includes(lastChar ?? '')) return `${word}:`;
 
   if (random() < 0.014 && lastChar !== ',' && previous !== '-') return '-';
 
-  if (random() < 0.015 && ![',', ';'].includes(lastChar)) return `${word};`;
+  if (random() < 0.015 && ![',', ';'].includes(lastChar ?? '')) return `${word};`;
 
   if (random() < 0.2 && lastChar !== ',') return `${word},`;
   const contractions = CONTRACTIONS.get(word.toLowerCase());
 
   if (random() < 0.5 && contractions) {
-    const contraction = contractions[Math.floor(random() * contractions.length)];
+    const contraction = at(contractions, Math.floor(random() * contractions.length));
 
     return word === 'I' ? `I${contraction.slice(1)}` : contraction;
   }
@@ -97,7 +134,7 @@ function punctuateWord(word, previous, index, end, random) {
 }
 
 // 1 to 4 digits, never a leading zero.
-function number(random) {
+function number(random: () => number) {
   let result = String(1 + Math.floor(random() * 9));
 
   for (let digits = 1 + Math.floor(random() * 4); result.length < digits;) result += Math.floor(random() * 10);
@@ -111,23 +148,23 @@ export function timedCharacterSupply(seconds = 0) {
   return Math.ceil(((Number(seconds) || 0) * 300 * 5) / 60);
 }
 
-export function makePassage(mode, count, punctuation, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
-  if (mode === 'quote') return quoteCorpus[Math.floor(random() * quoteCorpus.length)].text;
+export function makePassage(mode: TestMode, count: number, punctuation: boolean, random = Math.random, list = DEFAULT_WORD_LIST, numbers = false, seconds = 0) {
+  if (mode === 'quote') return at(quoteCorpus, Math.floor(random() * quoteCorpus.length)).text;
   const bank = wordList(list);
 
-  return drawnPassage(() => bank[Math.floor(random() * bank.length)], mode, count, punctuation, random, numbers, seconds);
+  return drawnPassage(() => at(bank, Math.floor(random() * bank.length)), mode, count, punctuation, random, numbers, seconds);
 }
 
 // A word equal to either of the two drawn before it is drawn again, up to 100 times; so is "i" without
 // punctuation, which only appears as "I". Monkeytype compares against the finished words; comparing the
 // drawn ones means a contraction or a number can't hide a repeat. Then punctuation, then 1 word in 10
 // becomes a number.
-function drawnPassage(draw, mode, count, punctuation, random, numbers, seconds) {
+function drawnPassage(draw: () => string, mode: TestMode, count: number, punctuation: boolean, random: () => number, numbers: boolean, seconds: number) {
   const end = mode === 'time' ? Infinity : count;
-  const drawn = [];
-  const words = [];
+  const drawn: string[] = [];
+  const words: string[] = [];
 
-  const add = (length) => {
+  const add = (length: number) => {
     for (let i = 0; i < length; i += 1) {
       const recent = drawn.slice(-2);
       let word = draw();
@@ -170,7 +207,7 @@ export const STANDARD_SECONDS = 60;
 const STANDARD_WORDS = 400;
 
 // mulberry32: a small, fast, well-mixed 32-bit generator. Same seed, same text.
-function seededRandom(seed) {
+function seededRandom(seed: number) {
   let state = seed >>> 0;
 
   return () => {
@@ -183,7 +220,7 @@ function seededRandom(seed) {
   };
 }
 
-let standardTiers = null;
+let standardTiers: [number, string[]][] | null = null;
 
 // Three disjoint bands: the top 1k, the rest of the top 5k, and the rest of the top 10k.
 function standardVocabulary() {
@@ -199,22 +236,22 @@ function standardVocabulary() {
   return standardTiers;
 }
 
-function standardWord(random) {
+function standardWord(random: () => number) {
   const draw = random();
   let total = 0;
 
   for (const [weight, band] of standardVocabulary()) {
     total += weight;
 
-    if (draw < total) return band[Math.floor(random() * band.length)];
+    if (draw < total) return at(band, Math.floor(random() * band.length));
   }
 
-  const band = standardVocabulary().at(-1)[1];
+  const band = at(standardVocabulary(), standardVocabulary().length - 1)[1];
 
-  return band[Math.floor(random() * band.length)];
+  return at(band, Math.floor(random() * band.length));
 }
 
-function standardNumber(random) {
+function standardNumber(random: () => number) {
   const form = random();
 
   if (form < 0.5) return String(2 + Math.floor(random() * 98));
@@ -224,9 +261,9 @@ function standardNumber(random) {
   return String(100 + Math.floor(random() * 900));
 }
 
-function standardSentence(random) {
+function standardSentence(random: () => number) {
   const length = 5 + Math.floor(random() * 10);
-  const words = [];
+  const words: string[] = [];
 
   for (let i = 0; i < length; i += 1) {
     // About one word in twenty is a number, never the first word, so every sentence opens with a capital.
@@ -234,7 +271,7 @@ function standardSentence(random) {
 
     if (word === 'i') word = 'I';
 
-    if (i === 0) word = word[0].toUpperCase() + word.slice(1);
+    if (i === 0) word = word.charAt(0).toUpperCase() + word.slice(1);
 
     if (i > 1 && i < length - 2 && random() < 0.1) word += ',';
     words.push(word);
@@ -249,7 +286,7 @@ function standardSentence(random) {
 // capitals, commas, full stops, some question marks and numbers. The second sentence is the quote
 // segment, in double quotation marks, so every typist reaches it. It is generated like the rest
 // (not drawn from the quote corpus), so no part of an attempt repeats text the person has seen.
-function makeStandardText(seed) {
+function makeStandardText(seed: number) {
   const random = seededRandom(seed);
   const words = standardSentence(random);
   const quoted = standardSentence(random);
@@ -262,7 +299,7 @@ function makeStandardText(seed) {
   return words.join(' ');
 }
 
-export function standardPassage(seed) {
+export function standardPassage(seed: number) {
   const value = seed >>> 0;
   const id = `${STANDARD_VERSION}-${value.toString(36)}`;
 
@@ -270,7 +307,7 @@ export function standardPassage(seed) {
 }
 
 // The recipe's conditions are fixed: only the input class is observed per run.
-export function standardConditions(inputClass = 'physical-keyboard') {
+export function standardConditions(inputClass: InputClass = 'physical-keyboard'): Conditions {
   return {
     mode: 'standard',
     duration: STANDARD_SECONDS,
@@ -288,11 +325,11 @@ export function standardConditions(inputClass = 'physical-keyboard') {
   };
 }
 
-export function textId(text) {
+export function textId(text: string) {
   let hash = 2166136261;
 
   for (const char of text) {
-    hash ^= char.codePointAt(0);
+    hash ^= (char.codePointAt(0) ?? 0);
     hash = Math.imul(hash, 16777619);
   }
 
@@ -301,7 +338,7 @@ export function textId(text) {
 
 // Unseen quotes come first. With allowRepeats (the "repeat quotes" setting) every matching quote is a
 // candidate; one the profile has seen comes back as fresh: false, so it is labelled and never counted.
-export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], allowRepeats = false, random = Math.random, wordList: list = DEFAULT_WORD_LIST } = {}) {
+export function selectPassage({ mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, quoteLength = 'any', difficulty = 'any', seenIds = [], allowRepeats = false, random = Math.random, wordList: list = DEFAULT_WORD_LIST }: PassageOptions = {}) {
   const seen = new Set(seenIds);
 
   if (mode === 'standard') {
@@ -310,6 +347,7 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
 
     for (let i = 0; i < 12 && (!passage || seen.has(passage.id)); i += 1) passage = standardPassage(Math.floor(random() * 4294967296));
 
+    if (!passage) return null;
     return seen.has(passage.id) ? { ...passage, fresh: false, exhausted: true } : passage;
   }
 
@@ -334,7 +372,7 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
     const pool = fresh.length && !allowRepeats ? fresh : candidates;
 
     if (!pool.length) return null;
-    const item = pool[Math.floor(random() * pool.length)];
+    const item = at(pool, Math.floor(random() * pool.length));
 
     return { ...item, textVersion: `${item.id}@1`, corpus: CORPUS_VERSION, fresh: !seen.has(item.id), exhausted: fresh.length === 0 };
   }
@@ -352,7 +390,7 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
   return { id, textVersion: `${id}@1`, text, corpus: CORPUS_VERSION, difficulty: 'generated', fresh: !seen.has(id), exhausted: seen.has(id) };
 }
 
-export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', conditions = {} }) {
+export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', conditions = {} }: Pick<Attempt, 'id' | 'text' | 'textId'> & Partial<Pick<Attempt, 'kind' | 'conditions'>>): Attempt {
   return {
     id,
     eventVersion: EVENT_VERSION,
@@ -379,15 +417,15 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
 export const MINIMUM_GRACE_MS = 5000;
 export const MINIMUM_GRACE_CHARACTERS = 20;
 
-export function accuracyGraceCharacters(minimum) {
+export function accuracyGraceCharacters(minimum: number) {
   return Math.max(MINIMUM_GRACE_CHARACTERS, Math.ceil(200 / (100 - minimum)));
 }
 
 // The first minimum the score is under, against the same rounded numbers the run shows. Pass the
 // live replay while the run is going, so each minimum waits out its grace.
-export function minimumMissed(minimums, score, running = null) {
+export function minimumMissed(minimums: Minimums | null, score: Score | null, running: Pick<Replay, 'elapsedMs' | 'insertions'> | null = null) {
   if (!minimums || !score) return null;
-  const judged = (characters) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
+  const judged = (characters: number) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
 
   if (minimums.accuracy && score.accuracy < minimums.accuracy && judged(accuracyGraceCharacters(minimums.accuracy))) {
     return { metric: 'accuracy', minimum: minimums.accuracy, value: score.accuracy };
@@ -399,14 +437,14 @@ export function minimumMissed(minimums, score, running = null) {
 }
 
 // A run is at its end once its duration is reached or its passage is finished.
-export function atRunEnd({ elapsedMs, durationMs = null, finished = false }) {
+export function atRunEnd({ elapsedMs, durationMs = null, finished = false }: RunPosition) {
   return finished || (durationMs !== null && elapsedMs >= durationMs);
 }
 
 // The one judgement behind both checks, so they can't drift apart. A run at its end is judged on its
 // final score with no grace, and a miss there is an end-of-run failure (atEnd). Before the end it is
 // the live check, with the grace.
-export function minimumStop(minimums, replay, position) {
+export function minimumStop(minimums: Minimums | null, replay: Replay, position: RunPosition) {
   const atEnd = atRunEnd(position);
   const missed = minimumMissed(minimums, replay.score, atEnd ? null : replay);
 
@@ -415,22 +453,24 @@ export function minimumStop(minimums, replay, position) {
 
 // Correction policies. 'relaxed' (free) and 'mandatory' (stop on error) predate
 // the others; each value is its own comparison key so bests never mix.
+export function isCorrectionPolicy(value: unknown): value is CorrectionPolicy { return value === 'relaxed' || value === 'mandatory' || value === 'no-backspace' || value === 'fail-word' || value === 'fail-any'; }
+
 export const CORRECTION_POLICIES = ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'];
 
 // Older profiles stored a boolean stopOnError; map it to free/stop.
-export function correctionPreference(preferences = {}) {
-  if (CORRECTION_POLICIES.includes(preferences.correction)) return preferences.correction;
+export function correctionPreference(preferences: { correction?: unknown; stopOnError?: unknown } = {}): CorrectionPolicy {
+  if (typeof preferences.correction === 'string' && isCorrectionPolicy(preferences.correction)) return preferences.correction;
 
   return preferences.stopOnError ? 'mandatory' : 'relaxed';
 }
 
-export const blocksOnError = (policy) => (policy || 'mandatory') === 'mandatory';
-export const allowsBackspace = (policy) => policy !== 'no-backspace';
+export const blocksOnError = (policy: CorrectionPolicy | undefined) => (policy || 'mandatory') === 'mandatory';
+export const allowsBackspace = (policy: CorrectionPolicy | undefined) => policy !== 'no-backspace';
 
 // Why inserting `char` at the end of `typed` fails the run, or null. A space or the
 // passage's last letter closes a word; the whole prefix is checked so a letter typed
 // in place of a space can't slip through.
-export function failureFor(policy, text, typed, char) {
+export function failureFor(policy: CorrectionPolicy, text: string, typed: string, char: string) {
   if (policy === 'fail-any' && char !== text[typed.length]) return 'wrong key';
 
   if (policy === 'fail-word' && (char === ' ' || typed.length === text.length - 1)) return failureAtEnd(policy, text, typed + char);
@@ -440,7 +480,7 @@ export function failureFor(policy, text, typed, char) {
 
 // Why a run that stops at `typed` fails, or null. The end of a run (the timer, the
 // passage end) is a word boundary, so an unfinished word with a wrong letter fails.
-export function failureAtEnd(policy, text, typed) {
+export function failureAtEnd(policy: CorrectionPolicy, text: string, typed: string) {
   if (typed === text.slice(0, typed.length)) return null;
 
   if (policy === 'fail-any') return 'wrong key';
@@ -453,11 +493,11 @@ export function failureAtEnd(policy, text, typed) {
 // Quick end decides how a word or quote run ends when its last word has a mistake. It only
 // matters where a mistake can stand: stop on error already needs every letter right, and a timed
 // run ends on the clock.
-export function quickEndApplies(conditions = {}) {
+export function quickEndApplies(conditions: Conditions = {}) {
   return conditions.mode !== 'time' && conditions.correctionPolicy === 'relaxed';
 }
 
-function lastWordCorrect(text, typed) {
+function lastWordCorrect(text: string, typed: string) {
   const start = text.lastIndexOf(' ') + 1;
 
   return typed.slice(start, text.length) === text.slice(start);
@@ -468,20 +508,20 @@ function lastWordCorrect(text, typed) {
 // space (see awaitingSubmit).
 
 // Quick end off, the whole passage typed and a mistake in the last word: space submits it as it stands.
-export function awaitingSubmit(attempt, typed) {
+export function awaitingSubmit(attempt: Attempt, typed: string) {
   return typed.length >= attempt.text.length && quickEndApplies(attempt.conditions) && !passageComplete(attempt, typed);
 }
 
 // Strict space: a space is taken only where the passage has one. Anywhere else it is recorded
 // as a wrong key at that position (an insert with accepted: false, which replay has always
 // scored without moving the caret), so the rest of the word stays in place.
-export function refusesSpace(conditions = {}, text, position, char) {
+export function refusesSpace(conditions: Conditions = {}, text: string, position: number, char: string) {
   return conditions.strictSpace === true && char === ' ' && position < text.length && text[position] !== ' ';
 }
 
 // Input rules away from the defaults, in the order conditionKey appends them. Defaults add
 // nothing, so runs saved before these settings existed keep their keys.
-export function inputRules(conditions = {}) {
+export function inputRules(conditions: Conditions = {}) {
   const rules = [];
 
   if (conditions.strictSpace === true) rules.push('strict-space');
@@ -491,7 +531,7 @@ export function inputRules(conditions = {}) {
   return rules;
 }
 
-export function passageComplete(attempt, typed) {
+export function passageComplete(attempt: Attempt, typed: string) {
   if (typed.length < attempt.text.length) return false;
 
   if (typed === attempt.text) return true;
@@ -501,7 +541,7 @@ export function passageComplete(attempt, typed) {
   return attempt.conditions.quickEnd !== false || !quickEndApplies(attempt.conditions) || lastWordCorrect(attempt.text, typed);
 }
 
-export function printable(text) {
+export function printable(text: unknown): text is string {
   return typeof text === 'string' && text.length > 0 && !/[\r\n]/u.test(text);
 }
 
@@ -512,7 +552,7 @@ export function printable(text) {
 const DEAD_MARKS = new Set([...'\'"`~^´¨ˆ˜ˇ˘˚°¸˛˝˙¯']);
 
 // A combining accent is a mark too, except the invisible grapheme joiner (U+034F) among them.
-export const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
+export const deadMark = (char: string) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(char) && !/\p{Default_Ignorable_Code_Point}/u.test(char));
 
 // What a key on a Latin keyboard types: printable ASCII or Latin-1 (AZERTY's ² £ § µ), a Latin letter
 // (é ø ł ẽ), or a digit, punctuation mark, symbol or space no other script owns (’ — … ≠ ⁴ €, a narrow
@@ -523,23 +563,23 @@ export const deadMark = (char) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.test(cha
 // it would move the caret two letters.
 const LATIN_KEY = /^(?:[\x20-\x7E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
 const NOT_A_KEY = /[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\u3000-\u303F\uFE10-\uFE6F\uFF00-\uFFEF]/u;
-const keyChar = (char) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
+const keyChar = (char: string) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
 
 // Where a composition came from. An accent key's opens with that key's keydown (key Dead) in Chrome and
 // Firefox. Safari sends the keydown after the mark shows, and Chromium on Linux sends key Process for every
 // key its input method takes, so there the mark itself, shown first and on its own, says so. Any other
 // composition is an input method's (Pinyin, Telex, Hindi, Korean), whatever it commits: even one letter
 // from it is not a key press.
-export const accentComposition = ({ key = null, preview = null } = {}) => key === 'Dead'
+export const accentComposition = ({ key = null, preview = null }: { key?: string | null; preview?: string | null } = {}) => key === 'Dead'
   || (typeof preview === 'string' && preview.length === 1 && deadMark(preview));
 
 // What an accent key's composition types: the one or two keys it committed, or null for anything else.
-export function composedKeys(text) {
+export function composedKeys(text: string | null | undefined) {
   const chars = [...(text ?? '').normalize('NFC')];
 
   if (chars.length > 2 || !chars.every(keyChar)) return null;
 
-  if (chars.length === 2 && !deadMark(chars[0])) return null;
+  if (chars.length === 2 && !deadMark(at(chars, 0))) return null;
 
   return chars;
 }
@@ -547,7 +587,7 @@ export function composedKeys(text) {
 // A later key of an accent commit (the h of "h) that the passage has no place left for: it was pressed while
 // the last letter was still to come, so it is a mistake against that letter and is not kept. A key that is
 // that letter ("" on a closing ") records nothing, as a plain key after the passage ends isn't recorded.
-export function carriedKey(attempt, char, offsetMs) {
+export function carriedKey(attempt: Attempt, char: string, offsetMs: number): AttemptEvent | null {
   const position = attempt.text.length - 1;
 
   return char === attempt.text[position] ? null : { type: 'insert', text: char, position, accepted: false, offsetMs };
@@ -565,7 +605,7 @@ const TYPABLE = /^[\x20-\x7E]$/;
 // bidi marks, soft hyphens and BOM, plus control characters); accents on Latin letters fold away (é → e);
 // whitespace collapses. Anything left outside the alphabet is for untypableCharacter to refuse. The cap
 // applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
-export function normalizeCustomText(value, max = CUSTOM_MAX) {
+export function normalizeCustomText(value: unknown, max = CUSTOM_MAX) {
   return String(value || '')
     .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
     .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
@@ -587,14 +627,14 @@ export function normalizeCustomText(value, max = CUSTOM_MAX) {
 // replacement, so it draws only from words that still fit the source length (and the cap) and stops when
 // none do: a long word drawn twice can't push the run past what was validated, and an unlucky draw can't
 // end the passage early.
-export function orderCustomText(text, order = 'as-written', random = Math.random) {
+export function orderCustomText(text: string, order = 'as-written', random = Math.random) {
   if (!text) return text;
   const words = text.split(' ');
 
   if (order === 'shuffled') {
     for (let i = words.length - 1; i > 0; i -= 1) {
       const j = Math.floor(random() * (i + 1));
-      [words[i], words[j]] = [words[j], words[i]];
+      [words[i], words[j]] = [at(words, j), at(words, i)];
     }
 
     return words.join(' ');
@@ -608,14 +648,14 @@ export function orderCustomText(text, order = 'as-written', random = Math.random
 
   for (;;) {
     const budget = limit - length - 1;
-    let word = fitting[Math.floor(random() * fitting.length)];
+    let word = at(fitting, Math.floor(random() * fitting.length));
 
     // The budget only shrinks, so words are dropped from the pool once and the draw stays uniform over what fits.
     if (word.length > budget) {
       fitting = fitting.filter((candidate) => candidate.length <= budget);
 
       if (!fitting.length) break;
-      word = fitting[Math.floor(random() * fitting.length)];
+      word = at(fitting, Math.floor(random() * fitting.length));
     }
 
     picked.push(word);
@@ -626,7 +666,7 @@ export function orderCustomText(text, order = 'as-written', random = Math.random
 }
 
 // The first character outside the passage alphabet, or null when every letter can be typed.
-export function untypableCharacter(text) {
+export function untypableCharacter(text: string) {
   for (const char of text) if (!TYPABLE.test(char)) return char;
 
   return null;
@@ -640,7 +680,7 @@ export const CUSTOM_MIN_CHARS = 10;
 
 // Why a normalised custom text can't be used yet, or null. Pass normalizeCustomText(value, Infinity), so an
 // over-long text is reported rather than cut.
-export function customTextProblem(text) {
+export function customTextProblem(text: string) {
   if (!text) return { kind: 'empty' };
   const char = untypableCharacter(text);
 
@@ -653,16 +693,16 @@ export function customTextProblem(text) {
   return null;
 }
 
-export function replayAttempt(attempt) {
+export function replayAttempt(attempt: Pick<Attempt, 'text' | 'events' | 'startedAt' | 'endedAt'>): Replay {
   let typed = '';
   let insertions = 0;
   let correctInsertions = 0;
   let interruptionSinceCorrect = false;
-  let previousCorrect = null;
-  let startedAt = null;
-  let endedAt = null;
-  const firstAttempts = new Map();
-  const pairTimings = [];
+  let previousCorrect: { position: number; offsetMs: number } | null = null;
+  let startedAt: number | null = null;
+  let endedAt: number | null = null;
+  const firstAttempts = new Map<number, FirstAttempt>();
+  const pairTimings: PairTiming[] = [];
 
   for (const event of attempt.events || []) {
     if (event.type === 'focus-lost' || event.type === 'composition') {
@@ -681,7 +721,7 @@ export function replayAttempt(attempt) {
     if (startedAt === null) startedAt = event.offsetMs;
 
     for (const char of event.text) {
-      const position = Number.isInteger(event.position) ? event.position : typed.length;
+      const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : typed.length;
 
       if (position >= attempt.text.length) break;
       const expected = attempt.text[position];
@@ -731,14 +771,14 @@ export function replayAttempt(attempt) {
 }
 
 // What one event does to the typed text: the same rules replayAttempt applies, typed text only.
-function typedAfter(typed, event, text) {
+function typedAfter(typed: string, event: AttemptEvent, text: string) {
   if (event.type === 'delete') return typed.slice(0, Math.max(0, typed.length - Math.max(1, event.count || 1)));
 
   if (event.type !== 'insert' || !printable(event.text) || event.accepted === false) return typed;
   let next = typed;
 
   for (const char of event.text) {
-    const position = Number.isInteger(event.position) ? event.position : next.length;
+    const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : next.length;
 
     if (position >= text.length) break;
     next += char;
@@ -751,13 +791,13 @@ function typedAfter(typed, event, text) {
 // recorded in time order, so each call steps forward only through the events that came due since
 // the last one, and starts over only when t goes back (Restart). At every prefix of the events
 // it equals replayAttempt's typed text; scoring never calls this.
-export function replayCursor(attempt) {
+export function replayCursor(attempt: Attempt) {
   const events = attempt.events || [];
   let applied = 0;
   let typed = '';
   let last = -Infinity;
 
-  return (t) => {
+  return (t: number) => {
     if (t < last) {
       applied = 0;
       typed = '';
@@ -765,8 +805,8 @@ export function replayCursor(attempt) {
 
     last = t;
 
-    while (applied < events.length && !(events[applied].offsetMs > t)) {
-      typed = typedAfter(typed, events[applied], attempt.text);
+    while (applied < events.length && !(at(events, applied).offsetMs > t)) {
+      typed = typedAfter(typed, at(events, applied), attempt.text);
       applied += 1;
     }
 
@@ -776,11 +816,11 @@ export function replayCursor(attempt) {
 
 // The scored bounds (startedAt/endedAt) widened to cover every event, so a timed run's idle tail
 // plays out and the replay clock ends on the elapsed time the result used.
-export function replaySpan(attempt) {
+export function replaySpan(attempt: Attempt) {
   const offsets = (attempt.events || []).map((event) => event.offsetMs).filter(Number.isFinite);
 
   if (!offsets.length) return { start: 0, end: 0 };
-  const bound = (value) => (Number.isFinite(value) ? [value] : []);
+  const bound = (value: number | null) => (typeof value === 'number' && Number.isFinite(value) ? [value] : []);
 
   return { start: Math.min(...offsets, ...bound(attempt.startedAt)), end: Math.max(...offsets, ...bound(attempt.endedAt)) };
 }
@@ -791,7 +831,7 @@ export const RATE_FLOOR_MS = 1000;
 
 // The live numbers at offset t (ms on the attempt clock): the run scored as if it had ended at t. At
 // replaySpan(attempt).end it equals the completed run's score and first-try errors.
-export function replayScoreAt(attempt, t) {
+export function replayScoreAt(attempt: Attempt, t: number) {
   const events = (attempt.events || []).filter((event) => event.offsetMs <= t);
   const replay = replayAttempt({ ...attempt, events, endedAt: Math.min(t, attempt.endedAt ?? t) });
 
@@ -802,8 +842,8 @@ export function replayScoreAt(attempt, t) {
   };
 }
 
-export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) {
-  const replay = replayAttempt({ ...attempt, endedAt });
+export function completeAttempt(attempt: Attempt, { endedAt, status = 'complete' }: { endedAt?: number; status?: Attempt['status'] } = {}): Attempt {
+  const replay = replayAttempt({ ...attempt, endedAt: endedAt ?? null });
 
   return {
     ...attempt,
@@ -815,15 +855,15 @@ export function completeAttempt(attempt, { endedAt, status = 'complete' } = {}) 
   };
 }
 
-function median(values) {
+function median(values: number[]) {
   if (!values.length) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
 
-  return Math.round(sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2);
+  return Math.round(sorted.length % 2 ? at(sorted, middle) : (at(sorted, middle - 1) + at(sorted, middle)) / 2);
 }
 
-export function summarizePatterns(attempts, limit = 20, compatibleConditions = null) {
+export function summarizePatterns(attempts: Attempt[], limit = 20, compatibleConditions: Conditions | null = null) {
   const key = compatibleConditions ? conditionKey(compatibleConditions) : null;
 
   const recent = attempts.filter((attempt) => attempt.status === 'complete'
@@ -838,8 +878,8 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
     && attempt.fresh !== false
     && (!key || conditionKey(attempt.conditions) === key)).slice(-limit);
 
-  const pairs = new Map();
-  const allTimings = [];
+  const pairs = new Map<string, PatternPair>();
+  const allTimings: number[] = [];
 
   for (const attempt of recent) {
     const replay = attempt.summary || replayAttempt(attempt);
@@ -876,20 +916,20 @@ export function summarizePatterns(attempts, limit = 20, compatibleConditions = n
       ...entry,
       errorRate: entry.observations ? entry.errors / entry.observations : 0,
       medianMs: median(entry.timings),
-      slowdownMs: personalMedianMs === null || !entry.timings.length ? null : median(entry.timings) - personalMedianMs,
+      slowdownMs: personalMedianMs === null || !entry.timings.length ? null : (median(entry.timings) ?? 0) - personalMedianMs,
     })),
   };
 }
 
 // "3 first-try errors in 24 tries": the counts behind every recommendation.
-function errorCount({ errors, observations }) {
+function errorCount({ errors, observations }: { errors: number; observations: number }) {
   return `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${observations} ${observations === 1 ? 'try' : 'tries'}`;
 }
 
-export function recommendTarget(attempts, compatibleConditions = null) {
+export function recommendTarget(attempts: Attempt[], compatibleConditions: Conditions | null = null) {
   const evidence = summarizePatterns(attempts, 20, compatibleConditions);
   const errorCandidates = evidence.pairs.filter((pair) => pair.observations >= 10 && pair.errors > 0).sort((a, b) => b.errorRate - a.errorRate || b.observations - a.observations || a.pair.localeCompare(b.pair));
-  const timingCandidates = evidence.pairs.filter((pair) => pair.timings.length >= 10 && pair.slowdownMs > 0).sort((a, b) => b.slowdownMs - a.slowdownMs || b.timings.length - a.timings.length || a.pair.localeCompare(b.pair));
+  const timingCandidates = evidence.pairs.filter((pair) => pair.timings.length >= 10 && (pair.slowdownMs ?? 0) > 0).sort((a, b) => (b.slowdownMs ?? 0) - (a.slowdownMs ?? 0) || b.timings.length - a.timings.length || a.pair.localeCompare(b.pair));
   const target = errorCandidates[0] || timingCandidates[0];
 
   if (target) {
@@ -913,12 +953,12 @@ export function recommendTarget(attempts, compatibleConditions = null) {
   };
 }
 
-export function normalizeManualTarget(value) {
+export function normalizeManualTarget(value: unknown) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
 }
 
 // Every real word a drill can draw on: the word list, the drill words and the quotes' words.
-const drillVocabulary = (bank) => [...new Set([
+const drillVocabulary = (bank: string[]) => [...new Set([
   ...bank,
   ...drillWords,
   ...quoteCorpus.flatMap((item) => item.text.toLowerCase().match(/[a-z]+/g) || []),
@@ -928,9 +968,9 @@ export const DRILL_SECONDS = 30;
 
 // Words from the vocabulary holding each unit, weighted: [{ words, weight }], empty groups left out. A unit
 // given as a bare string weighs 1.
-const leanOf = (lean) => lean.map((item) => (typeof item === 'string' ? { unit: item, weight: 1 } : item));
+const leanOf = (lean: (string | WeightedUnit)[]) => lean.map((item) => (typeof item === 'string' ? { unit: item, weight: 1 } : item));
 
-function weightedGroups(lean, vocabulary) {
+function weightedGroups(lean: (string | WeightedUnit)[], vocabulary: string[]) {
   return leanOf(lean).flatMap(({ unit, weight }) => {
     const words = vocabulary.filter((word) => /^[a-z]+$/.test(word) && word.includes(unit));
 
@@ -938,15 +978,15 @@ function weightedGroups(lean, vocabulary) {
   });
 }
 
-function weightedWord(groups, random) {
+function weightedWord(groups: WeightedWords[], random: () => number) {
   let draw = random() * groups.reduce((sum, group) => sum + group.weight, 0);
-  const group = groups.find((item) => (draw -= item.weight) < 0) || groups.at(-1);
+  const group = groups.find((item) => (draw -= item.weight) < 0) || at(groups, groups.length - 1);
 
-  return group.words[Math.floor(random() * group.words.length)];
+  return at(group.words, Math.floor(random() * group.words.length));
 }
 
 // Same weights, same seed: a leaning drill's text depends only on what it leans on.
-function leanSeed(lean) {
+function leanSeed(lean: WeightedUnit[]) {
   let seed = 2166136261;
 
   for (const char of lean.map(({ unit, weight }) => `${unit}:${weight.toFixed(6)}`).join(' ')) seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
@@ -956,7 +996,7 @@ function leanSeed(lean) {
 
 // A drill on one target, or a general drill. A general drill given `lean` ([{ unit, weight }], the units the
 // learner ranks highest) draws half its words from words holding them, by weight, and the rest from the list.
-export function makeDrill(target = null, list = DEFAULT_WORD_LIST, lean = []) {
+export function makeDrill(target: string | null = null, list = DEFAULT_WORD_LIST, lean: WeightedUnit[] = []) {
   const safeTarget = normalizeManualTarget(target);
   const bank = wordList(list);
   const corpusWords = drillVocabulary(bank);
@@ -964,7 +1004,7 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST, lean = []) {
 
   if (groups.length) {
     const random = seededRandom(leanSeed(lean));
-    const text = Array.from({ length: 1600 }, () => (random() < 0.5 ? weightedWord(groups, random) : bank[Math.floor(random() * bank.length)])).join(' ');
+    const text = Array.from({ length: 1600 }, () => (random() < 0.5 ? weightedWord(groups, random) : at(bank, Math.floor(random() * bank.length)))).join(' ');
 
     return { id: `drill-general-${textId(text)}`, textVersion: 'drill-general-lean@1', text, target: '', lean: lean.map(({ unit }) => unit), corpus: CORPUS_VERSION };
   }
@@ -984,12 +1024,12 @@ export function makeDrill(target = null, list = DEFAULT_WORD_LIST, lean = []) {
 // units it leans on ([{ unit, weight }]), each drawn in proportion to its weight (the learner's expected gain).
 // Nothing in the text is marked, and it is drill-kind text: never a best, a trend point or a retest baseline.
 // Null when no word holds any of the units.
-export function makeAdaptive(lean, { mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, wordList: list = DEFAULT_WORD_LIST, random = Math.random } = {}) {
+export function makeAdaptive(lean: (string | WeightedUnit)[], { mode = 'time', count = 25, duration = 0, punctuation = false, numbers = false, wordList: list = DEFAULT_WORD_LIST, random = Math.random }: PassageOptions = {}) {
   const bank = wordList(list);
   const groups = weightedGroups(lean, drillVocabulary(bank));
 
   if (!groups.length) return null;
-  const draw = () => (random() >= 0.5 ? bank[Math.floor(random() * bank.length)] : weightedWord(groups, random));
+  const draw = () => (random() >= 0.5 ? at(bank, Math.floor(random() * bank.length)) : weightedWord(groups, random));
   const text = drawnPassage(draw, mode, count, punctuation, random, numbers, duration);
 
   return { id: `adaptive-${textId(text)}`, textVersion: 'adaptive@2', text, pairs: leanOf(lean).map(({ unit }) => unit), adaptive: true, corpus: CORPUS_VERSION };
@@ -1005,7 +1045,7 @@ export const QUOTE_DIFFICULTIES = ['any', 'gentle', 'steady', 'precise'];
 export const INPUT_CLASSES = ['physical-keyboard', 'touch'];
 
 // The standard recipe version is appended only when present, so every other key stays as it was.
-export function conditionKey(conditions = {}) {
+export function conditionKey(conditions: Conditions = {}) {
   const key = [
     // Code runs key by language and book pages by book; other modes keep their existing keys.
     conditions.mode === 'code' ? `code-${conditions.codeLanguage || 'js'}` : conditions.mode === 'book' ? `book-${conditions.book}` : conditions.mode,
@@ -1028,7 +1068,7 @@ export function conditionKey(conditions = {}) {
   return isDefaultLayout(conditions.layout) ? recipeKey : `${recipeKey}:layout-${conditions.layout}`;
 }
 
-export function comparable(before, after) {
+export function comparable(before: Attempt | null | undefined, after: Attempt | null | undefined) {
   if (!before || !after) return false;
 
   return before.status === 'complete'
@@ -1049,7 +1089,9 @@ export function comparable(before, after) {
     && !after.interrupted;
 }
 
-export function compareAttempts(before, after) {
+export type AttemptComparison = ReturnType<typeof compareAttempts>;
+
+export function compareAttempts(before: Attempt, after: Attempt) {
   // A retest stopped under its baseline's minimums is stored as interrupted; say why it isn't compared.
   if (after?.stopped) return { comparable: false, state: 'not-comparable', reason: 'The retest fell under the baseline’s minimums, so no comparison is made.' };
 
@@ -1090,31 +1132,31 @@ export function compareAttempts(before, after) {
 // the versioned wpm/accuracy contract, bests, comparisons or pattern memory.
 
 // Every printable key pressed, including keys held back while stop-on-error waits for a fix.
-function keystrokes(attempt) {
-  return (attempt.events || []).filter((event) => (event.type === 'insert' || event.type === 'blocked-insert') && printable(event.text));
+function keystrokes(attempt: Attempt) {
+  return (attempt.events || []).filter((event): event is Extract<AttemptEvent, { text: string }> => (event.type === 'insert' || event.type === 'blocked-insert') && printable(event.text));
 }
 
-export function rawWpm(attempt, replay = replayAttempt(attempt)) {
+export function rawWpm(attempt: Attempt, replay = replayAttempt(attempt)) {
   const typed = keystrokes(attempt).reduce((sum, event) => sum + [...event.text].length, 0);
 
   return replay.elapsedMs > 0 ? Math.round(typed / CHARS_PER_WORD / (replay.elapsedMs / 60000)) : 0;
 }
 
 // 100 − coefficient of variation of per-second raw speed, over whole seconds; null under 3 s.
-export function consistency(attempt, replay = replayAttempt(attempt)) {
+export function consistency(attempt: Attempt, replay = replayAttempt(attempt)) {
   const keys = keystrokes(attempt);
 
   if (!keys.length) return null;
-  const start = attempt.startedAt ?? keys[0].offsetMs;
+  const start = attempt.startedAt ?? at(keys, 0).offsetMs;
   const seconds = Math.floor(replay.elapsedMs / 1000);
 
   if (seconds < 3) return null;
-  const counts = new Array(seconds).fill(0);
+  const counts: number[] = new Array<number>(seconds).fill(0);
 
   for (const event of keys) {
     const second = Math.floor((event.offsetMs - start) / 1000);
 
-    if (second >= 0 && second < seconds) counts[second] += [...event.text].length;
+    if (second >= 0 && second < seconds) counts[second] = at(counts, second) + [...event.text].length;
   }
 
   const mean = counts.reduce((sum, value) => sum + value, 0) / seconds;
@@ -1130,7 +1172,7 @@ export function consistency(attempt, replay = replayAttempt(attempt)) {
 // it (recorded against the last letter once the passage is full, not kept; a key refused inside the
 // passage is not extra); missed = letters left untyped inside the
 // last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
-export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
+export function characterBreakdown(attempt: Attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const { typed } = replay;
   let correct = 0;
@@ -1145,7 +1187,7 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
     if (event.type !== 'insert' || !printable(event.text)) continue;
 
     for (let n = [...event.text].length; n > 0; n -= 1) {
-      const position = Number.isInteger(event.position) ? event.position : length;
+      const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : length;
 
       if (position >= target.length || (event.accepted === false && length >= target.length)) extra += 1;
       else if (event.accepted !== false) length += 1;
@@ -1163,8 +1205,8 @@ export function characterBreakdown(attempt, replay = replayAttempt(attempt)) {
 }
 
 // When each letter still there at the finish was typed, mirroring replayAttempt's kept text.
-function keptTimes(attempt) {
-  const times = [];
+function keptTimes(attempt: Attempt) {
+  const times: number[] = [];
 
   for (const event of attempt.events || []) {
     if (event.type === 'delete') {
@@ -1175,7 +1217,7 @@ function keptTimes(attempt) {
     if (event.type !== 'insert' || !printable(event.text)) continue;
 
     for (const _char of event.text) {
-      const position = Number.isInteger(event.position) ? event.position : times.length;
+      const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : times.length;
 
       if (position >= attempt.text.length) break;
 
@@ -1191,14 +1233,14 @@ function keptTimes(attempt) {
 // timed by the keystrokes kept at the finish so corrections count against the pace. The passage sets
 // each word's bounds; the word shown is the letters kept there, slips left in included. A word the
 // run stopped inside shows only the letters typed; the rest are counted as missed, not shown.
-export function wordHistory(attempt, replay = replayAttempt(attempt)) {
+export function wordHistory(attempt: Attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const firsts = new Map(replay.firstAttempts.map((item) => [item.position, item]));
   const times = keptTimes(attempt);
   // The first word has no space to start from: it runs from the first key pressed, even one later
   // fixed, and then every kept letter typed after that key counts.
   const firstKey = (attempt.events || []).find((event) => event.type === 'insert' && printable(event.text))?.offsetMs;
-  const words = [];
+  const words: { word: string; wrong: boolean; wpm: number | null }[] = [];
   const pattern = /\S+/gu;
   let match;
 
@@ -1226,8 +1268,8 @@ export function wordHistory(attempt, replay = replayAttempt(attempt)) {
     }
 
     const from = start > 0 ? times[start - 1] : firstKey;
-    const letters = start > 0 || times[start] > from ? end - start + 1 : end - start;
-    const durationMs = from !== undefined && times[end] !== undefined ? times[end] - from : 0;
+    const letters = start > 0 || (times[start] ?? NaN) > (from ?? NaN) ? end - start + 1 : end - start;
+    const durationMs = from !== undefined && times[end] !== undefined ? at(times, end) - from : 0;
     words.push({
       word: shown,
       wrong,

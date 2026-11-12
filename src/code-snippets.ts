@@ -1,3 +1,4 @@
+import { at } from './domain-values.js';
 // Original code snippets for code mode. The engine has no line breaks, so each snippet is
 // auto-unindented and its lines are joined with a single space, and must still be valid code once
 // joined: no line comments, and statements that end up on one line need a semicolon between them
@@ -11,7 +12,7 @@ export const MAX_CODE_TOKEN = 24;
 export const MIN_CODE_CHARS = 250;
 export const MAX_CODE_CHARS = 500;
 
-export const CODE_SNIPPETS = {
+export const CODE_SNIPPETS: Record<string, string[]> = {
   js: [
     `export function debounce(fn, wait = 200) {
       let timer = null;
@@ -1229,11 +1230,11 @@ export const CODE_SNIPPETS = {
 };
 
 // Strip each line's leading indentation and join the lines with one space.
-export function unindent(snippet) {
+export function unindent(snippet: string) {
   return snippet.split('\n').map((line) => line.trim()).filter(Boolean).join(' ');
 }
 
-function textId(text) {
+function textId(text: string) {
   let hash = 2166136261;
 
   for (let i = 0; i < text.length; i += 1) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
@@ -1241,11 +1242,11 @@ function textId(text) {
   return (hash >>> 0).toString(36);
 }
 
-export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], random = Math.random } = {}) {
+export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], random = Math.random }: { seenIds?: string[]; random?: () => number } = {}) {
   const lang = CODE_LANGUAGES.includes(language) ? language : DEFAULT_CODE_LANGUAGE;
   const seen = new Set(seenIds);
 
-  const all = CODE_SNIPPETS[lang].map((snippet) => {
+  const all = (CODE_SNIPPETS[lang] ?? []).map((snippet) => {
     const text = unindent(snippet);
 
     return { id: `code-${lang}-${textId(text)}`, text };
@@ -1253,7 +1254,7 @@ export function codePassage(language = DEFAULT_CODE_LANGUAGE, { seenIds = [], ra
 
   const fresh = all.filter((item) => !seen.has(item.id));
   const pool = fresh.length ? fresh : all;
-  const item = pool[Math.floor(random() * pool.length)];
+  const item = at(pool, Math.floor(random() * pool.length));
 
   return { ...item, textVersion: `${item.id}@1`, difficulty: 'code', language: lang, fresh: fresh.length > 0, exhausted: fresh.length === 0 };
 }
