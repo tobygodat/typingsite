@@ -1,0 +1,130 @@
+import type { Attempt, Replay } from './typing.js';
+import type { Preferences } from './profile-types.js';
+import { createStore } from './store.js';
+
+export type SessionKind = 'practice' | 'custom' | 'drill' | 'retest' | 'daily' | 'lesson' | 'challenge' | 'missed';
+
+export type SealedRun = Attempt & { summary: Replay };
+
+export interface SpeedPart {
+  kind: 'speed';
+  wpm: number;
+  bare?: boolean;
+  signed?: boolean;
+  whole?: boolean;
+}
+
+export type CopyPart = string | SpeedPart;
+
+export interface ResultWord {
+  word: string;
+  wrong: boolean;
+  wpm: number | null;
+}
+
+export interface ResultView {
+  id: string;
+  counted: boolean;
+  wpm: number | null;
+  accuracy: number;
+  seconds: string;
+  consistency: number | null;
+  accuracyTitle: string;
+  standing: CopyPart[];
+  headline: CopyPart[];
+  conditions: CopyPart[];
+  note: CopyPart[];
+  words: ResultWord[];
+  practiceWords: string[];
+  drillLabel: string;
+  againLabel: string;
+  replay: boolean;
+  graph: boolean;
+}
+
+export interface PracticeControlsView {
+  mode: Preferences['mode'];
+  duration: number;
+  count: number;
+  punctuation: boolean;
+  adaptive: boolean;
+  custom: boolean;
+  customOpen: boolean;
+  composing: boolean;
+  codeLanguage: string;
+  standardRecipe: string;
+}
+
+export interface PracticeCommands {
+  chooseMode(mode: Preferences['mode']): void;
+  chooseLength(length: number): void;
+  chooseLanguage(language: string): void;
+  punctuation(on: boolean): void;
+  adaptive(on: boolean): void;
+  compose(): void;
+  custom(): void;
+}
+
+export interface ResultCommands {
+  runAgain(): void;
+  drill(): void;
+  practiceWords(): void;
+  watchReplay(): void;
+  resultKeyDown(event: KeyboardEvent): void;
+  resultKeyUp(event: KeyboardEvent): void;
+  headingKeyDown(event: KeyboardEvent): void;
+}
+
+interface NativePolicy { attach(input: HTMLTextAreaElement, type: 'primary'): () => void }
+
+export function createPracticeSession() {
+  let nativePolicy: NativePolicy | null = null;
+  let nativeInput: HTMLTextAreaElement | null = null;
+  let detachNative: (() => void) | null = null;
+  let current: Attempt | null = null;
+  let origin: number | null = null;
+  let purpose: SessionKind = 'practice';
+  let displayed: SealedRun | null = null;
+  const result = createStore<ResultView | null>(null);
+  const controls = createStore<PracticeControlsView>({ mode: 'time', duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
+  const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {} };
+
+  const commands: ResultCommands = {
+    runAgain() {}, drill() {}, practiceWords() {}, watchReplay() {},
+    resultKeyDown() {}, resultKeyUp() {}, headingKeyDown() {},
+  };
+
+  return {
+    result,
+    attachPrimary(input: HTMLTextAreaElement) {
+      detachNative?.();
+      nativeInput = input;
+      detachNative = nativePolicy?.attach(input, 'primary') ?? null;
+
+      return () => {
+        if (nativeInput !== input) return;
+        detachNative?.();
+        detachNative = null;
+        nativeInput = null;
+      };
+    },
+    connectNative(policy: NativePolicy) {
+      detachNative?.();
+      nativePolicy = policy;
+      detachNative = nativeInput ? policy.attach(nativeInput, 'primary') : null;
+    },
+    controls,
+    commands,
+    choices,
+    get attempt() { return current; },
+    set attempt(run: Attempt | null) { current = run; },
+    get startTime() { return origin; },
+    set startTime(value: number | null) { origin = value; },
+    get sessionKind() { return purpose; },
+    set sessionKind(value: SessionKind) { purpose = value; },
+    get shownResult() { return displayed; },
+    set shownResult(run: SealedRun | null) { displayed = run; },
+  };
+}
+
+export type PracticeSession = ReturnType<typeof createPracticeSession>;

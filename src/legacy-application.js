@@ -1,3 +1,6 @@
+import { flushSync } from 'react-dom';
+import { createTypingHost } from './typing-host.js';
+import { renderText, updateCharacterStates } from './passage-view.js';
 import { QUOTE_FILTERS, createQuoteFilters } from './quote-filters.js';
 import {
   CHARS_PER_WORD,
@@ -11,16 +14,13 @@ import {
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
-  accentComposition,
   carriedKey,
   compareAttempts,
   completeAttempt,
-  composedKeys,
   conditionKey,
   createAttempt,
   customTextProblem,
   inputRules,
-  deadMark,
   makeAdaptive,
   DRILL_SECONDS,
   makeDrill,
@@ -49,7 +49,7 @@ import { codePassage } from './code-snippets.js';
 import { BOOKS, BOOK_VERSION, bookIds, bookName, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength, parseCustomLength } from './lengths.js';
 import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
-import { normalizeWordHighlight, wordIndexes, wordsAt } from './word-highlight.js';
+import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
@@ -85,6 +85,17 @@ import {
 import { createRunCounter, runCountTotals } from './run-counts.js';
 import { CUSTOM_ORDERS, DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
+function copyParts(value) {
+  return [value].flat(Infinity).flatMap((part) => {
+    if (part === null || part === undefined || part === false || part === '') return [];
+
+    if (part instanceof HTMLDataElement && part.dataset.wpm !== undefined) return [{ kind: 'speed', wpm: Number(part.dataset.wpm), bare: 'bare' in part.dataset, signed: 'signed' in part.dataset, whole: 'whole' in part.dataset }];
+
+    return [part instanceof Node ? part.textContent : String(part)];
+  });
+}
+
+export function attachApplication(practice) {
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
 
@@ -158,10 +169,7 @@ let prefs = preferencesInUse(profile.preferences);
 // prefs as last committed or followed. A difference is an edit made in this tab.
 let livePreferences = JSON.stringify(prefs);
 let preferencesWaiting = false;
-let sessionKind = 'practice';
 let passage = null;
-let attempt = null;
-let startTime = null;
 let ticker = null;
 let primaryCharacters = [];
 let primaryTextView = null;
@@ -171,26 +179,6 @@ let liveSecond = -1;
 // The time of the last key since a minimum stopped the run; see the Run again key guard.
 let stopHold = null;
 const STOP_HOLD_MS = 600;
-
-// The open composition (an accent key's mark, or IME text): { type, attempt, refused, replaces, keyed,
-// leaving, repeated, heldMark, key (Dead if an accent key's keydown opened it), mark (the first thing it
-// showed) }, then once it ends, the { commit, at } still to be scored.
-let composition = null;
-
-// An input method's composition (no accent key opened it) that was let go while still open: its
-// compositionend never came, or focus left first. The browser may yet send its commit as plain text.
-let lostComposition = null;
-
-// The last key press was a held accent key repeating, and it is still down: { mark } it shows (null if
-// unknown). A composition that repeat opens is key repeat too (repeated), and so is plain text it sends
-// (Windows). Forgotten when the field can no longer hear the key let go (blur, finish, restart).
-let heldDeadKey = null;
-
-// Windows has no composition: the key pressed after an accent key types the mark and, where they don't
-// combine, itself, which can come as two inputs ("h). The mark waits for the key's own input, so the two
-// are scored together: { type, attempt, key (that key), mark (its first input, once it came), at,
-// repeated (the accent key was held: what the key types to commit its pending mark is repeat too) }.
-let accentPair = null;
 
 // An online race's typing surface (src/online-race.js), which takes keys through this same path as type
 // 'online': { attempt, origin (the shared start), view, accepting(at), notice(message), changed(), finish() }.
@@ -229,7 +217,6 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
 // showResult sets it. `attempt` moves on without it (a drill whose retest is unavailable, the
 // next run), so nothing on the results view reads `attempt`.
-let shownResult = null;
 let wordsPassage = null;
 
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
@@ -408,11 +395,11 @@ const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes',
   ...TRAINING_PREFERENCES];
 
 const runInProgress = () => runActive || localRaceRunning();
-const attemptPrepared = () => Boolean(attempt) && !['complete', 'interrupted'].includes(attempt.status);
+const attemptPrepared = () => Boolean(practice.attempt) && !['complete', 'interrupted'].includes(practice.attempt.status);
 
 // A practice passage nobody has started typing. Newer test conditions from elsewhere replace it, as a
 // change of conditions here would; retests, drills and the daily keep the conditions they started with.
-const untouchedPractice = () => sessionKind === 'practice' && attempt?.status === 'ready' && !attempt.events.length;
+const untouchedPractice = () => practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' && !practice.attempt.events.length;
 
 // Brings the preferences in use up to the stored ones once that can't disturb a run: nothing changes
 // mid-run, and test conditions wait while a passage is prepared, so the passage on screen always
@@ -739,14 +726,14 @@ function showChrome(shown) {
 // so it says it isn't counted rather than showing the best for the time or word settings underneath it.
 // The run's input class picks the best, so a touch run never shows the physical-keyboard one, or the reverse.
 function currentBestKey() {
-  return comparableKind(sessionKind) ? conditionKey(attempt?.conditions || conditions()) : null;
+  return comparableKind(practice.sessionKind) ? conditionKey(practice.attempt?.conditions || conditions()) : null;
 }
 
 function showBest() {
   const key = currentBestKey();
 
   // Code runs have their own key but never set a best. (A custom session over code says it isn't counted.)
-  if (key && (attempt?.conditions || conditions()).mode === 'code') {
+  if (key && (practice.attempt?.conditions || conditions()).mode === 'code') {
     $('best').textContent = 'Code runs aren’t ranked';
 
     return;
@@ -892,7 +879,7 @@ function updateGlides(options) {
 
 // The tape is for solo practice. A ghost race keeps three lines, as the other races do, so the
 // friend's caret stays in view however far ahead or behind it is.
-const tapeLayout = () => String(prefs.tape && sessionKind !== 'challenge');
+const tapeLayout = () => String(prefs.tape && practice.sessionKind !== 'challenge');
 
 // The one writer of the passage layout: the text size, and three lines or the tape.
 function syncLayout() {
@@ -907,7 +894,7 @@ function syncLayout() {
 }
 
 function setSessionKind(kind) {
-  sessionKind = kind;
+  practice.sessionKind = kind;
   syncLayout();
 }
 
@@ -957,7 +944,7 @@ function applyPreferences() {
   selectSetting('correction-select', prefs.correction);
   selectSetting('focus-toggle', prefs.focusMode);
   selectSetting('tape-toggle', prefs.tape);
-  $('keyboard').hidden = !prefs.keyboard && sessionKind !== 'lesson';
+  $('keyboard').hidden = !prefs.keyboard && practice.sessionKind !== 'lesson';
   renderKeyboard();
   applySoundPreferences();
   applyTheme();
@@ -1016,7 +1003,7 @@ function applySpeedUnit() {
   if (!changed) return;
   labelWords();
 
-  if (shownResult && rateShown(shownResult)) renderSpeedGraph($('speed-graph'), shownResult, { animate: false });
+  if (practice.shownResult && rateShown(practice.shownResult)) renderSpeedGraph($('speed-graph'), practice.shownResult, { animate: false });
 
   if (document.body.dataset.view === 'progress') {
     drawProgressView();
@@ -1031,7 +1018,7 @@ function applySpeedUnit() {
 function showMinimumNote() {
   const minimums = describeMinimums(practiceMinimums());
   setParts($('minimum-note'), minimums);
-  $('minimum-note').hidden = !minimums.length || customOpen || composeOpen || sessionKind === 'custom';
+  $('minimum-note').hidden = !minimums.length || customOpen || composeOpen || practice.sessionKind === 'custom';
 }
 
 // Why a rule switch can't change the session on hand, shown under it and read as its description.
@@ -1068,7 +1055,7 @@ function syncRules() {
 // The standard test fixes word list, punctuation, numbers and correction. Their controls show the
 // recipe's values and stay locked while it is selected; the person's own settings are kept for other modes.
 // A custom passage loaded over it uses the person's own settings (customConditions), so they unlock for it.
-const standardLocked = () => prefs.mode === 'standard' && sessionKind !== 'custom';
+const standardLocked = () => prefs.mode === 'standard' && practice.sessionKind !== 'custom';
 
 function syncLockedSettings() {
   const standard = standardLocked();
@@ -1093,7 +1080,7 @@ function syncLockedSettings() {
 function setModeControls() {
   quoteFilters.dismiss();
   // Composing takes the passage's place, so Custom is never marked over it.
-  const custom = !composeOpen && (customOpen || sessionKind === 'custom');
+  const custom = !composeOpen && (customOpen || practice.sessionKind === 'custom');
   $('mode-custom').classList.toggle('is-active', custom);
   $('mode-custom').setAttribute('aria-pressed', String(custom));
   $('mode-custom').setAttribute('aria-expanded', String(customOpen));
@@ -1130,6 +1117,12 @@ function setModeControls() {
 
   if (custom || composeOpen || prefs.mode === "standard") closeCustomLength();
   renderLengthOptions();
+  flushSync(() => practice.controls.publish({
+    mode: prefs.mode, duration: prefs.duration, count: prefs.count,
+    punctuation: prefs.punctuation, adaptive: prefs.adaptive,
+    custom, customOpen, composing: composeOpen, codeLanguage: prefs.codeLanguage,
+    standardRecipe: recipeSummary() + ' · ' + correctionLabel(standardConditions().correctionPolicy),
+  }));
   showBest();
   requestAnimationFrame(() => updateGlides());
 }
@@ -1183,7 +1176,7 @@ function openCustomLength(mode = prefs.mode) {
   if (!spec) return;
 
   // A new length restarts the run anyway; a timed run must not end under the open field.
-  if (attempt?.status === 'running') resetSession('practice');
+  if (practice.attempt?.status === 'running') resetSession('practice');
   const form = $('custom-length-form');
   const input = $('custom-length-input');
   form.dataset.lengthMode = mode;
@@ -1306,7 +1299,7 @@ function bindCustomLength() {
 // Custom text hides the length row, so from its editor or session this goes through setTestShape too, which
 // closes the editor and starts a test in this mode, as the length buttons do.
 function setCustomLengthFromPalette(mode) {
-  if (prefs.mode !== mode || customOpen || sessionKind === 'custom') setTestShape(mode);
+  if (prefs.mode !== mode || customOpen || practice.sessionKind === 'custom') setTestShape(mode);
   else navigate('practice');
   openCustomLength(mode);
 }
@@ -1314,215 +1307,6 @@ function setCustomLengthFromPalette(mode) {
 // Word groups per rendered passage, so the word highlight can follow the caret. Every view marks
 // its current and next word; body[data-word-highlight] picks which one (if any) is tinted, so the
 // setting applies at once to every passage on screen. Presentational: scoring never reads it.
-const passageWords = new WeakMap();
-
-function markWords(characters, position) {
-  const words = passageWords.get(characters);
-
-  if (!words) return;
-  const { current, next } = wordsAt(words.indexes, words.elements.length, position);
-
-  if (current !== words.current) {
-    words.elements[words.current]?.classList.remove('word-current');
-    words.elements[current]?.classList.add('word-current');
-    words.current = current;
-  }
-
-  if (next !== words.next) {
-    words.elements[words.next]?.classList.remove('word-next');
-    words.elements[next]?.classList.add('word-next');
-    words.next = next;
-  }
-}
-
-// tape: whether the passage is on one line (tape mode), which changes how passed text is trimmed.
-function renderText(display, text, { tape = () => false } = {}) {
-  const words = text.split(' ');
-  const characters = [];
-  const characterWords = [];
-  const groups = [];
-  let renderedWords = 0;
-  let firstRenderedWord = 0;
-  let lastTrimPosition = 0;
-  let lastPosition = 0;
-
-  words.forEach((word, wordIndex) => {
-    const group = document.createElement('span');
-    group.className = 'word';
-    group.dataset.wordIndex = String(wordIndex);
-
-    for (const letter of word) {
-      const span = document.createElement('span');
-      span.className = 'char';
-      span.textContent = letter;
-      group.append(span);
-      characters.push(span);
-      characterWords.push(wordIndex);
-    }
-
-    if (wordIndex < words.length - 1) {
-      const space = document.createElement('span');
-      space.className = 'char';
-      space.textContent = ' ';
-      groups.push([group, space]);
-      characters.push(space);
-      characterWords.push(wordIndex + 1);
-    } else groups.push([group]);
-  });
-
-  function appendWords(wordCount) {
-    const fragment = document.createDocumentFragment();
-    const end = Math.min(groups.length, renderedWords + wordCount);
-
-    while (renderedWords < end) {
-      fragment.append(...groups[renderedWords]);
-      renderedWords += 1;
-    }
-
-    display.insertBefore(fragment, display.querySelector('.caret'));
-  }
-
-  function ensureForward(position) {
-    const targetWord = characterWords[Math.min(position + 160, characters.length - 1)] || 0;
-
-    if (targetWord >= renderedWords) appendWords(Math.max(80, targetWord - renderedWords + 1));
-  }
-
-  // Puts trimmed words back in place of their spacer.
-  function remountTrimmed() {
-    if (!firstRenderedWord) return;
-    const fragment = document.createDocumentFragment();
-
-    for (let index = 0; index < firstRenderedWord; index += 1) fragment.append(...groups[index]);
-    display.querySelector('.passage-spacer')?.remove();
-    display.insertBefore(fragment, display.querySelector('.word'));
-    firstRenderedWord = 0;
-  }
-
-  // Tape mode: words more than two line-widths behind the caret give way to a spacer of the
-  // same width, so nothing in view moves.
-  function trimTape(current) {
-    const keepLeft = (current.closest('.word') || current).offsetLeft - display.clientWidth * 2;
-
-    if (keepLeft <= 0) return;
-    const firstKept = [...display.querySelectorAll('.word')].find((word) => word.offsetLeft >= keepLeft);
-
-    if (!firstKept || firstKept === display.querySelector('.word')) return;
-    const spacer = document.createElement('span');
-    spacer.className = 'passage-spacer';
-    // The word's exact x, not the rounded offsetLeft; the shared transform cancels out.
-    spacer.style.width = `${firstKept.getBoundingClientRect().left - display.getBoundingClientRect().left}px`;
-
-    for (const child of [...display.childNodes]) {
-      if (child === firstKept) break;
-
-      if (child.matches?.('.caret, .ghost-caret, .word-glide')) continue;
-      child.remove();
-    }
-
-    display.insertBefore(spacer, firstKept);
-    firstRenderedWord = Number(firstKept.dataset.wordIndex);
-  }
-
-  // Tape mode, backspacing: a step back can show up to a line-width behind the caret, so the
-  // trimmed words come back before the spacer could show as a blank stretch.
-  function nearTapeSpacer(position) {
-    const spacer = display.querySelector('.passage-spacer');
-    const at = characters[Math.min(position, characters.length - 1)];
-
-    return Boolean(spacer && at?.isConnected) && at.offsetLeft - spacer.offsetWidth < display.clientWidth;
-  }
-
-  display.replaceChildren();
-  appendWords(100);
-  characters[0]?.classList.add('current');
-  passageWords.set(characters, { indexes: wordIndexes(text), elements: groups.map(([group]) => group), current: -1, next: -1 });
-  markWords(characters, 0);
-
-  return {
-    characters,
-    ensureAhead(position) {
-      const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
-      const back = position < lastPosition;
-      lastPosition = position;
-
-      // A separator before the first mounted word maps to that word, but is
-      // itself detached. Remount it when backspacing reaches the boundary.
-      if (currentWord < firstRenderedWord || (currentWord === firstRenderedWord && !characters[position]?.isConnected)
-        || (back && firstRenderedWord && tape() && nearTapeSpacer(position))) {
-        remountTrimmed();
-        lastTrimPosition = position;
-      }
-
-      ensureForward(position);
-    },
-    ensureForward,
-    // Before switching between three lines and the tape: the spacer only fits the old layout.
-    restore() {
-      remountTrimmed();
-      lastTrimPosition = 0;
-    },
-    trimBehind(position) {
-      if (position - lastTrimPosition < 160) return;
-      lastTrimPosition = position;
-      const current = characters[position];
-
-      if (!current?.isConnected) return;
-
-      if (tape()) {
-        trimTape(current);
-
-        return;
-      }
-
-      const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
-      const currentTop = (current.closest('.word') || current).offsetTop;
-      const keepTop = currentTop - lineHeight * 3;
-
-      if (keepTop <= 0) return;
-      let firstKept = null;
-
-      for (const word of display.querySelectorAll('.word')) {
-        if (word.offsetLeft <= 1 && word.offsetTop <= keepTop) firstKept = word;
-        else if (word.offsetTop > keepTop) break;
-      }
-
-      if (!firstKept || firstKept === display.querySelector('.word')) return;
-      const height = firstKept.offsetTop;
-      const spacer = document.createElement('span');
-      spacer.className = 'passage-spacer';
-      spacer.style.height = `${height}px`;
-
-      for (const child of [...display.childNodes]) {
-        if (child === firstKept) break;
-
-        if (child.matches?.('.caret, .ghost-caret, .word-glide')) continue;
-        child.remove();
-      }
-
-      display.insertBefore(spacer, firstKept);
-      firstRenderedWord = Number(firstKept.dataset.wordIndex);
-    },
-  };
-}
-
-function updateCharacterStates(characters, typed, target, start = 0) {
-  const from = Math.max(0, start - 1);
-  const to = Math.min(characters.length, Math.max(typed.length + 2, start + 2));
-
-  for (let index = from; index < to; index += 1) {
-    let state = 'char';
-
-    if (index < typed.length) state = typed[index] === target[index] ? 'char correct' : 'char wrong';
-    else if (index === typed.length) state = 'char current';
-
-    // Only touch changed characters so settled letters keep their finished animation.
-    if (characters[index].className !== state) characters[index].className = state;
-  }
-
-  markWords(characters, typed.length);
-}
-
 // Repeats are for open practice only: a retest always needs text the profile hasn't seen. Code snippets
 // come round again once each has been shown, marked not fresh, whatever the repeat setting.
 // Adaptive practice weights a word or timed passage toward the units the recommender ranks highest for these
@@ -1575,7 +1359,7 @@ function bookPassage(extraSeen = []) {
 
 // Custom text is never fresh, but it is its own session, not a repeat: it gets no repeated-text notice.
 function repeatedTextNotice() {
-  if (sessionKind !== 'practice' || passage?.fresh !== false) return '';
+  if (practice.sessionKind !== 'practice' || passage?.fresh !== false) return '';
 
   return passage.exhausted && !prefs.repeatQuotes && prefs.mode === 'quote'
     ? 'You’ve seen every matching quote. Repeated text doesn’t count toward your best.'
@@ -1591,16 +1375,16 @@ function setPassageNotice(text) {
 }
 
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
-const restartKind = () => (sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
+const restartKind = () => (practice.sessionKind === 'custom' && prefs.customText ? 'custom' : 'practice');
 
 // A drill runs the length it started with. That is its context's, or its own once another device's clear
 // has taken the context from under a drill that is waiting or under way. A drill not yet drawn takes the setting.
 const drillLength = () => trainingContext?.drill?.duration
-  || (['ready', 'running'].includes(attempt?.status) && attempt.drillSeconds)
+  || (['ready', 'running'].includes(practice.attempt?.status) && practice.attempt.drillSeconds)
   || prefs.drillSeconds;
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
-function sessionDurationMs(kind = sessionKind) {
+function sessionDurationMs(kind = practice.sessionKind) {
   if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
 
   if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
@@ -1641,8 +1425,8 @@ function ruleSession() {
     return raceUnderWay() ? { kind: 'race', run: race.conditions, fixed: true } : { kind: 'race', run: raceConditions() };
   }
 
-  if (attempt && ['ready', 'running'].includes(attempt.status)) return { kind: sessionKind, run: attempt.conditions };
-  const kind = sessionKind === 'daily' ? 'daily' : restartKind();
+  if (practice.attempt && ['ready', 'running'].includes(practice.attempt.status)) return { kind: practice.sessionKind, run: practice.attempt.conditions };
+  const kind = practice.sessionKind === 'daily' ? 'daily' : restartKind();
 
   return { kind, run: sessionConditions(kind) };
 }
@@ -1682,25 +1466,25 @@ function configureSessionCopy() {
     lesson: ['lesson', `Lesson ${lessonIndex + 1} · ${keysLabel(LESSONS[lessonIndex].keys)}`, lessonCopy(lessonIndex, passage)],
     challenge: ghostRace?.own ? ['ghost race', 'Race your best run', 'The ghost is your own recording. Not counted toward your best.']
       : ['ghost race', `Race ${ghostRace?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
-  }[sessionKind];
+  }[practice.sessionKind];
 
   $('session-kicker').textContent = copy[0];
   $('session-title').textContent = copy[1];
   $('session-description').textContent = copy[2];
-  $('typing-screen').dataset.session = sessionKind;
-  document.body.dataset.session = sessionKind;
+  $('typing-screen').dataset.session = practice.sessionKind;
+  document.body.dataset.session = practice.sessionKind;
   const setup = document.querySelector('.practice-controls');
 
-  if (setup) setup.hidden = sessionKind !== 'practice' && sessionKind !== 'custom';
-  $('quote-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'quote' || composeOpen;
-  $('standard-options').hidden = sessionKind !== 'practice' || prefs.mode !== 'standard' || composeOpen;
+  if (setup) setup.hidden = practice.sessionKind !== 'practice' && practice.sessionKind !== 'custom';
+  $('quote-options').hidden = practice.sessionKind !== 'practice' || prefs.mode !== 'quote' || composeOpen;
+  $('standard-options').hidden = practice.sessionKind !== 'practice' || prefs.mode !== 'standard' || composeOpen;
   $('book-page').textContent = `page ${bookPlace(profile.runs, prefs.book) + 1}`;
   // Every new run (resetSession) brings its own settings and input class to the footer best.
   showBest();
 }
 
 // `show: false` replaces the session without leaving the current view.
-function resetSession(kind = sessionKind, { focus = false, selectedPassage = null, show = true, keepRace = false, leaveCompose = false } = {}) {
+function resetSession(kind = practice.sessionKind, { focus = false, selectedPassage = null, show = true, keepRace = false, leaveCompose = false } = {}) {
   // While composing, a refresh of the practice passage (a setting, sync, the dock) waits until
   // composing ends, so no hidden passage is marked seen. Choosing a test, drill, retest or daily ends it.
   if (composeOpen) {
@@ -1717,10 +1501,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
 
   // Setting the field ends a composition without compositionend, so forget it first, and a held accent key
   // (let go while the field couldn't hear it).
-  if (composition?.type === 'primary') composition = null;
-
-  if (accentPair?.type === 'primary') accentPair = null;
-  heldDeadKey = null;
+  typingHost.clearFor('primary');
   clearInterval(ticker);
   ticker = null;
   setRunning(false);
@@ -1740,7 +1521,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
 
   // Word practice whose words were cleared with history falls back to a normal test.
   if (kind === 'missed' && !wordsPassage) kind = 'practice';
-  const kindChanged = sessionKind !== kind;
+  const kindChanged = practice.sessionKind !== kind;
   setSessionKind(kind);
 
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
@@ -1765,8 +1546,8 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   if (!passage) {
     if (kind === 'retest') showUnavailableRetest('No passage matches the original conditions. Change the quote filters, then run a new baseline.');
     else {
-      attempt = null;
-      startTime = null;
+      practice.attempt = null;
+      practice.startTime = null;
       $('typing-input').value = '';
       $('typing-input').disabled = true;
       primaryFx.reset([]);
@@ -1795,7 +1576,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   recordSeenOnDisplay(['drill', 'missed', 'lesson'].includes(kind) || passage.book || passage.adaptive ? [] : [passage.id, kind === 'daily' ? passage.challengeId : null]);
   // The one place a run gets its input class: from the press that started it, never a default or the last run's.
   const runConditions = kind === 'daily' ? dailyConditions() : kind === 'lesson' ? lessonConditions() : kind === 'missed' ? { ...conditions(), mode: 'missed', duration: null, count: null, ...practiceTextConditions(passage.text), quoteLength: null, difficulty: null, wordList: null, corpus: CORPUS_VERSION } : kind === 'challenge' ? ghostConditions() : kind === 'custom' ? customConditions() : conditions();
-  attempt = createAttempt({
+  practice.attempt = createAttempt({
     id: uid(),
     text: passage.text,
     textId: passage.id,
@@ -1803,32 +1584,32 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
     conditions: { ...sessionConditions(kind, runConditions), inputClass: activationInput },
   });
 
-  if (kind === 'challenge') attempt.challengeId = ghostRace.id;
+  if (kind === 'challenge') practice.attempt.challengeId = ghostRace.id;
 
   if (kind === 'daily') {
-    attempt.challengeDate = passage.day;
-    attempt.firstDailyAttempt = passage.firstDailyAttempt;
+    practice.attempt.challengeDate = passage.day;
+    practice.attempt.firstDailyAttempt = passage.firstDailyAttempt;
   }
 
   if (kind === 'drill') {
-    attempt.target = selectedTarget;
-    attempt.drillSeconds = drillLength();
+    practice.attempt.target = selectedTarget;
+    practice.attempt.drillSeconds = drillLength();
   }
 
   if (passage.adaptive) {
-    attempt.adaptive = true;
-    attempt.trainFocus = passage.trainFocus;
+    practice.attempt.adaptive = true;
+    practice.attempt.trainFocus = passage.trainFocus;
   }
 
-  if (kind === 'lesson') attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
+  if (kind === 'lesson') practice.attempt.lesson = { id: passage.lessonId, index: lessonIndex, pairs: passage.pairs, words: passage.words };
 
   // Open practice stops at the current minimums. A retest carries its baseline's, so both sides of a
   // comparison pass the same filter; drills and the daily challenge always run to the end.
-  if (kind === 'practice') attempt.minimums = practiceMinimums();
+  if (kind === 'practice') practice.attempt.minimums = practiceMinimums();
 
-  if (kind === 'retest') attempt.minimums = baselineAttempt?.minimums || null;
-  attempt.fresh = passage.fresh !== false;
-  startTime = null;
+  if (kind === 'retest') practice.attempt.minimums = baselineAttempt?.minimums || null;
+  practice.attempt.fresh = passage.fresh !== false;
+  practice.startTime = null;
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('accessible-passage').textContent = passage.text;
@@ -1846,7 +1627,7 @@ function resetSession(kind = sessionKind, { focus = false, selectedPassage = nul
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   // Open practice hides the condition line, so a repeated passage says so in the footer, before and during the run.
   setPassageNotice(repeatedTextNotice());
-  setParts($('condition-line'), describeRun(attempt));
+  setParts($('condition-line'), describeRun(practice.attempt));
   configureSessionCopy();
   updateLive(true);
 
@@ -1891,9 +1672,9 @@ function openCompose() {
     clearInterval(ticker);
     ticker = null;
 
-    if (attempt?.status === 'running') {
+    if (practice.attempt?.status === 'running') {
       primaryFx.finish();
-      attempt = null;
+      practice.attempt = null;
     }
 
     setSessionKind('practice');
@@ -1932,10 +1713,10 @@ function focusPractice() {
 
 function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
   if (type === 'primary') {
-    if (startTime !== null) return;
-    startTime = stamp;
-    attempt.status = 'running';
-    attempt.startedAt = 0;
+    if (practice.startTime !== null) return;
+    practice.startTime = stamp;
+    practice.attempt.status = 'running';
+    practice.attempt.startedAt = 0;
     ticker = setInterval(() => updateLive(), 100);
     primaryFx.ghost.run(stamp);
     ({ counts: profile.runCounts, ticket: runTicket } = runCounter.start(profile.runCounts, dayKey(new Date())));
@@ -1957,7 +1738,7 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
 }
 
 function offsetFor(type = 'primary', at = now()) {
-  const origin = type === 'primary' ? startTime : type === 'online' ? online.origin : race.startTime;
+  const origin = type === 'primary' ? practice.startTime : type === 'online' ? online.origin : race.startTime;
 
   return origin === null ? 0 : Math.max(0, at - origin);
 }
@@ -2021,21 +1802,19 @@ function pushDelete(type = 'primary') {
   return replay.typed.length;
 }
 
-const inputAttempt = (type) => (type === 'primary' ? attempt : type === 'online' ? online.attempt : race.attempt);
+const inputAttempt = (type) => (type === 'primary' ? practice.attempt : type === 'online' ? online.attempt : race.attempt);
 
 // A timed run's clock has run out by this time (by default, now).
-const timeUp = (at = now()) => startTime !== null && Boolean(sessionDurationMs()) && at - startTime >= sessionDurationMs();
+const timeUp = (at = now()) => practice.startTime !== null && Boolean(sessionDurationMs()) && at - practice.startTime >= sessionDurationMs();
 const inTime = (type, at) => (type === 'online' ? online.accepting(at) : !timeUp(at));
 
 // An accent commit made before the limit and still waiting for the key that ended it, or (Windows) a mark
 // typed before the limit and waiting for its key's input.
-const commitInTime = (type = 'primary') => (composition?.type === type && composition.commit !== null
-  && composition.attempt === inputAttempt(type) && inTime(type, composition.at))
-  || (accentPair?.type === type && accentPair.mark !== null && accentPair.attempt === inputAttempt(type) && inTime(type, accentPair.at));
+const commitInTime = (type = 'primary') => typingHost.pending(type);
 
 // A timed run ends at its limit, once nothing typed before the limit is still to be scored.
 function finishIfTimeUp(at = now()) {
-  if (attempt?.status === 'running' && timeUp(at) && !commitInTime()) finishPrimary(sessionDurationMs());
+  if (practice.attempt?.status === 'running' && timeUp(at) && !commitInTime()) finishPrimary(sessionDurationMs());
 }
 
 // The checks every typed key passes first; false means the input is ignored (it may finish a timed run).
@@ -2100,332 +1879,14 @@ function typeKeys(keys, type, at = now()) {
 
 const finishTyping = (type) => (type === 'primary' ? finishPrimary() : type === 'online' ? online.finish() : finishRacePlayer());
 
-// What a composition committed, scored once the key that ended it is known. A mark pending when focus
-// leaves is dropped, and browsers commit it on the way out: Chrome and Firefox send that key (Tab)
-// before compositionend, Safari after it, and Chrome on macOS commits as a click begins, a task before
-// focus moves. So a commit no key came before waits for one, or for the blur. The next key, input or
-// composition on the field scores it first, so keys keep their order.
-const COMMIT_KEY_WAIT_MS = 100;
-
-// Keys pressed while composing that don't end it: the accent key itself (Safari sends its keydown after
-// the mark shows) and modifiers held for the next letter.
-const COMPOSING_KEYS = new Set(['Dead', 'Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock', 'Fn']);
-
-// Keys whose auto-repeat is a held accent key: Dead, and Process, which Chromium on Linux sends for every
-// key its input method takes (the accent key among them), with the repeat flag kept.
-const ACCENT_REPEAT_KEYS = new Set(['Dead', 'Process']);
-
-function scoreCommit(type) {
-  const session = composition?.type === type && composition.commit !== null ? composition : null;
-
-  if (!session) return;
-  composition = null;
-
-  if (session.attempt !== inputAttempt(type) || !acceptingInput(type, session.at)) return;
-  const keys = composedKeys(session.commit);
-
-  // A held accent key commits its mark again and again (^^): ignore it, like any held key, and the
-  // letter that commits the last repeated mark (â) with it. Committing the same letters back (typing on
-  // past the accent menu) changes nothing; any other change to letters already scored is an input
-  // method's edit, not keys. A composition no accent key opened is an input method's, even when it
-  // commits one Latin letter; a cancelled one (nothing committed) types nothing.
-  if (session.repeated) showInputNotice(type, NOTICES.repeat, { speak: false });
-  else if (session.replaces !== null) { if (session.commit !== session.replaces) refuseComposition(type); }
-  else if (keys === null || (keys.length && !accentComposition({ key: session.key, preview: session.mark }))) refuseComposition(type);
-  else typeKeys(keys, type, session.at);
-
-  // The clock may have run out while the commit waited: the run ends now, at its limit.
-  if (type === 'primary') finishIfTimeUp();
-}
-
-// A composition's end: what it committed is scored once the key that ended it is known, unless it was
-// refused already or left with Tab. The field goes back to the passage.
-function endComposition(session, commit, type, input) {
-  if (session.refused || session.leaving || session.attempt !== inputAttempt(type)) composition = null;
-  else {
-    composition = Object.assign(session, { commit: commit ?? '', at: now() });
-    setTimeout(() => { if (composition === session) scoreCommit(type); }, session.keyed ? 0 : COMMIT_KEY_WAIT_MS);
-  }
-
-  const current = inputAttempt(type);
-
-  if (current) input.value = replayAttempt(current).typed;
-}
-
-// Stops following a composition before its compositionend. An accent key's pending mark is just dropped;
-// an input method's that is still open is kept (lostComposition), so the plain text it may commit later
-// is still that input method's.
-function forgetComposition(type) {
-  if (composition?.type !== type) return;
-
-  if (composition.commit === null && !accentComposition({ key: composition.key, preview: composition.mark })) lostComposition = composition;
-  composition = null;
-}
-
-// A Windows accent mark scored without the key it waited for (keys, given when that key's input came), as
-// a commit is: together, at the mark's time, so on the last letter the passage can't end between them.
-function scoreAccentPair(type, keys = null) {
-  const pair = accentPair?.type === type && accentPair.mark !== null ? accentPair : null;
-
-  if (!pair) return;
-  accentPair = null;
-
-  if (pair.attempt === inputAttempt(type)) typeKeys(keys ?? [pair.mark], type, pair.at);
-
-  if (type === 'primary') finishIfTimeUp();
-}
-
-// WebKit sends no beforeinput for a Backspace in an empty field, so there that key would make no sound.
-// It is taken from its keydown instead, in every browser, as the delete it would have been.
-function backspaceInEmptyField(event, type) {
-  if (event.key !== 'Backspace' || event.isComposing || event.defaultPrevented || event.target.value !== '') return;
-  event.preventDefault();
-  beforeTypingInput({ inputType: 'deleteContentBackward', isComposing: false, preventDefault() {} }, type);
-}
-
-function beforeTypingInput(event, type = 'primary') {
-  const compositionInput = event.inputType?.includes('Composition');
-
-  // Safari can insert a commit's text after compositionend; that is the commit itself, not a next key.
-  if (!compositionInput) scoreCommit(type);
-
-  // Windows: the input of the key a typed mark waits for is scored with it; anything else scores the mark first.
-  if (accentPair?.type === type && accentPair.mark !== null && event.inputType === 'insertText' && event.data === accentPair.key) {
-    event.preventDefault();
-    scoreAccentPair(type, [accentPair.mark, accentPair.key]);
-
-    return;
-  }
-
-  scoreAccentPair(type);
-
-  if (!acceptingInput(type)) {
-    event.preventDefault();
-
-    return;
-  }
-
-  if (event.inputType === 'insertFromPaste' || event.inputType === 'insertFromDrop') {
-    event.preventDefault();
-    refusePaste(type);
-
-    return;
-  }
-
-  // A plain key with isComposing false means the composition ended without compositionend
-  // (the field changed under it, or the browser dropped the event): let this key through, unless the
-  // composition was an input method's (its commit, below).
-  if (composition?.type === type && !event.isComposing && !compositionInput
-    && (event.inputType === 'insertText' || event.inputType?.startsWith('delete'))) forgetComposition(type);
-
-  // Composition text is scored once, after compositionend; until then the field is the browser's.
-  if (compositionInput || event.isComposing || composition?.type === type) return;
-
-  if (event.inputType?.startsWith('delete')) {
-    event.preventDefault();
-
-    if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
-    const previousLength = pushDelete(type);
-    sounds.play(KEY_OUTCOME.delete);
-    refreshAfterInput(type, previousLength);
-
-    return;
-  }
-
-  if (event.inputType === 'insertLineBreak') {
-    event.preventDefault();
-
-    return;
-  }
-
-  if (event.inputType !== 'insertText' || !event.data || /[\r\n]/u.test(event.data)) return;
-  event.preventDefault();
-  // The first text after an input method's composition that ended unseen is what it committed (Pinyin's
-  // 你 after n), scored as that commit: refused, as after compositionend, and never typed as a key.
-  const lost = lostComposition?.type === type ? lostComposition : null;
-
-  if (lost) {
-    lostComposition = null;
-
-    if (lost.attempt === inputAttempt(type)) {
-      endComposition(lost, event.data, type, event.target);
-
-      return;
-    }
-  }
-
-  // One key, or an accent mark and the letter it couldn't combine with (Windows sends both).
-  const keys = [...event.data].length === 1 ? [event.data] : composedKeys(event.data);
-
-  if (!keys) {
-    if (type === 'online') return;
-    const targetAttempt = inputAttempt(type);
-    targetAttempt.unsupportedInput = true;
-    targetAttempt.interrupted = true;
-    showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
-
-    return;
-  }
-
-  // Windows: the key pressed after an accent key may type the mark first, with its own input to follow.
-  const pair = accentPair?.type === type ? accentPair : null;
-
-  // Windows: a held accent key's repeats arrive as plain text (^^), and so does the next key's commit of a
-  // mark they left pending (â, ^h, or ^ then h): all that key types, unless it types just itself.
-  if (heldDeadKey || (pair?.repeated && (pair.key === null || event.data !== pair.key))) {
-    if (pair?.repeated) pair.key = null;
-    showInputNotice(type, NOTICES.repeat, { speak: false });
-
-    return;
-  }
-
-  accentPair = null;
-
-  if (pair && keys.length === 1 && keys[0] !== pair.key && deadMark(keys[0]) && pair.attempt === inputAttempt(type)) {
-    accentPair = Object.assign(pair, { mark: keys[0], at: now() });
-    setTimeout(() => { if (accentPair === pair) scoreAccentPair(type); }, COMMIT_KEY_WAIT_MS);
-
-    return;
-  }
-
-  typeKeys(keys, type);
-}
-
-// An accent key's composition is typed characters, scored after compositionend. Any other composition
-// (no accent key opened it), or a preview or commit no accent key could produce, is IME text and stops
-// the run counting.
-function wireComposition(input, type) {
-  // The last key pressed in the field: Chrome and Firefox send an accent key (Dead) before its composition.
-  let lastKey = null;
-  // An accent key was the last key but modifiers, and opened no composition: Windows, where the next key
-  // types its mark as plain text. 'held' if it was repeating: no composition marks a mark it leaves pending.
-  let afterAccent = false;
-
-  // Tab commits a pending mark on its way to the next control: dropped, like any mark as focus leaves.
-  const drop = () => {
-    composition = null;
-    const current = inputAttempt(type);
-
-    if (current) input.value = replayAttempt(current).typed;
-  };
-
-  input.addEventListener('keydown', (event) => {
-    const session = composition?.type === type ? composition : null;
-    const repeat = event.repeat && ACCENT_REPEAT_KEYS.has(event.key);
-
-    if (session?.commit === null) {
-      // Chrome (keyCode 229 on macOS) and Firefox send the key that will end the composition first.
-      if (!COMPOSING_KEYS.has(event.key)) Object.assign(session, { keyed: true, leaving: event.key === 'Tab' });
-
-      // Safari sends the accent key's own keydown after its mark shows.
-      if (event.key === 'Dead') session.key = 'Dead';
-
-      // A held accent key's repeat adds its mark to this composition, or (Safari) is the key that opened it.
-      if (repeat) Object.assign(session, { repeated: true, heldMark: null });
-    } else if (session) {
-      // Safari sends the key that ended a composition after compositionend.
-      if (repeat && !session.keyed) session.repeated = true;
-
-      if (event.key === 'Tab') drop();
-    }
-
-    scoreCommit(type);
-    scoreAccentPair(type);
-    heldDeadKey = repeat ? { mark: session?.mark ?? heldDeadKey?.mark ?? null } : null;
-    lastKey = event.key;
-    // Windows: the key after an accent key types the mark, then itself if they don't combine ("h; a space
-    // types the mark alone). After a held one, that key (a space, or the accent key again, too) commits any
-    // mark the repeats left pending, so what it types is repeat (repeated) until the next key.
-    const held = afterAccent === 'held' && !repeat;
-
-    if (!COMPOSING_KEYS.has(event.key) || event.key === 'Dead') {
-      accentPair = afterAccent && composition?.type !== type
-        && (held ? [...event.key].length === 1 || event.key === 'Dead' : [...event.key].length === 1 && event.key !== ' ')
-        ? { type, attempt: inputAttempt(type), key: event.key, mark: null, at: 0, repeated: held } : null;
-    }
-
-    afterAccent = event.key === 'Dead' ? (repeat ? 'held' : true) : COMPOSING_KEYS.has(event.key) && afterAccent;
-  });
-  // Letting go of a held accent key ends its repeats; what it left pending stays repeated.
-  input.addEventListener('keyup', (event) => { if (event.key === 'Dead') heldDeadKey = null; });
-  input.addEventListener('compositionstart', (event) => {
-    // A key opens one composition at most, and an accent key that opens one types nothing as plain text.
-    const key = lastKey;
-    lastKey = null;
-    afterAccent = false;
-    scoreCommit(type);
-    scoreAccentPair(type);
-
-    // A new composition: the one that ended unseen sent no commit as plain text.
-    if (lostComposition?.type === type) lostComposition = null;
-
-    if (!acceptingInput(type)) {
-      composition = null;
-
-      return;
-    }
-
-    // An accent key's mark starts as a caret after the typed text. A composition over letters already
-    // typed (the macOS press-and-hold accent menu, a keyboard re-composing a word) is not new keys.
-    const over = event.data || input.value.slice(input.selectionStart, input.selectionEnd);
-    // Chrome and Firefox send the key that opens a composition first: a held accent key's repeat opens a
-    // repeated one, and the letter that later commits its mark (â) is ignored with it.
-    composition = { type, attempt: inputAttempt(type), refused: false, replaces: over || null, keyed: false, leaving: false, repeated: Boolean(heldDeadKey), heldMark: heldDeadKey?.mark ?? null, key, mark: null, commit: null, at: 0 };
-  });
-  input.addEventListener('compositionupdate', (event) => {
-    if (composition?.type !== type || composition.refused || composition.attempt !== inputAttempt(type)) return;
-
-    // Safari sends a key's composition before its keydown, so one opened while an accent key is held may be
-    // another accent key's: it is the held key's repeat only if it first shows that key's mark.
-    if (composition.mark === null) {
-      if (composition.heldMark !== null && event.data !== composition.heldMark) composition.repeated = false;
-      composition.mark = event.data;
-    }
-
-    if (!acceptingInput(type)) return;
-
-    if (composedKeys(event.data) === null) {
-      composition.refused = true;
-      refuseComposition(type);
-    }
-  });
-  input.addEventListener('compositionend', (event) => {
-    // Safari sends the accent key's keydown inside its composition.
-    afterAccent = false;
-
-    // One let go first ends here after all: what it commits now is dropped, as when focus leaves.
-    if (lostComposition?.type === type) lostComposition = null;
-
-    // Hand the field back to the passage once the composition is over (finishing commits a pending mark).
-    if (composition?.type === type) endComposition(composition, event.data, type, input);
-    else if (inputAttempt(type)) input.value = replayAttempt(inputAttempt(type)).typed;
-  });
-  // Focus moving anywhere drops a mark still pending, or committed on the way out, whichever comes first.
-  // A held accent key is let go out of the field's hearing; if it is still down when focus returns, its
-  // repeats say so again.
-  input.addEventListener('blur', () => {
-    heldDeadKey = null;
-    lastKey = null;
-    afterAccent = false;
-    forgetComposition(type);
-
-    if (accentPair?.type === type) accentPair = null;
-  });
-}
-
 // An online race types through the practice path (see online). pending: a commit typed before the race's
 // limit is still to be scored, so the race waits for it before it finishes. keydown: the race's own keydown
 // passes each key it lets through, for a Backspace in an empty field (see backspaceInEmptyField).
 function wireOnlineTyping(input, surface) {
   online = surface;
-  input.addEventListener('beforeinput', (event) => beforeTypingInput(event, 'online'));
-  input.addEventListener('input', (event) => {
-    if (!online.attempt || event.isComposing || composition?.type === 'online') return;
-    input.value = replayAttempt(online.attempt).typed;
-  });
-  wireComposition(input, 'online');
+  typingHost.attach(input, 'online');
 
-  return { pending: () => commitInTime('online'), keydown: (event) => backspaceInEmptyField(event, 'online') };
+  return { pending: () => commitInTime('online'), keydown: (event) => typingHost.keydown(event, 'online', input) };
 }
 
 // Everything the typing surface says, kept short. The focus-lost and composition
@@ -2520,7 +1981,7 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   if (isPrimary) {
     // A backspace before the first letter starts nothing. Once the run has started, every key marks it as
     // under way, which restores the mark after leaving the screen mid-run.
-    if (startTime !== null) setRunning(true);
+    if (practice.startTime !== null) setRunning(true);
     $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
 
@@ -2545,18 +2006,42 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
   }
 }
 
+const typingHost = createTypingHost({
+  attempt: inputAttempt,
+  typed: (type) => inputAttempt(type) ? replayAttempt(inputAttempt(type)).typed : '',
+  accepting: acceptingInput,
+  inTime,
+  typeKeys,
+  deleteKey(type) {
+    if (!allowsBackspace(inputAttempt(type).conditions.correctionPolicy)) return;
+    const previousLength = pushDelete(type);
+    sounds.play(KEY_OUTCOME.delete);
+    refreshAfterInput(type, previousLength);
+  },
+  refuseComposition,
+  unsupported(type) {
+    const target = inputAttempt(type);
+    target.unsupportedInput = true;
+    target.interrupted = true;
+    showInputNotice(type, NOTICES.multiCharacter, { sticky: true });
+  },
+  refusePaste,
+  showRepeat: (type) => showInputNotice(type, NOTICES.repeat, { speak: false }),
+  finishIfTimeUp,
+});
+
 // The pace caret is presentational and never scored. It runs at the personal best, the average of
 // the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
 function ghostPace(mode = prefs.paceCaret) {
   // In a lesson the pace line runs at the lesson's speed target, whatever the pace setting.
-  if (attempt?.kind === 'lesson') {
+  if (practice.attempt?.kind === 'lesson') {
     const wpm = LESSONS[lessonIndex].wpm;
 
     return { wpm, cps: (wpm * CHARS_PER_WORD) / 60, fromBest: false, fallback: false };
   }
 
   // The active attempt knows its real input class (from the press that started it, or a later touch).
-  const key = conditionKey(attempt?.conditions || conditions());
+  const key = conditionKey(practice.attempt?.conditions || conditions());
   let wpm = null;
 
   if (mode === 'custom') wpm = prefs.paceWpm;
@@ -2579,7 +2064,7 @@ function showPace() {
   const on = ghostOn();
   const pace = ghostPace();
   // A ghost race's caret is the friend's run, not the pacer, so the pace isn't labelled there.
-  const shown = on && sessionKind !== 'challenge';
+  const shown = on && practice.sessionKind !== 'challenge';
   $('pace-label').hidden = !shown;
   setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
   selectSetting('pace-select', prefs.paceCaret);
@@ -2608,11 +2093,11 @@ function showPace() {
 // Arms the caret on the current attempt in place: a ready run keeps its passage, and a run in
 // progress joins the caret to its own clock. Called whenever the mode or the history behind it changes.
 function armPace() {
-  const running = attempt?.status === 'running' && startTime !== null;
-  const live = running || attempt?.status === 'ready';
+  const running = practice.attempt?.status === 'running' && practice.startTime !== null;
+  const live = running || practice.attempt?.status === 'ready';
 
   // A ghost race keeps its replayed run: the pacer never replaces or hides it.
-  if (sessionKind !== 'challenge') primaryFx.ghost.arm(ghostOn() && live ? ghostPace().cps : 0, running ? startTime : 0);
+  if (practice.sessionKind !== 'challenge') primaryFx.ghost.arm(ghostOn() && live ? ghostPace().cps : 0, running ? practice.startTime : 0);
   showPace();
 }
 
@@ -2642,24 +2127,24 @@ const rateShown = (completed) => comparableKind(completed.kind) || completed.sum
 // whether its passage is finished or, with quick end off, its last word submitted by space), so no
 // caller states the end conditions by hand.
 function runPosition(replay, elapsedMs) {
-  const submitted = attempt.events.some((event) => event.type === 'submit');
+  const submitted = practice.attempt.events.some((event) => event.type === 'submit');
 
-  return { elapsedMs, durationMs: sessionDurationMs(), finished: submitted || passageComplete(attempt, replay.typed) };
+  return { elapsedMs, durationMs: sessionDurationMs(), finished: submitted || passageComplete(practice.attempt, replay.typed) };
 }
 
 function updateLive(reset = false, at = now()) {
-  if (!attempt) return;
-  const replay = replayAttempt(attempt);
-  const elapsed = startTime === null ? 0 : now() - startTime;
+  if (!practice.attempt) return;
+  const replay = replayAttempt(practice.attempt);
+  const elapsed = practice.startTime === null ? 0 : now() - practice.startTime;
   const duration = sessionDurationMs();
   const boundedElapsed = duration ? Math.min(elapsed, duration) : elapsed;
   // A rate over the first second is mostly noise (one key in 5 ms reads as thousands of wpm),
   // and a number that changes every keystroke pulls the eye off the text: update once a second.
-  const second = startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
+  const second = practice.startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
 
   if (reset || second !== liveSecond) {
     liveSecond = second;
-    const live = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...attempt, endedAt: boundedElapsed }) : null;
+    const live = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...practice.attempt, endedAt: boundedElapsed }) : null;
     const score = live?.score;
     showSpeed($('live-wpm'), score ? score.wpm : null);
     setText($('live-accuracy'), score ? score.accuracy : '—');
@@ -2667,9 +2152,9 @@ function updateLive(reset = false, at = now()) {
     // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
     // At the run's end (its duration, or its last character) this live check stands aside: the
     // end-of-run check in finishPrimary judges it.
-    if (!reset && live && attempt.minimums && attempt.status === 'running' && !attempt.interrupted && !attempt.unsupportedInput) {
+    if (!reset && live && practice.attempt.minimums && practice.attempt.status === 'running' && !practice.attempt.interrupted && !practice.attempt.unsupportedInput) {
       const position = runPosition(live, boundedElapsed);
-      const stop = atRunEnd(position) ? null : minimumStop(attempt.minimums, live, position);
+      const stop = atRunEnd(position) ? null : minimumStop(practice.attempt.minimums, live, position);
 
       if (stop) {
         finishPrimary(boundedElapsed, { stop });
@@ -2688,12 +2173,12 @@ function updateLive(reset = false, at = now()) {
     setText($('timer-label'), 'remaining');
     progress = boundedElapsed / duration;
   } else {
-    const wordTotal = attempt.text.split(' ').length;
-    const wordCount = replay.typed.length === attempt.text.length ? wordTotal : (replay.typed.match(/ /g) || []).length;
+    const wordTotal = practice.attempt.text.split(' ').length;
+    const wordCount = replay.typed.length === practice.attempt.text.length ? wordTotal : (replay.typed.match(/ /g) || []).length;
     setText($('timer'), wordCount);
     setText($('timer-unit'), `/${wordTotal}`);
     setText($('timer-label'), 'words');
-    progress = replay.typed.length / attempt.text.length;
+    progress = replay.typed.length / practice.attempt.text.length;
   }
 
   const percent = Math.max(0, Math.min(100, progress * 100));
@@ -2757,37 +2242,34 @@ const failedDrill = (completed) => completed.kind === 'drill' && Boolean(complet
 // `replacing`: another session or view takes over at once, so a drill draws no retest passage to throw away.
 // `stop`: the live tick found the run under a minimum (minimumStop).
 function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } = {}) {
-  if (!attempt || attempt.status !== 'running') return;
+  if (!practice.attempt || practice.attempt.status !== 'running') return;
 
   // A pending accent mark isn't a keystroke; disabling the field commits it, and that is ignored. Nor can
   // the disabled field hear a held accent key let go.
-  if (composition?.type === 'primary') composition = null;
-
-  if (accentPair?.type === 'primary') accentPair = null;
-  heldDeadKey = null;
+  typingHost.clearFor('primary');
   clearInterval(ticker);
   ticker = null;
   const endedAt = forcedElapsed ?? offsetFor();
-  markEndFailure(attempt);
-  const clean = !attempt.interrupted && !attempt.unsupportedInput;
-  const final = completeAttempt(attempt, { endedAt });
+  markEndFailure(practice.attempt);
+  const clean = !practice.attempt.interrupted && !practice.attempt.unsupportedInput;
+  const final = completeAttempt(practice.attempt, { endedAt });
   // A run that reaches its end (its duration or its passage) under a minimum isn't counted either,
   // so every counted run met them. The tick passes a live stop from the same judgement. A run the
   // correction policy failed is already interrupted, and says so rather than naming a minimum.
-  const stopped = clean ? stop || minimumStop(attempt.minimums, final.summary, runPosition(final.summary, endedAt)) : null;
+  const stopped = clean ? stop || minimumStop(practice.attempt.minimums, final.summary, runPosition(final.summary, endedAt)) : null;
   const valid = clean && !stopped;
   const completed = { ...final, status: valid ? 'complete' : 'interrupted' };
 
   if (stopped) completed.stopped = stopped;
-  completed.interrupted = attempt.interrupted;
-  completed.unsupportedInput = attempt.unsupportedInput;
-  completed.fresh = attempt.fresh;
+  completed.interrupted = practice.attempt.interrupted;
+  completed.unsupportedInput = practice.attempt.unsupportedInput;
+  completed.fresh = practice.attempt.fresh;
 
-  if (attempt.failed) completed.failed = attempt.failed;
+  if (practice.attempt.failed) completed.failed = practice.attempt.failed;
 
   if (valid && runTicket) profile.runCounts = runCounter.finish(profile.runCounts, runTicket);
   runTicket = null;
-  attempt = completed;
+  practice.attempt = completed;
   $('typing-input').disabled = true;
   primaryFx.finish();
   setRunning(false);
@@ -2795,7 +2277,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
   $('typing-status').textContent = valid ? 'Complete' : completed.failed ? 'Failed' : 'Interrupted';
 
   // Lessons keep their own progress and never enter runs, traces or bests.
-  if (sessionKind === 'lesson') {
+  if (practice.sessionKind === 'lesson') {
     finishLesson(completed, valid);
     saveRunCounts();
 
@@ -2806,7 +2288,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
 
   // A drill the correction setting failed shows its result like any failed run, so it can be tried
   // again; a finished or interrupted drill goes straight on to the retest.
-  if (sessionKind === 'drill' && baselineAttempt && trainingContext?.retest !== false && !completed.failed) {
+  if (practice.sessionKind === 'drill' && baselineAttempt && trainingContext?.retest !== false && !completed.failed) {
     if (trainingContext) trainingContext.drillCompleted = valid;
 
     // Train already offers this retest: startDrill() rendered its actions.
@@ -2817,7 +2299,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
     return;
   }
 
-  if (sessionKind === 'practice' || sessionKind === 'daily') {
+  if (practice.sessionKind === 'practice' || practice.sessionKind === 'daily') {
     // A code run is never a baseline, so it drops the earlier one rather than retest against it. An
     // adaptive run is drill-kind: it leaves the baseline as it was.
     if (completed.conditions?.mode === 'code') {
@@ -2834,7 +2316,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
 
   // A retest's result is its comparison, on Train, and its card waits behind Back to practice; every
   // other run's result stays on Practice.
-  if (sessionKind === 'retest') {
+  if (practice.sessionKind === 'retest') {
     switchView('train');
     renderComparison(baselineAttempt, completed, saved);
     // The passage may have scrolled the page; Train opens at its top.
@@ -2844,7 +2326,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
     return;
   }
 
-  if (sessionKind === 'challenge') {
+  if (practice.sessionKind === 'challenge') {
     // Touch and physical-keyboard runs are never compared, so only the sender's kind of input is sent.
     const sameInput = inputOf(completed.conditions) === inputOf(ghostRace.conditions);
     ghostRace.run = completed;
@@ -2886,35 +2368,13 @@ function focusResult(control) {
 
 // Draw after the results view is shown so the graph has its size.
 function renderCard(completed) {
-  $('run-card').hidden = false;
-  const graph = $('speed-graph').closest('figure');
-  graph.hidden = !rateShown(completed);
-
-  if (!graph.hidden) renderSpeedGraph($('speed-graph'), completed, { animate: true });
-  renderPracticeWords(completed);
+  if (rateShown(completed)) renderSpeedGraph($('speed-graph'), completed, { animate: true });
 }
 
 // Offer the words this run tripped on or was slowest through as their own uncounted run.
 // Only an evidence run is mined for words, by the same rule as recurring patterns: a complete test,
 // retest or daily run on fresh text. Not a drill (synthetic, target-heavy text), repeated text (a daily
 // passage shown before, a repeated quote), custom text or word practice itself. Run again repeats a word-practice passage.
-function renderPracticeWords(completed) {
-  const mined = evidenceRun(completed);
-  const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
-  const words = [...missed, ...slow.map((item) => item.word)];
-  const button = $('practice-words');
-  button.hidden = !words.length;
-
-  if (!words.length) return;
-  button.textContent = words.length === 1 ? 'Practice this word' : `Practice these ${words.length} words`;
-  // The run whose words are practised (an evidence run, or there'd be no button) is the baseline for
-  // the fresh retest offered afterward, as a finished practice or daily run is. A retest doesn't set it
-  // on finishing, so set it here.
-  button.onclick = () => {
-    baselineAttempt = completed;
-    startWordPractice(words);
-  };
-}
 
 // An uncounted `missed` run of these words. It is not a drill, so a drill's context and target from
 // earlier don't carry over into the next retest's record; startDrill sets a target again.
@@ -2979,8 +2439,9 @@ const CODE_DRILL_NOTE = 'A standalone drill. Code runs have no fresh-text retest
 // Records the run the results view now shows; Watch replay appears only when it has a trace. A custom run
 // (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
 function showResult(completed) {
-  shownResult = completed;
-  $('watch-replay').hidden = !completed?.events?.length || !comparableKind(completed.kind);
+  practice.shownResult = completed;
+
+  if (!completed) flushSync(() => practice.result.publish(null));
 }
 
 function renderResults(completed, saved) {
@@ -2988,32 +2449,38 @@ function renderResults(completed, saved) {
   const counted = completed.status === 'complete';
   showResult(completed);
   const speed = rateShown(completed) ? formatSpeed(replay.score.wpm) : 'Too quick to time';
-  showSpeed($('result-wpm'), rateShown(completed) ? replay.score.wpm : null);
-  $('result-accuracy').textContent = replay.score.accuracy;
-  setParts($('result-time'), [(replay.elapsedMs / 1000).toFixed(1), element('b', ' s')]);
-  renderSecondaryStats(completed);
-  renderStanding(completed);
-  setParts($('result-conditions'), describeRun(completed));
-  setParts($('result-delta'), resultHeadline(completed));
-  // The headline is read out with the result; it shows only when the run wasn't counted.
-  $('results-heading').classList.toggle('sr-only', counted);
   const repeated = repeatedResult(completed);
   const stopped = completed.stopped ? stopReason(completed.stopped) : '';
   const uncounted = counted ? '' : completed.failed ? 'The correction setting ended this run, so it isn’t counted.' : stopped ? [stopped, ', so it isn’t counted.'] : 'Focus or input changed during the run, so it isn’t counted.';
-  // A retest reports a failed save once, in the comparison caveat.
-  const unsaved = saved || sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
-  setParts($('result-comparison-note'), [uncounted, uncounted && unsaved ? ' ' : '', unsaved]);
+  const unsaved = saved || practice.sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
+  const chars = characterBreakdown(completed, replay);
+  const errors = replay.firstAttempts.filter((item) => !item.correct).length;
+  const recent = trendRun(completed) ? trendRunsAt(conditionKey(completed.conditions)).slice(-10) : [];
+  const best = profile.bests[conditionKey(completed.conditions)]?.wpm;
+  const mined = evidenceRun(completed);
+  const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
+  const words = [...missed, ...slow.map((item) => item.word)];
+  practice.commands.practiceWords = () => { baselineAttempt = completed; startWordPractice(words); };
 
+  flushSync(() => practice.result.publish({
+    id: completed.id, counted, wpm: rateShown(completed) ? replay.score.wpm : null,
+    accuracy: replay.score.accuracy, seconds: (replay.elapsedMs / 1000).toFixed(1),
+    consistency: consistency(completed, replay) ?? null,
+    accuracyTitle: plural(errors, 'first-try error') + ' · final c/i/e/m ' + chars.correct + '/' + chars.incorrect + '/' + chars.extra + '/' + chars.missed,
+    standing: recent.length < 2 || !best ? [] : copyParts(['average ', speedFigure(meanWpm(recent), { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]),
+    headline: copyParts(resultHeadline(completed)), conditions: copyParts(describeRun(completed)),
+    note: copyParts([uncounted, uncounted && unsaved ? ' ' : '', unsaved]),
+    words: wordHistory(completed, replay).map((item) => ({ ...item, wpm: rateShown(completed) ? item.wpm : null })),
+    practiceWords: words, drillLabel: '',
+    againLabel: practice.sessionKind === 'daily' ? 'Try daily again' : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again',
+    replay: Boolean(completed.events?.length) && comparableKind(completed.kind), graph: rateShown(completed),
+  }));
   renderResultDrill(completed);
-  // A counted book page moves the place on, so running again types the next page.
-  $('run-again').textContent = sessionKind === 'daily' ? 'Try daily again'
-    : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again';
   renderDaily();
-  $('result-more').append($('ghost-offer'));
-  const failure = completed.failed ? `${completed.kind === 'drill' ? 'Drill' : 'Run'} failed, ${completed.failed}. ` : stopped ? `${plain(stopped)}. ` : '';
+  const failure = completed.failed ? (completed.kind === 'drill' ? 'Drill' : 'Run') + ' failed, ' + completed.failed + '. ' : stopped ? plain(stopped) + '. ' : '';
   $('ghost-result').hidden = completed.kind !== 'challenge';
   renderGhostOffer(completed);
-  announce([`${failure}${speed}, ${replay.score.accuracy}% accuracy.`,
+  announce([failure + speed + ', ' + replay.score.accuracy + '% accuracy.',
     repeated ? 'Repeated text, not counted toward your best.' : '',
     saved ? '' : 'Couldn’t save on this device.'].filter(Boolean).join(' '));
 }
@@ -3028,26 +2495,24 @@ const repeatedResult = (completed) => completed?.status === 'complete' && comple
 // or kept as a baseline, so they offer neither. Word practice isn't compared either, but like a drill it
 // leads on to a retest of the run its words came from.
 function renderResultDrill(completed) {
-  const button = $('result-drill');
   const counted = completed.status === 'complete';
   const compared = comparableKind(completed.kind) || completed.kind === 'missed';
-  button.hidden = !compared || !(counted || failedDrill(completed));
+  let label = '';
 
   if (completed.adaptive) {
-    button.textContent = baselineFor(completed.conditions) ? 'Retest on fresh text' : 'Retest';
-    button.onclick = startAdaptiveRetest;
-
-    return;
+    label = baselineFor(completed.conditions) ? 'Retest on fresh text' : 'Retest';
+    practice.commands.drill = startAdaptiveRetest;
+  } else if (compared && (counted || failedDrill(completed))) {
+    const again = failedDrill(completed) ? trainingContext?.recommendation : null;
+    const recommendation = again || trainingRecommendation(completed.conditions, failedDrill(completed) ? null : completed);
+    const { target } = recommendation;
+    label = failedDrill(completed) ? 'Try drill again' : target ? 'Drill “' + target + '”' : prefs.retest ? 'Drill and retest' : 'Drill';
+    practice.commands.drill = () => startDrill(recommendation);
   }
 
-  if (button.hidden) return;
-  // A failed drill is tried again as it was. One whose history another device cleared while it waited stands
-  // alone, with no context left, so it is recommended afresh.
-  const again = failedDrill(completed) ? trainingContext?.recommendation : null;
-  const recommendation = again || trainingRecommendation(completed.conditions, failedDrill(completed) ? null : completed);
-  const { target } = recommendation;
-  button.textContent = failedDrill(completed) ? 'Try drill again' : target ? `Drill “${target}”` : prefs.retest ? 'Drill and retest' : 'Drill';
-  button.onclick = () => startDrill(recommendation);
+  const current = practice.result.getSnapshot();
+
+  if (current) flushSync(() => practice.result.publish({ ...current, drillLabel: label }));
 }
 
 const COMPARISON_HEADINGS = {
@@ -3169,7 +2634,7 @@ function baselineFor(source) {
 // After an adaptive run: a fresh-text retest against the newest normal run at the same conditions, or,
 // with none, a plain test that can become the next baseline.
 function startAdaptiveRetest() {
-  const baseline = baselineFor(shownResult.conditions);
+  const baseline = baselineFor(practice.shownResult.conditions);
 
   if (!baseline) {
     plainNext = true;
@@ -3180,7 +2645,7 @@ function startAdaptiveRetest() {
 
   baselineAttempt = baseline;
   selectedTarget = null;
-  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: shownResult.trainFocus || prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
+  trainingContext = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: practice.shownResult.trainFocus || prefs.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
   startRetest();
 }
 
@@ -3532,20 +2997,20 @@ function navigate(view, { keep = false } = {}) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it. An unstarted
     // repeat that repeats-off would replace is redrawn.
-    const waitingTraining = keep && document.body.dataset.view !== 'practice' && attempt?.status === 'ready' && (sessionKind === 'drill' || sessionKind === 'retest');
-    const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom' || waitingTraining) && !['complete', 'interrupted'].includes(attempt.status);
+    const waitingTraining = keep && document.body.dataset.view !== 'practice' && practice.attempt?.status === 'ready' && (practice.sessionKind === 'drill' || practice.sessionKind === 'retest');
+    const current = practice.attempt && (practice.sessionKind === 'practice' || practice.sessionKind === 'custom' || waitingTraining) && !['complete', 'interrupted'].includes(practice.attempt.status);
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
-    const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
+    const staleRules = current && inputRules(practice.attempt.conditions).join() !== inputRules(sessionConditions(practice.sessionKind)).join();
 
     if (!current || staleRepeat() || staleAdaptive() || (preferencesWaiting && untouchedPractice())) resetSession('practice');
-    else if (staleRules) resetSession(sessionKind);
+    else if (staleRules) resetSession(practice.sessionKind);
     switchView('practice');
 
     return;
   }
 
   // Leaving mid-drill draws no retest passage to throw away.
-  if (attempt?.status === 'running' && view !== 'practice') {
+  if (practice.attempt?.status === 'running' && view !== 'practice') {
     markInterrupted(NOTICES.leftSurface);
     finishPrimary(null, { replacing: true });
   }
@@ -3560,20 +3025,20 @@ function navigate(view, { keep = false } = {}) {
 // this check (macOS Chrome blurs the window first; opening commands moves focus), which would start a
 // ready run in the background.
 function markInterrupted(message) {
-  forgetComposition('primary');
+  typingHost.forget('primary');
   // A timed run past its limit (its finish can wait for a commit made in time) is over, not interrupted.
   finishIfTimeUp();
 
-  if (attempt?.status !== 'running' || attempt.interrupted) return;
-  attempt.interrupted = true;
-  attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
+  if (practice.attempt?.status !== 'running' || practice.attempt.interrupted) return;
+  practice.attempt.interrupted = true;
+  practice.attempt.events.push({ type: 'focus-lost', offsetMs: offsetFor() });
   $('typing-status').className = 'badge badge-warning';
   $('typing-status').textContent = 'Interrupted';
   showInputNotice('primary', message, { sticky: true });
 }
 
 function markRaceInterrupted() {
-  forgetComposition('race');
+  typingHost.forget('race');
 
   if (race.attempt?.status !== 'running' || race.attempt.interrupted) return;
   race.attempt.interrupted = true;
@@ -3610,17 +3075,6 @@ function conditionOptions(select, sources, fallback = null) {
 
 // Consistency and the static words list. Display only. The card shows no first-try errors or character
 // breakdown; accuracy's tooltip keeps both, since accuracy is counted from them.
-function renderSecondaryStats(completed) {
-  const replay = completed.summary;
-  const chars = characterBreakdown(completed, replay);
-  const errors = replay.firstAttempts.filter((item) => !item.correct).length;
-  const steady = consistency(completed, replay) ?? null;
-  $('result-consistency').textContent = steady ?? '—';
-  // A run under three seconds has no consistency, and a dash takes no unit.
-  $('result-consistency').nextElementSibling.hidden = steady === null;
-  $('result-accuracy-fact').title = `${plural(errors, 'first-try error')} · final c/i/e/m ${chars.correct}/${chars.incorrect}/${chars.extra}/${chars.missed}`;
-  renderWords(completed, replay);
-}
 
 // Counted runs on fresh text at one set of conditions, oldest first: what the pace caret and the run
 // card average.
@@ -3634,71 +3088,17 @@ function meanWpm(runs) {
 
 // Under the facts: the average of the last ten counted runs at these conditions (the pace caret's
 // average) and the best. Only after a counted run with one before it at the same conditions.
-function renderStanding(completed) {
-  const key = conditionKey(completed.conditions);
-  const recent = trendRun(completed) ? trendRunsAt(key).slice(-10) : [];
-  const best = profile.bests[key]?.wpm;
-  const line = $('result-standing');
-  line.hidden = recent.length < 2 || !best;
-  setParts(line, line.hidden ? '' : ['average ', speedFigure(meanWpm(recent), { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]);
-}
 
 // Words reached: one tab stop. Arrow keys, Home and End move between words, and focus or a tap
 // shows that word's pace in the line below, so the numbers never depend on a hover tooltip.
-let wordItems = [];
-let wordIndex = null;
-const wordPace = (item) => (item.wpm === null ? 'no pace' : formatSpeed(item.wpm));
 
-function renderWords(completed, replay) {
-  wordItems = wordHistory(completed, replay);
-
-  // A run too quick to time shows no rate, so no word shows a pace from the same sub-second timestamps.
-  if (!rateShown(completed)) wordItems = wordItems.map((item) => ({ ...item, wpm: null }));
-  $('result-words').replaceChildren(...wordItems.flatMap((item, i) => {
-    const word = element('span', item.word, item.wrong ? 'word-miss' : '');
-    word.setAttribute('role', 'option');
-    word.dataset.index = String(i);
-
-    return i ? [' ', word] : [word];
-  }));
-  labelWords();
-  selectWord(null);
-}
 
 // Each word's pace in the chosen unit. A unit change relabels the list in place, keeping the selection.
-function labelWords() {
-  $('result-words').querySelectorAll('[role="option"]').forEach((word) => {
-    const item = wordItems[Number(word.dataset.index)];
-    word.setAttribute('aria-label', `${item.word}, ${wordPace(item)}${item.wrong ? ', mistyped' : ''}`);
-    word.title = wordPace(item);
-  });
-}
+function labelWords() {}
 
 // Before any choice the first word is the tab stop and the line below stays empty.
-function selectWord(index, { focus = false } = {}) {
-  const words = [...$('result-words').querySelectorAll('[role="option"]')];
-  wordIndex = index === null || !words.length ? null : Math.max(0, Math.min(index, words.length - 1));
-  words.forEach((word, i) => {
-    word.tabIndex = i === (wordIndex ?? 0) ? 0 : -1;
-    word.setAttribute('aria-selected', String(i === wordIndex));
-  });
-  const item = wordItems[wordIndex];
-  setParts($('result-word-detail'), item ? [`“${item.word}” · `, item.wpm === null ? 'no pace' : speedFigure(item.wpm), item.wrong ? ' · mistyped' : ''] : '');
+function selectWord() {}
 
-  if (focus && item) words[wordIndex].focus();
-}
-
-function moveWordFocus(event) {
-  const word = event.target.closest?.('[role="option"]');
-
-  if (!word) return;
-  const at = Number(word.dataset.index);
-  const next = { ArrowLeft: at - 1, ArrowUp: at - 1, ArrowRight: at + 1, ArrowDown: at + 1, Home: 0, End: wordItems.length - 1 }[event.key];
-
-  if (next === undefined) return;
-  event.preventDefault();
-  selectWord(next, { focus: true });
-}
 
 function element(tag, text, className = '') {
   const node = document.createElement(tag);
@@ -4749,7 +4149,7 @@ function todayPassage() {
 }
 
 function startDaily() {
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   baselineAttempt = null;
@@ -4807,7 +4207,7 @@ function lessonMeta(index) {
 function startLesson(index) {
   if (!lessonUnlocked(profile.lessons, index)) return;
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   lessonIndex = index;
@@ -5091,7 +4491,7 @@ function onlineRoomFirst() {
 // status, anything typed since (in the passage or any field), the custom editor, a local race player, an
 // online room open or on its way, and any dialog.
 function raceContext() {
-  return JSON.stringify([document.body.dataset.view, sessionCount, attempt?.status, typedCount, customOpen, race.attempt?.id,
+  return JSON.stringify([document.body.dataset.view, sessionCount, practice.attempt?.status, typedCount, customOpen, race.attempt?.id,
     race.attempt?.status, onlineRace?.liveRoomId || null, Boolean(onlineRace?.pending), Boolean(document.querySelector('dialog[open]'))]);
 }
 
@@ -5152,7 +4552,7 @@ async function startGhostRace(id) {
     return;
   }
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
@@ -5189,7 +4589,7 @@ function startOwnGhost() {
 
   if (!best || onlineRoomFirst()) return;
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
@@ -5267,7 +4667,7 @@ async function submitGhostRun() {
 
   // The panel shows the reply only while the results on screen are still this run's: once a later run
   // has finished (after Run again, a restart or another race), its result never gains this panel.
-  if (ghostRace !== ghost || ghost.run !== run || shownResult !== run) return;
+  if (ghostRace !== ghost || ghost.run !== run || practice.shownResult !== run) return;
 
   if (failure) {
     ghost.state = 'failed';
@@ -5492,7 +4892,7 @@ function renderFingerMap(container, { known = [], fresh = [] } = {}) {
 
 // The typing keyboard shows the finger map for the whole of a lesson, whatever the keyboard setting.
 function renderKeyboard() {
-  const lesson = sessionKind === 'lesson';
+  const lesson = practice.sessionKind === 'lesson';
 
   if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
   else { if ($('keyboard').classList.contains('finger-map')) keyboardBuilt = ''; buildKeyboard(); }
@@ -5537,10 +4937,7 @@ function startRace() {
 }
 
 function setupRacePlayer() {
-  if (composition?.type === 'race') composition = null;
-
-  if (accentPair?.type === 'race') accentPair = null;
-  heldDeadKey = null;
+  typingHost.clearFor('race');
   race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
   race.startTime = null;
   race.notice = '';
@@ -5573,10 +4970,7 @@ function updateRaceProgress(replay) {
 function finishRacePlayer() {
   markEndFailure(race.attempt);
 
-  if (composition?.type === 'race') composition = null;
-
-  if (accentPair?.type === 'race') accentPair = null;
-  heldDeadKey = null;
+  typingHost.clearFor('race');
   const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
   const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
   completed.interrupted = race.attempt.interrupted;
@@ -5656,7 +5050,6 @@ function forgetTraining() {
   $('result-accuracy-fact').removeAttribute('title');
   $('result-standing').hidden = true;
   $('result-words').replaceChildren();
-  wordItems = [];
   selectWord(null);
   $('result-delta').textContent = 'No run yet.';
   $('result-comparison-note').textContent = '';
@@ -5670,8 +5063,8 @@ function forgetTraining() {
 
   // A retest nobody has started compares with the baseline just forgotten, so a practice test takes its place; a
   // drill nobody has started stands alone now, with no retest after it, and says so (TOB-448).
-  if (attempt?.status === 'ready' && sessionKind === 'retest') resetSession('practice', { show: false });
-  else if (attempt?.status === 'ready' && sessionKind === 'drill') $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
+  if (practice.attempt?.status === 'ready' && practice.sessionKind === 'retest') resetSession('practice', { show: false });
+  else if (practice.attempt?.status === 'ready' && practice.sessionKind === 'drill') $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
 
   if (document.body.dataset.view === 'train') renderTrain();
 }
@@ -5702,7 +5095,7 @@ function forgetClearedTraining() {
   const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
   trainingLegacyAt = legacyStart;
 
-  if (!baselineAttempt && !shownResult) return false;
+  if (!baselineAttempt && !practice.shownResult) return false;
   const named = account.clearedIds(profile);
 
   const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
@@ -5711,7 +5104,7 @@ function forgetClearedTraining() {
   const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
     || takenByLegacy(record));
 
-  if (!cleared(baselineAttempt) && !cleared(shownResult)) return false;
+  if (!cleared(baselineAttempt) && !cleared(practice.shownResult)) return false;
   forgetTraining();
 
   return true;
@@ -5738,7 +5131,7 @@ function clearHistory() {
   // An unstarted practice passage outlives the clear (Practice keeps it), so it is the first text the cleared
   // history shows: fresh, and recorded as seen, however it was labelled before. Clearing happens on Progress,
   // so no run is under way.
-  const queued = sessionKind === 'practice' && attempt?.status === 'ready' ? attempt : null;
+  const queued = practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' ? practice.attempt : null;
   clearedPassage = queued && { attemptId: queued.id, fresh: passage.fresh, exhausted: passage.exhausted };
   // Copies elsewhere drop what they hold from before this moment when they merge with this one. What
   // they held is kept here as this tab merges them (account.mergeAndHold), for Undo.
@@ -5781,7 +5174,7 @@ function undoClear() {
   // already under way is left alone (still run): it started as fresh text, and stays that way.
   const queued = clearedPassage;
 
-  if (queued && attempt?.id === queued.attemptId && attempt.status === 'ready') labelPassage(queued.fresh, queued.exhausted);
+  if (queued && practice.attempt?.id === queued.attemptId && practice.attempt.status === 'ready') labelPassage(queued.fresh, queued.exhausted);
   clearedPassage = null;
   saveProfile();
   clearSnapshot = null;
@@ -6074,7 +5467,7 @@ function adoptProfile(data) {
   setModeControls();
   renderHistory();
 
-  if (sessionKind === 'practice' && attempt?.status !== 'running') resetSession('practice', { keepRace: true });
+  if (practice.sessionKind === 'practice' && practice.attempt?.status !== 'running') resetSession('practice', { keepRace: true });
   followLessonProgress();
 }
 
@@ -6086,7 +5479,7 @@ function adoptProfile(data) {
 function followLessonProgress() {
   if (lessonResult && !lessonResultHeld(lessonResult, profile.lessons)) lessonResult = null;
 
-  if (sessionKind === 'lesson' && attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
+  if (practice.sessionKind === 'lesson' && practice.attempt?.status !== 'running' && !lessonUnlocked(profile.lessons, lessonIndex)) resetSession('lesson', { show: false });
   redrawLessons();
 }
 
@@ -6755,7 +6148,7 @@ function bindEvents() {
         return;
       }
 
-      if (!attempt || attempt.status === 'complete' || $('typing-input').disabled || staleRepeat()) resetSession('practice');
+      if (!practice.attempt || practice.attempt.status === 'complete' || $('typing-input').disabled || staleRepeat()) resetSession('practice');
       else switchView('practice');
       $('typing-input').focus({ preventScroll: false });
 
@@ -6782,7 +6175,6 @@ function bindEvents() {
 
     if (event.target.closest('[data-action="open-lessons"]')) openLessons();
   });
-  $('mode-compose').addEventListener('click', openCompose);
   $('mode-more').addEventListener('click', (event) => {
     if (event.target.closest('button')) $('mode-more').open = false;
   });
@@ -6791,45 +6183,33 @@ function bindEvents() {
   });
   $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
   $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
-  $('mode-custom').addEventListener('click', () => openCustom(!customOpen));
   $('custom-text').addEventListener('input', updateCustomState);
   $('custom-use').addEventListener('click', useCustomText);
-  document.querySelectorAll('[data-mode]').forEach((button) => button.addEventListener('click', () => {
-    customOpen = false;
-    prefs.mode = button.dataset.mode;
-    setModeControls();
-    saveChoice('mode');
-    resetSession('practice', { focus: true, leaveCompose: true });
-  }));
-  $('code-options').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-language]');
-
-    if (!button) return;
-    prefs.codeLanguage = button.dataset.language;
-    setModeControls();
-    saveChoice('mode', 'codeLanguage');
-    resetSession('practice', { focus: true });
-  });
-  $('duration-options').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-length]');
-
-    if (!button) return;
-
-    if (prefs.mode === 'time') prefs.duration = Number(button.dataset.length);
-    else prefs.count = Number(button.dataset.length);
-    setModeControls();
-    saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
-    resetSession('practice', { focus: true });
-  });
-  $('punctuation-toggle').addEventListener('change', (event) => {
-    prefs.punctuation = event.target.checked;
-    saveProfile();
-    resetSession('practice', { focus: true });
-  });
-  $('adaptive-toggle').addEventListener('change', (event) => {
-    prefs.adaptive = event.target.checked;
-    saveProfile();
-    resetSession('practice', { focus: true });
+  Object.assign(practice.choices, {
+    chooseMode(mode) {
+      customOpen = false;
+      prefs.mode = mode;
+      setModeControls();
+      saveChoice('mode');
+      resetSession('practice', { focus: true, leaveCompose: true });
+    },
+    chooseLanguage(language) {
+      prefs.codeLanguage = language;
+      setModeControls();
+      saveChoice('mode', 'codeLanguage');
+      resetSession('practice', { focus: true });
+    },
+    chooseLength(length) {
+      if (prefs.mode === 'time') prefs.duration = length;
+      else prefs.count = length;
+      setModeControls();
+      saveChoice('mode', prefs.mode === 'time' ? 'duration' : 'count');
+      resetSession('practice', { focus: true });
+    },
+    punctuation(on) { prefs.punctuation = on; saveProfile(); resetSession('practice', { focus: true }); },
+    adaptive(on) { prefs.adaptive = on; saveProfile(); resetSession('practice', { focus: true }); },
+    compose: openCompose,
+    custom: () => openCustom(!customOpen),
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   onSetting('numbers-toggle', (value) => {
@@ -6918,22 +6298,10 @@ function bindEvents() {
     focusPractice();
   });
 
-  $('typing-input').addEventListener('beforeinput', (event) => beforeTypingInput(event));
-  // Setting the field mid-composition would end it silently, so wait for compositionend.
-  $('typing-input').addEventListener('input', (event) => {
-    if (event.isComposing || composition?.type === 'primary') return;
-    $('typing-input').value = replayAttempt(attempt).typed;
-  });
-  wireComposition($('typing-input'), 'primary');
-  $('typing-input').addEventListener('keydown', (event) => {
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
-    backspaceInEmptyField(event, 'primary');
-  });
+  practice.connectNative(typingHost);
 
   for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock);
   $('typing-input').addEventListener('blur', () => setCapsWarning(false));
-  $('typing-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('primary'); });
-  $('typing-input').addEventListener('drop', (event) => event.preventDefault());
   // Every press is recorded before anything handles it, so the run it starts (resetSession) has its class. A tap
   // or a pen press is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Any key
   // in a text field (the passage, the palette's search) may come from a soft keyboard, so it leaves the class as
@@ -6945,24 +6313,23 @@ function bindEvents() {
   document.addEventListener('pointerdown', (event) => {
     activationInput = startedBy(event);
 
-    if (activationInput !== 'touch' || !['ready', 'running'].includes(attempt?.status) || attempt.conditions.inputClass === 'touch') return;
-    attempt.conditions.inputClass = 'touch';
-    attempt.conditions.layout = inputLayout('touch');
-    setParts($('condition-line'), describeRun(attempt));
+    if (activationInput !== 'touch' || !['ready', 'running'].includes(practice.attempt?.status) || practice.attempt.conditions.inputClass === 'touch') return;
+    practice.attempt.conditions.inputClass = 'touch';
+    practice.attempt.conditions.layout = inputLayout('touch');
+    setParts($('condition-line'), describeRun(practice.attempt));
     showBest();
 
-    if (attempt.status === 'ready') armPace();
+    if (practice.attempt.status === 'ready') armPace();
   }, true);
   document.addEventListener('keydown', (event) => {
     if (!event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
   }, true);
   // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
   document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
-  $('typing-input').addEventListener('click', () => { const value = $('typing-input').value; $('typing-input').setSelectionRange(value.length, value.length); });
-  $('restart-button').addEventListener('click', () => resetSession(sessionKind, { focus: true }));
+  $('restart-button').addEventListener('click', () => resetSession(practice.sessionKind, { focus: true }));
   const replayView = createReplayView($('replay-dialog'));
-  $('watch-replay').addEventListener('click', () => replayView.open(shownResult));
-  $('run-again').addEventListener('click', runAgain);
+  practice.commands.watchReplay = () => replayView.open(practice.shownResult);
+  practice.commands.runAgain = runAgain;
 
   // When a minimum ends a run (on the tick, its last character or its timer), the typist is mid-stride
   // and focus lands here. Until they pause, Space and Enter do nothing, so the keys already on their
@@ -6982,31 +6349,22 @@ function bindEvents() {
     return true;
   };
 
-  $('run-again').addEventListener('keydown', (event) => {
+  practice.commands.resultKeyDown = (event) => {
     if (heldAfterStop() && (event.key === ' ' || event.key === 'Enter')) event.preventDefault();
-  });
+  };
+
   // Where Run again can't fit beside the score, the heading takes focus and Enter runs again from there.
-  $('results-heading').addEventListener('keydown', (event) => {
+  practice.commands.headingKeyDown = (event) => {
     const held = heldAfterStop();
 
     if (event.key !== 'Enter' || matchesAppBinding(event, prefs.keybindings.restart)) return;
     event.preventDefault();
 
     if (!held && !event.repeat) runAgain();
-  });
-  $('run-again').addEventListener('keyup', (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); });
-  $('result-words').addEventListener('keydown', moveWordFocus);
-  $('result-words').addEventListener('focusin', (event) => {
-    const word = event.target.closest('[role="option"]');
+  };
 
-    if (word && Number(word.dataset.index) !== wordIndex) selectWord(Number(word.dataset.index));
-  });
-  // A tap selects the word too, so touch shows the same line as the keyboard.
-  $('result-words').addEventListener('click', (event) => {
-    const word = event.target.closest('[role="option"]');
+  practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-    if (word) selectWord(Number(word.dataset.index), { focus: true });
-  });
   $('progress-period').addEventListener('click', (event) => {
     const button = event.target.closest('[data-period]');
 
@@ -7056,16 +6414,16 @@ function bindEvents() {
   $('start-daily').addEventListener('click', startDaily);
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   $('comparison-back').addEventListener('click', () => {
-    if (shownResult?.kind !== 'retest' || shownResult !== attempt) {
+    if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
       navigate('practice');
 
       return;
     }
 
     switchView('results');
-    renderCard(shownResult);
+    renderCard(practice.shownResult);
     // Its Drill action is drawn again too: a training setting may have changed while the comparison showed.
-    renderResultDrill(shownResult);
+    renderResultDrill(practice.shownResult);
     focusResult($('run-again'));
   });
   $('mode-drill').addEventListener('click', toggleManualTarget);
@@ -7090,17 +6448,7 @@ function bindEvents() {
   });
 
   $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); });
-  $('race-input').addEventListener('beforeinput', (event) => beforeTypingInput(event, 'race'));
-  $('race-input').addEventListener('input', (event) => {
-    if (!race.attempt || event.isComposing || composition?.type === 'race') return;
-    $('race-input').value = replayAttempt(race.attempt).typed;
-  });
-  wireComposition($('race-input'), 'race');
-  $('race-input').addEventListener('keydown', (event) => {
-    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a')) event.preventDefault();
-    backspaceInEmptyField(event, 'race');
-  });
-  $('race-input').addEventListener('paste', (event) => { event.preventDefault(); refusePaste('race'); });
+  typingHost.attach($('race-input'), 'race');
   $('race-input').addEventListener('blur', markRaceInterrupted);
   $('start-next-player').addEventListener('click', () => {
     // A short unblur of the passage, then the typing stage takes over.
@@ -7172,7 +6520,7 @@ function bindEvents() {
 
     const typing = document.activeElement === $('typing-input') || document.activeElement === $('race-input');
 
-    if (typing && event.repeat && (event.key.length === 1 || ACCENT_REPEAT_KEYS.has(event.key))) {
+    if (typing && event.repeat && (event.key.length === 1 || ['Dead', 'Process'].includes(event.key))) {
       event.preventDefault();
       showInputNotice(document.activeElement === $('typing-input') ? 'primary' : 'race', NOTICES.repeat, { speak: false });
 
@@ -7303,7 +6651,7 @@ function updateCustomState() {
 function openCustom(open = true) {
   // The editor opens over a passage, so Custom first leaves composing (dropping what was written, as any mode does).
   if (composeOpen) resetSession(restartKind(), { leaveCompose: true });
-  else if (attempt?.status === 'running') resetSession(restartKind());
+  else if (practice.attempt?.status === 'running') resetSession(restartKind());
   customOpen = open;
 
   if (open) {
@@ -7383,7 +6731,7 @@ function setCorrection(policy) {
   applyPreferences();
 
   // A lesson stays a lesson and custom text stays custom; any other session restarts as practice.
-  if (document.body.dataset.view === 'practice') resetSession(sessionKind === 'lesson' ? 'lesson' : restartKind());
+  if (document.body.dataset.view === 'practice') resetSession(practice.sessionKind === 'lesson' ? 'lesson' : restartKind());
 }
 
 function setSound(mode) {
@@ -7424,12 +6772,11 @@ function setInputRule(key, enabled) {
 
   if (limits.fixed || (key === 'quickEnd' && limits.quickEnd)) return;
 
-  if (document.body.dataset.view === 'practice') resetSession(sessionKind);
+  if (document.body.dataset.view === 'practice') resetSession(practice.sessionKind);
 }
 
 function activeAccentComposition() {
-  return Boolean(composition && !composition.refused
-    && accentComposition({ key: composition.key, preview: composition.mark }));
+  return typingHost.accentCompositionActive;
 }
 
 function matchesAppBinding(event, binding) {
@@ -7449,7 +6796,7 @@ function quickRestart(event) {
 
   if (!onInput && !onLocalRace && !onResult && !(onPage && (view === 'practice' || view === 'results'))) return false;
 
-  if (event.key === 'Enter' && (onLocalRace ? race.attempt : attempt)?.status === 'running') return false;
+  if (event.key === 'Enter' && (onLocalRace ? race.attempt : practice.attempt)?.status === 'running') return false;
   event.preventDefault();
 
   if (!event.repeat) {
@@ -7465,12 +6812,12 @@ function quickRestart(event) {
 function restartTest() {
   if (document.body.dataset.view === 'results') runAgain();
   else if (composeOpen) compose.restart();
-  else resetSession(sessionKind, { focus: true });
+  else resetSession(practice.sessionKind, { focus: true });
 }
 
 function runAgain() {
-  if (sessionKind === 'daily') startDaily();
-  else resetSession(sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true });
+  if (practice.sessionKind === 'daily') startDaily();
+  else resetSession(practice.sessionKind === 'missed' ? 'missed' : restartKind(), { focus: true, leaveCompose: true });
 }
 
 // The key that restarts from where focus sits. On the result card that is the focused run-again
@@ -7498,7 +6845,7 @@ function showTraining() {
 
   if (view === 'learn') redrawLessons();
 
-  if (view === 'results' && shownResult) renderResultDrill(shownResult);
+  if (view === 'results' && practice.shownResult) renderResultDrill(practice.shownResult);
 
   if (view === 'train') renderTrain();
 
@@ -7518,7 +6865,7 @@ function setRepeatQuotes(enabled) {
   if (!changed) return;
   applyPreferences();
 
-  if (sessionKind !== 'practice' || passage?.fresh !== false || attempt?.status !== 'ready') return;
+  if (practice.sessionKind !== 'practice' || passage?.fresh !== false || practice.attempt?.status !== 'ready') return;
 
   // A repeated passage that hasn't been started. Off swaps it for unseen text if any remains: here on Practice,
   // otherwise when Practice next opens (staleRepeat), so the setting never changes the view. Else reword its notice.
@@ -7530,9 +6877,9 @@ function setRepeatQuotes(enabled) {
 function labelPassage(fresh, exhausted) {
   passage.fresh = fresh;
   passage.exhausted = exhausted;
-  attempt.fresh = fresh;
+  practice.attempt.fresh = fresh;
   setPassageNotice(repeatedTextNotice());
-  setParts($('condition-line'), describeRun(attempt));
+  setParts($('condition-line'), describeRun(practice.attempt));
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.
@@ -7543,7 +6890,7 @@ function staleAdaptive() {
 }
 
 function staleRepeat() {
-  return !prefs.repeatQuotes && sessionKind === 'practice' && attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
+  return !prefs.repeatQuotes && practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' && passage?.fresh === false && !passage.exhausted;
 }
 
 // A ready practice run takes a new minimum in place; one already under way restarts with it.
@@ -7555,12 +6902,12 @@ function setMinimum(key, value) {
   if (!changed) return;
   applyPreferences();
 
-  if (sessionKind !== 'practice' || !attempt) return;
+  if (practice.sessionKind !== 'practice' || !practice.attempt) return;
 
-  if (attempt.status === 'ready') {
-    attempt.minimums = practiceMinimums();
-    setParts($('condition-line'), describeRun(attempt));
-  } else if (attempt.status === 'running') resetSession('practice');
+  if (practice.attempt.status === 'ready') {
+    practice.attempt.minimums = practiceMinimums();
+    setParts($('condition-line'), describeRun(practice.attempt));
+  } else if (practice.attempt.status === 'running') resetSession('practice');
 }
 
 // A display preference like text size: it never restarts the run or enters the test conditions.
@@ -7610,7 +6957,7 @@ function inPractice(change) {
 function customLengthCommand(mode) {
   const spec = LENGTHS[mode];
   // As for the presets, no length is current during a custom text session.
-  const current = comparableKind(sessionKind) && prefs.mode === mode && !isPresetLength(mode, prefs[spec.key]);
+  const current = comparableKind(practice.sessionKind) && prefs.mode === mode && !isPresetLength(mode, prefs[spec.key]);
   const value = current ? prefs[spec.key] : prefs[spec.customKey];
 
   return {
@@ -7669,7 +7016,7 @@ function paletteCommands(query) {
   // The friends board's switch: on, off, or null (no hint) before this device has read the board.
   const shared = friendsBoard?.sharing ?? null;
   // During a custom session, a ghost race or composing no test shape is current (a custom session marks "custom text").
-  const shape = (mode, length) => !composeOpen && comparableKind(sessionKind) && prefs.mode === mode && (['quote', 'standard', 'book'].includes(mode) || (mode === 'time' ? prefs.duration : prefs.count) === length);
+  const shape = (mode, length) => !composeOpen && comparableKind(practice.sessionKind) && prefs.mode === mode && (['quote', 'standard', 'book'].includes(mode) || (mode === 'time' ? prefs.duration : prefs.count) === length);
   // The standard recipe fixes these; like quote mode, the palette leaves out what can't change.
   const fixedText = ['quote', 'code', 'book'].includes(prefs.mode) || standardLocked();
 
@@ -7691,7 +7038,7 @@ function paletteCommands(query) {
     customLengthCommand('time'),
     ...LENGTHS.words.presets.map((length) => ({ group: 'test', label: `words · ${length} words`, keywords: `count ${length}`, hint: shape('words', length) ? 'current' : '', on: shape('words', length), run: () => setTestShape('words', length) })),
     customLengthCommand('words'),
-    { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: sessionKind === 'custom' ? 'current' : '', on: sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
+    { group: 'test', label: 'custom text', keywords: 'own text paste bring your passage', hint: practice.sessionKind === 'custom' ? 'current' : '', on: practice.sessionKind === 'custom', run: () => { navigate('practice'); openCustom(true); } },
     { group: 'test', label: 'quote', keywords: 'passage original text', hint: shape('quote') ? 'current' : '', on: shape('quote'), run: () => setTestShape('quote') },
     { group: 'test', label: 'book', keywords: `novel page read ${BOOKS.map((book) => book.name).join(' ')}`, hint: shape('book') ? 'current' : '', on: shape('book'), run: () => setTestShape('book') },
     { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
@@ -7793,7 +7140,7 @@ function toggleGhost() {
 listenForSequence(() => {
   toggleGhost();
 
-  if (attempt?.status === 'running' && document.body.dataset.view === 'practice') resetSession(sessionKind, { focus: true, selectedPassage: passage });
+  if (practice.attempt?.status === 'running' && document.body.dataset.view === 'practice') resetSession(practice.sessionKind, { focus: true, selectedPassage: passage });
 });
 
 let resizeFrame = 0;
@@ -7828,8 +7175,8 @@ new ResizeObserver(() => {
     const width = Math.round(graph.clientWidth);
 
     // Sub-pixel layout settling is ignored so it cannot cut the first draw short.
-    if (!shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
-    renderSpeedGraph(graph, shownResult, { animate: false });
+    if (!practice.shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
+    renderSpeedGraph(graph, practice.shownResult, { animate: false });
   });
 }).observe($('speed-graph'));
 
@@ -7957,7 +7304,7 @@ onlineRace = createOnlineRace({
   // are practice's own, so a race falls back to its default).
   practice: () => ({ mode: prefs.mode, duration: prefs.duration, count: prefs.count, punctuation: prefs.punctuation,
     numbers: prefs.numbers, wordList: prefs.wordList, quoteLength: prefs.quoteLength, difficulty: prefs.difficulty, adaptive: prefs.adaptive,
-    session: composeOpen ? 'compose' : customOpen || sessionKind === 'custom' ? 'custom' : sessionKind === 'drill' ? 'drill' : 'practice' }),
+    session: composeOpen ? 'compose' : customOpen || practice.sessionKind === 'custom' ? 'custom' : practice.sessionKind === 'drill' ? 'drill' : 'practice' }),
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {
@@ -8009,4 +7356,6 @@ document.addEventListener('visibilitychange', () => {
 // edits are never served stale; Supabase and other origins are never cached.
 if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
   Promise.resolve(navigator.serviceWorker.register('/sw.js')).catch(() => {});
+}
+
 }
