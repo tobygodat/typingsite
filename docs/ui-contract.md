@@ -1,6 +1,6 @@
 # UI contract
 
-This document is the integration contract between the static interface in `index.html` and the behavior in `src/app.js` (with `src/motion.js`, `src/graph.js`, `src/palette.js` and `src/egg.js`). The app is a single document with one shared typing surface so practice, targeted drill, and fresh-text retest preserve the same geometry and input behavior.
+This document describes the behavior shared by the React screens and native typing hosts. `src/app.tsx` owns the screen tree; typed stores publish cached views. Native input, passage geometry and animation retain their own ref subtrees. The app remains one document with a shared typing surface, so practice, targeted drills and fresh-text retests keep the same geometry and input behavior.
 
 ## Screen model
 

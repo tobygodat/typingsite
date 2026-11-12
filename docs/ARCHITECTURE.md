@@ -50,14 +50,14 @@ In `src/`:
 - `learner.ts`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, the training focus, and the recommendation policies, the person's own miss cost and letting go of drilled targets (`letGo`, a sequential test on the evidence since a drill) among the named variants ([ADR 0013](adr/0013-learning-core.md), [ADR 0015](adr/0015-learner-2.md), [ADR 0019](adr/0019-learner-lets-go.md)).
 - `run-counts.ts`: runs started and finished.
 - `week-change.ts`: Progress's overview: the week against the week before, what moved it and the practice row, as one value. Train's `isFixed` decides "fixed" on both pages.
-- `progress-view.ts`: Progress charts, the overview's two small ones included.
+- `progress-screen.tsx`, `progress-sections.tsx`, `progress-keys.tsx`, `progress-calendar.tsx`, `progress-filters.tsx`: Progress markup and interactions. `progress-view.ts` owns leased chart hosts.
 - `graph.ts`: the speed graph.
-- `replay-view.js`: watch replay.
+- `replay-view.tsx`: watch replay.
 - `motion.ts`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
 - `tape.ts`: one-line tape geometry.
 - `word-highlight.ts`: word highlight.
 - `fonts.ts`: typing and app font choices. `prepaint.ts` applies an account's fonts before first paint.
-- `wallpaper.ts`: the background image, its look, the dither mask and gradient wash, where its fade ends, the halo, and its settings rows.
+- `wallpaper.ts`, `wallpaper-image.ts`, `wallpaper-layer.ts`, `wallpaper-settings.tsx`: background-image state, scoped device codecs, native geometry/halo and React settings controls.
 - `units.ts`: wpm and cpm display.
 - `layouts.ts`: layout legends and the finger map.
 - `sound.ts`: typing sounds.
@@ -68,8 +68,8 @@ In `src/`:
 - `monkeytype.ts`: Monkeytype import.
 - `compose.ts`, `compose-view.tsx`, `compose-caret.ts`: composing practice.
 - `profile.ts`: profile defaults and `normalizeProfile`.
-- `account.ts`: auth, the profile row, `mergeSynced`, `HISTORY`.
-- `online-race.js`, `multiplayer.ts`: Challenge's views, online races and their RPCs. `challenge-people.ts`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.tsx`: draws it, keeping rows that don't change and keyboard focus. `quick-match.ts`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.tsx`: the quick match control. `rank-card.tsx`: the rated result card, its colours and its wind. Presentational only. `race-review.js`: a finished race's graph and two-caret replay. `race-options.ts`: what a race is set up as, and its passage.
+- `account.ts`: auth, the profile row, `mergeSynced`, `HISTORY`. `account-session.ts` owns session identity and epoch; `account-view.tsx` owns authentication controls.
+- `online-race.js`, `multiplayer.ts`: Challenge's views, online races and their RPCs. `challenge-people.ts`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.tsx`: draws it, keeping rows that don't change and keyboard focus. `quick-match.ts`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.tsx`: the quick match control. `rank-card.tsx`: the rated result card, its colours and its wind. Presentational only. `race-review.tsx`: a finished race's graph and two-caret replay. `race-options.ts`: what a race is set up as, and its passage.
 - `ghost-race.ts`: ghost challenges.
 - `inbox.js`, `race-result.ts`: the inbox, toast and race results.
 - `friends-board.js`: the friends board and sharing.
