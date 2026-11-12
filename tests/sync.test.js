@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_SETS_FROM, HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
+  CONDITION_SETS_FROM, HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, exportCopy, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
   mergeSynced, profileKey, revokeClear, rowCopy, sameProfile, sameRow, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
   withConditionSets,
 } from '../src/account.js';
@@ -1435,6 +1435,26 @@ test('stored copies leave out each trace’s summary, and loading rebuilds it ex
   for (const [n, trace] of loaded.attempts.entries()) assert.equal(JSON.stringify(trace).length, JSON.stringify(traces[n]).length);
   assert.deepEqual(storedCopy(profile()), profile());
   assert.deepEqual(storedCopy({ version: 2 }), { version: 2 });
+});
+
+test('an export is this device’s stored copy, dated, and reads back as the same profile', () => {
+  const mine = profile({ runs: [item('r1', 1)], attempts: [item('a1', 1)], loops: [item('l1', 2)], bests: { k: { wpm: 80, at: minute(1) } } });
+  const result = exportCopy(mine, Date.parse(minute(30)));
+  const data = JSON.parse(result.text);
+  assert.equal(result.name, 'stilltype-export-2026-10-01.json');
+  assert.equal(data.version, 2);
+  assert.equal(data.exportedAt, minute(30));
+  const read = normalizeProfile(data);
+  const stored = normalizeProfile(JSON.parse(JSON.stringify(storedCopy(mine, Date.parse(minute(30))))));
+
+  for (const field of ['runs', 'attempts', 'loops', 'bests']) assert.deepEqual(read[field], stored[field], field);
+});
+
+test('an export never carries the sign-in', () => {
+  const mine = profile({ runs: [item('r1', 1)], attempts: [item('a1', 1)], loops: [item('l1', 2)], bests: { k: { wpm: 80, at: minute(1) } } });
+  const { text } = exportCopy(mine, 0);
+  assert.ok(!text.includes('refresh_token'));
+  assert.ok(!text.includes('access_token'));
 });
 
 test('copies holding compact traces settle with each other and with a full copy from an older build', () => {
