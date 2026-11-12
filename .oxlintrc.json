@@ -58,7 +58,8 @@
         "src/insights.ts", "src/keybindings.ts", "src/layouts.ts", "src/lengths.ts", "src/lessons.ts",
         "src/profile.ts", "src/run-counts.ts", "src/typing.ts", "src/word-highlight.ts",
         "src/race-result.ts", "src/units.ts", "src/challenge-people.ts", "src/sound.ts",
-        "src/domain-history.ts", "src/monkeytype.ts", "src/quick-match.ts"
+        "src/domain-history.ts", "src/monkeytype.ts", "src/quick-match.ts",
+        "src/wallpaper.ts", "src/wallpaper-image.ts"
       ],
       "rules": {
         // These normalizers parse browser inputs and recover historical profile fields before typed use.
