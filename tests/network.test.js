@@ -211,3 +211,20 @@ test('best recovery after a clear keeps the historical condition key and its ori
   assert.equal(merged.bests[key]?.wpm, 72);
   assert.deepEqual(merged.runs[0].conditions, conditions);
 });
+
+
+test('quick-match rating replies preserve nullable SQL outcomes and reject unknown outcomes', async () => {
+  const { quickReply } = await import('../src/network-race.js');
+
+  for (const outcome of ['won', 'lost', 'tied', null]) {
+    const last = { roomId: 'room', rated: outcome !== null, reason: outcome === null ? 'unfinished' : null,
+      outcome, before: 1000, after: 1000, delta: 0, races: 2 };
+
+    const reply = quickReply({ rating: 1000, races: 2, last });
+    assert.equal(reply.last, last);
+    assert.equal(reply.last.outcome, outcome);
+  }
+
+  assert.throws(() => quickReply({ rating: 1000, races: 2,
+    last: { roomId: 'room', rated: false, reason: null, outcome: 'unknown', before: 1000, after: 1000, delta: 0, races: 2 } }));
+});

@@ -94,13 +94,13 @@ export const ChallengeSchema = open({
 
 export type GhostChallenge = typeof ChallengeSchema.Type;
 
+const LastRatingSchema = open({ roomId: Schema.String, rated: Schema.Boolean, reason: Schema.NullOr(Schema.String), outcome: Schema.NullOr(Schema.Literals(['won', 'lost', 'tied'])), before: Schema.Number, after: Schema.Number, delta: Schema.Number, races: Schema.Number });
+
 export type QuickMatchReply =
   | { state: 'idle' }
   | { state: 'waiting'; rating: number; races: number; waitedMs: number }
   | { state: 'paired'; roomId: string; room: RaceRoom }
-  | { rating: number; races: number; last?: { roomId: string; rated: boolean; reason: string | null; outcome: string; before: number; after: number; delta: number; races: number } };
-
-const LastRatingSchema = open({ roomId: Schema.String, rated: Schema.Boolean, reason: Schema.NullOr(Schema.String), outcome: Schema.String, before: Schema.Number, after: Schema.Number, delta: Schema.Number, races: Schema.Number });
+  | { rating: number; races: number; last?: typeof LastRatingSchema.Type };
 
 const QuickSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal('idle') }),
