@@ -574,7 +574,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     updateClock();
 
     if (terminal(room)) {
-      setRunning(false);
+      // A closed room is polled for about a day, for the other racer's Rematch pick. Only the reply that
+      // closes it ends this race's run, and only on Challenge: on any other view the run in progress is
+      // the person's own (leaving Challenge already ended this one, in onViewChange).
+      if (previousStatus !== room.status && document.body.dataset.view === 'compete') setRunning(false);
       $('online-input').disabled = true;
 
       if (room.status === 'finished') renderResults();
@@ -768,7 +771,9 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
       finishRequested = true;
       attempt.endedAt = (room.duration || 60) * 1000;
       dirty = true;
-      setRunning(false);
+
+      if (document.body.dataset.view === 'compete') setRunning(false);
+
       $('online-help').textContent = 'Time’s up. Sending your result…';
       poll();
     }

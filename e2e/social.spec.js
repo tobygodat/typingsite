@@ -312,6 +312,47 @@ test('a guest races again with the same seat and no new link and keeps no tally,
   } finally { await context.close(); }
 });
 
+test('a finished race still being watched leaves a practice run alone', async ({ page, browser, supabase }) => {
+  supabase.addUser('host@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'host@stilltype.test');
+  await page.locator('#mode-quote').click();
+  await openView(page, 'Challenge');
+  await page.locator('#online-name').fill('Ada');
+  const link = await createGuestRace(page);
+  const context = await browser.newContext();
+  const guest = await context.newPage();
+  await supabase.attach(guest);
+
+  try {
+    await guest.goto(link);
+    await guest.locator('#online-guest-name').fill('Lin');
+    await guest.locator('#join-online-race').click();
+    await race(page, guest);
+
+    // Neither closes the race, so the host's tab keeps watching it for Lin's Rematch pick.
+    await openView(page, 'Practice');
+    await chooseWords(page, 10);
+    const passage = await passageText(page);
+    const half = Math.floor(passage.length / 2);
+    await typeInto(page, passage.slice(0, half));
+    await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+
+    // No mouse moves from here: a pointer move brings the chrome back by design.
+    const flips = await page.evaluate(() => new Promise((resolve) => {
+      let count = 0;
+      const watch = new MutationObserver(() => { if (document.body.dataset.running !== 'true') count += 1; });
+      watch.observe(document.body, { attributes: true, attributeFilter: ['data-running'] });
+      setTimeout(() => { watch.disconnect(); resolve(count); }, 4000);
+    }));
+
+    expect(flips).toBe(0);
+
+    await page.keyboard.type(passage.slice(half));
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  } finally { await context.close(); }
+});
+
 // Seeds a friend list entry as the service would keep it after a save.
 const saveFriend = (supabase, owner, email) => new Promise((resolve) => {
   supabase.races.handle(owner.id, { p_action: 'befriend', p_data: { email } }, resolve);
