@@ -85,7 +85,8 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npx playwright install --with-deps ${{ matrix.engine }}
-      - run: npx playwright test --shard=${{ matrix.shard }}/6
+      # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
+      - run: npx playwright test --shard=${{ matrix.shard }}/6${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
