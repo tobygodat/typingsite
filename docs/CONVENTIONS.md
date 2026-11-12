@@ -29,11 +29,11 @@ npm run test:e2e          # all of Chromium; CI runs this at every PR head, so r
 `.github/workflows/ci.yml` runs every job on GitHub's hosted `ubuntu-latest` runners ([ADR 0018](adr/0018-ci-on-hosted-runners.md)).
 
 - **Unit job.** Every PR gets "Unit and build checks" (`npm ci`, `npm run lint`, `npm test`, `npm run build`).
-- **e2e job.** Then it gets "Browser e2e": all of Chromium, split into six shards, "Browser e2e (1/6)" to "(6/6)", each on its own runner with Playwright's bundled browser. A PR is ready when the unit job and every shard are green at its head. That run is the full-suite evidence for the author and for whoever checks the PR: read it with `gh run list --workflow=ci.yml --commit <sha>` and don't repeat it.
-- **On master.** "Browser e2e" runs all three engines after the deploy, and doesn't gate it. A new push cancels each shard of the ref's older e2e run, but never a deploy.
+- **e2e job.** Then it gets "Browser e2e": all of Chromium, split into six shards, "Browser e2e (chromium 1/6)" to "(chromium 6/6)", each on its own runner with Playwright's bundled browser. A PR is ready when the unit job and every shard are green at its head. That run is the full-suite evidence for the author and for whoever checks the PR: read it with `gh run list --workflow=ci.yml --commit <sha>` and don't repeat it.
+- **On master.** "Browser e2e" runs all three engines after the deploy, and doesn't gate it. Each job runs one engine, so that is six shards per engine and 18 jobs. A new push cancels each job of the ref's older e2e run, but never a deploy.
 - **On request.** `gh workflow run ci.yml --ref <branch> -f browsers=all` runs the unit job and then all three engines at that branch's head. It never deploys. It tests the branch as it is, not merged with master as a PR run is.
 - **Forks.** A PR from a fork runs only after a maintainer approves it, and gets no secrets.
-- **Failures.** A failing shard uploads `test-results/` as `e2e-failures-<shard>`, with a trace of each retry, kept for 7 days.
+- **Failures.** A failing job uploads `test-results/` as `e2e-failures-<engine>-<shard>`, with a trace of each retry, kept for 7 days.
 
 ### Deploy
 

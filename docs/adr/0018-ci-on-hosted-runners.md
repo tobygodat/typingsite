@@ -11,7 +11,7 @@ The repo `tobygodat/typingsite` is public as of 2026-11-11. Toby chose to publis
 ## Decision
 
 - Every job in `.github/workflows/ci.yml` runs on `ubuntu-latest`: "Unit and build checks", "Deploy to Cloudflare" and "Browser e2e".
-- "Browser e2e" is split into shards with a matrix (`--shard=<n>/6`). Each shard has its own concurrency group, so a newer push cancels only the same shard of an older run. Each shard installs Playwright's own browsers with their system deps.
+- "Browser e2e" is a matrix of engine by shard (`--shard=<n>/6`), so each job runs one engine. Six shards over all three engines put WebKit alone in the first two, held to one worker by its cap in `playwright.config.js`, and those took 28 and 33 minutes. A PR runs Chromium's six shards. Master and a `browsers=all` run add six each for Firefox and WebKit, 18 jobs, which fits the 20 jobs GitHub runs at once on the free plan. Each job has its own concurrency group, so a newer push cancels only the same job of an older run. Each job installs its one engine from Playwright with its system deps.
 - The deploy still runs only on a push to master, after the unit job, and e2e still runs after it without gating it.
 - `browser.yml` is gone. It was the hosted fallback, and `ci.yml` now covers it.
 - The desktop runner is retired.
@@ -23,5 +23,6 @@ The npm, Node, no-bundler, hosting and lint decisions in 0012 stand.
 
 - Checks and deploys run whether or not the desktop is on, and jobs from different PRs no longer queue behind each other.
 - A hosted runner has 4 cores where the desktop has 24. A spec that depends on timing can behave differently in CI than locally.
+- Ubuntu's WebKit renders some things differently from the desktop's. The Fira Code caret offset in TOB-22 shows on the desktop and not on CI, so `e2e/fonts.spec.js` expects that failure only off CI.
 - The code, PRs and Actions logs are public. Nothing secret may go in a log, a commit or a test fixture.
 - Local runs on tobygdesktop keep `CHROMIUM` and the worker rule in `scripts/e2e-workers.mjs`. CI uses Playwright's bundled browsers. Chromium runs as the full build (`channel: 'chromium'` in `playwright.config.js`), because the headless shell rounds text runs to whole pixels and overflowed layouts that fit in a real browser.
