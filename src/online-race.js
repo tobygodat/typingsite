@@ -7,7 +7,6 @@ import * as multiplayer from './multiplayer.js';
 import { showSpeed } from './units.js';
 import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } from './race-result.js';
 import { redrawList } from './inbox.js';
-import { createRaceReview } from './race-review.js';
 import { cardOutcome, ratingResult } from './quick-match.js';
 import { peopleRows } from './challenge-people.js';
 
@@ -62,7 +61,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ rankCard, people, quick, getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
+export function createOnlineRace({ rankCard, people, quick, review, getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -120,7 +119,6 @@ export function createOnlineRace({ rankCard, people, quick, getSession, signIn, 
   // The rematch room this tab is moving to, and the room whose traces it has read.
   let following = null;
   let tracesRead = null;
-  const review = createRaceReview({ renderText });
 
   // Every friend-list request goes through this queue, one at a time, and each reply is the list.
   // A friend list that changed (here, from another tab, or on the service) is read against the links again, so an

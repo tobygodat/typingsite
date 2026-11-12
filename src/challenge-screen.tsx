@@ -1,3 +1,4 @@
+import { RaceReview } from './race-review.js';
 import { QuickMatch } from './quick-match-view.js';
 import { ChallengePeople } from './challenge-people-view.js';
 import { RankCard } from './rank-card.js';
@@ -107,21 +108,7 @@ export function ChallengeScreen({ challenge }: { challenge: ChallengeStore }) {
                   <div className="duel-choice"><p id="online-their-rematch" className="duel-their-rematch" role="status"><svg className="duel-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7" /></svg><span></span></p></div>
                 </div>
               </div>
-              <div id="online-review" className="duel-review" hidden>
-                <div className="segmented duel-toggle" role="group" aria-label="Race view">
-                  <button id="online-show-graph" type="button" aria-pressed="true">Graph</button>
-                  <button id="online-show-replay" type="button" aria-pressed="false">Replay</button>
-                </div>
-                <div id="online-duel-graph" className="duel-graph speed-graph" role="img"></div>
-                <div id="online-duel-replay" className="duel-replay" hidden>
-                  <div className="duel-replay-wrap"><div id="online-replay-display" aria-hidden="true"></div></div>
-                  <div className="duel-replay-controls">
-                    <button id="online-replay-toggle" className="btn btn-secondary" type="button">Play</button>
-                    <button id="online-replay-speed" className="btn btn-ghost" type="button" aria-label="Playback speed 1×">1×</button>
-                    <button id="online-replay-restart" className="btn btn-ghost" type="button">Restart</button>
-                  </div>
-                </div>
-              </div>
+              <RaceReview controller={challenge.review} />
               <div id="online-review-wait" className="duel-review duel-review-wait" hidden><p id="online-review-note" className="duel-review-note"></p></div>
             </section>
             <div id="online-after" className="online-after" hidden>

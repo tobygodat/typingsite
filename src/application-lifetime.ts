@@ -9,9 +9,11 @@ export function createApplicationLifetime() {
   return {
     signal: abort.signal,
     timeout(callback: () => void, delay = 0) {
-      const timer = window.setTimeout(() => { timeouts.delete(timer);
+      const timer = window.setTimeout(() => {
+        timeouts.delete(timer);
 
- if (!disposed) callback(); }, delay);
+        if (!disposed) callback();
+      }, delay);
 
       timeouts.add(timer);
 
@@ -26,9 +28,11 @@ export function createApplicationLifetime() {
     },
     clearInterval(timer: number) { intervals.delete(timer); window.clearInterval(timer); },
     frame(callback: FrameRequestCallback) {
-      const frame = requestAnimationFrame((stamp) => { frames.delete(frame);
+      const frame = requestAnimationFrame((stamp) => {
+        frames.delete(frame);
 
- if (!disposed) callback(stamp); });
+        if (!disposed) callback(stamp);
+      });
 
       frames.add(frame);
 

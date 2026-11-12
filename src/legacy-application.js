@@ -56,8 +56,7 @@ import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
-import { createWallpaper } from './wallpaper.js';
-import { createThemeEditor, showThemeOptions, wearColors } from './theme-editor.js';
+import { showThemeOptions, wearColors } from './theme-editor.js';
 import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel, ariaShortcuts } from './keybindings.js';
 import { listenForSequence } from './egg.js';
@@ -70,11 +69,10 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, MIN_PATTERN_SAMPLES, STANDARD_MIN_RUNS, bestRun, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, keyAnalysis, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, bestRun, comparableKind, dailyChallengeId, firstTriesAt, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, passageBest, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, runRecord, settleDailyFirsts, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
-import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
 import {
@@ -94,7 +92,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge) {
+export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -252,7 +250,7 @@ let wordsPassage = null;
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
 const ghostOn = () => learning.preferences.paceCaret !== 'off';
 let keybindingEditor = null;
-let themeEditor = null;
+let detachWallpaper = null;
 let onlineRace = null;
 let inbox = null;
 let friendsBoard = null;
@@ -2995,17 +2993,7 @@ function dateCopy(at) {
   return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
 }
 
-function scoreFacts(items) {
-  const dl = document.createElement('dl');
 
-  for (const [label, value] of items) {
-    const group = document.createElement('div');
-    group.append(element('dt', label), element('dd', value, 'num'));
-    dl.append(group);
-  }
-
-  return dl;
-}
 
 function openHistoryRun(id) {
   if (progressState.detail !== 'runs') openProgressDetail('runs', { opener: document.activeElement, focus: false });
@@ -3109,13 +3097,6 @@ function renderStandardScore() {
   const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
   const score = onTouch ? touch : keyboard;
   const other = onTouch ? keyboard : touch;
-  showSpeed($('standard-best'), score.best);
-  showSpeed($('standard-median'), score.median);
-  // A dash stands alone: "— wpm" would read as a measurement.
-  $('standard-best').nextElementSibling.hidden = score.best === null;
-  $('standard-median').nextElementSibling.hidden = score.median === null;
-  setText($('standard-median-label'), score.settled ? `median of last ${plural(score.recent, 'run')}` : 'median');
-  setText($('standard-score-conditions'), `${recipeSummary(source)} · ${conditionTail(source)}`);
   // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
   // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
   const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
@@ -3128,11 +3109,9 @@ function renderStandardScore() {
   else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
   // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
   const empty = !score.total && score.best === null;
-  $('standard-score-conditions').hidden = empty;
-  // Nothing scored: the section is one line, the note beside the action, with no blank figures.
-  $('standard-score').classList.toggle('is-empty', empty);
-  $('standard-figures').hidden = empty;
-  setParts($('standard-score-note'), [note, other.best === null ? '' : [` Your ${onTouch ? 'physical keyboard' : 'touch'} best is `, speedFigure(other.best), '.']]);
+  flushSync(() => learning.progress.standard.publish({ best: score.best, median: score.median,
+    medianLabel: score.settled ? 'median of last ' + plural(score.recent, 'run') : 'median', conditions: recipeSummary(source) + ' · ' + conditionTail(source), empty,
+    note: copyParts([note, other.best === null ? '' : [' Your ' + (onTouch ? 'physical keyboard' : 'touch') + ' best is ', speedFigure(other.best), '.']]) }));
 }
 
 // Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
@@ -3140,158 +3119,16 @@ function renderStandardScore() {
 // in the line below, so the values never depend on a hover tooltip. Ten keys in a phone-width row
 // cannot each be a 44px touch target, so on coarse pointers the heatmap is a picture and a native
 // "Key" select drives the same line.
-const HEAT_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
-
-// Lowest first. Key cells and the legend both read this table, so thresholds and labels move
-// together. Number.MIN_VALUE makes step 1 "any miss at all".
-const HEAT_STEPS = [
-  { step: '0', min: 0, label: 'no misses' },
-  { step: '1', min: Number.MIN_VALUE, label: 'under 4%' },
-  { step: '2', min: 0.04, label: '4–8%' },
-  { step: '3', min: 0.08, label: '8% or more' },
-];
-
-const HEAT_NONE = { step: 'none', label: `under ${MIN_PATTERN_SAMPLES} samples` };
-const heatStep = (stat) => (stat?.enough ? HEAT_STEPS.findLast((s) => stat.missRate >= s.min) : HEAT_NONE);
 const coarsePointer = window.matchMedia('(pointer: coarse)');
-let heatKey = null;
-let heatDetails = {};
 let heatRuns = [];
 
-function renderKeys(runs) {
-  heatRuns = runs;
-  const picture = coarsePointer.matches;
-  const analysis = keyAnalysis(runs);
-  const pct = (v) => `${(v * 100).toFixed(1)}%`;
-  const older = analysis.pairDerivedRuns;
-  // With no per-key detail in these runs there is nothing to draw: one line says why instead of an empty map.
-  $('keys-layout').hidden = !analysis.runs;
-  $('key-note').textContent = analysis.runs
-    ? `First-try misses per key · ${plural(analysis.runs, 'run')}${older ? ` · ${older} older ${older === 1 ? 'run skips' : 'runs skip'} first letters` : ''}`
-    : runs.length ? `No keystroke detail in ${runs.length === 1 ? 'this run' : `these ${runs.length} runs`} yet. Fresh-text runs from now on fill in the map.` : 'No runs at these conditions in this period.';
-  heatDetails = {};
-  const grid = $('key-heatmap');
-  const hadFocus = grid.contains(document.activeElement);
-
-  if (picture) {
-    grid.removeAttribute('role');
-    grid.setAttribute('aria-hidden', 'true');
-  } else {
-    grid.setAttribute('role', 'grid');
-    grid.removeAttribute('aria-hidden');
-  }
-
-  $('key-select-field').hidden = !picture;
-  grid.replaceChildren(...HEAT_ROWS.map((letters) => {
-    const row = element('div', '', 'key-row');
-
-    if (!picture) row.setAttribute('role', 'row');
-
-    for (const letter of letters) {
-      const stat = analysis.keys[letter];
-      const cell = element('span', letter, 'key');
-      cell.dataset.letter = letter;
-      const { step } = heatStep(stat);
-      cell.dataset.heat = step;
-
-      if (step !== 'none' && step !== '0') {
-        const rate = element('span', stat.missRate >= 0.1 ? `${Math.round(stat.missRate * 100)}%` : pct(stat.missRate), 'key-rate');
-        rate.setAttribute('aria-hidden', 'true');
-        cell.append(rate);
-      }
-
-      if (!picture) {
-        cell.setAttribute('role', 'gridcell');
-        cell.tabIndex = -1;
-      }
-
-      cell.title = stat?.enough ? `${letter}: ${pct(stat.missRate)} miss · ${stat.samples} samples`
-        : `${letter}: not enough samples (${stat?.samples || 0})`;
-
-      if (!picture) cell.setAttribute('aria-label', cell.title);
-      heatDetails[letter] = stat?.enough
-        ? `“${letter}”: ${pct(stat.missRate)} first-try misses (${stat.errors} of ${stat.samples} samples).`
-        : `“${letter}”: ${stat?.samples || 0} ${stat?.samples === 1 ? 'sample' : 'samples'}, fewer than ${MIN_PATTERN_SAMPLES}, so no miss rate yet.`;
-      row.append(cell);
-    }
-
-    return row;
-  }));
-  selectHeatKey(heatKey, { focus: hadFocus && !picture });
-  const topRate = Math.max(...analysis.pairs.map((p) => p.missRate));
-
-  const rows = analysis.pairs.map((p) => {
-    const tr = document.createElement('tr');
-    // Denominator: runs with at least MIN_PATTERN_SAMPLES clean intervals for this pair.
-    const slow = element('td', p.timedRuns ? `${p.slowRuns} of ${p.timedRuns}` : '—', 'num');
-    slow.title = p.timedRuns
-      ? `Slower than your median in ${p.slowRuns} of ${p.timedRuns} ${p.timedRuns === 1 ? 'run' : 'runs'} with at least ${MIN_PATTERN_SAMPLES} clean intervals`
-      : `No run has ${MIN_PATTERN_SAMPLES} clean intervals for this pair yet`;
-
-    if (!p.timedRuns) slow.append(element('span', ` ${slow.title}`, 'sr-only'));
-    const rate = element('td', `${pct(p.missRate)} (${p.errors})`, 'num');
-    const bar = element('span', '', 'pair-bar');
-    bar.setAttribute('aria-hidden', 'true');
-    bar.style.width = `${topRate ? (p.missRate / topRate) * 100 : 0}%`;
-    rate.append(bar);
-    tr.append(element('td', `“${p.pair}”`), rate, slow, element('td', String(p.samples), 'num'));
-
-    return tr;
-  });
-
-  $('pairs-table').querySelector('tbody').replaceChildren(...rows);
-  $('pairs-table').hidden = !rows.length;
-  $('pairs-empty').hidden = Boolean(rows.length);
-}
+function renderKeys(runs) { heatRuns = runs; learning.progress.keys.show(runs, coarsePointer.matches); }
 
 // Marks one key as chosen (and, in the grid, the tab stop) and shows its numbers; with no key
 // chosen yet, "q" is the stop.
-function selectHeatKey(letter, { focus = false } = {}) {
-  const grid = $('key-heatmap');
-  const picture = grid.hasAttribute('aria-hidden');
-  const cells = [...grid.querySelectorAll('.key')];
-  const target = cells.find((cell) => cell.dataset.letter === letter) || cells[0];
 
-  if (!target) return;
 
-  for (const cell of cells) {
-    if (!picture) cell.tabIndex = cell === target ? 0 : -1;
 
-    if (cell === target && letter) cell.dataset.selected = 'true';
-    else delete cell.dataset.selected;
-  }
-
-  heatKey = letter ? target.dataset.letter : null;
-  $('key-select').value = heatKey || '';
-  $('key-detail').textContent = heatKey ? heatDetails[heatKey] : '';
-
-  if (focus && !picture) target.focus();
-}
-
-function moveHeatFocus(event) {
-  const cell = event.target.closest?.('.key');
-
-  if (!cell) return;
-  const row = HEAT_ROWS.findIndex((letters) => letters.includes(cell.dataset.letter));
-  const col = HEAT_ROWS[row].indexOf(cell.dataset.letter);
-  const at = (r, c) => HEAT_ROWS[r][Math.max(0, Math.min(c, HEAT_ROWS[r].length - 1))];
-
-  const next = {
-    ArrowLeft: () => col > 0 && at(row, col - 1),
-    ArrowRight: () => col < HEAT_ROWS[row].length - 1 && at(row, col + 1),
-    // Up and down keep the column, clamped to the shorter row.
-    ArrowUp: () => row > 0 && at(row - 1, col),
-    ArrowDown: () => row < HEAT_ROWS.length - 1 && at(row + 1, col),
-    Home: () => at(event.ctrlKey ? 0 : row, 0),
-    End: () => event.ctrlKey ? HEAT_ROWS.at(-1).at(-1) : at(row, HEAT_ROWS[row].length - 1),
-  }[event.key];
-
-  if (!next) return;
-  event.preventDefault();
-  const letter = next();
-
-  if (letter) selectHeatKey(letter, { focus: true });
-}
 
 // The practice calendar (Sunday-first columns), static by design: 26 weeks across the column, fewer on a phone.
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
@@ -3302,9 +3139,8 @@ let goalDay = '';
 // The day the Progress page was last drawn for (renderHistory).
 let historyDay = '';
 
-function captionGoalDay(cell) { $('goal-caption').textContent = cell?.dataset?.caption || ''; }
 
-const focusedGoalDay = () => ($('goal-calendar').contains(document.activeElement) ? document.activeElement : null);
+
 const narrowColumn = window.matchMedia('(max-width: 760px)');
 const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
 
@@ -3312,69 +3148,27 @@ function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
   const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
   const coarse = matchMedia('(any-pointer: coarse)').matches;
-  const picker = $('goal-day-select');
-  const selectedDay = picker.value || goalDay;
   $('practice-goal').hidden = Object.keys(byDay).length === 0;
   const goal = learning.preferences.dailyGoal;
   const weeks = calendarWeeks();
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
-  const cells = [];
+  const days = [];
 
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
     const minutes = byDay[dayKey(day)] || 0;
     const met = goal > 0 && minutes >= goal;
-    const cell = element('span', '', 'goal-day');
-    cell.dataset.level = String(practiceLevel(minutes, goal));
-
-    if (met) cell.dataset.goal = 'met';
-    cell.setAttribute('role', 'img');
-
-    if (!coarse) cell.tabIndex = -1;
-    cell.dataset.day = dayKey(day);
-    cell.setAttribute('aria-label', `${day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}: ${goalMinutes(minutes)} min${met ? ', goal met' : ''}`);
-    cell.dataset.caption = [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), `${goalMinutes(minutes)} min`, met && 'goal met'].filter(Boolean).join(' · ');
-    cells.push(cell);
+    days.push({ day: dayKey(day), level: String(practiceLevel(minutes, goal)), met,
+      label: day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ': ' + goalMinutes(minutes) + ' min' + (met ? ', goal met' : ''),
+      caption: [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), goalMinutes(minutes) + ' min', met && 'goal met'].filter(Boolean).join(' · ') });
   }
 
-  if (!coarse) cells.at(-1).tabIndex = 0;
-
-  // On touch and hybrids the native 44px picker owns selection; the dense cells are only a picture.
-  if (coarse) $('goal-calendar').setAttribute('aria-hidden', 'true');
-  else $('goal-calendar').removeAttribute('aria-hidden');
-  picker.replaceChildren(...cells.map((cell) => new Option(cell.getAttribute('aria-label'), cell.dataset.day)));
-  picker.value = cells.some((cell) => cell.dataset.day === selectedDay) ? selectedDay : goalDay;
-  const practised = cells.filter((cell) => cell.dataset.level !== '0').length;
-  const hadFocus = Boolean(focusedGoalDay());
-  $('goal-calendar').setAttribute('aria-label', `Practice minutes per day, last ${weeks} weeks: ${plural(practised, 'day')} with practice. Arrow keys move between days.`);
-  captionGoalDay(null);
-  $('goal-calendar').style.setProperty('--weeks', String(weeks));
-  $('goal-months').style.setProperty('--weeks', String(weeks));
-  $('goal-calendar').replaceChildren(...cells);
-  $('goal-months').replaceChildren(...monthLabels(cells.map((cell) => cell.dataset.day)).map((month) => element('span', month)));
-
-  if (hadFocus && !coarse) cells.at(-1).focus();
-
-  if (document.activeElement === picker) captionGoalDay(cells.find((cell) => cell.dataset.day === picker.value));
+  const practised = days.filter((day) => day.level !== '0').length;
+  flushSync(() => learning.progress.calendar.view.publish({ days, months: monthLabels(days.map((day) => day.day)), weeks, coarse, today: goalDay,
+    label: 'Practice minutes per day, last ' + weeks + ' weeks: ' + plural(practised, 'day') + ' with practice. Arrow keys move between days.' }));
   renderPracticeStats(progressState.period, date);
 }
 
-function moveGoalFocus(event) {
-  const cells = [...$('goal-calendar').children];
-  const from = cells.indexOf(event.target);
-  const step = { ArrowUp: -1, ArrowDown: 1, ArrowLeft: -7, ArrowRight: 7, Home: -from, End: cells.length - 1 - from }[event.key];
 
-  if (from < 0 || step === undefined) return;
-  event.preventDefault();
-
-  // Columns run Sunday to Saturday from the first cell, so up and down stop at the ends of a week.
-  if ((event.key === 'ArrowUp' && from % 7 === 0) || (event.key === 'ArrowDown' && from % 7 === 6)) return;
-  const to = cells[from + step];
-
-  if (!to) return;
-  cells[from].tabIndex = -1;
-  to.tabIndex = 0;
-  to.focus();
-}
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = { period: '30', key: '', view: 'speed', allRuns: false, detail: '', moversOpen: false };
@@ -3392,15 +3186,14 @@ function chooseProgress(choice) {
 
 function renderRunRows() {
   const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
-  $('run-history').replaceChildren(...shown.map(runRow));
-  $('show-all-runs').hidden = shown.length === listedRuns.length;
-  $('show-all-runs').textContent = `Show all ${listedRuns.length} runs`;
+  const previous = learning.progress.runs.getSnapshot();
+  flushSync(() => learning.progress.runs.publish({ rows: shown.map(runRow), total: listedRuns.length, revision: previous.revision + 1 }));
 }
 
 function showAllRuns() {
   progressState.allRuns = true;
-  $('run-history').append(...listedRuns.slice($('run-history').children.length).map(runRow));
-  $('show-all-runs').hidden = true;
+  const previous = learning.progress.runs.getSnapshot();
+  flushSync(() => learning.progress.runs.publish({ ...previous, rows: listedRuns.map(runRow) }));
 }
 
 // What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them:
@@ -3427,55 +3220,22 @@ const shapeLabel = (shape) => {
   return { text: shape.mode };
 };
 
-function pill(text, { pressed = false, disabled = false, label = '' } = {}) {
-  const button = element('button', text, 'pill');
-  button.type = 'button';
-  button.setAttribute('aria-pressed', String(pressed));
-  button.disabled = disabled;
 
-  if (label) button.setAttribute('aria-label', label);
-
-  return button;
-}
 
 // One pill per test length in testShapes' order; a length without runs is disabled.
 function renderTestPills(shapes) {
   const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
-  // The pills are rebuilt, so a focused one hands focus to its replacement.
   const focused = document.activeElement?.closest('#progress-tests') ? { ...document.activeElement.dataset } : null;
-  const row = [];
-  shapes.forEach((shape, i) => {
-    if (i && shape.mode !== shapes[i - 1].mode) {
-      const rule = element('span', '', 'pill-rule');
-      rule.setAttribute('aria-hidden', 'true');
-      row.push(rule);
-    }
-
-    const { text, label } = shapeLabel(shape);
-    const button = pill(text, { pressed: shape === selected, disabled: !shape.variants.length, label });
-    button.dataset.shape = shape.id;
-    button.addEventListener('click', () => chooseProgress({ key: shape.variants[0].key }), { signal: lifetime.signal });
-    row.push(button);
-  });
-  $('progress-tests').replaceChildren(...row);
   const variants = selected?.variants || [];
-  $('progress-variants').hidden = variants.length < 2;
   const labels = conditionLabels(variants.map((variant) => variant.conditions));
-  $('progress-variants').replaceChildren(...(variants.length < 2 ? [] : variants.map((variant, i) => {
-    const option = element('option', labels[i]);
-    option.value = variant.key;
-    option.selected = variant.key === progressState.key;
+  const tests = shapes.map((shape) => ({ id: shape.id, mode: shape.mode, ...shapeLabel(shape), key: shape.variants[0]?.key, selected: shape === selected, disabled: !shape.variants.length }));
+  const previous = learning.progress.filters.view.getSnapshot();
+  flushSync(() => learning.progress.filters.view.publish({ ...previous, tests, variants: variants.map((variant, i) => ({ key: variant.key, label: labels[i] })), key: progressState.key, period: progressState.period }));
 
-    return option;
-  })));
-
-  // A pill gone or disabled by the redraw (a clear, here or in another tab) can't hold focus, so it lands where
-  // Progress lands it (progressLanding).
   if (focused) {
     const pill = [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape && !node.disabled && node.isConnected);
 
-    if (pill?.checkVisibility()) pill.focus({ preventScroll: true });
-    else landProgressFocus();
+    if (pill?.checkVisibility()) pill.focus({ preventScroll: true }); else landProgressFocus();
   }
 }
 
@@ -3512,25 +3272,12 @@ function focusShown(target, { scroll = false } = {}) {
 const landProgressFocus = (options) => focusShown(progressLanding(), options);
 
 function runRow(run) {
-  const row = element('details', '', 'run-row');
-  row.dataset.runId = run.id;
-  const summary = element('summary', '', 'run-summary');
-  summary.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
-    element('span', `${dateCopy(run.at)}${run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : ''}${run.fresh === false ? ' · repeated text' : ''}`));
-  const detail = element('div', '', 'run-detail');
-  detail.append(scoreFacts([['first-try errors', run.errors], ['time', `${(run.elapsedMs / 1000).toFixed(1)} s`]]),
-    element('p', describeRun(run)), element('p', `Text: ${run.textId} · ${run.fresh === false ? 'previously displayed' : 'fresh when displayed'}`));
   const trace = learning.profile.attempts.find((a) => a.id === run.id);
 
-  if (trace) {
-    const passageDetails = document.createElement('details');
-    passageDetails.append(element('summary', 'View passage'), element('p', trace.text));
-    detail.append(passageDetails);
-  }
-
-  row.append(summary, detail);
-
-  return row;
+  return { id: run.id, wpm: run.score.wpm, accuracy: run.score.accuracy,
+    date: dateCopy(run.at) + (run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : '') + (run.fresh === false ? ' · repeated text' : ''),
+    errors: run.errors, time: (run.elapsedMs / 1000).toFixed(1) + ' s', description: describeRun(run),
+    textNote: 'Text: ' + run.textId + ' · ' + (run.fresh === false ? 'previously displayed' : 'fresh when displayed'), passage: trace?.text };
 }
 
 function renderHistory() {
@@ -3573,10 +3320,8 @@ function renderOverview(date) {
   const key = source ? progressState.key : '';
   const period = progressState.period;
 
-  for (const button of $('progress-period').querySelectorAll('[data-period]')) button.setAttribute('aria-pressed', String(button.dataset.period === period));
   const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
-  $('progress-filters').hidden = !source;
-  $('progress-conditions').textContent = source ? describeConditions(source, siblings) : '';
+  flushSync(() => learning.progress.filters.view.publish({ ...learning.progress.filters.view.getSnapshot(), hasSource: Boolean(source), conditions: source ? describeConditions(source, siblings) : '' }));
 
   const week = weekChange({ runs: learning.profile.runs, loops: learning.profile.loops, practiceDays: learning.profile.practiceDays, key, conditions: source || null,
     focus: learning.preferences.trainFocus, goal: learning.preferences.dailyGoal, period, now: date.getTime() });
@@ -3707,86 +3452,44 @@ function renderLead(lead) {
 
   $('week-lead').dataset.state = lead.state;
   $('week-lead').dataset.tone = tone;
-  const number = element('span', figure ?? '', 'lead-number');
-  number.setAttribute('aria-hidden', String(Boolean(spoken)));
-  setParts($('lead-figure'), figure === null ? [element('span', '', 'lead-dash')] : [number, spoken && element('span', spoken, 'sr-only'), element('span', unitText('{unit}'), 'lead-unit')]);
-  setParts($('lead-sentence'), sentence);
-  setText($('lead-sample'), sample);
-  $('lead-sample').hidden = !sample;
-  setText($('lead-note'), note);
-  $('lead-note').hidden = !note;
+  flushSync(() => learning.progress.lead.publish({ figure, spoken, sentence: copyParts(sentence), sample, note, state: lead.state, tone }));
 }
 
 // What moved it: the units fixed this week, ranked (weekMovers), the first SHOWN_MOVERS shown and the rest behind one
 // "more"; then practice.
 function renderMovers(week) {
   const open = progressState.moversOpen;
-  // A redraw keeps keyboard focus on the same row's control, or lands it (progressLanding) when that row has gone.
-  const held = $('week-movers').contains(document.activeElement) ? document.activeElement.closest('li')?.dataset.unit ?? 'practice' : null;
 
-  const rows = week.movers.map((mover, i) => {
-    const row = moverRow(mover);
-    row.hidden = i >= SHOWN_MOVERS && !open;
+  const rows = week.movers.map((mover) => {
+    const copy = moverCopy(mover);
 
-    return row;
+    return { unit: mover.unit, before: copy.before, after: copy.after,
+      tail: [copy.tail || 'over ' + plural(mover.after.intervals, 'clean interval'), mover.split === 'drill' && 'since your drill'].filter(Boolean).join(' '),
+      title: moverSample(mover), status: 'fixed' };
   });
 
-  if (week.practice) rows.push(practiceRow(week.practice));
-  $('week-movers').replaceChildren(...rows);
+  if (week.practice) {
+    const practice = week.practice;
+    const streak = practice.streak ? plural(practice.streak, 'day') + ' in a row' + (practice.goal ? ' at ' + practice.goal + ' min' : '') : '';
+    rows.push({ practice: true, before: goalMinutes(practice.previous), after: goalMinutes(practice.current) + ' min', tail: streak ? '· ' + streak : '', status: practice.status });
+  }
+
+  flushSync(() => learning.progress.movers.publish({ rows, open, extra: week.movers.length - SHOWN_MOVERS, shown: SHOWN_MOVERS }));
   $('week-moved').hidden = !rows.length;
   const extra = week.movers.length - SHOWN_MOVERS;
   $('more-movers').hidden = extra < 1;
-  $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : `${extra} more`;
+  $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : extra + ' more';
   $('more-movers').setAttribute('aria-expanded', String(open));
-
-  if (held) {
-    const button = rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button');
-
-    if (button) button.focus({ preventScroll: true });
-    else landProgressFocus();
-  }
 }
 
-function statusWord(word, tone) {
-  const status = element('span', [element('span', '', 'status-dot'), word], `status mover-status badge-${tone}`);
-  status.firstChild.setAttribute('aria-hidden', 'true');
 
-  return status;
-}
 
-function changeLine(before, after, tail, className) {
-  const arrow = element('span', ' → ', 'mover-arrow');
-  arrow.setAttribute('aria-hidden', 'true');
 
-  return element('p', [element('span', before, 'mover-before'), arrow, element('span', ' to ', 'sr-only'), element('span', after, 'mover-after'), tail && element('span', ` ${tail}`, 'mover-tail')], className);
-}
 
-function moverRow(mover) {
-  const row = element('li', '', 'mover is-fixed');
-  row.dataset.unit = mover.unit;
-  const copy = moverCopy(mover);
-  const tail = [copy.tail || `over ${plural(mover.after.intervals, 'clean interval')}`, mover.split === 'drill' && 'since your drill'].filter(Boolean).join(' ');
-  const change = changeLine(copy.before, copy.after, tail, 'mover-change num');
-  change.title = moverSample(mover);
-  row.append(element('span', mover.unit, 'mover-unit'), change, statusWord('fixed', 'success'));
 
-  return row;
-}
 
 // Practice, a plain fact: minutes the week before → this week, and the streak (at the goal, when one is set).
-function practiceRow(practice) {
-  const row = element('li', '', 'mover is-practice');
-  const open = element('button', 'practice', 'mover-unit mover-link');
-  open.type = 'button';
-  open.setAttribute('aria-label', 'practice calendar');
-  // The row is drawn again on the way back, so the way back finds its new button.
-  open.addEventListener('click', () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') }), { signal: lifetime.signal });
-  const streak = practice.streak ? `${plural(practice.streak, 'day')} in a row${practice.goal ? ` at ${practice.goal} min` : ''}` : '';
-  const change = changeLine(goalMinutes(practice.previous), `${goalMinutes(practice.current)} min`, streak && `· ${streak}`, 'mover-change num');
-  row.append(open, change, statusWord(practice.status, 'neutral'));
 
-  return row;
-}
 
 function renderLoops(loops) {
   learning.commands.loopTarget = (id) => {
@@ -3839,31 +3542,24 @@ function renderPracticeStats(period, date = new Date()) {
   const runs = stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0);
   const current = practiceStreak(byDay, goal, date);
 
-  const figure = (label, value, unit, note) => {
-    const group = element('div', '', 'progress-figure');
-    group.append(element('dt', label), element('dd', [element('span', value), ' ', element('span', unit, 'figure-unit')], 'num figure-value'));
-
-    if (note) group.append(element('dd', note, 'figure-note'));
-
-    return group;
-  };
+  const figure = (label, value, unit, note) => ({ label, value, unit, note });
 
   const daysWord = (n) => (n === 1 ? 'day' : 'days');
   const runDays = stats.runsPerDay.filter((d) => d.runs).length;
   const counted = runCountTotals(learning.profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
-  $('practice-stats').replaceChildren(
+  flushSync(() => learning.progress.calendar.figures.publish([
     figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${plural(Number((runs / runDays).toFixed(1)), 'run')} a day when you practise` : 'no runs in this period'),
     figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
     figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
     figure('Runs started', String(counted.started), `${counted.finished} finished`),
-  );
+  ]));
 }
 
 // Everything the overview doesn't show sits one step away in a detail view, each with a way back. The conditions
 // and the period move into a view that reads them, and back to the overview after.
 const PROGRESS_DETAILS = { runs: 'Runs', trends: 'Trends', keys: 'Keys', calendar: 'Practice', standard: 'Standard score', compose: 'Composing' };
-const DETAIL_FILTERS = { runs: ['progress-filters', 'progress-period'], trends: ['progress-filters', 'progress-period'], keys: ['progress-filters', 'progress-period'], calendar: ['progress-period'] };
+
 let detailOpener = null;
 
 function openProgressDetail(name, { opener = null, focus = true } = {}) {
@@ -3893,13 +3589,7 @@ function showProgressDetail({ focus = false } = {}) {
   $('progress-detail').hidden = !name;
 
   for (const panel of $('progress-detail').querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== name;
-  // Moved only when not already in place: moving a node takes focus off whatever inside it held it.
-  const place = (id, parent) => { if ($(id).parentElement !== parent) parent.append($(id)); };
-  const filters = DETAIL_FILTERS[name] || [];
-
-  for (const id of ['progress-filters', 'progress-period']) {
-    place(id, filters.includes(id) ? $('detail-filters') : id === 'progress-filters' ? $('lead-meta') : $('week-charts').querySelector('.week-charts-head'));
-  }
+  flushSync(() => learning.progress.filters.detail.publish(name));
 
   setText($('progress-detail-heading'), PROGRESS_DETAILS[name] || '');
   drawProgressView();
@@ -3984,20 +3674,16 @@ function hasAnyHistory() {
 function renderComposeHistory() {
   const list = learning.profile.compositions;
   $('compose-history').hidden = !list.length;
-
-  if (!list.length) return;
   const shown = [...list].reverse().slice(0, 10);
-  $('compose-history-note').textContent = list.length > shown.length ? `newest ${shown.length} of ${list.length}` : '';
-  $('compose-history-list').replaceChildren(...shown.map((item) => {
-    const row = element('article', '', 'compose-row');
-    const main = element('div', '', 'compose-row-main');
-    main.append(element('strong', speedFigure(item.wpm), 'num'), element('span', `${item.backspaceRate}% backspace rate`, 'num'));
-    const prompt = promptText(item.promptId);
-    row.append(main, element('p', prompt ? `“${prompt}”` : 'A prompt no longer offered'),
-      element('p', `${dateCopy(item.at)} · ${item.characters} characters · ${item.backspaces} ${item.backspaces === 1 ? 'backspace' : 'backspaces'} in ${item.keystrokes} keystrokes · ${(item.activeMs / 1000).toFixed(1)} s active of ${(item.elapsedMs / 1000).toFixed(1)} s · ${item.inputClass === 'touch' ? 'touch input' : 'physical keyboard'}`, 'condition-copy'));
 
-    return row;
-  }));
+  const rows = shown.map((item) => {
+    const prompt = promptText(item.promptId);
+
+    return { id: item.id, wpm: item.wpm, backspaceRate: item.backspaceRate, prompt: prompt ? '“' + prompt + '”' : 'A prompt no longer offered',
+      detail: dateCopy(item.at) + ' · ' + item.characters + ' characters · ' + item.backspaces + ' ' + (item.backspaces === 1 ? 'backspace' : 'backspaces') + ' in ' + item.keystrokes + ' keystrokes · ' + (item.activeMs / 1000).toFixed(1) + ' s active of ' + (item.elapsedMs / 1000).toFixed(1) + ' s · ' + (item.inputClass === 'touch' ? 'touch input' : 'physical keyboard') };
+  });
+
+  flushSync(() => learning.progress.composing.publish({ rows, note: list.length > shown.length ? 'newest ' + shown.length + ' of ' + list.length : '' }));
 }
 
 // Everyone types the daily passage under the same rules, whatever their practice settings.
@@ -6015,8 +5701,8 @@ function bindEvents() {
       saveChoice('mode', learning.preferences.mode === 'time' ? 'duration' : 'count');
       resetSession('practice', { focus: true });
     },
-    punctuation(on) { learning.preferences.punctuation = on; saveProfile(); resetSession('practice', { focus: true }); },
-    adaptive(on) { learning.preferences.adaptive = on; saveProfile(); resetSession('practice', { focus: true }); },
+    punctuation(on) { learning.preferences.punctuation = on; setModeControls(); saveProfile(); resetSession('practice', { focus: true }); },
+    adaptive(on) { learning.preferences.adaptive = on; setModeControls(); saveProfile(); resetSession('practice', { focus: true }); },
     compose: openCompose,
     custom: () => openCustom(!customOpen),
   });
@@ -6037,18 +5723,14 @@ function bindEvents() {
   onSetting('train-focus', (value) => setTraining('trainFocus', value));
   onSetting('drill-length', (value) => setTraining('drillSeconds', Number(value)));
   onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
-  $('show-all-runs').addEventListener('click', () => {
+  learning.progress.filters.commands.choose = chooseProgress;
+  learning.progress.commands.calendar = () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') });
+  learning.progress.commands.showAll = () => {
     showAllRuns();
     $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
-  }, { signal: lifetime.signal });
+  };
+
   narrowColumn.addEventListener('change', () => renderGoal(), { signal: lifetime.signal });
-  $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)), { signal: lifetime.signal });
-  $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)), { signal: lifetime.signal });
-  $('goal-calendar').addEventListener('keydown', moveGoalFocus, { signal: lifetime.signal });
-  $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target), { signal: lifetime.signal });
-  $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); }, { signal: lifetime.signal });
-  $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()), { signal: lifetime.signal });
-  $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()), { signal: lifetime.signal });
   onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
   onSetting('typing-font', (value) => { learning.preferences.typingFont = value; applyFonts(); saveChoice('typingFont'); });
   onSetting('app-font', (value) => { learning.preferences.appFont = value; applyFonts(); saveChoice('appFont'); });
@@ -6061,7 +5743,8 @@ function bindEvents() {
     onSave: (bindings) => { learning.preferences.keybindings = bindings; applyPreferences(); saveChoice('keybindings'); },
   });
   keybindingEditor.refresh();
-  createWallpaper({ onSetting, selectSetting, layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
+  onSetting('wallpaper-style', wallpaper.style);
+  detachWallpaper = wallpaper.attach({ layer: $('wallpaper'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
   settingsView.configure(() => keybindingEditor.stopRecording());
   $('settings-trigger').addEventListener('click', () => settingsView.open(), { signal: lifetime.signal });
   onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
@@ -6076,7 +5759,7 @@ function bindEvents() {
   onSetting('theme-select', setThemeMode);
   onSetting('dark-theme', (value) => pickTheme('dark', value));
   onSetting('light-theme', (value) => pickTheme('light', value));
-  themeEditor = createThemeEditor({
+  themeEditor.configure({
     themes: () => readCustomThemes(learning.preferences.customThemes),
     currentTheme: shownTheme,
     preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
@@ -6138,8 +5821,7 @@ function bindEvents() {
   // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
   document.addEventListener('beforeinput', () => { typedCount += 1; }, { capture: true, signal: lifetime.signal });
   $('restart-button').addEventListener('click', () => resetSession(practice.sessionKind, { focus: true }), { signal: lifetime.signal });
-  const replayView = createReplayView($('replay-dialog'));
-  practice.commands.watchReplay = () => replayView.open(practice.shownResult);
+  practice.commands.watchReplay = () => practice.replay.open(practice.shownResult);
   practice.commands.runAgain = runAgain;
 
   // When a minimum ends a run (on the tick, its last character or its timer), the typist is mid-stride
@@ -6176,12 +5858,8 @@ function bindEvents() {
 
   practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-  $('progress-period').addEventListener('click', (event) => {
-    const button = event.target.closest('[data-period]');
 
-    if (button) chooseProgress({ period: button.dataset.period });
-  }, { signal: lifetime.signal });
-  $('progress-variants').addEventListener('change', (event) => chooseProgress({ key: event.target.value }), { signal: lifetime.signal });
+
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
 
@@ -6200,25 +5878,12 @@ function bindEvents() {
     progressState.moversOpen = !progressState.moversOpen;
     renderMovers(progressWeek);
   }, { signal: lifetime.signal });
-  $('key-heatmap').addEventListener('keydown', moveHeatFocus, { signal: lifetime.signal });
-  $('key-heatmap').addEventListener('focusin', (event) => {
-    const cell = event.target.closest('.key');
 
-    if (cell && cell.dataset.letter !== heatKey) selectHeatKey(cell.dataset.letter);
-  }, { signal: lifetime.signal });
-  $('key-heatmap').addEventListener('click', (event) => {
-    const cell = event.target.closest('.key');
 
-    if (cell && !$('key-heatmap').hasAttribute('aria-hidden')) selectHeatKey(cell.dataset.letter, { focus: true });
-  }, { signal: lifetime.signal });
-  $('heat-legend').replaceChildren(...[...HEAT_STEPS, HEAT_NONE].map(({ step, label }) => {
-    const item = element('li', label);
-    item.dataset.heat = step;
 
-    return item;
-  }));
-  $('key-select').append(new Option('Choose a key', ''), ...[...'abcdefghijklmnopqrstuvwxyz'].map((letter) => new Option(letter, letter)));
-  $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null), { signal: lifetime.signal });
+
+
+
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
   $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
   $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
@@ -7092,7 +6757,7 @@ friendsBoard = createFriendsBoard({
 });
 
 onlineRace = createOnlineRace({
-  rankCard: challenge.rankCard, people: challenge.people, quick: challenge.quick,
+  rankCard: challenge.rankCard, review: challenge.review, people: challenge.people, quick: challenge.quick,
   getSession: () => session,
   inbox,
   board: friendsBoard,
@@ -7166,13 +6831,18 @@ return {
     lifetime.dispose();
     stopSequence();
     typingHost.dispose();
+    practice.replay.dispose();
     primaryFx.dispose();
     raceFx.dispose();
     sounds.dispose();
     compose.dispose();
     challenge.quick.dispose();
+    challenge.review.dispose();
     challenge.rankCard.clear();
     palette.dispose();
+    detachWallpaper?.();
+    wallpaper.dispose();
+    themeEditor.dispose();
     await disposePageWork();
   },
 };

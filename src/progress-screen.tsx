@@ -1,28 +1,27 @@
+import { useSyncExternalStore } from 'react';
+import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
+import { ProgressKeys } from './progress-keys.js';
+import { ProgressCalendar, ProgressPracticeFigures } from './progress-calendar.js';
+import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 
 export function ProgressScreen({ learning }: { learning: LearningStore }) {
+  const detail = useSyncExternalStore(learning.progress.filters.detail.subscribe, learning.progress.filters.detail.getSnapshot, learning.progress.filters.detail.getSnapshot);
+  const filtersInDetail = ['runs', 'trends', 'keys'].includes(detail);
+  const periodInDetail = filtersInDetail || detail === 'calendar';
+
   return (
 <section id="progress-screen" className="screen progress-screen" data-screen="progress" data-detail="" aria-labelledby="progress-heading" hidden>
         <h1 id="progress-heading" className="sr-only" tabIndex={-1}>Progress</h1>
 
         <div id="progress-overview" className="progress-overview">
           <div id="week-lead" className="week-lead" data-state="none">
-            <p id="lead-figure" className="lead-figure num focus-landing" aria-describedby="lead-sentence" tabIndex={-1}></p>
+            <ProgressLeadFigures progress={learning.progress} />
             <div className="lead-context">
-              <p id="lead-sentence" className="lead-sentence"></p>
-              <div id="lead-meta" className="lead-meta">
-                <div id="progress-filters" className="progress-filters">
-                  <details className="conditions-disclosure">
-                    <summary><span id="lead-sample" className="lead-sample"></span><span className="sr-only">conditions: </span><span id="progress-conditions" className="progress-conditions"></span></summary>
-                    <div className="conditions-panel">
-                      <div id="progress-tests" className="pill-row" role="group" aria-label="Test"></div>
-                      <select id="progress-variants" className="select variant-select" aria-label="Conditions" hidden></select>
-                    </div>
-                  </details>
-                </div>
-              </div>
-              <p id="lead-note" className="lead-note"></p>
+              <ProgressLeadCopy progress={learning.progress} part="sentence" />
+              <div id="lead-meta" className="lead-meta">{!filtersInDetail && <ProgressFilters progress={learning.progress} />}</div>
+              <ProgressLeadCopy progress={learning.progress} part="note" />
             </div>
           </div>
 
@@ -41,17 +40,13 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
           </div>
 
           <div id="week-moved" className="week-moved" hidden>
-            <ol id="week-movers" className="week-movers" aria-label="What changed since last week"></ol>
+            <ProgressMovers progress={learning.progress} />
             <button id="more-movers" className="quiet-link more-movers" type="button" aria-expanded="false" aria-controls="week-movers" hidden></button>
           </div>
 
           <div id="week-charts" className="week-charts" hidden>
             <div className="week-charts-head">
-              <div id="progress-period" className="pill-row period-row" role="group" aria-label="Period">
-                <button className="pill" type="button" data-period="7" aria-pressed="false">7 days</button>
-                <button className="pill" type="button" data-period="30" aria-pressed="true">30 days</button>
-                <button className="pill" type="button" data-period="all" aria-pressed="false">All</button>
-              </div>
+              {!periodInDetail && <ProgressPeriodControl progress={learning.progress} />}
             </div>
             <div className="week-chart-pair">
               <div id="week-speed" className="week-chart-slot"></div>
@@ -73,12 +68,11 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
           <div className="detail-head">
             <button id="progress-back" className="btn btn-ghost btn-sm detail-back" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>Progress</button>
             <h2 id="progress-detail-heading" className="detail-heading focus-landing" tabIndex={-1}></h2>
-            <div id="detail-filters" className="detail-filters"></div>
+            <div id="detail-filters" className="detail-filters">{filtersInDetail && <ProgressFilters progress={learning.progress} />}{periodInDetail && <ProgressPeriodControl progress={learning.progress} />}</div>
           </div>
 
           <section id="detail-runs" className="detail-panel" data-panel="runs" aria-labelledby="progress-detail-heading" hidden>
-            <div id="run-history" className="run-history"></div>
-            <button id="show-all-runs" className="btn btn-secondary btn-sm show-all-runs" type="button" hidden>Show all runs</button>
+            <ProgressRunRows progress={learning.progress} />
             <section className="progress-section" aria-labelledby="comparison-history-heading">
               <h3 id="comparison-history-heading">Drills and retests</h3>
               <HistoryLoops learning={learning} />
@@ -105,25 +99,7 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
           </section>
 
           <section id="detail-keys" className="detail-panel" data-panel="keys" aria-labelledby="progress-detail-heading" hidden>
-            <p id="key-note" className="result-note"></p>
-            <div id="keys-layout" className="keys-layout">
-              <div className="keys-map">
-                <div id="key-heatmap" className="keyboard key-heatmap" role="grid" aria-label="Miss rate by key. Arrow keys move between keys."></div>
-                <ul id="heat-legend" className="heat-legend" aria-hidden="true"></ul>
-                <label id="key-select-field" className="filter-field key-select-field" htmlFor="key-select" hidden>Key
-                  <select id="key-select" className="input"></select>
-                </label>
-                <p id="key-detail" className="result-note key-detail"></p>
-              </div>
-              <div className="keys-pairs">
-                <h3 className="pairs-heading">Pairs to watch</h3>
-                <p id="pairs-empty" className="result-note" hidden>Not enough data yet.</p>
-                <table id="pairs-table" className="pairs-table" hidden>
-                  <thead><tr><th scope="col">pair</th><th scope="col">error rate</th><th scope="col">slow runs</th><th scope="col">samples</th></tr></thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
+            <ProgressKeys controller={learning.progress.keys} />
             <section className="training-memory" aria-labelledby="training-memory-heading">
               <h3 id="training-memory-heading">Patterns across runs</h3>
               <div className="filter-field">
@@ -137,37 +113,19 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
           <section id="detail-calendar" className="detail-panel" data-panel="calendar" aria-labelledby="progress-detail-heading" hidden>
             <div id="practice-goal" className="practice-goal" hidden>
               <div className="practice-layout">
-                <div className="practice-calendar">
-                  <div className="goal-chart">
-                    <div id="goal-months" className="goal-months" aria-hidden="true"></div>
-                    <div className="goal-weekdays" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
-                    <div id="goal-calendar" className="goal-calendar" role="group"></div>
-                  </div>
-                  <p className="goal-legend" aria-hidden="true">less <span data-level="0"></span><span data-level="1"></span><span data-level="2"></span><span data-level="3"></span><span data-level="4"></span> more practice</p>
-                  <div className="goal-day-picker"><label className="sr-only" htmlFor="goal-day-select">Practice day</label><select id="goal-day-select" className="input select"></select></div>
-                  <p id="goal-caption" className="goal-caption" aria-hidden="true"></p>
-                </div>
-                <dl id="practice-stats" className="progress-stats practice-stats"></dl>
+                <ProgressCalendar controller={learning.progress.calendar} />
+                <ProgressPracticeFigures controller={learning.progress.calendar} />
               </div>
               <div id="practice-runs" className="practice-runs"></div>
             </div>
           </section>
 
           <section id="detail-standard" className="detail-panel" data-panel="standard" aria-labelledby="progress-detail-heading" hidden>
-            <div id="standard-score" className="standard-score">
-              <dl id="standard-figures" className="standard-figures">
-                <div><dt>best</dt><dd><strong id="standard-best" className="num" data-bare="">—</strong><span data-speed-unit="">wpm</span></dd></div>
-                <div><dt id="standard-median-label">median</dt><dd><strong id="standard-median" className="num" data-bare="">—</strong><span data-speed-unit="">wpm</span></dd></div>
-              </dl>
-              <p id="standard-score-note" className="result-note"></p>
-              <p id="standard-score-conditions" className="condition-copy"></p>
-              <button id="take-standard" className="btn btn-secondary" type="button">Take the standard test</button>
-            </div>
+            <ProgressStandard progress={learning.progress} />
           </section>
 
           <section id="compose-history" className="detail-panel compose-history" data-panel="compose" aria-labelledby="progress-detail-heading" hidden>
-            <p id="compose-history-note" className="result-note"></p>
-            <div id="compose-history-list"></div>
+            <ProgressCompositions progress={learning.progress} />
           </section>
         </div>
 

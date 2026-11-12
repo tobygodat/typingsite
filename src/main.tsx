@@ -1,3 +1,6 @@
+import { startPageWork } from './async-runtime.js';
+import { createThemeEditor } from './theme-editor.js';
+import { createWallpaper } from './wallpaper.js';
 import { createChallengeStore } from './challenge-store.js';
 import { createQuoteFilters } from './quote-filters.js';
 import { createCompose } from './compose-view.js';
@@ -15,6 +18,10 @@ const container = document.getElementById('app');
 
 if (!container) throw new Error('Missing application root');
 
+startPageWork();
+
+const themeEditor = createThemeEditor();
+const wallpaper = createWallpaper();
 const practice = createPracticeSession();
 const learning = createLearningStore();
 const palette = createPalette();
@@ -24,9 +31,9 @@ const quoteFilters = createQuoteFilters();
 const challenge = createChallengeStore();
 const root = createRoot(container);
 
-flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} quoteFilters={quoteFilters} challenge={challenge} /></StrictMode>));
+flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} quoteFilters={quoteFilters} challenge={challenge} themeEditor={themeEditor} wallpaper={wallpaper} /></StrictMode>));
 
-const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters, challenge);
+const lifecycle = await attachApplication(practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper);
 
 function pagehide(event: PageTransitionEvent) {
   if (!event.persisted) void lifecycle.dispose();

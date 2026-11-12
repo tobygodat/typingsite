@@ -1,3 +1,4 @@
+import { appEntry } from './built-assets.js';
 // Custom themes: settings → appearance → theme → new / edit, and generating one from a vibe
 // (supabase/functions/generate-theme, stood in for here by a routed reply).
 import { test, expect, openApp, openSettings, signInWithEmail } from './fixtures.js';
@@ -46,7 +47,7 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
   await expect(page.locator('#theme-new')).toBeFocused();
 });
 
-test('a saved theme is another theme: it syncs, wears before app.js on reload, and can be deleted', async ({ page, browser, supabase }) => {
+test('a saved theme is another theme: it syncs, wears before the application entry on reload, and can be deleted', async ({ page, browser, supabase }) => {
   supabase.addUser(EMAIL);
   await page.emulateMedia({ colorScheme: 'light' });
   await openApp(page);
@@ -74,12 +75,12 @@ test('a saved theme is another theme: it syncs, wears before app.js on reload, a
   await expect.poll(() => supabase.profileFor(EMAIL)?.preferences?.lightTheme).toMatch(/^custom-/);
   await expect.poll(() => supabase.profileFor(EMAIL)?.preferences?.customThemes ?? '').toContain('"Plum"');
 
-  // On reload the inline script alone wears it: app.js never runs here.
-  await page.route('**/src/app.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+  // On reload the inline script alone wears it: the application entry never runs here.
+  await page.route(`**${appEntry}`, (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-custom', '');
   expect(await token(page, 'accent')).toBe('#7b3fa0');
-  await page.unroute('**/src/app.js');
+  await page.unroute(`**${appEntry}`);
 
   // Another device signed in to the account gets it.
   const other = await browser.newContext();

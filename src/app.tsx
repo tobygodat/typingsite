@@ -1,3 +1,6 @@
+import type { ThemeEditorController } from './theme-editor.js';
+import type { WallpaperController } from './wallpaper.js';
+import { ReplayDialog } from './replay-view.js';
 import type { ChallengeStore } from './challenge-store.js';
 import type { QuoteFiltersController } from './quote-filters.js';
 import { ComposeSurface } from './compose-view.js';
@@ -17,7 +20,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore }) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore; themeEditor: ThemeEditorController; wallpaper: WallpaperController }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -231,27 +234,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <Palette palette={palette} />
 
-  <dialog id="replay-dialog" aria-labelledby="replay-title">
-    <div className="dialog-content">
-      <header className="replay-head">
-        <h2 id="replay-title">Replay</h2>
-        <div className="replay-readout">
-          <span id="replay-stats-label" className="sr-only"></span>
-          <span className="replay-stat" aria-hidden="true"><span id="replay-wpm" className="replay-stat-value" data-bare="">—</span><span id="replay-speed-unit" data-speed-unit="">wpm</span></span>
-          <span className="replay-stat" aria-hidden="true"><span id="replay-accuracy" className="replay-stat-value">—</span><span>%</span></span>
-          <span className="replay-stat" aria-hidden="true"><span id="replay-errors" className="replay-stat-value">0</span><span id="replay-errors-unit">errors</span></span>
-          <span className="replay-stat"><span id="replay-clock" className="replay-stat-value">0.0</span><span>s</span></span>
-        </div>
-      </header>
-      <div id="replay-text" className="replay-text" aria-hidden="true"></div>
-      <div className="dialog-actions">
-        <button id="replay-toggle" className="btn btn-secondary" type="button">Pause</button>
-        <button id="replay-speed" className="btn btn-ghost" type="button" aria-label="Playback speed 1×">1×</button>
-        <button id="replay-restart" className="btn btn-ghost" type="button">Restart</button>
-        <button id="replay-close" className="btn btn-ghost" type="button">Close</button>
-      </div>
-    </div>
-  </dialog>
+  <ReplayDialog controller={practice.replay} />
 
   <dialog id="clear-dialog" aria-labelledby="clear-dialog-title">
     <form method="dialog" className="dialog-content">
@@ -351,7 +334,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <ReleaseDialog />
 
-  <SettingsDialog controller={settings} />
+  <SettingsDialog controller={settings} themeEditor={themeEditor} wallpaper={wallpaper} />
 
   <dialog id="import-dialog" aria-labelledby="import-dialog-title">
     <form id="import-form" className="dialog-content" noValidate>

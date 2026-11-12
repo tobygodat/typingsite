@@ -1,3 +1,8 @@
+import { createThemeEditor, ThemeSettings } from './theme-editor.js';
+import type { ThemeEditorController } from './theme-editor.js';
+import { createWallpaper } from './wallpaper.js';
+import type { WallpaperController } from './wallpaper.js';
+import { WallpaperSettings } from './wallpaper-settings.js';
 import { KeybindingEditor } from './keybinding-editor.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { wordListIds } from './words.js';
@@ -6,7 +11,11 @@ import type { InputHTMLAttributes, MouseEvent } from 'react';
 import { createSettings } from './settings.js';
 import type { SettingId, SettingsController } from './settings.js';
 
-export function SettingsDialog({ controller }: { controller?: SettingsController } = {}) {
+export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController } = {}) {
+  const [localTheme] = useState(createThemeEditor);
+  const [localWallpaper] = useState(createWallpaper);
+  const themeEditor = providedTheme ?? localTheme;
+  const wallpaper = providedWallpaper ?? localWallpaper;
   const [local] = useState(createSettings);
   const settings = controller ?? local;
   const view = useSyncExternalStore(settings.view.subscribe, settings.view.getSnapshot, settings.view.getSnapshot);
@@ -61,81 +70,8 @@ export function SettingsDialog({ controller }: { controller?: SettingsController
       <div className="settings-content">
         <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-title" hidden={view.category !== 'appearance'}>
           <div className="settings-intro"><h3 id="settings-appearance-title">Appearance</h3></div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="theme-select-label">theme</strong></div>
-            <fieldset className="setting-options" id="theme-select" aria-labelledby="theme-select-label" disabled={view.disabled['theme-select'] ?? false} onClick={(event) => choose('theme-select', event)}>
-              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'system', true)} /><span>system</span></label>
-              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'dark')} /><span>dark</span></label>
-              <label className="setting-option"><input type="radio" name="theme-select" {...radio('theme-select', 'light')} /><span>light</span></label>
-              <button className="setting-action" id="theme-new" type="button" aria-controls="theme-editor" aria-expanded="false">new</button>
-              <button className="setting-action" id="theme-edit" type="button" aria-controls="theme-editor" aria-expanded="false" hidden>edit</button>
-            </fieldset>
-          </div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="dark-theme-label">dark theme</strong></div>
-            <fieldset className="setting-options" id="dark-theme" aria-labelledby="dark-theme-label" disabled={view.disabled['dark-theme'] ?? false} onClick={(event) => choose('dark-theme', event)}>
-              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'dark', true)} /><span>dark</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'terminal')} /><span>terminal</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'midnight')} /><span>midnight</span></label>
-              <label className="setting-option"><input type="radio" name="dark-theme" {...radio('dark-theme', 'nord')} /><span>nord</span></label>
-            </fieldset>
-          </div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="light-theme-label">light theme</strong></div>
-            <fieldset className="setting-options" id="light-theme" aria-labelledby="light-theme-label" disabled={view.disabled['light-theme'] ?? false} onClick={(event) => choose('light-theme', event)}>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'light', true)} /><span>light</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'paper')} /><span>paper</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'shadcn')} /><span>shadcn</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'soft')} /><span>soft</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'swiss')} /><span>swiss</span></label>
-              <label className="setting-option"><input type="radio" name="light-theme" {...radio('light-theme', 'e-ink')} /><span>e-ink</span></label>
-            </fieldset>
-          </div>
-          <form id="theme-editor" className="theme-editor" aria-label="Custom theme" noValidate hidden>
-            <input className="input" id="theme-name" type="text" maxLength={40} autoComplete="off" aria-label="Theme name" />
-            <div className="theme-vibe">
-              <input className="input" id="theme-vibe" type="text" maxLength={120} autoComplete="off" placeholder="describe a vibe" aria-label="Describe a vibe" />
-              <button className="btn btn-ghost" id="theme-generate" type="button">generate</button>
-            </div>
-            <p id="theme-generate-status" className="theme-status" role="status" aria-live="polite"></p>
-            <div id="theme-key-colors" className="theme-colors"></div>
-            <details className="theme-more">
-              <summary>more colours</summary>
-              <div id="theme-more-colors" className="theme-colors"></div>
-            </details>
-            <div className="theme-editor-actions">
-              <button className="btn btn-ghost" id="theme-delete" type="button">delete</button>
-              <button className="btn btn-ghost" id="theme-cancel" type="button">cancel</button>
-              <button className="btn btn-primary" id="theme-save" type="submit">save</button>
-            </div>
-          </form>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="wallpaper-label">background</strong><small id="wallpaper-error" className="preference-note" hidden>can’t read that file</small></div>
-            <div className="setting-options" role="group" aria-labelledby="wallpaper-label" aria-describedby="wallpaper-error">
-              <label className="setting-option"><input id="wallpaper-file" type="file" accept="image/*" /><span>choose…</span></label>
-              <button id="wallpaper-remove" className="setting-option" type="button" hidden><span>remove</span></button>
-            </div>
-          </div>
-          <div className="preference-row" hidden>
-            <div className="preference-copy"><strong id="wallpaper-style-label">style</strong></div>
-            <fieldset className="setting-options" id="wallpaper-style" aria-labelledby="wallpaper-label wallpaper-style-label" onClick={(event) => choose('wallpaper-style', event)}>
-              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'regular')} /><span>regular</span></label>
-              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'dither', true)} /><span>dither</span></label>
-              <label className="setting-option"><input type="radio" name="wallpaper-style" {...radio('wallpaper-style', 'gradient')} /><span>gradient</span></label>
-            </fieldset>
-          </div>
-          <label className="preference-row" htmlFor="wallpaper-blur" hidden>
-            <span className="preference-copy"><strong>blur</strong></span>
-            <span className="preference-range"><input className="range" id="wallpaper-blur" type="range" min="0" max="32" step="2" defaultValue="0" /></span>
-          </label>
-          <label className="preference-row" htmlFor="wallpaper-opacity" hidden>
-            <span className="preference-copy"><strong>opacity</strong></span>
-            <span className="preference-range"><input className="range" id="wallpaper-opacity" type="range" min="10" max="100" step="5" defaultValue="100" /></span>
-          </label>
-          <label className="preference-row" htmlFor="wallpaper-reach" hidden>
-            <span className="preference-copy"><strong>height</strong></span>
-            <span className="preference-range"><input className="range" id="wallpaper-reach" type="range" min="0" max="100" step="5" defaultValue="0" /></span>
-          </label>
+          <ThemeSettings controller={themeEditor} settings={settings} />
+          <WallpaperSettings controller={wallpaper} settings={settings} />
           <div className="preference-row">
             <div className="preference-copy"><strong id="font-size-label">text size</strong></div>
             <fieldset className="setting-options" id="font-size" aria-labelledby="font-size-label" disabled={view.disabled['font-size'] ?? false} onClick={(event) => choose('font-size', event)}>

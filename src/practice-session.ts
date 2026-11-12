@@ -1,3 +1,4 @@
+import { createReplayView } from './replay-view.js';
 import type { Attempt, Replay } from './typing.js';
 import type { Preferences } from './profile-types.js';
 import { createStore } from './store.js';
@@ -98,6 +99,7 @@ export function createPracticeSession() {
 
   return {
     result,
+    replay: createReplayView(),
     attachPrimary(input: HTMLTextAreaElement) {
       detachNative?.();
       nativeInput = input;

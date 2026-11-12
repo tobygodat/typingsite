@@ -1,3 +1,4 @@
+import { createProgressSections } from './progress-sections.js';
 import type { SyncedProfile } from './profile-copy.js';
 import type { CopyPart } from './practice-session.js';
 import type { Preferences, HydratedProfile } from './profile-types.js';
@@ -80,6 +81,7 @@ export function createLearningStore() {
   }
 
   return {
+    progress: createProgressSections(),
     train,
     comparison,
     loops,
