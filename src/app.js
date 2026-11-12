@@ -4089,11 +4089,6 @@ const progressState = { period: '30', key: '', view: 'speed', allRuns: false, de
 const RECENT_RUNS = 10;
 let listedRuns = [];
 
-// The condition set the page reads, as renderHistory chose it.
-function variantConditions() {
-  return testShapes([...profile.runs.filter(practiceRun), ...profile.loops]).flatMap((shape) => shape.variants).find((variant) => variant.key === progressState.key)?.conditions || null;
-}
-
 function chooseProgress(choice) {
   if (Object.entries(choice).every(([name, value]) => progressState[name] === value)) return;
   Object.assign(progressState, choice, { allRuns: false });
@@ -4179,8 +4174,10 @@ function renderTestPills(shapes) {
     return option;
   })));
 
+  // A pill gone or disabled by the redraw (a clear, here or in another tab) can't hold focus, so the page's heading does.
   if (focused) {
-    [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape)?.focus();
+    const pill = [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape && !node.disabled && node.isConnected);
+    (pill?.checkVisibility() ? pill : $('progress-heading')).focus();
   }
 }
 
@@ -4258,7 +4255,7 @@ function renderOverview(date) {
   $('progress-empty').hidden = hasProgress;
   $('week-lead').hidden = !hasProgress;
   renderLead(week.lead);
-  renderMovers(week, source);
+  renderMovers(week);
   progressRuns = week.charts.runs;
   progressWindow = week.charts.window;
   $('week-charts').hidden = !progressRuns.length;
@@ -4386,16 +4383,15 @@ function renderLead(lead) {
   $('lead-note').hidden = !note;
 }
 
-// What moved it: the units whose state changed this week, ranked (weekMovers), the first SHOWN_MOVERS shown and the
-// rest behind one "more"; then practice. A slipping unit's one action drills it as Train would, recording the policy
-// and focus that ranked it.
-function renderMovers(week, source) {
+// What moved it: the units fixed this week, ranked (weekMovers), the first SHOWN_MOVERS shown and the rest behind one
+// "more"; then practice.
+function renderMovers(week) {
   const open = progressState.moversOpen;
   // A redraw keeps keyboard focus on the same row's control, or on the page's heading when that row has gone.
   const held = $('week-movers').contains(document.activeElement) ? document.activeElement.closest('li')?.dataset.unit ?? 'practice' : null;
 
   const rows = week.movers.map((mover, i) => {
-    const row = moverRow(mover, source, week.recommendation);
+    const row = moverRow(mover);
     row.hidden = i >= SHOWN_MOVERS && !open;
 
     return row;
@@ -4409,7 +4405,7 @@ function renderMovers(week, source) {
   $('more-movers').textContent = open ? 'Fewer' : `${extra} more`;
   $('more-movers').setAttribute('aria-expanded', String(open));
 
-  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held && !row.hidden)?.querySelector('button') || $('progress-heading')).focus();
+  if (held) (rows.find((row) => (row.dataset.unit ?? 'practice') === held)?.querySelector('button') || $('progress-heading')).focus();
 }
 
 function statusWord(word, tone) {
@@ -4426,24 +4422,14 @@ function changeLine(before, after, tail, className) {
   return element('p', [element('span', before, 'mover-before'), arrow, element('span', ' to ', 'sr-only'), element('span', after, 'mover-after'), tail && element('span', ` ${tail}`, 'mover-tail')], className);
 }
 
-function moverRow(mover, source, recommendation) {
-  const row = element('li', '', 'mover');
-  row.dataset.status = mover.status;
+function moverRow(mover) {
+  const row = element('li', '', 'mover is-fixed');
   row.dataset.unit = mover.unit;
   const copy = moverCopy(mover);
   const tail = [copy.tail || `over ${plural(mover.after.intervals, 'clean interval')}`, mover.split === 'drill' && 'since your drill'].filter(Boolean).join(' ');
   const change = changeLine(copy.before, copy.after, tail, 'mover-change num');
   change.title = moverSample(mover);
-  const action = element('span', '', 'mover-action');
-
-  if (mover.status === 'slipping') {
-    const drill = element('button', `Drill “${mover.unit}”`, 'btn btn-secondary btn-sm');
-    drill.type = 'button';
-    drill.addEventListener('click', () => practiceTarget(mover.unit, source, recommendation));
-    action.append(drill);
-  }
-
-  row.append(element('span', mover.unit, 'mover-unit'), change, statusWord(mover.status, mover.status === 'fixed' ? 'success' : 'danger'), action);
+  row.append(element('span', mover.unit, 'mover-unit'), change, statusWord('fixed', 'success'));
 
   return row;
 }
@@ -4458,7 +4444,7 @@ function practiceRow(practice) {
   open.addEventListener('click', () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') }));
   const streak = practice.streak ? `${plural(practice.streak, 'day')} in a row${practice.goal ? ` at ${practice.goal} min` : ''}` : '';
   const change = changeLine(goalMinutes(practice.previous), `${goalMinutes(practice.current)} min`, streak && `· ${streak}`, 'mover-change num');
-  row.append(open, change, statusWord(practice.status, 'neutral'), element('span', '', 'mover-action'));
+  row.append(open, change, statusWord(practice.status, 'neutral'));
 
   return row;
 }
@@ -6963,7 +6949,7 @@ function bindEvents() {
   $('progress-back').addEventListener('click', closeProgressDetail);
   $('more-movers').addEventListener('click', () => {
     progressState.moversOpen = !progressState.moversOpen;
-    renderMovers(progressWeek, variantConditions());
+    renderMovers(progressWeek);
   });
   $('key-heatmap').addEventListener('keydown', moveHeatFocus);
   $('key-heatmap').addEventListener('focusin', (event) => {

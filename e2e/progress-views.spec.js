@@ -33,13 +33,13 @@ const runs = [
   run(0, 70, 96),
 ];
 
-// Two weeks at plain 25 words, faster this week (medians 73 then 78): "qu" missed now and then before, clean since;
-// four pairs clean before and missed this week.
-const SLIPPING = ['ex', 'ox', 'ux', 'ix'];
+// Two weeks at plain 25 words, faster this week (medians 73 then 78): five pairs missed once a run before, clean in
+// more tries since, so all five are fixed.
+const FIXED = ['qu', 'ex', 'ox', 'ux', 'ix'];
 
-const weekRuns = (before = [70, 72, 74, 73, 75, 71, 74], after = [76, 78, 77, 79, 78, 80]) => [
-  ...before.map((wpm, i) => run(13 - i, wpm, 95, {}, [['qu', 8, 1, 8, 200, 0], ...SLIPPING.map((pair) => [pair, 8, 0, 8, 200, 0])])),
-  ...after.map((wpm, i) => run(5 - i, wpm, 96, {}, [['qu', 15, 0, 15, 200, 0], ...SLIPPING.map((pair, k) => [pair, 8, 3 + (k % 2), 8, 200, 0])])),
+const weekRuns = (before = [70, 72, 74, 73, 75, 71, 74], after = [76, 78, 77, 79, 78, 80], pairs = FIXED) => [
+  ...before.map((wpm, i) => run(13 - i, wpm, 95, {}, pairs.map((pair) => [pair, 8, 1, 8, 200, 0]))),
+  ...after.map((wpm, i) => run(5 - i, wpm, 96, {}, pairs.map((pair) => [pair, 15, 0, 15, 200, 0]))),
 ];
 
 const profileOf = (list, extra = {}) => ({ version: 2, preferences: {}, attempts: [], runs: list, loops: [], seenTextIds: list.map((r) => r.textId), bests: {},
@@ -165,39 +165,71 @@ test('the conditions line is the control: lengths and condition sets change the 
   await expect(page.locator('#run-history')).toContainText('100 wpm');
 });
 
-test('what moved it: fixed and slipping pairs with their evidence, three at a time, then practice; a slipping pair drills', async ({ page, supabase }) => {
+test('what moved it: the fixed pairs with their evidence, three at a time, then practice; a named pair still drills from Keys', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
   const rows = page.locator('#week-movers > li');
   await expect(page.locator('#week-movers')).toHaveAccessibleName('What changed since last week');
-  // Ranked by the time each loses or saved; three show, then practice.
+  // Ranked by the time each saved; three show, then practice.
   await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'practice']);
   const unit = (name) => rows.filter({ has: page.locator('.mover-unit', { hasText: new RegExp(`^${name}$`) }) });
-  await expect(unit('ex').locator('.mover-change')).toHaveText('0 of 56 → to 18 of 48 missed');
-  await expect(unit('ex').locator('.status')).toHaveText('slipping');
-  await expect(unit('ex').locator('.mover-after')).toHaveCSS('color', await resolved(page, '--danger'));
-  await expect(unit('ex').locator('.mover-change')).toHaveAttribute('title', '56 tries in 7 runs before this week, 48 tries in 6 runs this week');
-  await expect(unit('qu').locator('.mover-change')).toHaveText('7 of 56 → to 0 of 90 missed');
-  await expect(unit('qu').locator('.status')).toHaveText('fixed');
-  await expect(unit('qu').locator('.mover-after')).toHaveCSS('color', await resolved(page, '--accent'));
-  await expect(unit('qu').getByRole('button')).toHaveCount(0);
+  await expect(unit('ex').locator('.mover-change')).toHaveText('7 of 56 → to 0 of 90 missed');
+  await expect(unit('ex').locator('.status')).toHaveText('fixed');
+  await expect(unit('ex').locator('.mover-after')).toHaveCSS('color', await resolved(page, '--accent'));
+  await expect(unit('ex').locator('.mover-change')).toHaveAttribute('title', '56 tries in 7 runs before this week, 90 tries in 6 runs this week');
+  // A fixed row is a fact, with nothing to press.
+  await expect(rows.filter({ visible: true }).locator('.status')).toHaveText(['fixed', 'fixed', 'fixed', 'same']);
+  await expect(rows.locator('button')).toHaveCount(1);
   // Two minutes each week: the same, as a plain fact.
   await expect(rows.last().locator('.mover-change')).toHaveText('2 → to 2 min · 6 days in a row');
-  await expect(rows.last().locator('.status')).toHaveText('same');
 
   await expect(page.locator('#more-movers')).toHaveText('2 more');
   await page.locator('#more-movers').click();
   await expect(page.locator('#more-movers')).toHaveAttribute('aria-expanded', 'true');
-  await expect(rows.filter({ visible: true })).toHaveCount(6);
+  await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'ox', 'ux', 'practice']);
   await page.locator('#more-movers').click();
   await expect(rows.filter({ visible: true })).toHaveCount(4);
 
-  // A slipping pair's one action is the drill Train would start.
-  await unit('ex').getByRole('button', { name: 'Drill “ex”' }).click();
+  // Drilling a named pair stays one step away: Patterns across runs in Keys starts the drill Train would.
+  await openProgressDetail(page, 'keys');
+  const target = page.locator('#training-targets .training-target').first();
+  const name = (await target.locator('h3').textContent()).match(/“(.+)”/)[1];
+  await target.getByRole('button', { name: `Practice “${name}” again` }).click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#session-title')).toHaveText('Practice “ex”');
+  await expect(page.locator('#session-title')).toHaveText(`Practice “${name}”`);
   // Coming back from another screen, Progress opens on its overview.
   await openView(page, 'Progress');
   await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', '');
+});
+
+// The list holds only what there is: no "more" under a short list, a practice row alone, and no list at all.
+test('one fixed pair lists alone with practice, a week with nothing fixed lists practice, and with neither there is no list', async ({ page, supabase }) => {
+  await openProgress(page, supabase, weekRuns(undefined, undefined, ['qu']));
+  const units = page.locator('#week-movers > li .mover-unit');
+  await expect(units).toHaveText(['qu', 'practice']);
+  await expect(page.locator('#more-movers')).toBeHidden();
+
+  const signInAs = async (email, list) => {
+    const user = supabase.addUser(email);
+    supabase.profiles.set(user.id, { data: profileOf(list) });
+    await page.keyboard.press('Control+k');
+    await page.keyboard.type('sign out');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
+    await signInWithEmail(page, email);
+    await openView(page, 'Progress');
+  };
+
+  await signInAs('practice-only@stilltype.test', weekRuns(undefined, undefined, []));
+  await expect(units).toHaveText(['practice']);
+  await expect(page.locator('#more-movers')).toBeHidden();
+  await expect(page.locator('#week-moved')).toBeVisible();
+
+  // Runs a month old: a lead that says so, no list and no rule left over, and the links to everything else.
+  await signInAs('old@stilltype.test', [run(30, 60, 95), run(29, 62, 95), run(28, 61, 95)]);
+  await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'none');
+  await expect(page.locator('#week-moved')).toBeHidden();
+  await expect(page.locator('#week-movers > li')).toHaveCount(0);
+  await expect(page.locator('#progress-more')).toBeVisible();
 });
 
 test('the practice row opens the practice calendar, with its goal, streaks and runs started, and Progress goes back to it', async ({ page, supabase }) => {
@@ -537,14 +569,14 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
   await supabase.attach(other);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  const drill = page.getByRole('button', { name: 'Drill “ex”' });
-  await drill.focus();
+  const practice = page.getByRole('button', { name: 'practice calendar', exact: true });
+  await practice.focus();
 
-  // A run typed in the other tab: the lead counts it, and focus stays on the same row's button.
+  // A run typed in the other tab: the lead and the practice row count it, and focus stays on the row's button.
   await completePassage(other);
   await expect(other.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
-  await expect(page.getByRole('button', { name: 'Drill “ex”' })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'practice calendar', exact: true })).toBeFocused();
 
   // A run row open in the runs view stays open, with focus, while the other tab clears and undoes.
   await openProgressDetail(page, 'runs');
@@ -565,6 +597,29 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
   await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
   await expect(page.locator('#week-movers .mover-unit').first()).toHaveText('ex');
 });
+
+// A length pill holds focus while the other tab clears: the pills are drawn again for an empty history, and the pill
+// that had focus is gone or disabled, so focus goes to the page's heading, never to the page's body.
+for (const where of ['overview', 'trends']) {
+  test(`a clear in another tab moves focus from a length pill to the page's heading, on the ${where}`, async ({ page, context, supabase }) => {
+    await openProgress(page, supabase, weekRuns(), { extra: { preferences: { mode: 'words', count: 25, wordList: '1k' } } });
+    const other = await context.newPage();
+    await other.clock.install({ time: NOW });
+    await supabase.attach(other);
+    await openApp(other);
+    await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+
+    if (where === 'trends') await openProgressView(page, 'Speed');
+    await page.locator('.conditions-disclosure > summary').click();
+    await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '25 words' }).focus();
+    await openView(other, 'Progress');
+    await other.locator('#clear-history').click();
+    await other.locator('#confirm-clear-input').fill('clear');
+    await other.locator('#confirm-clear').click();
+    await expect(page.locator('#progress-empty')).toBeVisible();
+    await expect(page.locator('#progress-heading')).toBeFocused();
+  });
+}
 
 // The full charts keep no rows. A clear from another tab closes them whole, and never leaves blank charts under
 // figures of runs that are gone.
