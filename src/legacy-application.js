@@ -94,7 +94,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters) {
+export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -7090,6 +7090,7 @@ friendsBoard = createFriendsBoard({
 });
 
 onlineRace = createOnlineRace({
+  rankCard: challenge.rankCard,
   getSession: () => session,
   inbox,
   board: friendsBoard,

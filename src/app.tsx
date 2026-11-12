@@ -1,3 +1,4 @@
+import type { ChallengeStore } from './challenge-store.js';
 import type { QuoteFiltersController } from './quote-filters.js';
 import { ComposeSurface } from './compose-view.js';
 import type { ComposeController } from './compose-view.js';
@@ -16,7 +17,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController }) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -213,7 +214,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
       <ProgressScreen learning={learning} />
 
-      <ChallengeScreen />
+      <ChallengeScreen challenge={challenge} />
     </main>
 
     <footer className="site-footer">

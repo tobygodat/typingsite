@@ -9,7 +9,6 @@ import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } f
 import { redrawList } from './inbox.js';
 import { createRaceReview } from './race-review.js';
 import { cardOutcome, ratingResult } from './quick-match.js';
-import { createRankCard } from './rank-card.js';
 import { createQuickMatch } from './quick-match-view.js';
 import { peopleRows } from './challenge-people.js';
 import { drawPeople } from './challenge-people-view.js';
@@ -65,7 +64,7 @@ function forgetPendingInvite() { try { sessionStorage.removeItem(PENDING_INVITE)
 
 // Online runs use the same replay and passage renderer as practice. Only the service owns the
 // shared start time and results; no online attempt is added to a profile or personal best.
-export function createOnlineRace({ getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
+export function createOnlineRace({ rankCard, getSession, signIn, navigate, renderText, updateCharacterStates, setRunning, announce, onPassageSeen, inbox, board, onModeChange, wireTyping, practice, updateGlide, ownBest, raceOwnBest, raceGhost }) {
   let room = null;
   let credentials = null;
   let joinLink = multiplayer.parseRaceLink(location.href) || pendingInvite();
@@ -149,7 +148,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     return !name || name === getSession()?.user.email.split('@')[0].slice(0, 24) ? 'Racer' : name;
   }
 
-  const rankCard = createRankCard($('online-rank-card'), $('rank-card-template'));
   // The settled result the card shows, so a room update that doesn't change it never replays it.
   let shownResult = '';
 

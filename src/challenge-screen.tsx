@@ -1,4 +1,7 @@
-export function ChallengeScreen() {
+import { RankCard } from './rank-card.js';
+import type { ChallengeStore } from './challenge-store.js';
+
+export function ChallengeScreen({ challenge }: { challenge: ChallengeStore }) {
   return (
 <section id="compete-screen" className="screen" data-screen="compete" aria-labelledby="compete-heading" hidden>
         <h1 id="compete-heading" className="sr-only" tabIndex={-1}>Challenge</h1>
@@ -75,30 +78,7 @@ export function ChallengeScreen() {
             <p id="online-room-conditions" className="condition-copy"></p>
             <p id="online-room-status" className="online-copy" role="status"></p>
             <p id="online-rating-change" className="online-copy" role="status" hidden></p>
-            <div id="online-rank-card" className="rank-card-slot" aria-hidden="true" hidden></div>
-            <template id="rank-card-template">
-              <div className="rank-card">
-                <canvas className="rc-wind"></canvas>
-                <div className="rc-body">
-                  <p className="rc-label" data-rc="label" data-rc-clear="" data-rc-text=""></p>
-                  <div className="rc-emblem" data-rc="emblem" data-rc-clear="">
-                    <svg viewBox="0 0 132 132" focusable="false">
-                      <defs><linearGradient gradientUnits="userSpaceOnUse" x1="14" y1="6" x2="118" y2="126"><stop className="rc-stop-a" offset="0" /><stop className="rc-stop-b" offset="1" /></linearGradient></defs>
-                      <polygon className="rc-hull" points="66,6 118,36 118,96 66,126 14,96 14,36" strokeWidth="4" data-rc-stroke="" />
-                      <g className="rc-mark" data-rc="mark" fill="none" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" data-rc-stroke=""></g>
-                      <text className="rc-step" data-rc="step" x="66" y="118" textAnchor="middle" fontSize="13"></text>
-                    </svg>
-                  </div>
-                  <p className="rc-rank" data-rc="rank" data-rc-clear="" data-rc-text=""></p>
-                  <p className="rc-from" data-rc="from" data-rc-clear="" data-rc-text=""></p>
-                  <p className="rc-nums" data-rc-clear="" data-rc-text=""><span className="rc-rating num" data-rc="rating"></span><span className="rc-delta num" data-rc="delta"></span></p>
-                  <p className="rc-count" data-rc="count" data-rc-clear="" data-rc-text=""></p>
-                  <div className="rc-bar" data-rc="bar" data-rc-clear=""><span className="rc-fill"></span><span className="rc-change"></span></div>
-                  <p className="rc-ends" data-rc="ends" data-rc-clear="" data-rc-text=""><span></span><span></span></p>
-                  <p className="rc-why" data-rc="why" data-rc-clear="" data-rc-text=""></p>
-                </div>
-              </div>
-            </template>
+            <RankCard controller={challenge.rankCard} />
             <p id="online-connection" className="online-copy" role="status"></p>
             <p id="online-account-invite-status" className="online-copy" role="status" hidden></p>
             <div id="online-share" className="online-share" hidden>
