@@ -54,7 +54,6 @@ import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { KEY_OUTCOME, SOUND_LABELS, SOUND_MODES, createSounds, keyOutcome, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
-import { createPalette } from './palette.js';
 import { createSettingsView, disableSetting, onSetting, selectSetting } from './settings.js';
 import { createWallpaper } from './wallpaper.js';
 import { createThemeEditor, showThemeOptions, wearColors } from './theme-editor.js';
@@ -95,7 +94,7 @@ function copyParts(value) {
   });
 }
 
-export function attachApplication(practice, learning) {
+export function attachApplication(practice, learning, palette) {
 function updateComparison(patch) {
   flushSync(() => learning.comparison.publish({ ...learning.comparison.getSnapshot(), ...patch }));
 }
@@ -226,7 +225,6 @@ let wordsPassage = null;
 
 // The words the Train list last drew, so its button can tell when the runs changed underneath.
 const ghostOn = () => learning.preferences.paceCaret !== 'off';
-let palette = null;
 let keybindingEditor = null;
 let settingsView = null;
 let themeEditor = null;
@@ -6942,13 +6940,8 @@ function paletteCommands(query) {
 }
 
 function bindPalette() {
-  palette = createPalette({
-    dialog: $('palette'),
-    input: $('palette-input'),
-    list: $('palette-list'),
-    empty: $('palette-empty'),
-    highlight: document.querySelector('.palette-highlight'),
-    trigger: $('palette-trigger'),
+  $('palette-trigger').addEventListener('click', () => palette.open());
+  palette.configure({
     getCommands: paletteCommands,
     onOpen: () => {
       quoteFilters.dismiss();

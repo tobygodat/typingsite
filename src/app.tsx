@@ -1,3 +1,5 @@
+import { Palette } from './palette.js';
+import type { PaletteController } from './palette.js';
 import type { LearningStore } from './learning-store.js';
 import { TrainScreen } from './train-screen.js';
 import { LearnScreen } from './learn-screen.js';
@@ -10,7 +12,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning }: { practice: PracticeSession; learning: LearningStore }) {
+export function App({ practice, learning, palette }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -279,20 +281,7 @@ export function App({ practice, learning }: { practice: PracticeSession; learnin
 
   <button id="exit-focus" className="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint" className="key-hint">esc</kbd> exit focus</button>
 
-  <dialog id="palette" className="palette" aria-label="Command palette">
-    <div className="palette-box">
-      <div className="palette-search">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
-        <input id="palette-input" type="text" role="combobox" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" autoComplete="off" spellCheck={false} placeholder="Search commands" />
-        <kbd className="key-hint">esc</kbd>
-      </div>
-      <div className="palette-scroll">
-        <span className="palette-highlight" aria-hidden="true"></span>
-        <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
-        <p id="palette-empty" className="palette-empty" hidden>No matches</p>
-      </div>
-    </div>
-  </dialog>
+  <Palette palette={palette} />
 
   <dialog id="replay-dialog" aria-labelledby="replay-title">
     <div className="dialog-content">
