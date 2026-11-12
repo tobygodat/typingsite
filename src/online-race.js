@@ -83,10 +83,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
   let refused = false;
   let finishRequested = false;
-  // Whether a finishing packet (the one that carries the trace) has gone; the last few progress packets sent, each
-  // with the keys it covered; and the trace sent for the keys the service settled on, when it finished this seat
-  // before that packet (sendSettledTrace).
-  let finishSent = false;
+  // Every progress packet this race sent, each with the keys it covered, and the trace sent for the keys the service
+  // settled on when it finished this seat on a packet that carried none (sendSettledTrace).
   let sentProgress = [];
   let settledTrace = null;
   let baseKeystrokes = 0;
@@ -659,7 +657,6 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     dirty = false;
     refused = false;
     finishRequested = false;
-    finishSent = false;
     sentProgress = [];
     settledTrace = null;
     lastClock = '';
@@ -1002,9 +999,8 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
         const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;
         const payload = { typed, keystrokes: baseKeystrokes + replay.insertions - baseTyped.length, errors: baseErrors + replay.mistakes - prefixErrors, finished: finishRequested, trace };
         dirty = false;
-        finishSent ||= finishRequested;
-        sentProgress = [...sentProgress.slice(-3), { ...payload, events: attempt.events.length, at: performance.now() - startPerf }];
-        next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload);
+        const keys = { events: attempt.events.length, at: performance.now() - startPerf };
+        next = await multiplayer.updateRaceProgress(getSession(), currentCredentials, payload, (sequence) => sentProgress.push({ ...payload, ...keys, sequence }));
       } else {
         next = await multiplayer.getRace(getSession(), currentCredentials);
         refused = false;
@@ -1079,19 +1075,39 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   // The service finishes a seat on its own clock: progress that lands after it (sent just before this tab's clock ran
   // out, or from a tab whose clock ran late) finishes the run on the keys it carried, with no trace. The service keeps
   // a trace sent after that when it replays to the same result, so this tab sends one for exactly those keys: the
-  // events up to the packet the service settled on. A quick match is left alone: its seat finishes only with its own
-  // finishing packet (ADR 0014), so this never happens there.
+  // events up to the packet the service settled on. Which packet that was is the sequence number the service reports
+  // for the seat, never what this tab heard back: a request can fail after the service applied it, and the tab's own
+  // finish that follows holds keys the service never took, so its trace can't be kept; or that finish can fail on its
+  // way, and the service settle the seat on an earlier packet. Every packet sent is kept for this, so a run of failed
+  // sends can't push the settled one out. A send of the trace that fails is tried again. A
+  // quick match is left alone: its seat finishes only with its own finishing packet (ADR 0014), so this never happens
+  // there.
   function sendSettledTrace() {
     const me = self();
 
-    if (room.quick || !me?.finished || finishSent || settledTrace || !attempt || baseTyped) return;
-    const settled = sentProgress.findLast((sent) => sent.typed === me.typed && sent.keystrokes === me.keystrokes);
-    const trace = settled && encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
+    if (room.quick || !me?.finished || settledTrace || !attempt || baseTyped) return;
+    const settled = sentProgress.find((sent) => sent.sequence === me.sequence);
+
+    // Settled on a finishing packet, which carried this run's trace itself.
+    if (!settled || settled.trace) return;
+    const trace = encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
 
     if (!trace) return;
     finishRequested = true;
-    finishSent = true;
-    settledTrace = multiplayer.updateRaceProgress(getSession(), credentials, { ...settled, finished: true, trace }).catch(() => {});
+    const from = credentials;
+    const { typed, keystrokes, errors } = settled;
+
+    settledTrace = (async () => {
+      for (let send = 1; send <= TRACE_READS && credentials === from; send += 1) {
+        try {
+          await multiplayer.updateRaceProgress(getSession(), from, { typed, keystrokes, errors, finished: true, trace });
+
+          return;
+        } catch {
+          if (send < TRACE_READS) await new Promise((resolve) => { setTimeout(resolve, TRACE_RETRY_MS); });
+        }
+      }
+    })();
   }
 
   // Both racers' traces draw the graph and the replay. A race from before traces, or one either racer
@@ -1166,14 +1182,19 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
   });
 
   for (const back of document.querySelectorAll('[data-challenge-back]')) back.addEventListener('click', () => show('people', { focus: true }));
-  // A key held down repeats. After Done, the repeat would press the link that opened the view, and after any press
-  // it would press whatever focus moved to. So a repeat presses no button or link anywhere on Challenge. (After
+  // A key held down repeats. After Done or Back, the repeat would press the link that opened the view, and after any
+  // press it would press whatever focus moved to. So a repeat presses no button or link anywhere on Challenge. (After
   // Dismiss focus lands on a row, which nothing presses: see drawPeople.) Fields are left alone: the race's own
   // typing rules hold there, and a name field takes a held key as any field does.
   $('compete-screen').addEventListener('keydown', (event) => {
     const pressing = event.key === 'Enter' || event.key === ' ';
 
     if (event.repeat && pressing && event.target.closest('button, a[href], summary')) event.preventDefault();
+  });
+  // A row has focus in place of its action, so Space there is a press that presses nothing. The browser would take it
+  // as a scroll, and carry the row (and focus) off the screen; it stays put. Space anywhere else scrolls as ever.
+  $('people-list').addEventListener('keydown', (event) => {
+    if (event.key === ' ' && event.target.matches('.people-row')) event.preventDefault();
   });
   $('people-list').addEventListener('click', (event) => {
     const button = event.target.closest('[data-people-action]');

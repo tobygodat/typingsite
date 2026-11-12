@@ -213,11 +213,13 @@ export function joinRace(session, { roomId, inviteToken, displayName, guestToken
 export const getRace = (session, credentials) => action(session, 'get', credentials);
 export const setRaceReady = (session, credentials, ready = true) => action(session, 'ready', credentials, { ready });
 
-// A finished racer's progress carries the run's keystroke trace, which draws the graph and replay.
-export function updateRaceProgress(session, credentials, { typed, keystrokes, errors, finished = false, trace = null }) {
+// A finished racer's progress carries the run's keystroke trace, which draws the graph and replay. `sent` hears the
+// packet's sequence number, which the service reports back for the packet it last applied.
+export function updateRaceProgress(session, credentials, { typed, keystrokes, errors, finished = false, trace = null }, sent = () => {}) {
   const key = `${credentials.roomId}:${session?.user?.id || credentials.guestToken}`;
   const sequence = (sequences.get(key) || 0) + 1;
   sequences.set(key, sequence);
+  sent(sequence);
 
   const progress = { typed, keystrokes, errors, finished, sequence };
 
