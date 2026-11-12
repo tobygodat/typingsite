@@ -96,7 +96,7 @@ export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboar
 }
 
 // Where a loop's evidence splits, found among the runs: its retest's date (ms), else the loop's own.
-export const retestSplit = (loop, runs) => splitOf(loop, runs.find((run) => run.id === loop.afterAttemptId)?.at);
+const retestSplit = (loop, runs) => splitOf(loop, runs.find((run) => run.id === loop.afterAttemptId)?.at);
 
 // The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for. Train
 // asks it of a drilled target, split at its retest; Progress also asks it of a unit never drilled, split where its week

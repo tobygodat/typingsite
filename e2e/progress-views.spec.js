@@ -666,8 +666,9 @@ for (const [name, holder] of Object.entries(HOLDERS)) {
       if (where === 'runs') await openProgressDetail(page, 'runs');
       const control = await holder(page);
       await control.focus();
-      // A keyboard user's last input was a key.
-      await page.keyboard.press('Shift');
+      // A keyboard user reaches it with Tab: back past it and on to it again.
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
       await expect(control).toBeFocused();
       await clear();
       const landing = page.locator(where === 'runs' ? '#progress-detail-heading' : '#progress-empty-title');
@@ -688,6 +689,10 @@ test('after a click, focus moved by a clear in another tab lands without a ring'
   const pill = page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' });
   await pill.click();
   await expect(pill).toBeFocused();
+
+  // A modifier on its own, as when a shortcut is half pressed, is no keyboard use.
+  for (const key of ['Shift', 'Control', 'Alt', 'Meta']) await page.keyboard.press(key);
+
   await clear();
   await expect(page.locator('#progress-empty-title')).toBeFocused();
   await expect(page.locator('#progress-empty-title')).toHaveCSS('outline-style', 'none');

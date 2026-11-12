@@ -195,15 +195,6 @@ export function retainRuns(runs) {
   });
 }
 
-// The runs dated before `at` whose counts the profile held at `at` and has trimmed since (retainRuns): of the newest
-// MAX_PATTERN_RUNS comparable runs before `at` that carried counts then, those that carry none now. A run carried counts
-// then if it carries them now or is an evidence run, which always records them. An evidence run saved before counts
-// existed reads as trimmed too, which only makes a reader of the past say less.
-export function trimmedSince(runs, at) {
-  return runs.filter((run) => comparableKind(run.kind) && Date.parse(run.at) < at && (carriesCounts(run) || evidenceRun(run)))
-    .slice(-MAX_PATTERN_RUNS).filter((run) => !carriesCounts(run));
-}
-
 const traceSizes = new WeakMap();
 
 function traceSize(trace) {

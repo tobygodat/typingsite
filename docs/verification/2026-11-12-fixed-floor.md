@@ -33,14 +33,27 @@ the unit (fixed), does nothing (unchanged), or lifts only the retest (warm). The
 | warm | floor 3 | 0.1% | 0.6% | 0.9% | 1.3% |
 | warm | floor 5 | 0.1% | 0.2% | 0.2% | 0.4% |
 
-No world reads "fixed" within 5 runs under any rule: the learner keeps a drilled target queued for longer than that,
-so the queue, not the run count, holds back a read on one long retest. Split by run length and stratum, in the JSON.
+Within 2 runs no world reads "fixed" under any rule. Within 5, the unchanged and warm worlds still read none, and only
+where the drill worked do a few: 0.44% of targets under the rule as written or a floor of 3 or 5 (1.88% of common pairs
+at 100 words), 0.07% with a floor of 10. The learner keeps a drilled target queued for longer than most of that, so on
+these numbers it is the queue, more than the run count, that holds back a read on one long retest. Split by run length
+and stratum, in the JSON.
 
 ## Reading
 
-Every floor costs more real reads than the false ones it removes. A floor of 3 removes 0.4 points of false reads after
-80 runs and 5.9 points of real ones; a floor of 5 removes 1.2 and 18.7. The rule as written is about 19 real reads to
+Weighing the two worlds equally, every floor costs more real reads than the false ones it removes. A floor of 3
+removes 0.4 points of false reads after 80 runs and 5.9 points of real ones; a floor of 5 removes 1.2 and 18.7. The rule as written is about 19 real reads to
 one false; a floor of 3 is about 20 to one, at a fifth fewer real reads. So the floor isn't adopted.
 
-The world is simulated: typists improve only because the world says so, and the warm world's lift is an assumption,
-not a measurement of anyone's typing.
+What the conclusion assumes and leaves out:
+
+- It weighs a drill that works and a drill that does nothing as equally likely, setting the share of real reads lost
+  against the share of false reads removed. If drills mostly do nothing, a false "fixed" is the commoner error and a floor
+  is worth more than these numbers make it look; if they mostly work, it is worth less. Nobody has measured which.
+- The world is simulated: typists improve only because the world says so. A drill fixes a unit completely and at once,
+  or not at all; the half-working and wearing-off drills of ADR 0019's season aren't run here.
+- The warm world's lift (the retest alone typed as if fixed) is an assumption, not a measurement of anyone's typing.
+- Practice runs one length a season (10, 25 or 100 words), five runs a day, with no bad days, no mixed lengths and no
+  breaks; keyboards, layouts and the speed or accuracy focus other than balanced aren't varied.
+- Only targets the shipped learner queued before the drill are drilled: a target typed in by hand, or one chosen from
+  the steps ahead that the learner ranks low, isn't, and that is where a thin "fixed" would most often show.

@@ -2,7 +2,7 @@
 // branch line up as before and after: Train's since-line, a loop whose drill was interrupted on Train and in Progress's
 // runs view, focus after a clear in another tab (overview and runs view), the small charts under forced colours, and
 // the palette's ranking and its "progress" from a detail view. TOB448_ONLY=since (or loop, focus, runs-focus, forced,
-// palette) runs one part.
+// palette) runs one part; without it, every part runs in one go.
 import { englishFrequency } from '../../../../src/learner.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../../../../src/typing.js';
 import { history as progressHistory } from './progress-week.mjs';
@@ -46,7 +46,14 @@ export default async ({ page, h, shot, note, fake, url }) => {
   const part = (name) => !only || only === name;
   let account = 0;
 
+  // Each part has its own account; after the first, the one before signs out (a reload) before the next signs in.
   const signIn = async (data) => {
+    if (account) {
+      await page.locator('#account-trigger').click();
+      await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
+      await page.locator('#account[data-state="guest"]').waitFor();
+    }
+
     account += 1;
     const email = `tob448-${account}@stilltype.test`;
     const user = fake.addUser(email);
@@ -110,7 +117,8 @@ export default async ({ page, h, shot, note, fake, url }) => {
     await h.openView('Progress');
     const clear = await clearElsewhere();
     await page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }).focus();
-    await page.keyboard.press('Shift');
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
     await shot('focus-before-clear');
     await clear();
     note('focus: after a clear in another tab', await focused());
@@ -124,7 +132,8 @@ export default async ({ page, h, shot, note, fake, url }) => {
     await page.locator('[data-progress-open="runs"]').click();
     await page.locator('.conditions-disclosure > summary').click();
     await page.getByRole('group', { name: 'Test' }).getByRole('button').first().focus();
-    await page.keyboard.press('Shift');
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
     await clear();
     note('runs-focus: after a clear in another tab', await focused());
     await shot('runs-focus-after-clear');

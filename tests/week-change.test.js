@@ -5,6 +5,7 @@ import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js'
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { MAX_PATTERN_RUNS, dayKey, retainRuns } from '../src/insights.js';
+import { weekChange as weekChangeBefore } from './week-change-reference.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -343,31 +344,6 @@ test('the list shows a few units, ranked, and keeps the rest', () => {
   assert.equal(SHOWN_MOVERS, 3);
 });
 
-// A profile past MAX_PATTERN_RUNS keeps pattern counts on its newest runs only (retainRuns), so a run whose counts
-// fed the learner a week ago can have lost them since. "A week ago" can't be rebuilt from what is stored then, and
-// Progress lists only what it can still support (TOB-448): "ex" had a long clean history and a few misses just
-// before the week, so the learner a week ago never named it, but the stored history has lost the clean runs and
-// would read it as named then and fixed this week. "ck", drilled this week, needs no learner a week ago.
-test('on a trimmed history, the movers are only those the history as it stood a week ago supports', () => {
-  const at = (daysBack, i) => new Date(2026, 10, 11 - daysBack, 8, 0, i);
-  const old = Array.from({ length: 200 }, (_, i) => run(`o${i}`, at(40 - Math.floor(i / 8), i), { patterns: withBackground([['ex', 10, 0, 10, 200, 0], ...(i < 196 ? [] : [['ck', 10, 3, 10, 200, 0]])]) }));
-  const missed = Array.from({ length: 4 }, (_, i) => run(`m${i}`, at(8, i), { patterns: withBackground([['ex', 10, 3, 10, 200, 0], ['ck', 10, 3, 10, 200, 0]]) }));
-  const week = Array.from({ length: 110 }, (_, i) => run(`n${i}`, at(5 - Math.floor(i / 25), i), { patterns: withBackground([['ex', 10, 0, 10, 200, 0], ['ck', 10, 0, 10, 200, 0]]) }));
-  const full = [...old, ...missed, ...week];
-  const loops = [loop('lc', 'ck', week[0])];
-  const movers = (runs) => weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
-
-  const stored = retainRuns(full);
-  assert.equal(stored.filter((item) => item.patterns.length).length, MAX_PATTERN_RUNS);
-  assert.ok(stored.some((item) => Date.parse(item.at) < THEN && !item.patterns.length), 'runs from before the week have lost their counts');
-  assert.deepEqual(movers(full), ['ck:drill']);
-  assert.deepEqual(movers(stored), ['ck:drill']);
-
-  // The same profile under the cap, nothing trimmed: the week ago is the stored history's, and both agree.
-  const short = [...old.slice(-6), ...missed, ...week.slice(0, 100)];
-  assert.deepEqual(movers(retainRuns(short)), movers(short));
-});
-
 // The learner "a week ago" is fitted at the moment the week began, not now (TOB-448). Its decay reads each record's
 // age, so the moment matters: two undated clean runs keep their full weight while the dated ones fade, and "qu",
 // missed in two of five runs a month ago, is named by the learner at the week's start and not by one fitted now.
@@ -426,4 +402,56 @@ test('the practice row splits its weeks at the start of the sixth day back', () 
   const minutes = (id, days, amount) => ({ ...run(id, daysAgo(days)), elapsedMs: amount * 60_000 });
   const practice = weekPractice([minutes('a', 13, 1), minutes('b', 7, 2), minutes('c', 6, 4), minutes('d', 0, 8), minutes('e', 14, 16)], {}, 0, NOW_DATE);
   assert.deepEqual([practice.previous, practice.current], [3, 12]);
+});
+
+// Progress's overview is master's on every history (TOB-448): the same as the version built on master's evidenceSince
+// and sinceDrilled (tests/week-change-reference.js), over random profiles under and over MAX_PATTERN_RUNS count-carrying
+// runs, stored as retainRuns stores them (so the older runs of a long profile have lost their counts), with undated
+// runs and runs on another keyboard, loops drilled before the week and in it, and every focus.
+test('the overview is the same as master’s on random histories, short and trimmed', () => {
+  const random = seeded(4480);
+  const pairs = ['qu', 'ex', 'ck', 'ol', 'th', 'an'];
+  const dvorak = { ...conditions, layout: 'dvorak' };
+  let trimmed = 0;
+  let movers = 0;
+
+  for (let round = 0; round < 48; round += 1) {
+    const count = round % 2 ? MAX_PATTERN_RUNS + 20 + Math.floor(random() * 80) : 10 + Math.floor(random() * 90);
+    const turn = Math.floor(random() * 30);
+
+    const all = Array.from({ length: count }, (_, i) => {
+      const back = Math.floor(((count - i) / count) * 40);
+
+      const rows = pairs.map((pair, p) => {
+        const late = back < (turn + p * 3) % 20;
+        const n = 4 + Math.floor(random() * 10);
+        const errors = Array.from({ length: n }, () => random() < (late ? 0.02 : 0.25)).filter(Boolean).length;
+        const slow = late ? 0 : Math.round(random() * 80);
+
+        return [pair, n, errors, n, 200 + slow, slow];
+      });
+
+      const made = run(`r${round}-${i}`, daysAgo(back, 8 + (i % 12), i % 60), { wpm: 50 + random() * 40, patterns: withBackground(rows),
+        cond: random() < 0.1 ? dvorak : conditions });
+
+      return random() < 0.03 ? { ...made, at: null, day: null } : made;
+    });
+
+    const runs = retainRuns(all);
+    trimmed += runs.some((item) => item.at && !item.patterns.length) ? 1 : 0;
+    const dated = runs.filter((item) => item.at && item.conditions === conditions);
+
+    const loops = Array.from({ length: Math.floor(random() * 6) }, (_, i) => loop(`l${round}-${i}`, pairs[Math.floor(random() * pairs.length)],
+      dated[Math.floor(random() * dated.length)], random() < 0.4 ? 'slow' : 'errors'));
+
+    for (const focus of FOCUSES) {
+      const args = { runs, loops, practiceDays: {}, key: KEY, conditions, focus, goal: 0, period: '30', now: NOW };
+      const week = weekChange(args);
+      assert.deepEqual(week, weekChangeBefore(args), `round ${round}, ${focus}`);
+      movers += week.movers.length;
+    }
+  }
+
+  assert.ok(trimmed >= 10, `the generator trims long profiles (${trimmed})`);
+  assert.ok(movers > 20, `the generator moves units (${movers})`);
 });

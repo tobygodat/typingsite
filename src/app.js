@@ -3524,13 +3524,15 @@ function switchView(view) {
   if (view === 'learn') renderLessons();
 }
 
-function navigate(view) {
+// `keep` is for the ways back to Practice that show it as it stands: the dock, the palette's "practice" and focus mode.
+// They keep a drill or retest nobody has started, Train's work waiting, when Practice is shown from another screen
+// (TOB-448); Practice pressed on Practice still leaves it for practice. Everything else that goes to Practice does so
+// to start what was asked for (a length, a word list, custom text), so it leaves a waiting drill or retest, as before.
+function navigate(view, { keep = false } = {}) {
   if (view === 'practice') {
     // A custom passage that is ready or under way is practice too, so going to Practice keeps it. An unstarted
     // repeat that repeats-off would replace is redrawn.
-    // A drill or retest nobody has started is Train's work waiting, so coming back to Practice from another screen
-    // keeps it too (TOB-448); Practice pressed on Practice still leaves it for practice.
-    const waitingTraining = document.body.dataset.view !== 'practice' && attempt?.status === 'ready' && (sessionKind === 'drill' || sessionKind === 'retest');
+    const waitingTraining = keep && document.body.dataset.view !== 'practice' && attempt?.status === 'ready' && (sessionKind === 'drill' || sessionKind === 'retest');
     const current = attempt && (sessionKind === 'practice' || sessionKind === 'custom' || waitingTraining) && !['complete', 'interrupted'].includes(attempt.status);
     // A waiting passage is rebuilt, as the same kind, if strict space or quick end changed while another screen showed.
     const staleRules = current && inputRules(attempt.conditions).join() !== inputRules(sessionConditions(sessionKind)).join();
@@ -4208,18 +4210,23 @@ function progressLanding() {
 // Whether the person's last input was a key. Where the page moves focus for them, each engine guesses differently
 // whether to show its ring (Firefox shows none after the element that held focus is gone), so the landing shows it
 // by this instead: a ring for someone using the keyboard, none after a click or a tap (TOB-448).
+// A modifier on its own (a shortcut half pressed, Shift before a click) is no keyboard use.
 let keyboardInput = false;
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'OS', 'CapsLock', 'Fn']);
 
-document.addEventListener('keydown', () => { keyboardInput = true; }, true);
+document.addEventListener('keydown', (event) => { if (!MODIFIER_KEYS.has(event.key)) keyboardInput = true; }, true);
 
 document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
 
-function landProgressFocus({ scroll = false } = {}) {
-  const target = progressLanding();
+// Focus the page moves to a heading or figure (.focus-landing) shows its ring by this rule alone, never by an engine's
+// own :focus-visible guess, which in Chromium counts a lone modifier as keyboard use.
+function focusShown(target, { scroll = false } = {}) {
   target.toggleAttribute('data-focus-ring', keyboardInput);
   target.addEventListener('blur', () => target.removeAttribute('data-focus-ring'), { once: true });
   target.focus({ preventScroll: !scroll });
 }
+
+const landProgressFocus = (options) => focusShown(progressLanding(), options);
 
 function runRow(run) {
   const row = element('details', '', 'run-row');
@@ -4632,7 +4639,7 @@ function showProgressDetail({ focus = false } = {}) {
   setText($('progress-detail-heading'), PROGRESS_DETAILS[name] || '');
   drawProgressView();
 
-  if (focus && name) $('progress-detail-heading').focus({ preventScroll: true });
+  if (focus && name) focusShown($('progress-detail-heading'));
 }
 
 // Only what is on screen is drawn: a hidden chart has no width to draw to.
@@ -5660,6 +5667,11 @@ function forgetTraining() {
   $('ghost-result').hidden = true;
   renderGhostOffer(null);
   trainAfter = null;
+
+  // A retest nobody has started compares with the baseline just forgotten, so a practice test takes its place; a
+  // drill nobody has started stands alone now, with no retest after it, and says so (TOB-448).
+  if (attempt?.status === 'ready' && sessionKind === 'retest') resetSession('practice', { show: false });
+  else if (attempt?.status === 'ready' && sessionKind === 'drill') $('session-description').textContent = prefs.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
 
   if (document.body.dataset.view === 'train') renderTrain();
 }
@@ -6754,7 +6766,7 @@ function bindEvents() {
 
     if (nav) {
       event.preventDefault();
-      navigate(nav.dataset.nav);
+      navigate(nav.dataset.nav, { keep: true });
 
       return;
     }
@@ -7644,7 +7656,7 @@ function jumpTo(view) {
     renderHistory();
   }
 
-  navigate(view);
+  navigate(view, { keep: true });
 
   if (view !== 'practice') $(`${view}-heading`).focus();
   else if (composeOpen) compose.focus();
@@ -7716,7 +7728,7 @@ function paletteCommands(query) {
     { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(prefs.liveMetrics), on: prefs.liveMetrics, run: () => togglePreference('liveMetrics') },
     { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(prefs.keyboard), on: prefs.keyboard, run: () => togglePreference('keyboard') },
     { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(prefs.keyboard && prefs.fingerMap), on: prefs.keyboard && prefs.fingerMap, run: toggleFingerMap },
-    { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice'); togglePreference('focusMode'); } },
+    { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(prefs.focusMode), on: prefs.focusMode, run: () => { navigate('practice', { keep: true }); togglePreference('focusMode'); } },
     { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: prefs.sound === mode ? 'current' : '', on: prefs.sound === mode, run: () => setSound(mode) })),
     ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: prefs.soundVolume === volume ? 'current' : '', on: prefs.soundVolume === volume, disabled: prefs.sound === 'off', run: () => setSoundVolume(volume) })),
