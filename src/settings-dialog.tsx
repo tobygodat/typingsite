@@ -1,3 +1,5 @@
+import { AccountSaved } from './account-view.js';
+import type { AccountSession } from './account-session.js';
 import { createThemeEditor, ThemeSettings } from './theme-editor.js';
 import type { ThemeEditorController } from './theme-editor.js';
 import { createWallpaper } from './wallpaper.js';
@@ -11,7 +13,7 @@ import type { InputHTMLAttributes, MouseEvent } from 'react';
 import { createSettings } from './settings.js';
 import type { SettingId, SettingsController } from './settings.js';
 
-export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController } = {}) {
+export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper, accounts }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController; accounts?: AccountSession } = {}) {
   const [localTheme] = useState(createThemeEditor);
   const [localWallpaper] = useState(createWallpaper);
   const themeEditor = providedTheme ?? localTheme;
@@ -311,7 +313,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
       </div>
     </div>
     <footer className="settings-footer">
-      <p id="settings-saved">Guest settings last for this tab.</p>
+      <AccountSaved controller={accounts} />
       <button onClick={() => settings.close()} id="settings-done" className="btn btn-primary" type="button">Done</button>
     </footer>
   </dialog>

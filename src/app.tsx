@@ -1,3 +1,5 @@
+import { AccountMenu, AccountDialog, AccountGuestNote } from './account-view.js';
+import type { AccountSession } from './account-session.js';
 import type { ThemeEditorController } from './theme-editor.js';
 import type { WallpaperController } from './wallpaper.js';
 import { ReplayDialog } from './replay-view.js';
@@ -20,7 +22,7 @@ import { TypingSurface } from './typing-surface.js';
 import type { PracticeSession } from './practice-session.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore; themeEditor: ThemeEditorController; wallpaper: WallpaperController }) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts }: { practice: PracticeSession; learning: LearningStore; palette: PaletteController; settings: SettingsController; compose: ComposeController; quoteFilters: QuoteFiltersController; challenge: ChallengeStore; themeEditor: ThemeEditorController; wallpaper: WallpaperController; accounts: AccountSession }) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -63,30 +65,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
           <ul id="inbox-list" className="inbox-list"></ul>
         </div>
       </details>
-      <details id="account" className="account" data-state="guest">
-        <summary id="account-trigger" className="corner-trigger account-trigger" aria-label="Account, guest mode">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.5" /><path d="M5 20c.9-3.5 3.6-5.5 7-5.5s6.1 2 7 5.5" /></svg>
-        </summary>
-        <div className="corner-popover">
-          <div id="account-guest" className="account-section">
-            <p className="account-lede">Guest mode: nothing is kept once you leave.</p>
-            <div className="account-actions">
-              <button id="account-create" className="btn btn-primary" type="button">Create account</button>
-              <button id="account-google" className="btn btn-secondary" type="button">Sign in with Google</button>
-              <button id="account-signin" className="btn btn-ghost btn-sm" type="button">Sign in with email</button>
-            </div>
-          </div>
-          <div id="account-member" className="account-section" hidden>
-            <p id="account-email" className="account-email"></p>
-            <p className="account-sync status" role="status"><span className="status-dot" aria-hidden="true"></span><span id="account-sync"></span></p>
-            <div className="account-actions account-member-actions">
-              <button id="account-signout" className="btn btn-ghost btn-sm" type="button">Sign out</button>
-              <button id="account-export" className="btn btn-ghost btn-sm" type="button">Export my data</button>
-              <button id="account-delete" className="btn btn-ghost btn-sm danger-text" type="button">Delete my account</button>
-            </div>
-          </div>
-        </div>
-      </details>
+      <AccountMenu controller={accounts} />
     </div>
 
     <main id="main-content">
@@ -222,7 +201,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
     <footer className="site-footer">
       <span id="best" className="personal-best num">No best yet</span>
-      <span id="guest-note" className="guest-note">guest · runs aren’t saved</span>
+      <AccountGuestNote controller={accounts} />
       <span className="footer-links">
         <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog">suggest a feature</button>
         <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0">v0.5.0</button>
@@ -272,41 +251,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </form>
   </dialog>
 
-  <dialog id="account-dialog" aria-labelledby="account-dialog-title">
-    <form id="account-form" className="dialog-content" noValidate>
-      <div>
-        <h2 id="account-dialog-title">Create an account</h2>
-        <p id="account-dialog-copy"></p>
-      </div>
-      <button id="account-dialog-google" className="btn btn-secondary" type="button">Sign in with Google</button>
-      <p className="account-or" aria-hidden="true"><span>or with email</span></p>
-      <div className="account-fields">
-        <label htmlFor="account-email-input">Email
-          <input id="account-email-input" className="input" type="email" autoComplete="email" spellCheck={false} autoCapitalize="off" aria-describedby="account-error" />
-        </label>
-        <label htmlFor="account-password">Password
-          <input id="account-password" className="input" type="password" autoComplete="new-password" aria-describedby="account-error" />
-        </label>
-        <p id="account-error" className="field-error" role="alert"></p>
-      </div>
-      <div className="dialog-actions account-dialog-actions">
-        <button id="account-switch" className="btn btn-ghost btn-sm" type="button">Sign in instead</button>
-        <span className="account-dialog-end">
-          <button id="account-cancel" className="btn btn-ghost" type="button">Cancel</button>
-          <button id="account-submit" className="btn btn-primary" type="submit">Create account</button>
-        </span>
-      </div>
-    </form>
-    <div id="account-confirm" className="dialog-content" hidden>
-      <div>
-        <h2>Check your email.</h2>
-        <p>We sent a confirmation link to <strong id="account-confirm-email"></strong>. Open it in this browser to finish signing in.</p>
-      </div>
-      <div className="dialog-actions">
-        <button id="account-confirm-done" className="btn btn-primary" type="button">Done</button>
-      </div>
-    </div>
-  </dialog>
+  <AccountDialog controller={accounts} />
 
   <dialog id="suggest-dialog" aria-labelledby="suggest-dialog-title">
     <form id="suggest-form" className="dialog-content" noValidate>
@@ -334,7 +279,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <ReleaseDialog />
 
-  <SettingsDialog controller={settings} themeEditor={themeEditor} wallpaper={wallpaper} />
+  <SettingsDialog controller={settings} themeEditor={themeEditor} wallpaper={wallpaper} accounts={accounts} />
 
   <dialog id="import-dialog" aria-labelledby="import-dialog-title">
     <form id="import-form" className="dialog-content" noValidate>

@@ -1,6 +1,6 @@
 import { FINGER_ROWS, FINGER_COLUMNS, fingerMapLabel } from './finger-map.js';
 import { createApplicationLifetime } from './application-lifetime.js';
-import { startPageWork, replaceAccountLifetime, disposePageWork, WorkCancelled } from './async-runtime.js';
+import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
 import { createTypingHost } from './typing-host.js';
 import { renderText, updateCharacterStates } from './passage-view.js';
@@ -92,7 +92,7 @@ function copyParts(value) {
   });
 }
 
-export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper) {
+export async function attachApplication(practice, learning, palette, settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -127,21 +127,8 @@ const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'rand
 let storageAvailable = true;
 
 // No session means guest mode: default settings, and nothing leaves this tab.
-const identityOf = (value) => value ? value.user.id + ':' + (value.signInId || '') : null;
-let activeIdentity;
-let identityEpoch = 0;
 
-async function replaceIdentity(value) {
-  const next = identityOf(value);
-
-  if (activeIdentity === next) return;
-  activeIdentity = next;
-  identityEpoch += 1;
-  await replaceAccountLifetime(next);
-}
-
-let session = account.loadSession();
-await replaceIdentity(session);
+await accounts.replaceIdentity(accounts.session);
 let syncTimer = 0;
 
 // Saves only count as edits once the account row has been compared with the device cache;
@@ -180,8 +167,8 @@ let sentText = null;
 const PULL_INTERVAL_MS = 15000;
 
 function loadProfile() {
-  if (!session) return emptyProfile();
-  cacheText = account.loadCachedProfileText(session.user.id);
+  if (!accounts.session) return emptyProfile();
+  cacheText = account.loadCachedProfileText(accounts.session.user.id);
 
   try { return normalizeProfile(JSON.parse(cacheText)); } catch { return emptyProfile(); }
 }
@@ -339,7 +326,7 @@ function saveProfile() {
   commitPreferences();
   account.capHistory(learning.profile);
 
-  if (!session || signedOutElsewhere) return true;
+  if (!accounts.session || signedOutElsewhere) return true;
   unsynced = true;
   localEdits += 1;
 
@@ -357,7 +344,7 @@ function saveProfile() {
 // The device cache is shared by every tab signed in to this account. Whatever another tab wrote since
 // this one last read it is merged in first, so no tab overwrites another's runs or settings.
 function storeLocally() {
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
   const stored = account.loadCachedProfileText(userId);
   // Signed out here (the sign-out removed the copy this tab had read, or kept it and left its marker), or
   // someone else signed in: this tab's copy must not come back. A session that only ended (its refresh
@@ -2703,13 +2690,8 @@ function renderTrain({ advance = false, fresh = false } = {}) {
 // breaks only between its halves: "70 ms slower → 20 ms faster" never leaves "ms faster" on a line of its own. The
 // text itself is the copy, unchanged.
 
-
-
 // The steps around the comparison and the open step. Phones show the two newest steps behind you; wider screens
 // scroll the line back through all of them. Progress keeps every drill either way.
-
-
-
 
 // The line takes keyboard focus only while it scrolls, so its arrow keys reach the steps that don't fit. An edge fades
 // while more of the line lies past it, so steps behind you scrolled off the start show there are more.
@@ -2993,8 +2975,6 @@ function dateCopy(at) {
   return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
 }
 
-
-
 function openHistoryRun(id) {
   if (progressState.detail !== 'runs') openProgressDetail('runs', { opener: document.activeElement, focus: false });
   const find = () => [...$('run-history').children].find((item) => item.dataset.runId === id);
@@ -3127,9 +3107,6 @@ function renderKeys(runs) { heatRuns = runs; learning.progress.keys.show(runs, c
 // Marks one key as chosen (and, in the grid, the tab stop) and shows its numbers; with no key
 // chosen yet, "q" is the stop.
 
-
-
-
 // The practice calendar (Sunday-first columns), static by design: 26 weeks across the column, fewer on a phone.
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
 // Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
@@ -3138,8 +3115,6 @@ let goalDay = '';
 
 // The day the Progress page was last drawn for (renderHistory).
 let historyDay = '';
-
-
 
 const narrowColumn = window.matchMedia('(max-width: 760px)');
 const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
@@ -3167,8 +3142,6 @@ function renderGoal(date = new Date()) {
     label: 'Practice minutes per day, last ' + weeks + ' weeks: ' + plural(practised, 'day') + ' with practice. Arrow keys move between days.' }));
   renderPracticeStats(progressState.period, date);
 }
-
-
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = { period: '30', key: '', view: 'speed', allRuns: false, detail: '', moversOpen: false };
@@ -3219,8 +3192,6 @@ const shapeLabel = (shape) => {
 
   return { text: shape.mode };
 };
-
-
 
 // One pill per test length in testShapes' order; a length without runs is disabled.
 function renderTestPills(shapes) {
@@ -3481,12 +3452,6 @@ function renderMovers(week) {
   $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : extra + ' more';
   $('more-movers').setAttribute('aria-expanded', String(open));
 }
-
-
-
-
-
-
 
 // Practice, a plain fact: minutes the week before → this week, and the streak (at the goal, when one is set).
 
@@ -3845,8 +3810,6 @@ function lessonHeadline(result) {
   return [`Not yet. Lesson ${n} needs `, needs, ' in one run.'];
 }
 
-
-
 function renderLessons() {
   const progress = learning.profile.lessons;
   const next = nextLessonIndex(progress);
@@ -4005,7 +3968,7 @@ async function startGhostRace(id) {
   let view = null;
   let failure = null;
 
-  try { view = await getChallenge(session, id); } catch (error) { failure = error; }
+  try { view = await getChallenge(accounts.session, id); } catch (error) { failure = error; }
 
   // A later Race replaces this one.
   if (ghostRequest !== request) return;
@@ -4147,7 +4110,7 @@ function renderGhostResult() {
 async function submitGhostRun() {
   const ghost = ghostRace;
 
-  if (!ghost?.trace || !session) return;
+  if (!ghost?.trace || !accounts.session) return;
   // The run this request finishes. The service records it either way, and its result reaches the inbox.
   const { run, trace } = ghost;
   ghost.state = 'sending';
@@ -4156,7 +4119,7 @@ async function submitGhostRun() {
   let failure = null;
 
   try {
-    view = await finishChallenge(session, ghost.id, trace);
+    view = await finishChallenge(accounts.session, ghost.id, trace);
     const id = `challenge:${ghost.id}`;
     inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, completedAt: view.completedAt, text: resultText(view) });
     inbox?.deliver(id);
@@ -4188,7 +4151,7 @@ async function submitGhostRun() {
 
 let offerFriends = [];
 
-const racerName = () => $('online-name').value.trim() || session?.user.email.split('@')[0].slice(0, 24) || '';
+const racerName = () => $('online-name').value.trim() || accounts.session?.user.email.split('@')[0].slice(0, 24) || '';
 
 // "Challenge a friend with this run": shown under a finished practice, retest or daily run.
 function renderGhostOffer(completed = offerRun) {
@@ -4202,7 +4165,7 @@ function renderGhostOffer(completed = offerRun) {
     $('ghost-offer-error').textContent = '';
   }
 
-  $('ghost-offer').hidden = !session || !challengePayload(offerRun);
+  $('ghost-offer').hidden = !accounts.session || !challengePayload(offerRun);
 }
 
 async function loadGhostFriends() {
@@ -4217,7 +4180,7 @@ async function loadGhostFriends() {
   let friends = offerFriends;
   let failure = '';
 
-  try { friends = await listFriends(session); } catch (error) { failure = error.message; }
+  try { friends = await listFriends(accounts.session); } catch (error) { failure = error.message; }
 
   // Only the newest list for this offer is drawn.
   if (friendsRequest !== request) return;
@@ -4241,7 +4204,7 @@ async function sendGhost(event) {
   const name = $('ghost-name').value.trim();
   $('ghost-offer-error').textContent = '';
 
-  if (!payload || !friend || !session || offerBusy()) return;
+  if (!payload || !friend || !accounts.session || offerBusy()) return;
 
   if (!name) {
     $('ghost-offer-error').textContent = 'Enter the name your friend will see.';
@@ -4265,7 +4228,7 @@ async function sendGhost(event) {
   $('ghost-offer-status').textContent = `Sending to ${friend.name}…`;
 
   try {
-    await sendChallenge(session, { friendId: friend.id, displayName: name, payload, requestId });
+    await sendChallenge(accounts.session, { friendId: friend.id, displayName: name, payload, requestId });
 
     if (run !== offerRun) return;
     offerSentTo.add(friend.id);
@@ -4342,8 +4305,6 @@ function buildKeyboard() {
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
 // Keys learned before this lesson read in the text colour, this lesson's keys get the full green edge.
-
-
 
 function renderFingerMap(container, { known = [], fresh = [] } = {}) {
   const key = (letter) => {
@@ -4675,49 +4636,23 @@ function undoClear() {
 
 // ── Accounts ──────────────────────────────────────────────────────────────
 
-const SYNC_COPY = {
-  guest: 'Guest · nothing is saved',
-  syncing: 'Syncing…',
-  synced: 'Saved to your account',
-  offline: 'Saved here · syncs when online',
-  expired: 'Session ended · sign in to sync',
-};
+function setSyncState(state) { accounts.sync(state); }
 
-function setSyncState(state) {
-  $('account').dataset.sync = state;
-  $('account-sync').textContent = SYNC_COPY[state];
-  $('settings-saved').textContent = !session
-    ? 'Guest settings last for this tab.'
-    : state === 'synced'
-      ? 'Settings saved to your account.'
-      : 'Settings saved here, waiting to sync.';
-}
+function renderAccount() { accounts.render(); }
 
-function renderAccount() {
-  const signedIn = Boolean(session);
-  $('account').dataset.state = signedIn ? 'member' : 'guest';
-  $('account-guest').hidden = signedIn;
-  $('account-member').hidden = !signedIn;
-  $('account-email').textContent = session?.user.email || '';
-  $('account-trigger').setAttribute('aria-label', signedIn ? `Account, signed in as ${session.user.email}` : 'Account, guest mode');
-  $('guest-note').hidden = signedIn;
-  setSyncState(signedIn ? 'syncing' : 'guest');
-}
-
-const authRedirectTarget = () => `${location.origin}/`;
 
 const dailyKey = () => conditionKey(dailyConditions());
 
 // The friends board's summary of exactly the copy being written, stamped with that write
 // (src/friends-board.js). While an opt-out on this device is unconfirmed its writes clear the column
 // (null), so this device shows nothing new on the board; turning sharing on repairs it (repairBoardNow).
-const boardFor = (data) => (at) => (optOutPending(session) ? null : boardColumn(data.runs, dailyKey(), at));
+const boardFor = (data) => (at) => (optOutPending(accounts.session) ? null : boardColumn(data.runs, dailyKey(), at));
 
 // Whether this tab still belongs to the user a sync started for. Another tab can sign out, or in as
 // someone else, while a request is out; the sync then stops and writes nothing here. A tab that heard of
 // a sign-out elsewhere stays out even if the same account has signed in again since: it reloads first.
 function signedInAs(userId) {
-  return !signedOutElsewhere && session?.user.id === userId && account.loadSession()?.user.id === userId;
+  return !signedOutElsewhere && accounts.session?.user.id === userId && account.loadSession()?.user.id === userId;
 }
 
 // Folds another copy of this account's profile (the account row, or another tab's cache) into memory.
@@ -4770,8 +4705,8 @@ function showMerged() {
 function absorbCache() {
   cacheWaiting = false;
 
-  if (!session || !signedInAs(session.user.id)) return false;
-  const text = account.loadCachedProfileText(session.user.id);
+  if (!accounts.session || !signedInAs(accounts.session.user.id)) return false;
+  const text = account.loadCachedProfileText(accounts.session.user.id);
 
   if (!text || text === cacheText) return false;
 
@@ -4820,7 +4755,7 @@ function pushProfile(options = {}) {
 // between, the write matches nothing: read again and merge again, three times at most. The merged copy
 // is kept here and in the device cache.
 async function pushOnce({ cloud: known } = {}) {
-  if (!session) return false;
+  if (!accounts.session) return false;
 
   if (!unsynced) {
     setSyncState('synced');
@@ -4829,21 +4764,21 @@ async function pushOnce({ cloud: known } = {}) {
     return true;
   }
 
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
 
   // Checked before refreshing too: a tab still holding an account another tab has signed out of must
   // not refresh it, nor end whichever session the device holds now.
   if (!signedInAs(userId)) return false;
 
   try {
-    session = await freshAccountSession();
+    accounts.session = await freshAccountSession();
 
     if (!signedInAs(userId)) return false;
     let cloud = known;
 
     for (let tries = 0; tries < 3; tries += 1) {
       if (cloud === undefined) {
-        cloud = await account.fetchCloudProfile(session);
+        cloud = await account.fetchCloudProfile(accounts.session);
 
         if (!signedInAs(userId)) return false;
       }
@@ -4854,8 +4789,8 @@ async function pushOnce({ cloud: known } = {}) {
       let written;
 
       if (theirs && account.sameRow(merged, theirs)) written = cloud.updated_at;
-      else if (cloud) written = await account.updateCloudProfile(session, merged, cloud.updated_at, { board: boardFor(merged) });
-      else written = await account.insertCloudProfile(session, merged, { board: boardFor(merged) });
+      else if (cloud) written = await account.updateCloudProfile(accounts.session, merged, cloud.updated_at, { board: boardFor(merged) });
+      else written = await account.insertCloudProfile(accounts.session, merged, { board: boardFor(merged) });
 
       if (!signedInAs(userId)) return false;
 
@@ -4898,7 +4833,7 @@ async function pushOnce({ cloud: known } = {}) {
 // Brings in what other devices saved: when the tab comes back into view (at most every 15 s) and when
 // the connection returns. With edits pending here it pushes instead, which reads and merges first.
 async function pullProfile({ force = false } = {}) {
-  if (!session || !cloudChecked || runInProgress()) return;
+  if (!accounts.session || !cloudChecked || runInProgress()) return;
 
   if (!force && Date.now() - lastPull < PULL_INTERVAL_MS) return;
   lastPull = Date.now();
@@ -4909,15 +4844,15 @@ async function pullProfile({ force = false } = {}) {
     return;
   }
 
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
 
   if (!signedInAs(userId)) return;
 
   try {
-    session = await freshAccountSession();
+    accounts.session = await freshAccountSession();
 
     if (!signedInAs(userId)) return;
-    const cloud = await account.fetchCloudProfile(session);
+    const cloud = await account.fetchCloudProfile(accounts.session);
 
     if (!cloud || !signedInAs(userId)) return;
 
@@ -4976,25 +4911,15 @@ function redrawLessons() {
 }
 
 // The device's copy and the account row are merged, and whatever the row lacks goes up.
-async function freshAccountSession() {
-  const epoch = identityEpoch;
-  const fresh = await account.freshSession(session);
-
-  if (epoch !== identityEpoch) throw new WorkCancelled('Account changed.');
-  await replaceIdentity(fresh);
-
-  if (activeIdentity !== identityOf(fresh)) throw new WorkCancelled('Account changed.');
-
-  return fresh;
-}
+function freshAccountSession() { return accounts.fresh(); }
 
 async function syncOnLoad() {
-  if (!session) return;
-  const userId = session.user.id;
+  if (!accounts.session) return;
+  const userId = accounts.session.user.id;
 
   try {
-    session = await freshAccountSession();
-    const cloud = await account.fetchCloudProfile(session);
+    accounts.session = await freshAccountSession();
+    const cloud = await account.fetchCloudProfile(accounts.session);
 
     if (cloudChecked || !signedInAs(userId)) return;
     cloudChecked = true;
@@ -5045,19 +4970,19 @@ async function syncOnLoad() {
 // this load writes nothing itself. The write is conditional on the row's version, so a row another save
 // has moved since is left alone. Not while an opt-out here is unconfirmed: this device shows nothing new.
 function repairBoard(cloud) {
-  if (syncTimer || boardCurrent(cloud) || optOutPending(session)) return;
-  account.repairBoard(session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
+  if (syncTimer || boardCurrent(cloud) || optOutPending(accounts.session)) return;
+  account.repairBoard(accounts.session, boardColumn(normalizeProfile(cloud.data).runs, dailyKey(), cloud.updated_at), cloud.updated_at)
     .then((sent) => { if (sent) friendsBoard?.pushed(); }, () => {});
 }
 
 // Sharing turned on: saves made while an opt-out was still unconfirmed wrote no summary, so the row as
 // it stands now is read and, if its summary doesn't describe it, repaired as on load.
 async function repairBoardNow() {
-  if (!session) return;
+  if (!accounts.session) return;
 
   try {
-    session = await freshAccountSession();
-    const cloud = await account.fetchCloudProfile(session);
+    accounts.session = await freshAccountSession();
+    const cloud = await account.fetchCloudProfile(accounts.session);
 
     if (cloud) repairBoard(cloud);
   } catch {}
@@ -5066,7 +4991,7 @@ async function repairBoardNow() {
 // Puts the account's profile in the device cache, then starts over as that user. A device copy kept
 // at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
 async function enterAccount(newSession) {
-  await replaceIdentity(newSession);
+  await accounts.replaceIdentity(newSession);
   account.clearSignedOut(newSession.user.id);
 
   try {
@@ -5085,14 +5010,14 @@ async function enterAccount(newSession) {
 
 async function signOutAccount() {
   closeAccountMenu();
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
   // What this ends is the account's sign-in on the device as it stands now. That may be newer than this
   // tab's: a guest tab may have signed in to the account since, with no sign-out between. Every tab of the
   // account then signs out, as tabs that share one sign-in do.
   const stored = account.loadSession();
 
-  if (!signedOutElsewhere && stored?.user.id === userId) session = stored;
-  const ending = session;
+  if (!signedOutElsewhere && stored?.user.id === userId) accounts.session = stored;
+  const ending = accounts.session;
 
   // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
   // followSessionElsewhere), or signed out or in as anyone (the same account included) while it waits on
@@ -5135,8 +5060,8 @@ async function signOutAccount() {
   }
 
   // The cache goes only if it still holds what the last push sent, checked as it is removed.
-  await account.signOut(session, { sentText: synced ? sentText : null });
-  await replaceIdentity(null);
+  await account.signOut(accounts.session, { sentText: synced ? sentText : null });
+  await accounts.replaceIdentity(null);
   location.reload();
 }
 
@@ -5163,7 +5088,7 @@ let deletingAccount = false;
 function openDeleteAccount() {
   quoteFilters.dismiss();
 
-  if (!session) return;
+  if (!accounts.session) return;
 
   // The dialog gives focus back to whatever had it, and the menu's own button is about to be hidden.
   if ($('account').contains(document.activeElement)) $('account-trigger').focus();
@@ -5192,12 +5117,12 @@ function setDeleting(pending) {
 }
 
 async function deleteAccountNow() {
-  if (!session || deletingAccount || $('confirm-delete-input').value !== DELETE_WORD) return;
+  if (!accounts.session || deletingAccount || $('confirm-delete-input').value !== DELETE_WORD) return;
   $('delete-account-error').textContent = '';
   setDeleting(true);
 
   try {
-    await account.deleteAccount(session);
+    await account.deleteAccount(accounts.session);
   } catch (error) {
     setDeleting(false);
     $('delete-account-error').textContent = error.message;
@@ -5216,8 +5141,8 @@ async function deleteAccountNow() {
   inbox?.forget();
   forgetRace();
   friendsBoard?.forget();
-  const deleted = session;
-  session = null;
+  const deleted = accounts.session;
+  accounts.session = null;
   account.forgetAccount(deleted);
   wipeHistory();
 
@@ -5235,67 +5160,10 @@ function noticeDeletedAccount() {
     sessionStorage.removeItem(DELETED_NOTICE);
   } catch {}
 
-  if (deleted && !session) showAccountToast('Account deleted. You’re in guest mode.', 'done');
+  if (deleted && !accounts.session) showAccountToast('Account deleted. You’re in guest mode.', 'done');
 }
 
-let accountMode = 'create';
-
-function openAccountDialog(mode) {
-  quoteFilters.dismiss();
-  accountMode = mode;
-  closeAccountMenu();
-  const creating = mode === 'create';
-  $('account-dialog-title').textContent = creating ? 'Create an account' : 'Sign in';
-  $('account-dialog-copy').textContent = creating ? 'Keep your settings and runs on any device.' : '';
-  $('account-dialog-copy').hidden = !creating;
-  $('account-password').autocomplete = creating ? 'new-password' : 'current-password';
-  $('account-submit').textContent = creating ? 'Create account' : 'Sign in';
-  $('account-switch').textContent = creating ? 'Sign in instead' : 'Create one instead';
-  $('account-error').textContent = '';
-  $('account-form').hidden = false;
-  $('account-confirm').hidden = true;
-
-  if (!$('account-dialog').open) $('account-dialog').showModal();
-  $('account-email-input').focus();
-}
-
-async function submitAccount(event) {
-  event.preventDefault();
-  const email = $('account-email-input').value.trim();
-  const password = $('account-password').value;
-
-  if (!email || !password) {
-    $('account-error').textContent = 'Enter an email and a password.';
-
-    return;
-  }
-
-  $('account-submit').disabled = true;
-  $('account-error').textContent = '';
-
-  try {
-    if (accountMode === 'create') {
-      const result = await account.signUp(email, password, authRedirectTarget());
-
-      if (result.confirm) {
-        $('account-confirm-email').textContent = email;
-        $('account-form').hidden = true;
-        $('account-confirm').hidden = false;
-        $('account-confirm-done').focus();
-
-        return;
-      }
-
-      await enterAccount(result.session);
-    } else {
-      await enterAccount(await account.signIn(email, password));
-    }
-  } catch (error) {
-    $('account-error').textContent = error.message;
-  } finally {
-    $('account-submit').disabled = false;
-  }
-}
+function openAccountDialog(mode) { accounts.open(mode); }
 
 // tone 'done' marks a completed action; the default marks a problem.
 function showAccountToast(message, tone = 'problem') {
@@ -5307,29 +5175,10 @@ function showAccountToast(message, tone = 'problem') {
   announce(message);
 }
 
-async function continueWithGoogle() {
-  closeAccountMenu();
-  $('account-google').disabled = true;
-
-  try {
-    await account.startGoogleSignIn(authRedirectTarget());
-  } catch (error) {
-    $('account-google').disabled = false;
-
-    if ($('account-dialog').open) $('account-error').textContent = error.message;
-    else showAccountToast(error.message);
-  }
-}
-
 function bindAccount() {
+  accounts.configure({ beforeOpen: () => quoteFilters.dismiss(), enter: enterAccount, signOut: signOutAccount, exportData, deleteAccount: openDeleteAccount, toast: showAccountToast });
   const menu = $('account');
-  $('account-create').addEventListener('click', () => openAccountDialog('create'), { signal: lifetime.signal });
-  $('account-signin').addEventListener('click', () => openAccountDialog('signin'), { signal: lifetime.signal });
-  $('account-google').addEventListener('click', continueWithGoogle, { signal: lifetime.signal });
-  $('account-dialog-google').addEventListener('click', continueWithGoogle, { signal: lifetime.signal });
-  $('account-signout').addEventListener('click', signOutAccount, { signal: lifetime.signal });
-  $('account-export').addEventListener('click', exportData, { signal: lifetime.signal });
-  $('account-delete').addEventListener('click', openDeleteAccount, { signal: lifetime.signal });
+
   $('confirm-delete-input').addEventListener('input', (event) => {
     if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
   }, { signal: lifetime.signal });
@@ -5337,10 +5186,7 @@ function bindAccount() {
   $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close(), { signal: lifetime.signal });
   // While the request is out, the dialog stays: its answer decides what happens next.
   $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); }, { signal: lifetime.signal });
-  $('account-form').addEventListener('submit', submitAccount, { signal: lifetime.signal });
-  $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'), { signal: lifetime.signal });
-  $('account-cancel').addEventListener('click', () => $('account-dialog').close(), { signal: lifetime.signal });
-  $('account-confirm-done').addEventListener('click', () => $('account-dialog').close(), { signal: lifetime.signal });
+
   document.addEventListener('pointerdown', (event) => {
     if (menu.open && !menu.contains(event.target)) closeAccountMenu();
   }, { signal: lifetime.signal });
@@ -5364,7 +5210,7 @@ function bindAccount() {
     else pullProfile();
   }, { signal: lifetime.signal });
   addEventListener('online', () => {
-    if (!session) return;
+    if (!accounts.session) return;
 
     if (!cloudChecked) syncOnLoad();
     else pullProfile({ force: true });
@@ -5376,7 +5222,7 @@ function bindAccount() {
   // end of the run merges it then. While this tab follows a sign-out that sent everything, only that
   // sign-out's removal of the cache matters (finishFollow).
   addEventListener('storage', (event) => {
-    if (!session) return;
+    if (!accounts.session) return;
 
     if (pendingSignOut !== null) {
       finishFollow(event);
@@ -5386,7 +5232,7 @@ function bindAccount() {
 
     if (signedOutElsewhere || followSessionElsewhere(event)) return;
 
-    if (event.key !== account.profileKey(session.user.id)) return;
+    if (event.key !== account.profileKey(accounts.session.user.id)) return;
 
     if (runInProgress()) cacheWaiting = true;
     else if (absorbCache()) showMerged();
@@ -5406,7 +5252,7 @@ function bindAccount() {
 // takes up the newer sign-in before its next request (account.freshSession) and as it signs out
 // (signOutAccount). Returns whether it followed.
 function followSessionElsewhere(event) {
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
   const current = account.loadSession()?.user.id;
 
   const signedOut = event.key === null
@@ -5416,7 +5262,7 @@ function followSessionElsewhere(event) {
 
   if (!signedOut) return false;
   signedOutElsewhere = true;
-  void replaceIdentity(null);
+  void accounts.replaceIdentity(null);
   // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
   friendsBoard?.signOut();
   clearTimeout(syncTimer);
@@ -5449,7 +5295,7 @@ function sentStamp(markerText) {
 // again as the device now is once no run is in progress. A cleared storage, or the marker removed
 // without the cache, finishes with nothing to put back.
 function finishFollow(event) {
-  const userId = session.user.id;
+  const userId = accounts.session.user.id;
   const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;
   const finished = cacheRemoved || event.key === null || (event.key === account.signedOutKey(userId) && event.newValue === null);
 
@@ -5563,7 +5409,7 @@ function importSettings(event) {
   if (conditions && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
 
   const count = result.mapped.length;
-  setText($('import-summary'), `${count} ${count === 1 ? 'setting' : 'settings'} brought over. ${session
+  setText($('import-summary'), `${count} ${count === 1 ? 'setting' : 'settings'} brought over. ${accounts.session
     ? 'They’re saved to your account and sync to your other devices.'
     : 'Guest mode keeps them for this visit only; sign in to keep them.'}`);
   $('import-mapped').replaceChildren(...result.mapped.map(importRow));
@@ -5764,8 +5610,8 @@ function bindEvents() {
     currentTheme: shownTheme,
     preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
     save: saveCustomThemes,
-    signedIn: () => Boolean(session) && !signedOutElsewhere,
-    generate: (vibe) => account.generateTheme(session, vibe),
+    signedIn: () => Boolean(accounts.session) && !signedOutElsewhere,
+    generate: (vibe) => account.generateTheme(accounts.session, vibe),
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
   });
   $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }), { signal: lifetime.signal });
@@ -5858,8 +5704,6 @@ function bindEvents() {
 
   practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-
-
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
 
@@ -5878,11 +5722,6 @@ function bindEvents() {
     progressState.moversOpen = !progressState.moversOpen;
     renderMovers(progressWeek);
   }, { signal: lifetime.signal });
-
-
-
-
-
 
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
   $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
@@ -5916,7 +5755,7 @@ function bindEvents() {
     startDrill({ kind: 'manual', target, title: `Practice “${target}”` });
   }, { signal: lifetime.signal });
 
-  $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); }, { signal: lifetime.signal });
+  $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && accounts.session) loadGhostFriends(); }, { signal: lifetime.signal });
   $('ghost-offer-form').addEventListener('submit', sendGhost, { signal: lifetime.signal });
   $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd(), { signal: lifetime.signal });
   $('ghost-result-action').addEventListener('click', () => {
@@ -6556,11 +6395,11 @@ function paletteCommands(query) {
     { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
     ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${SOUND_LABELS[mode]}`, keywords: 'audio typing key clicks error tick mute volume', hint: learning.preferences.sound === mode ? 'current' : '', on: learning.preferences.sound === mode, run: () => setSound(mode) })),
     ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: learning.preferences.soundVolume === volume ? 'current' : '', on: learning.preferences.soundVolume === volume, disabled: learning.preferences.sound === 'off', run: () => setSoundVolume(volume) })),
-    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(session && shared), disabled: !session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
+    { group: 'account', label: 'share on friends board', keywords: 'friends board leaderboard privacy opt in out publish stop sharing', hint: accounts.session ? (shared === null ? '' : onOff(shared)) : 'sign in', on: Boolean(accounts.session && shared), disabled: !accounts.session || Boolean(onlineRace?.liveRoomId), run: () => { onlineRace.openBoard(); friendsBoard.setShare(!friendsBoard.sharing); } },
     { group: 'account', label: 'export my data', keywords: 'download backup json history runs take out privacy', run: exportData },
-    ...(session
+    ...(accounts.session
       ? [
-        { group: 'account', label: 'sign out', keywords: `log out logout ${session.user.email}`, hint: session.user.email, run: signOutAccount },
+        { group: 'account', label: 'sign out', keywords: `log out logout ${accounts.session.user.email}`, hint: accounts.session.user.email, run: signOutAccount },
         { group: 'account', label: 'delete account…', keywords: 'remove erase close account data privacy', run: openDeleteAccount },
       ]
       : [
@@ -6674,7 +6513,7 @@ document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac
 compose.configure({
   playKeySound: (outcome) => sounds.play(outcome),
   setRunning, announce, uid,
-  signedIn: () => Boolean(session),
+  signedIn: () => Boolean(accounts.session),
   save(record) {
     learning.profile.compositions.push(record);
     learning.profile.practiceDays = recordPracticeTime(learning.profile.practiceDays, record.at, record.activeMs);
@@ -6731,7 +6570,7 @@ resetSession('practice', { focus: matchMedia('(hover: hover) and (pointer: fine)
 
 inbox = createInbox({
   isRunning: runInProgress,
-  getSession: () => session,
+  getSession: () => accounts.session,
   listInvites: listRaceInvites,
   listChallenges,
   announce,
@@ -6746,7 +6585,7 @@ inbox = createInbox({
 // The board only reads: each account's numbers ride its own profile saves (pushProfile, repairBoard).
 // Whether the account shares is the board's own to know, from the service, not a synced preference.
 friendsBoard = createFriendsBoard({
-  getSession: () => session,
+  getSession: () => accounts.session,
   dailyKey,
   // Which shape the bests picker opens on: the one you have run most (src/friends-board.js defaultShape).
   runs: () => learning.profile.runs,
@@ -6758,7 +6597,7 @@ friendsBoard = createFriendsBoard({
 
 onlineRace = createOnlineRace({
   rankCard: challenge.rankCard, review: challenge.review, people: challenge.people, quick: challenge.quick,
-  getSession: () => session,
+  getSession: () => accounts.session,
   inbox,
   board: friendsBoard,
   signIn: () => openAccountDialog('signin'),
@@ -6843,6 +6682,7 @@ return {
     detachWallpaper?.();
     wallpaper.dispose();
     themeEditor.dispose();
+    accounts.dispose();
     await disposePageWork();
   },
 };
