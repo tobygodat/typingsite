@@ -1,4 +1,8 @@
-function isCompositionRecord(item: unknown): item is CompositionRecord {
+type CompositionCounts = Pick<CompositionRecord, 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>;
+
+interface StoredComposition extends CompositionCounts { id: string; version?: unknown; at?: unknown; promptId?: unknown; inputClass?: unknown; endedBy?: unknown }
+
+function isCompositionRecord(item: unknown): item is StoredComposition {
   if (!isRecord(item) || typeof item.id !== 'string') return false;
 
   return COUNTS.every((key) => typeof item[key] === 'number' && Number.isFinite(item[key]) && item[key] >= 0);
@@ -204,15 +208,15 @@ export function composeSummary({ keys = [], text = '', elapsedMs = 0 }: { keys?:
 const COUNTS: (keyof Pick<CompositionRecord, 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>)[] = ['characters', 'words', 'keystrokes', 'backspaces', 'activeMs', 'elapsedMs', 'wpm', 'backspaceRate'];
 
 // The stored record: numbers and labels only. There is no field that could carry the writing.
-export function compositionRecord(summary: Pick<CompositionRecord, 'version' | 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>, { id, at, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }: { id: unknown; at?: unknown; promptId?: string | null; inputClass?: string; endedBy?: string }) {
-  const record: CompositionRecord = { characters: summary.characters, words: summary.words, keystrokes: summary.keystrokes, backspaces: summary.backspaces, activeMs: summary.activeMs, elapsedMs: summary.elapsedMs, wpm: summary.wpm, backspaceRate: summary.backspaceRate, id: String(id), at: typeof at === 'string' ? at : null,
+export function compositionRecord(summary: CompositionCounts & { version?: unknown }, { id, at, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }: { id: unknown; at?: unknown; promptId?: unknown; inputClass?: unknown; endedBy?: unknown }) {
+  const record: Omit<CompositionRecord, keyof CompositionCounts> = { id: String(id), at: typeof at === 'string' ? at : null,
     version: typeof summary.version === 'string' ? summary.version : COMPOSE_VERSION,
     promptId: typeof promptId === 'string' && promptText(promptId) ? promptId : null,
     inputClass: inputClass === 'touch' ? 'touch' : 'physical-keyboard',
     endedBy: endedBy === 'time' ? 'time' : 'done' };
 
 
-  return record;
+  return Object.assign(record, { characters: summary.characters, words: summary.words, keystrokes: summary.keystrokes, backspaces: summary.backspaces, activeMs: summary.activeMs, elapsedMs: summary.elapsedMs, wpm: summary.wpm, backspaceRate: summary.backspaceRate });
 }
 
 // Loading keeps only well-formed records, rebuilt from known fields, so nothing else rides along.

@@ -143,13 +143,13 @@ export function analysisRuns(values: readonly unknown[]) {
 export function isAnalysisLoop(value: unknown): value is import('./profile-types.js').AnalysisLoop {
   if (!isRecord(value)) return false;
 
-  return optional(value, ['id', 'at', 'afterAttemptId', 'drillAttemptId'], string)
-    && optional(value, ['beforeAttemptId', 'target'], nullableString)
+  return optional(value, ['id', 'afterAttemptId', 'drillAttemptId'], string)
+    && optional(value, ['beforeAttemptId', 'target', 'at'], nullableString)
     && optional(value, ['conditions'], isRecord)
     && optional(value, ['targetBasis'], (basis) => basis === 'slow' || basis === 'errors')
     && optional(value, ['drillCompleted'], boolean)
-    && optional(value, ['targetMisses'], (counts) => counts === null || (isRecord(counts) && isTargetCounts(counts.was) && isTargetCounts(counts.now)))
-    && optional(value, ['targetPace'], (pace) => pace === null || (isRecord(pace) && isTargetPace(pace.was) && isTargetPace(pace.now)));
+    && optional(value, ['targetMisses'], (counts) => counts === null || (isRecord(counts) && optional(counts, ['target'], string) && isTargetCounts(counts.was) && isTargetCounts(counts.now)))
+    && optional(value, ['targetPace'], (pace) => pace === null || (isRecord(pace) && optional(pace, ['target'], string) && isTargetPace(pace.was) && isTargetPace(pace.now)));
 }
 
 function isTargetPace(value: unknown) {

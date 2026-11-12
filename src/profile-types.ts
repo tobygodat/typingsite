@@ -105,7 +105,7 @@ export type AnalysisRun = Partial<Omit<RunRecord, 'kind' | 'status' | 'condition
 
 export type ScoredRun = AnalysisRun & { score: Score };
 
-export type AnalysisLoop = Partial<Omit<TrainingLoop, 'beforeAttemptId' | 'conditions' | 'comparison' | 'minimums' | 'inputClass' | 'targetPace' | 'targetMisses'>> & {
-  beforeAttemptId?: string | null; conditions?: Conditions | HistoricalRecord; comparison?: unknown; minimums?: unknown; inputClass?: unknown;
+export type AnalysisLoop = Partial<Omit<TrainingLoop, 'beforeAttemptId' | 'conditions' | 'comparison' | 'minimums' | 'inputClass' | 'targetPace' | 'targetMisses' | 'at'>> & {
+  beforeAttemptId?: string | null; at?: string | null; conditions?: Conditions | HistoricalRecord; comparison?: unknown; minimums?: unknown; inputClass?: unknown;
   targetPace?: TrainingLoop['targetPace'] | null; targetMisses?: TrainingLoop['targetMisses'] | null;
 };
