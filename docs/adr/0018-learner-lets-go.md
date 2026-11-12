@@ -155,7 +155,7 @@ For the shipped policy, "read fixed" uses the same let-go test, so its columns s
 
 ### The guard world, test seeds 301 to 330
 
-Mean paired differences, let-go − shipped, with 95% t intervals. Every other guard (log loss, calibration, captured gain at 10, planted error pairs at 10, pick-up) is exactly zero in both variants.
+Mean paired differences, let-go − shipped, with 95% t intervals. Log loss, calibration, captured gain at 10 and planted error pairs at 10 are exactly zero in both variants. Pick-up is exactly zero at pace and a tie in the slow variant: pick-up −0.03 runs [−0.10, +0.03], and slow pick-up, which the record reports beside the guards, −0.05 [−0.13, +0.03].
 
 | variant | captured@40 (points) | let-go (runs) | slow let-go (runs) |
 | --- | --- | --- | --- |
@@ -166,7 +166,7 @@ Mean paired differences, let-go − shipped, with 95% t intervals. Every other g
 
 ### The TOB-419 history
 
-Clean runs until "th" is no longer named, after the measured history (each missed run 9 tries with 2 misses, each clean run 9 clean tries, beside a background missed one try in 30; that background gives the measured table within a few runs):
+Clean runs until "th" is no longer named, after the measured history (each missed run 9 tries with 2 misses, each clean run 9 clean tries, beside a background missed one try in 30; that background gives the measured table to within a run in three cells, and 103 against the measured 111 in the fourth):
 
 | missed in | a day | shipped | let-go |
 | --- | --- | --- | --- |
@@ -193,7 +193,7 @@ The misses-only fallback needs every clause for misses, so it fails too. Both st
 
 ### What to try next
 
-- Give the claim more evidence per run, not a weaker test: after a drill, let the next fresh runs lean toward the drilled pair (as adaptive text does, but on measured runs), so each run holds ten or more of its first tries. That is a product call about Practice's text.
+- Give the claim more evidence per run, not a weaker test: after a drill, let the next fresh runs lean toward the drilled pair (as adaptive text does, but on measured runs), so each run holds ten or more of its first tries. That is a product call about Practice's text, and Toby made it on 2026-11-11: practice text changes only when the person has chosen adaptive, so this can be tried inside that choice and never as the default.
 - Fix the walk's typical rate at the drill, from the evidence before its split, so new runs cannot move a crossing; and keep pattern evidence for the runs since each kept drill, so the walk never restarts.
 - Decide what the other kind means: a target let go for its misses and then named for its pace is a new step, or the let-go drops both parts.
 - Judge any of these by a new rule on fresh seeds, with the run targets stated for the evidence a run holds.

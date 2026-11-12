@@ -32,7 +32,7 @@ export const BASELINE_POLICY = 'counting@1';
 // intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
 // worse on a guard. ADR 0018 kept it again: letting a drilled target go on the evidence since its drill
 // (LET_GO_POLICY) harmed nothing, but on simulated seasons took a median of 100 runs at 25 words to let a fixed target
-// go, and let one in 40 still-weak targets go. It is provisional until a learning study can run, and says nothing
+// go, and let 2.3% of still-weak targets go. It is provisional until a learning study can run, and says nothing
 // about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
@@ -571,7 +571,10 @@ export function recommendFor(policy, { runs, loops = [], traces, source, now, fo
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
   const keyboard = keyboardOf(source);
+  const variant = LEARNER_VARIANTS[policy];
+  // Only a let-go variant reads loops, so no other policy can be changed, or broken, by what a stored loop holds.
+  const drills = variant?.letGo ? [...drilledTargets(loops, keyboard).values()] : [];
 
-  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboard), now, LEARNER_VARIANTS[policy], focus, [...drilledTargets(loops, keyboard).values()]));
+  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboard), now, variant, focus, drills));
 }
 

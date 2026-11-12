@@ -102,3 +102,17 @@ test('every policy before learner-let-go@2 computes exactly what it computed on 
 
   assert.deepEqual(seen, PINNED);
 });
+
+test('a policy that does not let go never reads a stored loop, so a malformed one cannot break it', () => {
+  const { runs, traces, loops, conditions, now } = history(3, 30);
+  const malformed = [...loops, { id: 'no-conditions', at: runs.at(-1).at, target: 'th', conditions: null }, { id: 'no-date', target: 'he' }];
+
+  for (const policy of PINNED_POLICIES) {
+    for (const focus of FOCUSES) {
+      const clean = recommendFor(policy, { runs, loops: [], traces, source: conditions, now, focus });
+
+      assert.deepEqual(recommendFor(policy, { runs, loops: malformed, traces, source: conditions, now, focus }), clean, `${policy} ${focus}`);
+      assert.deepEqual(recommendFor(policy, { runs, loops: null, traces, source: conditions, now, focus }), clean, `${policy} ${focus} without loops`);
+    }
+  }
+});
