@@ -543,10 +543,10 @@ async function withBoard<T>(board: BoardWriter | undefined, at: string, send: (c
 
 // Writes only if the row is still the version read at `seenAt` (owners may update their own row, see
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
-export async function updateCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, seenAt: string, { board }: { board?: BoardWriter } = {}) {
+export async function updateCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, seenAt: string | undefined, { board }: { board?: BoardWriter } = {}) {
   const at = stampAfter(seenAt);
 
-  const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(seenAt)}&select=updated_at`, {
+  const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(String(seenAt))}&select=updated_at`, {
     method: 'PATCH',
     token: session.access_token,
     headers: { Prefer: 'return=representation' },
