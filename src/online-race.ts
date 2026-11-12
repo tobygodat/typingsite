@@ -84,6 +84,8 @@ export function roomStatus(room: RaceRoom, finished: boolean): string {
   }
 }
 
+const sameIdentity = (a: Session | null, b: Session | null) => (a === null && b === null) || sameSignIn(a, b);
+
 const stamp = (value: string | number | null | undefined) => typeof value === 'number' ? value : Date.parse(value ?? '');
 const RESULT_RETAINED_MS = 23 * 60 * 60 * 1000;
 
@@ -175,7 +177,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     const session = getSession();
     const result = await scope.run(abortable(send, errorDetails));
 
-    if (disposed || (roomBound && from !== generation) || !sameSignIn(getSession(), session)) throw new WorkCancelled('The race changed.');
+    if (disposed || (roomBound && from !== generation) || !sameIdentity(getSession(), session)) throw new WorkCancelled('The race changed.');
 
     return result;
   }
@@ -352,7 +354,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
       if (getSession() === session) { links = read; linkedIds = ids; renderPeople(); }
     } catch {} finally {
-      if (!disposed && sameSignIn(getSession(), session)) {
+      if (!disposed && sameIdentity(getSession(), session)) {
         linksBusy = false;
 
         if (linksAgain) { linksAgain = false; refreshLinks(); }
@@ -465,8 +467,10 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
         if (credentials === from) enterRoom(result);
       } catch (failure) {
-        if (credentials !== from || disposed || failure instanceof WorkCancelled) return;
+        if (credentials !== from || disposed) return;
         following = null;
+
+        if (failure instanceof WorkCancelled) return;
         error(errorDetails(failure).message || 'The race service is unavailable. Try again.');
       }
     })();
@@ -516,10 +520,14 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   }
 
   async function loadFriends() {
-    if (!getSession()) return;
+    const session = getSession();
+
+    if (!session) return;
 
     try { await friendRequests.reload(); }
     catch (failure) {
+      if (disposed || !sameIdentity(getSession(), session)) return;
+
       if (!friendsLoaded) { friendsFailure = errorDetails(failure); renderPeople(); }
     }
   }
@@ -595,11 +603,11 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
       return true;
     }
     catch (failure) {
-      if (!(failure instanceof WorkCancelled) && !disposed) error(errorDetails(failure).message || 'The race service is unavailable. Try again.');
+      if (!(failure instanceof WorkCancelled) && !disposed && sameIdentity(getSession(), session)) error(errorDetails(failure).message || 'The race service is unavailable. Try again.');
 
       return false;
     }
-    finally { if (!disposed && sameSignIn(getSession(), session)) { changingFriends = false; renderBusy(); } }
+    finally { if (!disposed && sameIdentity(getSession(), session)) { changingFriends = false; renderBusy(); } }
   }
 
   async function perform(action: () => Promise<void>) {
@@ -609,9 +617,9 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     renderBusy();
     error();
 
-    try { await action(); } catch (failure) { if (!(failure instanceof WorkCancelled) && !disposed) error(errorDetails(failure).message || 'The race service is unavailable. Try again.'); }
+    try { await action(); } catch (failure) { if (!(failure instanceof WorkCancelled) && !disposed && sameIdentity(getSession(), session)) error(errorDetails(failure).message || 'The race service is unavailable. Try again.'); }
     finally {
-      if (!disposed && sameSignIn(getSession(), session)) {
+      if (!disposed && sameIdentity(getSession(), session)) {
         busy = false;
         renderBusy();
 
@@ -1074,6 +1082,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   async function leave() {
     options?.quick.leave();
     const previous = credentials;
+    const session = getSession();
     const rated = room?.quick;
     generation += 1;
     networkBusy = false;
@@ -1090,7 +1099,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     if (previous) {
       try { await request((signal) => multiplayer.leaveRace(getSession(), previous, signal)); }
-      catch (failure) { if (!(failure instanceof WorkCancelled) && !disposed) error(`You left this tab’s race. ${errorDetails(failure).message || 'The server will close the room when it expires.'}`); }
+      catch (failure) { if (!(failure instanceof WorkCancelled) && !disposed && sameIdentity(getSession(), session)) error(`You left this tab’s race. ${errorDetails(failure).message || 'The server will close the room when it expires.'}`); }
     }
 
     if (rated) options?.quick.refresh();
@@ -1155,18 +1164,21 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   function checkIdentity() {
     const session = getSession();
 
-    if (sameSignIn(identity, session)) { identity = session;
+    if (sameIdentity(identity, session)) { identity = session;
 
  return; }
 
+    const keepGuestSeat = Boolean(credentials?.guestToken && room);
     identity = session;
+    following = null;
     generation += 1;
     void work.close();
     work = new AsyncLifetime(accountLifetime());
     raceWork = new AsyncLifetime(work);
     clearTimeout(pollTimer);
-    credentials = null; room = null;
-    resetAttempt();
+
+    if (!keepGuestSeat) { credentials = null; room = null; resetAttempt(); }
+
     friends = []; friendsLoaded = false; invites = []; challenges = []; links = null;
     linkedIds = ''; linksBusy = false; linksAgain = false; linksMissing = false;
     changingFriends = false; busy = false; restoring = false; networkBusy = false;
@@ -1174,6 +1186,8 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     friendRequests = createFriendRequests();
     loadDismissed(); renderHome();
     void loadFriends();
+
+    if (keepGuestSeat) pollTimer = window.setTimeout(poll, 0);
   }
 
   function start() {
