@@ -1,5 +1,5 @@
 // Runs started: one finished run, one restarted mid-run (Escape) and one abandoned for Progress, then the
-// Practice tab's figures. Runs started reads 3, with 1 finished.
+// practice calendar's figures. Runs started reads 3, with 1 finished.
 export default async ({ page, h, shot, note, check }) => {
   await h.openApp();
   await h.chooseWords(10);
@@ -14,7 +14,7 @@ export default async ({ page, h, shot, note, check }) => {
   await h.type((await h.passage()).slice(0, 8));
   await h.attr('body', 'data-running', 'true');
   await h.openView('Progress');
-  await page.getByRole('tab', { name: 'Practice' }).click();
+  await page.locator('[data-progress-open="calendar"]').click();
   await h.settle();
   const figures = await page.locator('#practice-stats').innerText();
   note('practice figures', figures);

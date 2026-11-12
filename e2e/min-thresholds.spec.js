@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -399,6 +399,7 @@ test('a retest stopped under its baseline’s minimum shows no figures for the d
 
   // Progress keeps the baseline and records no drill-and-retest comparison.
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.run-row')).toHaveCount(1);
   await expect(page.locator('#history-list')).toBeHidden();
   await expect(page.locator('#history-empty')).toBeVisible();

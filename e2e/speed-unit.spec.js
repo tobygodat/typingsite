@@ -1,6 +1,6 @@
 // Speed unit: wpm (default) or cpm. Display only: scoring, bests, comparisons and condition keys stay in wpm.
 import { CORPUS_VERSION, METRIC_VERSION, standardConditions, conditionKey } from '../src/typing.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings, phone, setRaceName, inviteByEmail } from './fixtures.js';
+import { test, expect, openProgressView, openProgressDetail, openApp, openView, openSettings, chooseWords, chooseMore, completePassage, freshTextCheck, passageText, typeInto, signInWithEmail, chooseSetting, closeSettings, phone, setRaceName, inviteByEmail } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -103,16 +103,19 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await shot(page, testInfo, 'results-dark');
 
   await openView(page, 'Progress');
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day cpm');
-  await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second} cpm · \\d+%$`));
   // Both runs fall on one day: one point, their median, in cpm.
   await expect(page.locator('#progress-trend .trend-dot.trend-wpm').last()).toHaveAttribute('aria-label', new RegExp(`: median ${Math.round((first * 5 + second) / 2)} cpm over 2 runs, the best day\\. View the latest run\\.$`));
   await shot(page, testInfo, 'progress-dark');
+  await openProgressDetail(page, 'runs');
+  await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second} cpm · \\d+%$`));
 
   // Back to wpm from the palette; nothing was re-keyed, so the same best and runs come back.
   await command(page, 'speed unit · wpm');
-  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day wpm');
   await expect(page.locator('#run-history .run-summary strong').first()).toHaveText(new RegExp(`^${second / 5} wpm · \\d+%$`));
+  await openProgressView(page, 'Speed');
+  await expect(page.locator('#progress-trend figcaption').first()).toHaveText('Speed by day wpm');
   await expect(page.locator('#best')).toHaveText(`Best · ${Math.max(first, second / 5)} wpm`);
   await openView(page, 'Train');
   await expect(page.locator('#result-wpm')).toHaveText(String(second / 5));
@@ -307,6 +310,7 @@ test('a retest comparison and the drills and retests list read in cpm', async ({
   await expect(page.locator('#comparison-panel .comparison-rows [data-speed-unit]')).toHaveText('cpm');
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-measure span').nth(1)).toHaveText('Corrected cpm');
   await expect(page.locator('.history-timing')).toHaveText(`${sign}${delta * 5} cpm`);
   await page.locator('.history-summary').click();
@@ -640,6 +644,7 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'standard');
   await expect(page.locator('#standard-best')).toHaveText('330');
   await expect(page.locator('#standard-median')).toHaveText('315');
   await expect(page.locator('#standard-best + span')).toHaveText('cpm');
@@ -856,6 +861,7 @@ test('a unit change leaves no old unit in the word list, the speed graph or the 
   await chooseWords(page, 10);
   await typeRun(page, 11);
   await openView(page, 'Progress');
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend .trend-dot').first()).toBeAttached();
 
   // Each surface's text and its aria-label and title attributes that name the unit.

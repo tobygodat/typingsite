@@ -1,5 +1,5 @@
 // Repeat quotes: off by default, a setting and a palette command, and honest labels when a seen quote returns.
-import { test, expect, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter, phone, finishDrill } from './fixtures.js';
+import { test, expect, openProgressDetail, openProgressView, completePassage, openApp, openView, openSettings, passageText, signInWithEmail, typeInto, chooseMore, chooseSetting, chooseQuoteFilter, phone, finishDrill } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -188,8 +188,10 @@ test('on: a seen quote can return to chase its score, but never sets a best, a b
   await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
 
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#run-history .run-row')).toHaveCount(2);
   await expect(page.locator('#run-history .run-row').first()).toContainText(' · repeated text');
+  await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend .trend-dot')).toHaveCount(1); // one fresh run on the speed chart
   await expect(page.locator('#progress-trend-note')).toContainText('1 repeated-text run not charted.');
   await page.emulateMedia({ colorScheme: 'light' });

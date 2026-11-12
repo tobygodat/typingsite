@@ -5,7 +5,7 @@
 // 2 hover): a fine primary pointer with hover, and a coarse one also available. Firefox takes the same
 // from its pointer preferences (bit flags: 1 coarse, 2 fine, 4 hover). WebKit has no such setting.
 // That needs its own browser, so these tests live in their own file.
-import { test, expect, openApp, openView, chooseWords, completePassage } from './fixtures.js';
+import { test, expect, openProgressDetail, openProgressView, openApp, openView, chooseWords, completePassage } from './fixtures.js';
 
 const args = ['--blink-settings=primaryPointerType=4,availablePointerTypes=6,primaryHoverType=2,availableHoverTypes=3'];
 
@@ -54,12 +54,14 @@ test('a fine primary pointer with a touchscreen beside it still gets 44px target
   await chooseWords(page, 10);
   await completePassage(page);
   await openView(page, 'Progress');
-  // A small button (34px tall with a mouse alone), the "View passage" disclosure and the chart points.
+  // The quiet links (Clear history among them), the "View passage" disclosure and the chart points.
   expect((await hitArea(page.locator('#clear-history')))[1], 'Clear history height').toBeGreaterThanOrEqual(MIN);
+  await openProgressDetail(page, 'runs');
   await page.locator('#run-history .run-summary').first().click();
   const passage = page.locator('#run-history .run-detail summary').first();
   await expect(passage).toHaveText('View passage');
   expect((await hitArea(passage))[1], 'View passage height').toBeGreaterThanOrEqual(MIN);
+  await openProgressView(page, 'Speed');
   const point = await page.locator('#progress-trend .trend-hit').first().evaluate((hit) => getComputedStyle(hit).ry);
   expect(point, 'chart point hit radius').toBe('24px');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);

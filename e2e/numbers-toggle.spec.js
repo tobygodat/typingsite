@@ -1,4 +1,4 @@
-import { test, expect, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings, freshTextCheck } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, chooseWords, completePassage, finishDrill, passageText, openSettings, openView, signInWithEmail, chooseSetting, closeSettings, freshTextCheck } from './fixtures.js';
 import { dailyPassage } from '../src/insights.js';
 import { quoteCorpus } from '../src/typing.js';
 
@@ -48,8 +48,9 @@ test('numbers live in test content settings, default off, and keep practice best
   await expect(page.locator('#result-delta')).toHaveText('First run at these settings');
 
   await openView(page, 'Progress');
-  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
+  await openProgressDetail(page, 'runs');
   await page.locator('.conditions-disclosure > summary').click();
+  await page.getByRole('group', { name: 'Test' }).getByRole('button', { name: '10 words' }).click();
   const variants = page.getByRole('combobox', { name: 'Conditions', exact: true });
   await expect(variants.locator('option')).toHaveCount(2);
 

@@ -125,8 +125,30 @@ export async function openView(page, label) {
 }
 
 // One of Progress's views (Speed, Accuracy, Consistency, Practice, Keys), chosen from its tabs.
+// Progress's detail views (TOB-420), reached as a person reaches them: a quiet link at the foot of the overview, or
+// a small chart for its fuller chart. `runs`, `keys`, `calendar`, `standard` or `compose`.
+export async function openProgressDetail(page, name) {
+  if ((await page.locator('#progress-screen').getAttribute('data-detail')) === name) return;
+
+  if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();
+  await page.locator(`#progress-more [data-progress-open="${name}"]`).click();
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
+}
+
+// The trends' tabs (Speed, Accuracy, Consistency), opened from the small speed chart; and the views that were tabs
+// before the overview (Practice, the calendar; Keys).
 export async function openProgressView(page, name) {
-  const tab = page.getByRole('tablist', { name: 'View' }).getByRole('tab', { name, exact: true });
+  if (name === 'Practice') return openProgressDetail(page, 'calendar');
+
+  if (name === 'Keys') return openProgressDetail(page, 'keys');
+
+  if ((await page.locator('#progress-screen').getAttribute('data-detail')) !== 'trends') {
+    if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();
+    await page.locator('#week-speed button').click();
+    await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'trends');
+  }
+
+  const tab = page.getByRole('tablist', { name: 'Chart' }).getByRole('tab', { name, exact: true });
   await tab.click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
 }

@@ -1,7 +1,7 @@
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { DEFAULT_POLICY, englishFrequency } from '../src/learner.js';
 import { LESSONS } from '../src/lessons.js';
-import { test, expect, openApp, passageText, chooseWords, chooseMore, completePassage, openView, openSettings, closeSettings, chooseSetting, signInWithEmail, typeInto } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, chooseWords, chooseMore, completePassage, openView, openSettings, closeSettings, chooseSetting, signInWithEmail, typeInto } from './fixtures.js';
 
 const checked = (page, id) => page.locator(`#${id} input:checked`);
 
@@ -126,6 +126,7 @@ test('with the retest off, Train runs the drill and stops: nothing is compared a
   await expect.poll(() => supabase.profileFor(user.email)?.runs?.map((run) => run.kind)).toEqual(['test', 'drill']);
   expect(supabase.profileFor(user.email).loops).toEqual([]);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'runs');
   await expect(page.locator('#history-list')).toBeHidden();
 });
 
@@ -146,6 +147,7 @@ test('each focus names its own target on the same history, and Patterns across r
 
     // Progress lists the same queue, its first row the target Train names, with the same evidence line.
     await openView(page, 'Progress');
+    await openProgressDetail(page, 'keys');
     const first = page.locator('#training-targets .training-target').first();
     await expect(first.locator('h3')).toHaveText(`Practice “${target}”`);
     await expect(first.locator('p').first()).toHaveText(evidence);
@@ -156,6 +158,7 @@ test('each focus names its own target on the same history, and Patterns across r
   await chooseSetting(page, 'train-focus', 'accuracy');
   await closeSettings(page);
   await openView(page, 'Progress');
+  await openProgressDetail(page, 'keys');
   await expect(page.locator('#training-targets h3')).toHaveText(['Practice “an”']);
   await page.locator('#training-targets').getByRole('button', { name: 'Practice “an” again' }).click();
   await expect(page.locator('#session-title')).toHaveText('Practice “an”');
