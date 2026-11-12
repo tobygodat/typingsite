@@ -15,7 +15,64 @@ import { isValidLength } from './lengths.js';
 import { layoutIds, isDefaultLayout } from './layouts.js';
 import { wordListIds } from './words.js';
 import { comparableKind, conditionParts, dailyPassage, trendRun, validRun } from './insights.js';
-import { speedFigure, unitLabel } from './units.js';
+import { Schema } from 'effect';
+import { AsyncLifetime, accountLifetime, abortable, WorkCancelled } from './async-runtime.js';
+import { decodeReply, errorDetails } from './network.js';
+import type { Session } from './network.js';
+import { sameSignIn } from './account.js';
+import { at as indexed, entry as mapped, isRecord, lookup } from './domain-values.js';
+import type { Conditions } from './typing.js';
+import type { HistoricalRecord, HydratedProfile } from './profile-types.js';
+
+const BestSchema = Schema.Struct({ wpm: Schema.Number, accuracy: Schema.Number, date: Schema.String });
+const DailySchema = Schema.Struct({ version: Schema.String, wpm: Schema.Number, accuracy: Schema.Number, attempts: Schema.Number });
+const WeekSchema = Schema.Struct({ seconds: Schema.Number, runs: Schema.Number });
+
+const RowSchema = Schema.Struct({
+  self: Schema.optional(Schema.Boolean), id: Schema.optional(Schema.NullOr(Schema.Union([Schema.String, Schema.Number]))), name: Schema.optional(Schema.String),
+  daily: Schema.optional(Schema.NullOr(DailySchema)), week: Schema.optional(Schema.NullOr(WeekSchema)),
+  bests: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, BestSchema))),
+});
+
+const BoardSchema = Schema.StructWithRest(Schema.Struct({
+  sharing: Schema.optional(Schema.Boolean), sharingVersion: Schema.optional(Schema.Number),
+  date: Schema.optional(Schema.String), nextDay: Schema.optional(Schema.Number), rows: Schema.optional(Schema.Array(RowSchema)),
+}), [Schema.Record(Schema.String, Schema.Unknown)]);
+
+export type BoardReply = typeof BoardSchema.Type;
+
+export type BoardRow = typeof RowSchema.Type & { otherVersion?: boolean };
+
+export interface BoardShape { key: string; conditions: Conditions }
+
+export interface ReadDeadline { wall: number; mono: number }
+
+export interface SharingState { sharing: boolean | null; version: number | null }
+
+export interface FriendsBoardOptions {
+  getSession(): Session | null; dailyKey(): string; runs(): HydratedProfile['runs'];
+  signIn(): void; openOnline(): void; onShared?(): void;
+}
+
+export interface FriendsBoardSnapshot {
+  signedIn: boolean; switchedOn: boolean; off: boolean; loading: boolean; status: string;
+  date: string; rows: readonly BoardRow[] | null; bestsRows: readonly BoardRow[];
+  shapes: readonly BoardShape[]; shapeLabels: readonly string[]; picked: string | null; shapeDescription: string;
+}
+
+interface BestCandidate { conditions: HistoricalRecord; at: string; score: { wpm: number; accuracy: number } }
+
+function bestCandidate(run: unknown): BestCandidate | null {
+  if (!trendRun(run) || run.fresh === false || !isRecord(run.conditions) || (typeof run.conditions.mode !== 'string' || !SHAPE_MODES.includes(run.conditions.mode))
+    || !run.at || Number.isNaN(Date.parse(String(run.at))) || !isRecord(run.score)) return null;
+  const { wpm, accuracy } = run.score;
+
+  if (typeof wpm !== 'number' || !Number.isInteger(wpm) || wpm < 0 || wpm > MAX_WPM
+    || typeof accuracy !== 'number' || !Number.isInteger(accuracy) || accuracy < 0 || accuracy > 100
+    || !KEY_PATTERN.test(conditionKey(run.conditions))) return null;
+
+  return { conditions: run.conditions, at: String(run.at), score: { wpm, accuracy } };
+}
 
 const DAY_MS = 86400000;
 
@@ -30,7 +87,6 @@ const KEY_PATTERN = /^[A-Za-z0-9:._+-]{1,200}$/;
 
 // The app's own test shapes: timed, word-count and quote tests.
 const SHAPE_MODES = ['time', 'words', 'quote'];
-const $ = (id) => document.getElementById(id);
 
 // The summary's shape. A row whose summary is older than this build's is rewritten from the row's own
 // data on the next load (src/app.js), so a part added later reaches rows saved before it.
@@ -48,17 +104,14 @@ export function weekStart(date = new Date()) {
 
 // Which daily a result belongs to: its conditions (corpus and metric version included) and its passage.
 // A reader compares only results whose version matches its own, so two builds never share one ranking.
-export const dailyVersion = (dailyKey, date = new Date()) => `${dailyKey}|${dailyPassage(date).textVersion}`;
+export const dailyVersion = (dailyKey: string, date = new Date()) => `${dailyKey}|${dailyPassage(date).textVersion}`;
 
 // Whether a run can stand as a best on the board: exactly the runs that can set a personal best in the
 // app (a completed, uninterrupted practice test or retest; never a drill, daily, race or anything
 // interrupted), and only on fresh text (a run saved before runs recorded that counts as fresh); on one
 // of its own test shapes, dated, and within the limits the service shows.
-export function shareableBest(run) {
-  return trendRun(run) && run.fresh !== false && SHAPE_MODES.includes(run.conditions?.mode) && Boolean(run.at) && !Number.isNaN(Date.parse(run.at))
-    && Number.isInteger(run.score?.wpm) && run.score.wpm >= 0 && run.score.wpm <= MAX_WPM
-    && Number.isInteger(run.score?.accuracy) && run.score.accuracy >= 0 && run.score.accuracy <= 100
-    && KEY_PATTERN.test(conditionKey(run.conditions));
+export function shareableBest(run: unknown) {
+  return bestCandidate(run) !== null;
 }
 
 // Each test shape's best among `runs`, keyed by its condition key (the shape, corpus and metric
@@ -66,15 +119,17 @@ export function shareableBest(run) {
 // time, as Progress dates it, so no device's clock, the writer's included, changes it. At most 16
 // shapes: the ones this build can compare first, then the ones with the most runs, then the most
 // recently run.
-export function shapeBests(runs) {
-  const shapes = new Map();
+export function shapeBests(runs: readonly unknown[]) {
+  const shapes = new Map<string, { runs: number; last: number; best: { wpm: number; accuracy: number; at: number } }>();
 
-  for (const run of runs) {
-    if (!shareableBest(run)) continue;
+  for (const source of runs) {
+    const run = bestCandidate(source);
+
+    if (!run) continue;
     const at = Date.parse(run.at);
     const key = conditionKey(run.conditions);
     const { wpm, accuracy } = run.score;
-    const entry = shapes.get(key) || { runs: 0, last: 0, best: null };
+    const entry = shapes.get(key) || { runs: 0, last: 0, best: { wpm, accuracy, at } };
     entry.runs += 1;
     entry.last = Math.max(entry.last, at);
     const best = entry.best;
@@ -99,7 +154,7 @@ const PERIODS = 2;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // The latest PERIODS keys of a map of periods, newest first.
-const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIODS);
+const latest = (periods: ReadonlyMap<string, object>) => [...periods.keys()].sort().reverse().slice(0, PERIODS);
 
 // What an account shows about itself, from its runs alone. Each run counts in its own day and week, by
 // its own record, as the Daily panel and Progress count it: a daily by the UTC date it was played for,
@@ -112,19 +167,24 @@ const latest = (periods) => [...periods.keys()].sort().reverse().slice(0, PERIOD
 // board leaves out every kind that is never compared (see comparableKind). They are kept on their own
 // small budget, so practice time stays counted from the profile's newest 1,000 comparable runs.
 // `bests` holds each test shape's best (see shapeBests), which never comes from a custom-text run.
-export function boardSummary(runs, dailyKey) {
-  const dailies = new Map();
-  const weeks = new Map();
+export function boardSummary(runs: readonly unknown[], dailyKey: string) {
+  const dailies = new Map<string, { score: { wpm: unknown; accuracy: unknown } }[]>();
+  const weeks = new Map<string, { ms: number; runs: number }>();
 
   for (const run of runs) {
     if (!validRun(run) || !comparableKind(run.kind)) continue;
 
-    if (run.kind === 'daily' && DATE.test(run.challengeDate ?? '') && conditionKey(run.conditions) === dailyKey && run.score?.wpm <= MAX_WPM) {
-      if (!dailies.has(run.challengeDate)) dailies.set(run.challengeDate, []);
-      dailies.get(run.challengeDate).push(run);
+    const conditions = isRecord(run.conditions) ? run.conditions : undefined;
+    const score = isRecord(run.score) ? run.score : undefined;
+    const day = String(run.challengeDate ?? '');
+
+    if (run.kind === 'daily' && DATE.test(day) && conditionKey(conditions) === dailyKey && Number(score?.wpm) <= MAX_WPM && score) {
+      const attempts = dailies.get(day) ?? [];
+      attempts.push({ score: { wpm: score.wpm, accuracy: score.accuracy } });
+      dailies.set(day, attempts);
     }
 
-    const at = run.at ? Date.parse(run.at) : NaN;
+    const at = run.at ? Date.parse(String(run.at)) : NaN;
 
     if (Number.isNaN(at)) continue;
     const start = weekStart(new Date(at));
@@ -136,14 +196,14 @@ export function boardSummary(runs, dailyKey) {
 
   return {
     days: Object.fromEntries(latest(dailies).map((day) => {
-      const attempts = dailies.get(day);
-      const best = [...attempts].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
+      const attempts = mapped(dailies, day);
+      const best = indexed([...attempts].sort((a, b) => Number(b.score.wpm) - Number(a.score.wpm) || Number(b.score.accuracy) - Number(a.score.accuracy)), 0);
 
       return [day, { version: dailyVersion(dailyKey, new Date(`${day}T00:00:00Z`)), wpm: best.score.wpm, accuracy: best.score.accuracy,
         attempts: Math.min(attempts.length, MAX_ATTEMPTS) }];
     })),
     weeks: Object.fromEntries(latest(weeks).map((start) => [start, {
-      seconds: Math.min(Math.floor(weeks.get(start).ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(weeks.get(start).runs, MAX_RUNS) }])),
+      seconds: Math.min(Math.floor(mapped(weeks, start).ms / 1000), 7 * DAY_MS / 1000), runs: Math.min(mapped(weeks, start).runs, MAX_RUNS) }])),
     bests: shapeBests(runs),
   };
 }
@@ -151,18 +211,20 @@ export function boardSummary(runs, dailyKey) {
 // The profile row's `board` column: the summary of the runs in the copy being written, and `at`, that
 // write's `updated_at`. The service shows it only while the row's `updated_at` is still `at`, so a
 // write that leaves it out (an older build) hides it rather than letting it describe another copy.
-export const boardColumn = (runs, dailyKey, at) => ({ v: BOARD_V, at, ...boardSummary(runs, dailyKey) });
+export const boardColumn = (runs: readonly unknown[], dailyKey: string, at: string) => ({ v: BOARD_V, at, ...boardSummary(runs, dailyKey) });
 
 // Whether a profile row's summary describes that row, in this build's shape.
-export const boardCurrent = (row) => Boolean(row?.board?.at) && Date.parse(row.board.at) === Date.parse(row.updated_at)
-  && row.board.v >= BOARD_V;
+export function boardCurrent(row: unknown) {
+  return isRecord(row) && isRecord(row.board) && Boolean(row.board.at)
+    && Date.parse(String(row.board.at)) === Date.parse(String(row.updated_at)) && Number(row.board.v) >= BOARD_V;
+}
 
 // The test shape a condition key names, as conditions, when this build writes that key: one of its own
 // test modes with only that mode's parts filled in, each a value the app offers (a length from its own
 // list, a word list and whether numbers are on, or a quote's length and difficulty; an input and a
 // correction policy it records), its corpus and metric version, and the key read back exactly. Otherwise
 // null: a key from another build, or one no copy of this build writes, which the board never lists or compares.
-export function shapeOf(key) {
+export function shapeOf(key: unknown): Conditions | null {
   const parts = typeof key === 'string' ? key.split(':') : [];
   const suffix = parts.splice(11);
   const layoutPart = suffix.at(-1)?.startsWith('layout-') ? suffix.pop() : null;
@@ -170,13 +232,20 @@ export function shapeOf(key) {
 
   if (suffix.some((part) => !['strict-space', 'quick-end-off'].includes(part))) return null;
 
-  if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout) || isDefaultLayout(layout)))) return null;
-  const [mode, duration, count, text, quoteLength, difficulty, wordList, inputClass, correctionPolicy, corpus, metricVersion] = parts;
+  if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout ?? '') || isDefaultLayout(layout)))) return null;
+  const [mode = '', duration = '', count = '', text = '', quoteLength = '', difficulty = '', wordList = '', inputClass = '', correctionPolicy = '', corpus = '', metricVersion = ''] = parts;
   // Numbers ride on the text part (`plain+numbers`), and only on generated tests; a quote ignores them.
   const numbers = text.endsWith('+numbers');
   const punctuation = numbers ? text.slice(0, -'+numbers'.length) : text;
 
-  const conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
+  if (mode !== 'time' && mode !== 'words' && mode !== 'quote') return null;
+
+  if (inputClass !== 'physical-keyboard' && inputClass !== 'touch') return null;
+
+  if (correctionPolicy !== 'relaxed' && correctionPolicy !== 'mandatory' && correctionPolicy !== 'no-backspace'
+    && correctionPolicy !== 'fail-word' && correctionPolicy !== 'fail-any') return null;
+
+  const conditions: Conditions = { mode, duration: Number(duration) || null, count: Number(count) || null, punctuation: punctuation === 'punctuation',
     numbers, quoteLength: quoteLength || null, difficulty: difficulty || null, wordList: wordList || null, inputClass, correctionPolicy,
     language: 'en', corpus, metricVersion };
 
@@ -200,7 +269,7 @@ export function shapeOf(key) {
 }
 
 // A key's shape without its corpus and metric version, to tell "another version of this shape".
-const shapePart = (key) => {
+const shapePart = (key: string) => {
   const parts = String(key).split(':');
 
   return [...parts.slice(0, 9), ...parts.slice(11)].join(':');
@@ -208,11 +277,15 @@ const shapePart = (key) => {
 
 // The shapes the board can compare: every key this build writes that anyone on the board has a best
 // on. Timed tests first, then word counts, then quotes, shortest first, and without numbers before with.
-export function boardShapes(rows) {
+export function boardShapes(rows: readonly BoardRow[]) {
   const keys = new Set(rows.flatMap((row) => Object.keys(row.bests || {})).filter((key) => shapeOf(key)));
-  const length = (shape) => shape.duration || shape.count || 0;
+  const length = (shape: Conditions) => shape.duration || shape.count || 0;
 
-  return [...keys].map((key) => ({ key, conditions: shapeOf(key) })).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode) - SHAPE_MODES.indexOf(b.conditions.mode)
+  return [...keys].flatMap((key) => {
+    const conditions = shapeOf(key);
+
+    return conditions ? [{ key, conditions }] : [];
+  }).sort((a, b) => SHAPE_MODES.indexOf(a.conditions.mode ?? '') - SHAPE_MODES.indexOf(b.conditions.mode ?? '')
     || length(a.conditions) - length(b.conditions) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
@@ -220,7 +293,7 @@ export function boardShapes(rows) {
 // A shape's description in parts: the app's own (conditionParts), and for a quote the punctuation setting its
 // key keeps ('on' or 'off'). A quote ignores that setting, so the app doesn't describe it, but two quote
 // keys can differ by it alone.
-function describedParts(conditions) {
+function describedParts(conditions: Conditions) {
   const part = conditionParts(conditions);
 
   if (conditions.mode !== 'quote') return part;
@@ -230,19 +303,18 @@ function describedParts(conditions) {
 }
 
 // The setting, named short in the picker and in full under it.
-const named = (name, value, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
+const named = (name: string, value: string, full = false) => (name === 'setting' ? `punctuation ${full ? 'setting ' : ''}${value}` : value);
 
 // A quote has no word list (its language part is plain "english"), and only a quote has that setting, so
 // each is compared, and named, only between the shapes it belongs to.
-const belongs = (name, conditions) => (name === 'language' ? conditions.mode !== 'quote' : name !== 'setting' || conditions.mode === 'quote');
+const belongs = (name: string, conditions: Conditions) => (name === 'language' ? conditions.mode !== 'quote' : name !== 'setting' || conditions.mode === 'quote');
 
 // Each listed shape's parts, and which parts tell the listed shapes apart.
-function tellApart(shapes) {
+function tellApart(shapes: readonly BoardShape[]) {
   const described = shapes.map((shape) => describedParts(shape.conditions));
   const names = [...new Set(described.flatMap((part) => Object.keys(part)))];
 
-  const differs = new Set(names.filter((name) => new Set(described.filter((part, index) => belongs(name, shapes[index].conditions))
-    .map((part) => part[name])).size > 1));
+  const differs = new Set(names.filter((name) => new Set(described.flatMap((part, index) => belongs(name, indexed(shapes, index).conditions) ? [part[name]] : [])).size > 1));
 
   return { described, names, differs };
 }
@@ -250,14 +322,14 @@ function tellApart(shapes) {
 // Each shape's name in the picker: its length and text first, then whichever other parts of its
 // description (a quote's punctuation setting, word list, input, correction policy) differ between the
 // shapes listed, so what tells two apart comes before a narrow picker cuts the rest off.
-export function shapeLabels(shapes) {
+export function shapeLabels(shapes: readonly BoardShape[]) {
   const { described, names, differs } = tellApart(shapes);
 
   const order = ['length', 'text', 'setting', ...names].filter((name, index, all) => all.indexOf(name) === index
     && (name === 'length' || name === 'text' || differs.has(name)));
 
   return described.map((part, index) => order
-    .flatMap((name) => (belongs(name, shapes[index].conditions) && part[name] !== undefined ? [named(name, part[name])] : []))
+    .flatMap((name) => (belongs(name, indexed(shapes, index).conditions) && part[name] !== undefined ? [named(name, part[name] ?? '')] : []))
     .join(' · '));
 }
 
@@ -267,35 +339,37 @@ export function shapeLabels(shapes) {
 // board (boardShapes keeps the current ones), so they aren't named.
 const USUAL = { language: ['english 200', 'english'], input: ['physical keyboard'], correction: ['continue on error'] };
 
-export function shapeDescription(shapes, key) {
+export function shapeDescription(shapes: readonly BoardShape[], key: string | null) {
   const { described, differs } = tellApart(shapes);
   const index = shapes.findIndex((shape) => shape.key === key);
   const part = described[index] || {};
   const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
 
   return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
-    && !USUAL[name]?.includes(value)).map(([name, value]) => named(name, value, true)).join(' · ');
+    && !lookup(USUAL, name)?.includes(value ?? '')).map(([name, value]) => named(name, value ?? '', true)).join(' · ');
 }
 
 // The shape the picker opens on: the one you have the most best-eligible runs on, then the one the most
 // people on the board have a best on, then the first listed.
-export function defaultShape(shapes, runs, rows) {
-  const counts = new Map();
+export function defaultShape(shapes: readonly BoardShape[], runs: readonly unknown[], rows: readonly BoardRow[]) {
+  const counts = new Map<string, number>();
 
-  for (const run of runs) {
-    if (!shareableBest(run)) continue;
+  for (const source of runs) {
+    const run = bestCandidate(source);
+
+    if (!run) continue;
     const key = conditionKey(run.conditions);
     counts.set(key, (counts.get(key) || 0) + 1);
   }
 
-  const holders = (key) => rows.filter((row) => row.bests?.[key]).length;
+  const holders = (key: string) => rows.filter((row) => row.bests?.[key]).length;
 
   return [...shapes].sort((a, b) => (counts.get(b.key) || 0) - (counts.get(a.key) || 0) || holders(b.key) - holders(a.key))[0]?.key ?? null;
 }
 
 // The rows on one shape: each person's best on exactly that key, the fastest first (accuracy breaks a
 // tie), then those without one. A best on the same shape from another build is marked, never compared.
-export function bestsOrder(rows, key) {
+export function bestsOrder<T extends BoardRow>(rows: readonly T[], key: string) {
   const placed = rows.map((row) => {
     const best = row.bests?.[key] ?? null;
     const otherVersion = !best && Object.keys(row.bests || {}).some((other) => other !== key && !shapeOf(other) && shapePart(other) === shapePart(key));
@@ -314,13 +388,15 @@ export function bestsOrder(rows, key) {
 // due once either has passed: setting the clock back while the board is open can't hold the read
 // back, and a monotonic clock that pauses while the device sleeps can't either. A read that comes early
 // is harmless: it shows the same day, with a new `nextDay`.
-export const nextRead = (reply, wall = Date.now(), mono = performance.now()) => (Number.isFinite(reply?.nextDay)
-  ? { wall: wall + reply.nextDay * 1000, mono: mono + reply.nextDay * 1000 } : null);
+export function nextRead(reply: unknown, wall = Date.now(), mono = performance.now()): ReadDeadline | null {
+  return isRecord(reply) && typeof reply.nextDay === 'number' && Number.isFinite(reply.nextDay)
+    ? { wall: wall + reply.nextDay * 1000, mono: mono + reply.nextDay * 1000 } : null;
+}
 
-export const readDue = (at, wall = Date.now(), mono = performance.now()) => !at || wall >= at.wall || mono >= at.mono;
+export const readDue = (at: ReadDeadline | null, wall = Date.now(), mono = performance.now()) => !at || wall >= at.wall || mono >= at.mono;
 
 // Under a minute in seconds, then minutes: one decimal below ten, whole above. Never rounded up.
-export function practiceTime(seconds) {
+export function practiceTime(seconds: number) {
   if (!seconds) return { value: '0', unit: 'min' };
 
   if (seconds < 60) return { value: String(seconds), unit: 's' };
@@ -329,18 +405,18 @@ export function practiceTime(seconds) {
   return { value: minutes < 10 ? (Math.floor(minutes * 10) / 10).toFixed(1) : String(Math.floor(minutes)), unit: 'min' };
 }
 
-const label = (row) => (row.self ? 'You' : row.name || 'Friend');
+const label = (row: BoardRow) => (row.self ? 'You' : row.name || 'Friend');
 
 // Level rows list you first, then by name.
-const byName = (a, b) => Number(Boolean(b.self)) - Number(Boolean(a.self)) || label(a).localeCompare(label(b));
+const byName = (a: BoardRow, b: BoardRow) => Number(Boolean(b.self)) - Number(Boolean(a.self)) || label(a).localeCompare(label(b));
 
 // Highest daily wpm first (accuracy breaks a tie, as on race results); nobody yet goes last.
-export function dailyOrder(rows) {
+export function dailyOrder<T extends BoardRow>(rows: readonly T[]) {
   return [...rows].sort((a, b) => Number(Boolean(b.daily)) - Number(Boolean(a.daily))
     || (b.daily?.wpm ?? 0) - (a.daily?.wpm ?? 0) || (b.daily?.accuracy ?? 0) - (a.daily?.accuracy ?? 0) || byName(a, b));
 }
 
-export function weekOrder(rows) {
+export function weekOrder<T extends BoardRow>(rows: readonly T[]) {
   return [...rows].sort((a, b) => (b.week?.seconds ?? -1) - (a.week?.seconds ?? -1) || byName(a, b));
 }
 
@@ -351,22 +427,22 @@ export function weekOrder(rows) {
 // can't put sharing back on for another. Its tabs share it, both parts in one value ('1' or '0', then
 // ':' and the version), so a tab that adopts what another tab read adopts the version that goes with it.
 // A value without a version (kept by an earlier build) has none; anything else is nothing known.
-export const sharingValue = (value, version) => `${value ? 1 : 0}${Number.isSafeInteger(version) && version >= 0 ? `:${version}` : ''}`;
+export const sharingValue = (value: boolean, version: number | null) => `${value ? 1 : 0}${version !== null && Number.isSafeInteger(version) && version >= 0 ? `:${version}` : ''}`;
 
-export function readSharing(value) {
+export function readSharing(value: unknown): SharingState {
   const kept = /^([01])(?::(\d{1,16}))?$/.exec(typeof value === 'string' ? value : '');
   const version = kept?.[2] === undefined ? null : Number(kept[2]);
 
   return kept && (version === null || Number.isSafeInteger(version)) ? { sharing: kept[1] === '1', version } : { sharing: null, version: null };
 }
 
-const sharingKey = (session) => `stilltype-board-sharing:${session.user.id}`;
+const sharingKey = (session: Session) => `stilltype-board-sharing:${session.user.id}`;
 
-function knownSharing(session) {
+function knownSharing(session: Session) {
   try { return readSharing(localStorage.getItem(sharingKey(session))); } catch { return readSharing(null); }
 }
 
-function rememberSharing(session, value, version = null) {
+function rememberSharing(session: Session, value: boolean | null, version: number | null = null) {
   try {
     if (value === null) localStorage.removeItem(sharingKey(session));
     else localStorage.setItem(sharingKey(session), sharingValue(value, version));
@@ -381,10 +457,10 @@ function rememberSharing(session, value, version = null) {
 // is sent again, the service answers the repeat as done without moving the sharing version a second
 // time, and a share sent after it counts. An opt-out is only ever sent with the id it is kept under: where
 // this browser can't keep one in localStorage, this page keeps it until it is confirmed (or the page closes).
-const optOutKey = (session) => `stilltype-board-optout:${session.user.id}`;
-const keptInPage = new Map();
+const optOutKey = (session: Session) => `stilltype-board-optout:${session.user.id}`;
+const keptInPage = new Map<string, string>();
 
-function optOutId(session) {
+function optOutId(session: Session) {
   try {
     const id = localStorage.getItem(optOutKey(session));
 
@@ -394,9 +470,9 @@ function optOutId(session) {
   return keptInPage.get(session.user.id) ?? null;
 }
 
-export const optOutPending = (session) => optOutId(session) !== null;
+export const optOutPending = (session: Session) => optOutId(session) !== null;
 
-function rememberOptOut(session) {
+function rememberOptOut(session: Session) {
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
   try {
@@ -405,13 +481,12 @@ function rememberOptOut(session) {
   } catch { keptInPage.set(session.user.id, id); }
 }
 
-function settleOptOut(session, id) {
+function settleOptOut(session: Session, id: string) {
   try { if (localStorage.getItem(optOutKey(session)) === id) localStorage.removeItem(optOutKey(session)); } catch {}
 
   if (keptInPage.get(session.user.id) === id) keptInPage.delete(session.user.id);
 }
 
-const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 const OFF = 'Your row is off the board.';
 const PENDING = 'Your row comes off once the board can be reached.';
 const ELSEWHERE = 'Sharing was turned off on another device.';
@@ -420,16 +495,23 @@ const ELSEWHERE = 'Sharing was turned off on another device.';
 // applied. A share is sent with the one its device last read, and counts only if sharing hasn't changed
 // since, so a share that arrives late can't undo a newer opt-out from another device. Null when a reply
 // has none.
-export const versionOf = (reply) => (Number.isSafeInteger(reply?.sharingVersion) && reply.sharingVersion >= 0 ? reply.sharingVersion : null);
+export function versionOf(reply: unknown): number | null {
+  return isRecord(reply) && typeof reply.sharingVersion === 'number' && Number.isSafeInteger(reply.sharingVersion)
+    && reply.sharingVersion >= 0 ? reply.sharingVersion : null;
+}
 
-async function call(session, action, data = {}) {
-  // Background polls may have rotated the refresh token; the newest stored copy for this account wins.
+async function call(session: Session, action: string, data: { version?: number | null; id?: string } = {}, signal?: AbortSignal) {
+  const lifetime = accountLifetime();
   const stored = loadSession();
-  const active = await freshSession(stored?.user?.id === session.user.id ? stored : session);
+  const active = await freshSession(stored?.user.id === session.user.id ? stored : session, { signal });
 
   try {
-    return await request('/rest/v1/rpc/friends_board', { method: 'POST', token: active.access_token, body: { p_action: action, p_data: data } });
-  } catch (error) {
+    return decodeReply(BoardSchema, await request('/rest/v1/rpc/friends_board', {
+      method: 'POST', token: active?.access_token, signal, lifetime, body: { p_action: action, p_data: data },
+    }));
+  } catch (cause) {
+    const error = errorDetails(cause);
+
     if (error.status === 404 || /schema cache|could not find.*function/i.test(error.message)) {
       throw new AuthError('The friends board is being set up. Please try again shortly.');
     }
@@ -441,14 +523,54 @@ async function call(session, action, data = {}) {
 // No numbers travel: the service reads them from each account's own profile row. A share carries only
 // the sharing version it is based on (see versionOf), and an opt-out only the id it is kept under here
 // (the service takes one without a valid id as a new opt-out; the board never sends one).
-export const readBoard = (session) => call(session, 'board');
-export const startSharing = (session, version) => call(session, 'share', { version });
-export const stopSharing = (session, id = null) => call(session, 'unshare', id ? { id } : {});
+export const readBoard = (session: Session, signal?: AbortSignal) => call(session, 'board', {}, signal);
+export const startSharing = (session: Session, version: number | null, signal?: AbortSignal) => call(session, 'share', { version }, signal);
+export const stopSharing = (session: Session, id: string | null = null, signal?: AbortSignal) => call(session, 'unshare', id ? { id } : {}, signal);
 
-export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnline, onShared = () => {} }) {
+export function createFriendsBoard(initial?: FriendsBoardOptions) {
+  let options: FriendsBoardOptions = initial ?? { getSession: () => null, dailyKey: () => '', runs: () => [], signIn: () => {}, openOnline: () => {} };
+  const getSession = () => options.getSession();
+  const dailyKey = () => options.dailyKey();
+  const runs = () => options.runs();
+  const onShared = () => options.onShared?.();
+  let identity = getSession();
+  let lifetime = new AsyncLifetime(accountLifetime());
+  let disposed = false;
+  let configured = false;
+  const listeners = new Set<() => void>();
+
+  let snapshot: FriendsBoardSnapshot = { signedIn: false, switchedOn: false, off: false, loading: false, status: '',
+    date: '', rows: null, bestsRows: [], shapes: [], shapeLabels: [], picked: null, shapeDescription: '' };
+
+  function active(session: Session) {
+    return !disposed && !closed && lifetime.active && sameSignIn(session, getSession());
+  }
+
+  function requireActive(session: Session) {
+    if (!active(session)) throw new WorkCancelled('Board work was cancelled.');
+  }
+
+  function requestBoard(session: Session) {
+    requireActive(session);
+
+    return lifetime.run(abortable((signal) => readBoard(session, signal), errorDetails));
+  }
+
+  function requestShare(session: Session, at: number | null) {
+    requireActive(session);
+
+    return lifetime.run(abortable((signal) => startSharing(session, at, signal), errorDetails));
+  }
+
+  function requestUnshare(session: Session, id: string) {
+    requireActive(session);
+
+    return lifetime.run(abortable((signal) => stopSharing(session, id, signal), errorDetails));
+  }
+
   let visible = false;
   // Whether this account shares, as this device last knew it (see knownSharing); null until it knows.
-  const known = getSession() ? knownSharing(getSession()) : { sharing: null, version: null };
+  const known = identity ? knownSharing(identity) : { sharing: null, version: null };
   let sharing = known.sharing;
   // The sharing version that went with it (see versionOf): the newest this tab has taken, or null.
   let latest = known.version;
@@ -457,7 +579,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   const isSharing = () => sharing === true;
 
   // `at` is the sharing version of the reply that said so, kept beside it for this device's other tabs.
-  function setSharing(value, at = null) {
+  function setSharing(value: boolean | null, at: number | null = null) {
     sharing = value;
 
     if (at !== null) latest = at;
@@ -467,7 +589,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   }
 
   // What this browser's tabs keep (see knownSharing).
-  const keptHere = () => (getSession() && !closed ? knownSharing(getSession()) : { sharing: null, version: null });
+  const keptHere = () => (identity && !closed ? knownSharing(identity) : { sharing: null, version: null });
 
   // The newest sharing version this browser holds: the one this tab took last, or the one its tabs keep.
   function held() {
@@ -481,7 +603,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // after this browser learned of that change, changes neither the switch nor what the tabs keep, and
   // one at the same version changes nothing. This tab then goes by what its tabs keep, if that is newer
   // than what it took itself (it follows none while its own change is on its way). True when it counted.
-  function adoptReply(result) {
+  function adoptReply(result: BoardReply) {
     const at = versionOf(result);
     const newest = held();
 
@@ -504,11 +626,11 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   }
 
   let loading = false;
-  let board = null;
+  let board: BoardReply | null = null;
   let generation = 0;
   // When to read again for the next UTC day (see nextRead), from the last board received. A read that
   // fails leaves it, so the next check tries again.
-  let rollAt = null;
+  let rollAt: ReadDeadline | null = null;
   // A quiet line for the board when sharing was turned off on another device.
   let note = '';
   // Bumped by each switch of the sharing setting here, so a reply that crossed one doesn't count.
@@ -518,7 +640,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // Sharing was turned off on this device (in this tab or another) but the service hasn't confirmed it
   // yet: no sharing state from the service is accepted, and the opt-out is sent again before any other
   // board request. Kept across reloads.
-  let unsharing = Boolean(getSession() && optOutPending(getSession()));
+  let unsharing = Boolean(identity && optOutPending(identity));
   // The sharing version a share from this tab is sent with (see versionOf): the one in the last board
   // this tab took, or that another tab of this browser read and this tab adopted with its sharing state
   // (see adopt), which is what its switch showed when it moved. While a share from this tab is waiting
@@ -531,7 +653,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
 
   // A board the service sent. One older than what this browser holds is not shown (see adoptReply), and
   // the version a share is sent with never goes back.
-  function took(result) {
+  function took(result: BoardReply) {
     const at = versionOf(result);
     const newest = held();
 
@@ -545,7 +667,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // The reply to this tab's own change: one step past the version it knew means nothing else came in
   // between, so the version after it is known too. Anything more stays unknown until this tab takes a
   // board, and a share sent meanwhile is refused rather than counting a change this tab never showed.
-  function stepped(result) {
+  function stepped(result: BoardReply) {
     if (version !== null && versionOf(result) === version + 1) version += 1;
   }
 
@@ -555,7 +677,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // adoptReply). A tab that thought it shared and learns it doesn't says so in one line; one that didn't
   // know just knows now. Learning that the account shares never shares anything itself: only the switch
   // sends 'share'.
-  function learn(result, seq) {
+  function learn(result: BoardReply, seq: number) {
     if (typeof result?.sharing !== 'boolean' || seq !== toggles || unsharing) return;
     const was = sharing;
 
@@ -571,9 +693,9 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   }
 
   // The switch's requests go one at a time, in order, so the service keeps the last choice made here.
-  let switching = Promise.resolve();
+  let switching: Promise<BoardReply | void> = Promise.resolve();
 
-  const inTurn = (task) => {
+  const inTurn = (task: () => Promise<BoardReply>) => {
     const next = switching.catch(() => {}).then(task);
     switching = next;
 
@@ -586,16 +708,18 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // which adopt it once that happens, adopt this reply's version with it. When none is kept any more by
   // the time its turn comes (a share ahead of it, or another tab, sent and settled it), nothing is sent:
   // an opt-out sent then would be a new one, and would undo the share. It reads the board instead.
-  async function unshareNow(session, seq = toggles) {
+  async function unshareNow(session: Session, seq = toggles) {
+    requireActive(session);
     const id = optOutId(session);
 
     if (id === null) {
       unsharing = false;
 
-      return readBoard(session);
+      return requestBoard(session);
     }
 
-    const result = await stopSharing(session, id);
+    const result = await requestUnshare(session, id);
+    requireActive(session);
     stepped(result);
     const newest = optOutId(session);
 
@@ -611,7 +735,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     return result;
   }
 
-  function removeRow(session) {
+  function removeRow(session: Session) {
     const seq = toggles;
 
     return inTurn(() => unshareNow(session, seq));
@@ -629,7 +753,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // An opt-out made in another tab, re-read before any board request here: this tab stops too, and sends
   // it with that request. One this tab still waits on that is no longer kept was confirmed (by a share
   // ahead of it, or by another tab): there is nothing left to send. True while one is unconfirmed.
-  function optingOut(session) {
+  function optingOut(session: Session) {
     const pending = optOutPending(session);
 
     if (!unsharing && pending) {
@@ -641,125 +765,34 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     return unsharing;
   }
 
-  function row(entry, value, unit, detail) {
-    const item = document.createElement('li');
-    item.className = 'board-row';
-
-    if (entry.self) item.dataset.self = 'true';
-    const name = document.createElement('span');
-    name.className = 'board-name';
-    name.textContent = label(entry);
-    const measure = document.createElement('span');
-    measure.className = 'board-value';
-    const number = document.createElement('strong');
-    number.className = 'num';
-    number.append(value);
-    measure.append(number);
-
-    if (unit) {
-      const suffix = document.createElement('span');
-      suffix.className = 'board-unit';
-      suffix.append(unit);
-      measure.append(' ', suffix);
-    }
-
-    const note = document.createElement('span');
-    note.className = 'board-detail num';
-    note.textContent = detail;
-    // The spaces keep the row reading as words ("Lin 78 wpm 96% accuracy"); a grid ignores them.
-    item.append(name, ' ', measure, ' ', note);
-
-    return item;
-  }
-
   // What the switch shows: what this device knows, or on while turning sharing on is on its way.
   const switchedOn = () => (isSharing() && !unsharing) || turningOn;
 
   // The status line last asked for, kept when another tab's change re-renders the board.
   let shown = '';
 
+  let picked: string | null = null;
+
   function render(status = '') {
+    if (disposed) return;
     shown = status;
     const signedIn = Boolean(getSession());
     const shared = signedIn && isSharing() && !unsharing;
-    $('friends-board-guest').hidden = signedIn;
-    $('refresh-friends-board').hidden = !signedIn;
-    $('friends-board-share').hidden = !signedIn;
-    $('share-board').checked = switchedOn();
-    // Not sharing, you see nobody else's row either: the board says so beside the switch. Until this
-    // device has read the board once it can't say either way, so it says nothing.
-    $('friends-board-off').hidden = !signedIn || switchedOn() || sharing === null;
-    // A live region: written only when the words change, so nothing is announced twice.
     const text = signedIn ? status || (!shared && !turningOn ? note : '') : '';
-
-    if ($('friends-board-status').textContent !== text) $('friends-board-status').textContent = text;
-    // A daily result from another build (another passage, corpus or scoring) is not compared; its row says so.
-    const version = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
+    const daily = board?.date && dailyVersion(dailyKey(), new Date(`${board.date}T00:00:00Z`));
 
     const rows = shared && board?.sharing && board.rows
-      ? board.rows.map((entry) => (entry.daily && entry.daily.version !== version ? { ...entry, daily: null, otherVersion: true } : entry))
+      ? board.rows.map((entry) => entry.daily && entry.daily.version !== daily ? { ...entry, daily: null, otherVersion: true } : entry)
       : null;
 
-    $('friends-board-lists').hidden = !rows;
-    $('friends-board-empty').hidden = !rows || rows.some((entry) => !entry.self);
+    const bestsRows = rows && board?.rows ? board.rows : [];
+    const shapes = boardShapes(bestsRows);
+    const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), bestsRows);
+    snapshot = { signedIn, switchedOn: switchedOn(), off: signedIn && !switchedOn() && sharing !== null,
+      loading, status: text, date: board?.date ?? '', rows, bestsRows, shapes, shapeLabels: shapeLabels(shapes), picked: key,
+      shapeDescription: shapeDescription(shapes, key) };
 
-    if (!rows) return;
-    $('board-daily-meta').textContent = board.date;
-    $('board-daily').replaceChildren(...dailyOrder(rows).map((entry) => (entry.daily
-      ? row(entry, speedFigure(entry.daily.wpm, { bare: true }), unitLabel(), `${entry.daily.accuracy}% accuracy · ${entry.daily.attempts === 1 ? '1 attempt' : `best of ${entry.daily.attempts}`}`)
-      : row(entry, '—', '', entry.otherVersion ? 'another version of the daily · not compared' : 'no completed attempt yet'))));
-    $('board-week').replaceChildren(...weekOrder(rows).map((entry) => {
-      if (!entry.week) return row(entry, '—', '', 'nothing yet this week');
-      const time = practiceTime(entry.week.seconds);
-
-      return row(entry, time.value, time.unit, plural(entry.week.runs, 'run'));
-    }));
-    renderBests(board.rows);
-  }
-
-  // The shape picked in this tab, kept while the board still lists it. Until one is picked the picker
-  // opens on the default (see defaultShape).
-  let picked = null;
-  let listed = '';
-
-  // Bests on one shape at a time: only rows whose key is exactly the picked one are compared.
-  function renderBests(rows) {
-    const shapes = boardShapes(rows);
-    $('board-bests-none').hidden = shapes.length > 0;
-
-    for (const id of ['board-shape-field', 'board-bests-meta', 'board-bests']) $(id).hidden = !shapes.length;
-    const select = $('board-shape');
-
-    if (!shapes.length) {
-      select.replaceChildren();
-      $('board-bests').replaceChildren();
-      listed = '';
-
-      return;
-    }
-
-    const key = shapes.some((shape) => shape.key === picked) ? picked : defaultShape(shapes, runs(), rows);
-    const labels = shapeLabels(shapes);
-    // Rebuilt only when the shapes or their names change, so a re-read never disturbs the picker.
-    const signature = JSON.stringify(shapes.map((shape, index) => [shape.key, labels[index]]));
-
-    if (signature !== listed) {
-      listed = signature;
-      select.replaceChildren(...shapes.map((shape, index) => {
-        const option = document.createElement('option');
-        option.value = shape.key;
-        option.textContent = labels[index];
-
-        return option;
-      }));
-    }
-
-    if (select.value !== key) select.value = key;
-    $('board-bests-meta').textContent = shapeDescription(shapes, key);
-    $('board-bests-meta').hidden = !$('board-bests-meta').textContent;
-    $('board-bests').replaceChildren(...bestsOrder(rows, key).map((entry) => (entry.best
-      ? row(entry, speedFigure(entry.best.wpm, { bare: true }), unitLabel(), `${entry.best.accuracy}% accuracy · ${entry.best.date}`)
-      : row(entry, '—', '', entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'))));
+    for (const listener of listeners) listener();
   }
 
   // Reads the board; it never writes numbers. An unconfirmed opt-out goes first, and its reply is the
@@ -767,9 +800,10 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // loading line and leaves the status alone if it fails: only opening the board or Refresh reports that.
   // aria-disabled, not disabled, while loading: a disabled button would drop keyboard focus.
   async function refresh({ manual = false, quiet = false } = {}) {
+    syncIdentity();
     const session = getSession();
 
-    if (!session) {
+    if (!session || !active(session)) {
       render();
 
       return;
@@ -778,22 +812,23 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     const current = ++generation;
     const seq = toggles;
     loading = true;
-    $('refresh-friends-board').setAttribute('aria-disabled', 'true');
+
+    if (quiet) render(shown);
 
     if (!quiet) render(board ? '' : 'Loading the board…');
 
     try {
-      const result = optingOut(session) ? await removeRow(session) : await readBoard(session);
+      const result = optingOut(session) ? await removeRow(session) : await requestBoard(session);
 
-      if (current !== generation || seq !== toggles) return;
+      if (!active(session) || current !== generation || seq !== toggles) return;
       learn(result, seq);
       took(result);
       render(manual ? 'Updated.' : '');
     } catch (failure) {
-      if (current !== generation || seq !== toggles || quiet) return;
-      render(failure.message || 'The friends board is unavailable. Try again.');
+      if (!active(session) || current !== generation || seq !== toggles || quiet) return;
+      render(errorDetails(failure).message || 'The friends board is unavailable. Try again.');
     } finally {
-      if (current === generation) { loading = false; $('refresh-friends-board').removeAttribute('aria-disabled'); }
+      if (active(session) && current === generation) { loading = false; render(shown); }
     }
   }
 
@@ -802,10 +837,11 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // sharing was turned off elsewhere since this browser last read it: then the service refuses, and the
   // switch stays off and says so. Turning it off takes you off the board, retrying (resume, the next
   // board request in any tab, or the next load) if that fails. Focus stays where it was.
-  async function setShare(on) {
+  async function setShare(on: boolean) {
+    syncIdentity();
     const session = getSession();
 
-    if (!session) {
+    if (!session || !active(session)) {
       render();
 
       return;
@@ -834,16 +870,23 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
           const off = kept !== null && optOutId(session) === kept ? await unshareNow(session, seq) : null;
 
           // Never blind: a tab that has read no version reads it now (that opt-out's reply is such a read).
-          if (version === null) version = versionOf(off ?? await readBoard(session));
-          const reply = await startSharing(session, version);
+          if (version === null) {
+            const reply = off ?? await requestBoard(session);
+            requireActive(session);
+            version = versionOf(reply);
+          }
+
+          const reply = await requestShare(session, version);
+
+          requireActive(session);
 
           // A refused share moved nothing.
           if (reply?.sharing) stepped(reply);
 
           return reply;
-        }).finally(() => { sharesWaiting -= 1; });
+        }).finally(() => { if (active(session)) sharesWaiting -= 1; });
 
-        if (seq !== toggles) return;
+        if (!active(session) || seq !== toggles) return;
         turningOn = false;
         // What the reply says, unless this browser already holds newer (see adoptReply).
         adoptReply(result);
@@ -864,12 +907,12 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
         // Saves made while an opt-out was unconfirmed wrote no summary: the app writes one from the row.
         onShared();
       } catch (failure) {
-        if (seq !== toggles) return;
+        if (!active(session) || seq !== toggles) return;
         turningOn = false;
         // Still waiting on an opt-out only if one is still kept: the share may have failed after the
         // opt-out ahead of it was confirmed (or the share itself may have landed with its reply lost).
         unsharing = optOutPending(session);
-        render(failure.message || 'Sharing couldn’t be turned on. Try again.');
+        render(errorDetails(failure).message || 'Sharing couldn’t be turned on. Try again.');
       }
 
       return;
@@ -881,19 +924,19 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     try {
       await removeRow(session);
 
-      if (seq !== toggles) return;
+      if (!active(session) || seq !== toggles) return;
       // Off, unless an opt-out made since (in another tab) is still on its way.
       render(unsharing ? PENDING : OFF);
     } catch (failure) {
-      if (seq !== toggles) return;
+      if (!active(session) || seq !== toggles) return;
       // Another tab may have sent it meanwhile, and settled it.
       unsharing = optOutPending(session);
-      render(unsharing ? `${failure.message || 'The board is unavailable.'} ${PENDING}` : OFF);
+      render(unsharing ? `${errorDetails(failure).message || 'The board is unavailable.'} ${PENDING}` : OFF);
     }
   }
 
   // Turning sharing off here: the opt-out is kept until the service confirms it.
-  function stopHere(session) {
+  function stopHere(session: Session) {
     rememberOptOut(session);
     setSharing(false);
     optedOut();
@@ -903,7 +946,7 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
   // version, since that is the state this tab's switch then shows. Not while a share from this tab is
   // waiting to go (see version). One no newer than what this tab took changes nothing (see adoptReply).
   // True when it counted.
-  function adopt(kept) {
+  function adopt(kept: SharingState) {
     if (kept.version !== null && latest !== null && kept.version <= latest) return false;
     sharing = kept.sharing;
 
@@ -916,10 +959,10 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
 
   // Another tab of this browser changed what this device keeps: an opt-out (made, or settled), or
   // whether the account shares.
-  function onStorage(event) {
+  function onStorage(event: StorageEvent) {
     const session = getSession();
 
-    if (!session || closed || !event.key) return;
+    if (!session || !active(session) || !event.key) return;
 
     if (event.key === optOutKey(session)) {
       if (event.newValue) optingOut(session);
@@ -954,27 +997,66 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     if (visible) render(shown);
   }
 
-  $('refresh-friends-board').addEventListener('click', () => { if (!loading) refresh({ manual: true }); });
-  $('board-shape').addEventListener('change', (event) => {
-    picked = event.target.value;
+  function configure(next: FriendsBoardOptions) {
+    if (disposed) return;
+    options = next;
+    const session = getSession();
 
-    if (board?.rows) renderBests(board.rows);
-  });
-  $('share-board').addEventListener('change', (event) => setShare(event.target.checked));
-  $('friends-board-signin').addEventListener('click', signIn);
-  $('friends-board-online').addEventListener('click', openOnline);
-  addEventListener('storage', onStorage);
-  render();
+    if (identity === null ? session !== null : !sameSignIn(identity, session)) {
+      void lifetime.close();
+      lifetime = new AsyncLifetime(accountLifetime());
+      identity = session;
+      const known = session ? knownSharing(session) : { sharing: null, version: null };
+      sharing = known.sharing;
+      latest = known.version;
+      version = known.version;
+      closed = false;
+      generation += 1;
+      toggles += 1;
+      board = null;
+      rollAt = null;
+      note = '';
+      loading = false;
+      turningOn = false;
+      sharesWaiting = 0;
+      unsharing = Boolean(session && optOutPending(session));
+      switching = Promise.resolve();
+    }
+
+    if (!configured) { configured = true; addEventListener('storage', onStorage); }
+
+    render();
+  }
+
+  function syncIdentity() {
+    const session = getSession();
+
+    if (identity === null ? session !== null : !sameSignIn(identity, session)) configure(options);
+  }
+
+  if (initial) configure(initial);
 
   return {
+    configure,
+    getSnapshot: () => snapshot,
+    subscribeView(listener: () => void) {
+      listeners.add(listener);
+
+      return () => { listeners.delete(listener); };
+    },
+    pick(key: string) { picked = key; render(shown); },
+    signIn: () => options.signIn(),
+    openOnline: () => options.openOnline(),
+    refresh,
     setShare,
     // After the account check (and when the browser is back online): an unconfirmed opt-out goes out. A
     // device that has never read the board for this account reads it once, quietly, to learn whether it
     // shares; one that knows learns of changes elsewhere from its next board request.
     resume() {
+      syncIdentity();
       const session = getSession();
 
-      if (!session) return;
+      if (!session || !active(session)) return;
 
       if (optingOut(session)) removeRow(session).then(() => { if (visible) refresh({ quiet: true }); }, () => {});
       else if (sharing === null && !turningOn && !loading) refresh({ quiet: true });
@@ -994,6 +1076,14 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
 
       if (session) rememberSharing(session, null);
       closed = true;
+      generation += 1;
+      toggles += 1;
+      void lifetime.close();
+      board = null;
+      sharing = null;
+      turningOn = false;
+      loading = false;
+      render();
     },
     // The account is deleted: nothing of it stays on this device, an unconfirmed opt-out included (the
     // account's board rows went with it).
@@ -1009,10 +1099,33 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
       }
 
       closed = true;
+      generation += 1;
+      toggles += 1;
+      void lifetime.close();
+      board = null;
+      sharing = null;
+      turningOn = false;
+      loading = false;
+      render();
     },
     // Switching to the board and arriving on the screen can both ask at once; one request answers both.
-    show() { if (visible && loading) return; visible = true; refresh(); },
+    show() {
+      syncIdentity();
+
+      if (visible && loading) return;
+      visible = true;
+      void refresh();
+    },
     hide() { visible = false; },
+    dispose() {
+      disposed = true;
+      closed = true;
+      generation += 1;
+      toggles += 1;
+      void lifetime.close();
+      removeEventListener('storage', onStorage);
+      listeners.clear();
+    },
     // A board left open across 00:00 UTC on the service's clock (and so into Monday's new week) reads
     // again once the day has turned (see nextRead), from the app's periodic check or when the tab comes
     // back; a hidden tab waits for its return. Quietly: no loading line, no "Updated.", no failure line
@@ -1020,3 +1133,5 @@ export function createFriendsBoard({ getSession, dailyKey, runs, signIn, openOnl
     rollover() { if (visible && !loading && !document.hidden && getSession() && readDue(rollAt)) refresh({ quiet: true }); },
   };
 }
+
+export type FriendsBoardController = ReturnType<typeof createFriendsBoard>;
