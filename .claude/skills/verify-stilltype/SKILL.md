@@ -107,6 +107,7 @@ $V drive .claude/skills/verify-stilltype/flows/quick-match-alone.mjs   # nobody 
 $V drive .claude/skills/verify-stilltype/flows/quick-match-waiting-drill.mjs   # a quick match while a drill or retest waits: Train and Practice after it, beside a no-match control
 $V drive .claude/skills/verify-stilltype/flows/quick-match-settle.mjs   # both racers' results: rated, pasted, forfeit, both leave, a fourth race in a day, typed to the end
 $V drive .claude/skills/verify-stilltype/flows/quick-match-latency.mjs   # one racer's requests delayed 0 to 600 ms: both honest runs checked, the faster wins
+$V drive .claude/skills/verify-stilltype/flows/quick-match-ranked.mjs   # ranked accounts: the rank on the rating line, and the rank card for a promotion (mid-way and settled), a win and a loss inside a step, and a provisional win
 ```
 
 ```js

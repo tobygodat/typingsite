@@ -8,7 +8,8 @@ import { showSpeed } from './units.js';
 import { RACE_LEADS, raceOutcome, raceResultText, rematchControls, tallyView } from './race-result.js';
 import { redrawList } from './inbox.js';
 import { createRaceReview } from './race-review.js';
-import { cardOutcome, ratingChangeLine } from './quick-match.js';
+import { cardOutcome, ratingResult } from './quick-match.js';
+import { createRankCard } from './rank-card.js';
 import { createQuickMatch } from './quick-match-view.js';
 import { peopleRows } from './challenge-people.js';
 import { drawPeople } from './challenge-people-view.js';
@@ -131,6 +132,10 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
 
     return !name || name === getSession()?.user.email.split('@')[0].slice(0, 24) ? 'Racer' : name;
   }
+
+  const rankCard = createRankCard($('online-rank-card'), $('rank-card-template'));
+  // The settled result the card shows, so a room update that doesn't change it never replays it.
+  let shownResult = '';
 
   const quick = createQuickMatch({ root: $('quick-match'), getSession, signIn, racerName: strangerName,
     enterRoom: (result) => enterRoom(result), busyElsewhere: () => busy || Boolean(room && !terminal(room)), ownBest, raceOwnBest });
@@ -815,6 +820,13 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     if (canAdd) $('online-befriend').textContent = `Add ${opponent.name} to friends`;
   }
 
+  function showResult(key, result) {
+    if (key === shownResult) return;
+    shownResult = key;
+
+    if (key) rankCard.show(result); else rankCard.clear();
+  }
+
   function renderRoom() {
     if (!room) return;
     const me = self();
@@ -837,12 +849,16 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     const setup = room.conditions?.mode ? raceSetupText(room.conditions) : '';
 
     if ($('online-room-conditions').textContent !== setup) $('online-room-conditions').textContent = setup;
-    // A settled quick match says how the rating moved, or why it didn't.
-    const change = room.quick ? ratingChangeLine(room.rating, opponent?.name) : '';
+    // A settled quick match says how the rating moved, or why it didn't. A rated result shows the rank card, and
+    // the sentence stays in the status region for a screen reader, the card being decoration.
+    const result = room.quick ? ratingResult(room.rating, opponent?.name) : null;
+    const carded = Boolean(result) && result.kind !== 'unrated';
 
-    if (change) quick.seen(room.id);
-    $('online-rating-change').hidden = !change;
-    $('online-rating-change').textContent = change;
+    if (result) quick.seen(room.id);
+    $('online-rating-change').hidden = !result;
+    $('online-rating-change').textContent = result?.sentence || '';
+    $('online-rating-change').classList.toggle('sr-only', carded);
+    showResult(carded ? `${room.id}:${result.sentence}` : '', result);
     $('online-ready').hidden = room.status !== 'waiting';
     const readyLabel = me?.ready ? 'Not ready' : 'Ready to race';
 
@@ -1063,6 +1079,7 @@ export function createOnlineRace({ getSession, signIn, navigate, renderText, upd
     clearTimeout(pollTimer);
     credentials = null;
     room = null;
+    showResult('');
     multiplayer.forgetRace();
     resetAttempt();
     $('online-players').replaceChildren();

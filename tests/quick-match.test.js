@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PAIRING, QUEUE_IDLE, RATING, REPEAT, TRACE_CHECK, acceptableGap, cardOutcome, expectedScore, kFactor, pickOpponent, queueStep,
-  quickConditions, ratingChangeLine as changeLine, ratingChanges, ratingLine as rawLine, traceCheck, LONELY_MS } from '../src/quick-match.js';
+  quickConditions, RANKS, rankLabel, rankOf, ratingChangeLine as changeLine, ratingChanges, ratingLine as rawLine, ratingResult, traceCheck, LONELY_MS }
+  from '../src/quick-match.js';
 import { wordList } from '../src/words.js';
 import { FakeRaces } from '../e2e/fake-races.js';
 import { quickPassage } from '../e2e/fake-quick-match.js';
@@ -81,7 +82,7 @@ test('Elo: equal ratings at K 40 move 20 each way, a tie moves nothing, and K dr
 test('the rating line says the count and whether the rating is provisional', () => {
   assert.equal(ratingLine({ rating: 1500, races: 0 }), 'Race rating 1500 · 0 rated races · provisional');
   assert.equal(ratingLine({ rating: 1520, races: 1 }), 'Race rating 1520 · 1 rated race · provisional');
-  assert.equal(ratingLine({ rating: 1612, races: 10 }), 'Race rating 1612 · 10 rated races');
+  assert.equal(ratingLine({ rating: 1612, races: 10 }), 'Gust II · 1612 · 10 rated races');
   assert.equal(ratingLine(null), '');
   // On a narrow screen the line breaks only before the count, never before "provisional".
   assert.equal(rawLine({ rating: 1500, races: 0 }), 'Race rating 1500 · 0\u00a0rated\u00a0races\u00a0·\u00a0provisional');
@@ -89,7 +90,7 @@ test('the rating line says the count and whether the rating is provisional', () 
   const line = 'Race rating 1520 · 1 rated race · provisional (+20)';
   assert.equal(ratingChangeLine(rated(null, 'lost', -20)), 'Rated loss. Race rating 1480 · 1 rated race · provisional (−20)');
   assert.equal(ratingChangeLine({ rated: true, reason: 'forfeit', outcome: 'won', after: 1520, delta: 20, races: 11 }, 'Ada'),
-    'Rated win: Ada left the race. Race rating 1520 · 11 rated races (+20)');
+    'Rated win: Ada left the race. Gust III · 1520 · 11 rated races (+20)');
   assert.equal(ratingChangeLine(rated('forfeit', 'lost', -20)), 'Rated loss: you left the race. Race rating 1480 · 1 rated race · provisional (−20)');
   // The racer who stayed is told the win is rated and why; the racer who left is told the loss is and why.
   assert.equal(ratingChangeLine(rated('opponent-absent', 'won', 20), 'Lin'), `Rated win: Lin didn’t finish. ${line}`);
@@ -119,6 +120,145 @@ test('the rating line says the count and whether the rating is provisional', () 
   for (const reason of ['no-trace', 'unreadable', 'times', 'intervals', 'wrong-text', 'speed']) {
     assert.doesNotMatch(ratingChangeLine(rated(reason, 'lost', -20)), /cheat|script|bot|paste|person|human|fake/i, reason);
   }
+});
+
+test('the rank ladder: Whisper under 1200, Hurricane from 2400, and three 100-point steps in each rank between', () => {
+  const label = (rating) => rankLabel(rankOf({ rating, races: 10 }));
+
+  const edges = [[0, 'Whisper'], [1199, 'Whisper'], [1200, 'Breeze III'], [1299, 'Breeze III'], [1300, 'Breeze II'], [1399, 'Breeze II'],
+    [1400, 'Breeze I'], [1499, 'Breeze I'], [1500, 'Gust III'], [1599, 'Gust III'], [1600, 'Gust II'], [1699, 'Gust II'], [1700, 'Gust I'],
+    [1799, 'Gust I'], [1800, 'Gale III'], [1899, 'Gale III'], [1900, 'Gale II'], [1999, 'Gale II'], [2000, 'Gale I'], [2099, 'Gale I'],
+    [2100, 'Tempest III'], [2199, 'Tempest III'], [2200, 'Tempest II'], [2299, 'Tempest II'], [2300, 'Tempest I'], [2399, 'Tempest I'],
+    [2400, 'Hurricane'], [3200, 'Hurricane']];
+
+  for (const [rating, expected] of edges) assert.equal(label(rating), expected, `${rating}`);
+  assert.deepEqual(rankOf({ rating: 1840, races: 23 }), { index: 3, name: 'Gale', step: 'III' });
+  assert.deepEqual(rankOf({ rating: 2400, races: 10 }), { index: 5, name: 'Hurricane', step: null });
+  assert.deepEqual(RANKS.names, ['Whisper', 'Breeze', 'Gust', 'Gale', 'Tempest', 'Hurricane']);
+
+  // No rank while provisional, or for a rating that isn't one.
+  for (const rating of [{ rating: 2500, races: 9 }, { rating: 1500, races: 0 }, null, {}, { rating: '1800', races: 12 }, { rating: 1800.5, races: 12 }]) {
+    assert.equal(rankOf(rating), null, JSON.stringify(rating));
+  }
+
+  assert.equal(rankLabel(null), '');
+});
+
+test('a ranked rating line leads with the rank, and a rated race that moves the rank or step says from where', () => {
+  assert.equal(ratingLine({ rating: 1840, races: 23 }), 'Gale III · 1840 · 23 rated races');
+  assert.equal(ratingLine({ rating: 1199, races: 40 }), 'Whisper · 1199 · 40 rated races');
+  assert.equal(ratingLine({ rating: 2450, races: 80 }), 'Hurricane · 2450 · 80 rated races');
+  // The provisional line is unchanged, and neither half of a rank breaks across lines.
+  assert.equal(rawLine({ rating: 1500, races: 9 }), 'Race rating 1500 · 9\u00a0rated\u00a0races\u00a0·\u00a0provisional');
+  assert.equal(rawLine({ rating: 1840, races: 23 }), 'Gale\u00a0III · 1840 · 23\u00a0rated\u00a0races');
+  const race = (outcome, after, delta, races) => ratingChangeLine({ rated: true, reason: null, outcome, after, delta, races });
+
+  assert.equal(race('won', 1840, 16, 23), 'Rated win. Gale III · 1840 · 23 rated races (+16)');
+  assert.equal(race('won', 1808, 16, 23), 'Rated win. Gale III · 1808 · 23 rated races (+16), up from Gust I.');
+  assert.equal(race('lost', 1790, -18, 24), 'Rated loss. Gust I · 1790 · 24 rated races (−18), down from Gale III.');
+  assert.equal(race('won', 1610, 15, 30), 'Rated win. Gust II · 1610 · 30 rated races (+15), up from Gust III.');
+  assert.equal(race('lost', 1595, -10, 30), 'Rated loss. Gust III · 1595 · 30 rated races (−10), down from Gust II.');
+  assert.equal(race('won', 2405, 10, 50), 'Rated win. Hurricane · 2405 · 50 rated races (+10), up from Tempest I.');
+  assert.equal(race('lost', 1190, -12, 50), 'Rated loss. Whisper · 1190 · 50 rated races (−12), down from Breeze III.');
+  assert.equal(race('tied', 1800, 0, 12), 'Rated tie. Gale III · 1800 · 12 rated races (+0)');
+  // The race that ends the provisional period gives a rank but no movement: there was no rank before it.
+  assert.equal(race('won', 1820, 40, 10), 'Rated win. Gale III · 1820 · 10 rated races (+40)');
+  assert.equal(race('won', 1540, 40, 9), 'Rated win. Race rating 1540 · 9 rated races · provisional (+40)');
+  // A forfeit's lead keeps its own words, and the movement goes at the end.
+  assert.equal(ratingChangeLine({ rated: true, reason: 'forfeit', outcome: 'lost', after: 1795, delta: -13, races: 13 }),
+    'Rated loss: you left the race. Gust I · 1795 · 13 rated races (−13), down from Gale III.');
+  assert.match(changeLine({ rated: true, reason: null, outcome: 'won', after: 1808, delta: 16, races: 23 }), /, up from Gust\u00a0I\.$/);
+});
+
+// The result card's model, read the way the card draws it: the bar stages as [left label, from, to, right label].
+const card = (result, opponent) => {
+  const model = ratingResult(result, opponent);
+  const bars = model.bars?.map((bar) => [bar.rankLabel, +bar.from.toFixed(3), +bar.to.toFixed(3), bar.next ? `${bar.toNext} to ${bar.next}` : '']);
+
+  return { ...model, sentence: plain(model.sentence), bars };
+};
+
+const settled = (outcome, after, delta, races, reason = null) => ({ rated: true, reason, outcome, after, delta, races });
+
+test('the result card: a gain or loss inside a step lays the change on the bar where the rating stood', () => {
+  const win = card(settled('won', 1630, 10, 25));
+  assert.equal(win.kind, 'ranked');
+  assert.equal(win.label, 'Rated win');
+  assert.equal(win.sentence, 'Rated win. Gust II · 1630 · 25 rated races (+10)');
+  assert.deepEqual([win.rank.label, win.was.label, win.moved, win.tone, win.delta], ['Gust II', 'Gust II', null, 'up', 10]);
+  assert.deepEqual(win.rating, { from: 1620, to: 1630 });
+  assert.deepEqual(win.bars, [['Gust II', 0.2, 0.3, '70 to Gust I']]);
+
+  const loss = card(settled('lost', 1785, -10, 21));
+  assert.deepEqual([loss.label, loss.tone, loss.moved], ['Rated loss', 'down', null]);
+  assert.deepEqual(loss.bars, [['Gust I', 0.95, 0.85, '15 to Gale III']]);
+
+  const tie = card(settled('tied', 1800, 0, 12));
+  assert.deepEqual([tie.label, tie.tone, tie.delta], ['Rated tie', 'even', 0]);
+  assert.deepEqual(tie.bars, [['Gale III', 0, 0, '100 to Gale II']]);
+});
+
+test('the result card: a promotion fills the old step then opens the new one, and a demotion mirrors it', () => {
+  const up = card(settled('won', 1805, 10, 21));
+  assert.deepEqual([up.label, up.moved, up.was.label, up.rank.label], ['Rank up', 'promoted', 'Gust I', 'Gale III']);
+  assert.deepEqual(up.bars, [['Gust I', 0.95, 1, '5 to Gale III'], ['Gale III', 0, 0.05, '95 to Gale II']]);
+
+  const step = card(settled('won', 1612, 15, 30));
+  assert.deepEqual([step.label, step.was.label, step.rank.label], ['Rank up', 'Gust III', 'Gust II']);
+  assert.deepEqual(step.bars, [['Gust III', 0.97, 1, '3 to Gust II'], ['Gust II', 0, 0.12, '88 to Gust I']]);
+
+  const down = card(settled('lost', 1792, -14, 24));
+  assert.deepEqual([down.label, down.moved, down.was.label, down.rank.label, down.tone], ['Rated loss', 'demoted', 'Gale III', 'Gust I', 'down']);
+  assert.deepEqual(down.bars, [['Gale III', 0.06, 0, '94 to Gale II'], ['Gust I', 1, 0.92, '8 to Gale III']]);
+
+  const stepDown = card(settled('lost', 1695, -10, 30));
+  assert.deepEqual(stepDown.bars, [['Gust I', 0.05, 0, '95 to Gale III'], ['Gust II', 1, 0.95, '5 to Gust I']]);
+  // A tie can cross a line too: it is still a tie, but a step up reads as a rank up.
+  assert.equal(card(settled('tied', 1801, 3, 30)).label, 'Rank up');
+  assert.equal(card(settled('tied', 1799, -3, 30)).label, 'Rated tie');
+});
+
+test('the result card: Whisper runs from 900 to its ceiling, and Hurricane is always full with no line above', () => {
+  const whisper = card(settled('lost', 1150, -8, 30));
+  assert.deepEqual([whisper.rank.label, whisper.bars], ['Whisper', [['Whisper', 0.86, 0.833, '50 to Breeze III']]]);
+  // Under 900 the bar is clamped at its left end.
+  assert.deepEqual(card(settled('lost', 880, -10, 60)).bars, [['Whisper', 0, 0, '320 to Breeze III']]);
+  assert.deepEqual(card(settled('won', 1204, 10, 30)).bars, [['Whisper', 0.98, 1, '6 to Breeze III'], ['Breeze III', 0, 0.04, '96 to Breeze II']]);
+
+  const top = card(settled('won', 2470, 8, 90));
+  assert.deepEqual([top.rank.label, top.bars], ['Hurricane', [['Hurricane', 1, 1, '']]]);
+  assert.deepEqual(card(settled('won', 2405, 10, 50)).bars, [['Tempest I', 0.95, 1, '5 to Hurricane'], ['Hurricane', 1, 1, '']]);
+  assert.deepEqual(card(settled('lost', 2395, -10, 50)).bars, [['Hurricane', 1, 0, ''], ['Tempest I', 1, 0.95, '5 to Hurricane']]);
+});
+
+test('the result card: provisional results and the tenth race have no rank before them, so nothing moves', () => {
+  const first = card(settled('won', 1520, 20, 1));
+  assert.deepEqual([first.kind, first.label, first.rank, first.was, first.moved, first.bars, first.races], ['provisional', 'Rated win', null, null, null, [], 1]);
+  assert.equal(first.sentence, 'Rated win. Race rating 1520 · 1 rated race · provisional (+20)');
+  assert.equal(card(settled('lost', 1480, -40, 9)).kind, 'provisional');
+
+  const tenth = card(settled('won', 1820, 40, 10));
+  assert.deepEqual([tenth.kind, tenth.label, tenth.rank.label, tenth.was, tenth.moved], ['ranked', 'Rated win', 'Gale III', null, null]);
+  // One bar for the new step: the rating before it sat below the step, so the gain runs from the start.
+  assert.deepEqual(tenth.bars, [['Gale III', 0, 0.2, '80 to Gale II']]);
+});
+
+test('the result card says why a rated race ended as it did, and an unrated result stays a sentence', () => {
+  assert.equal(card(settled('won', 1805, 10, 21, 'forfeit'), 'Lin').why, 'Lin left the race.');
+  assert.equal(card(settled('lost', 1785, -10, 21, 'forfeit')).why, 'You left the race.');
+  assert.equal(card(settled('won', 1520, 20, 1, 'opponent-absent'), 'Lin').why, 'Lin didn’t finish.');
+  assert.equal(card(settled('won', 1520, 20, 1, 'opponent-unchecked'), 'Lin').why, 'Lin’s run couldn’t be checked.');
+  assert.equal(card(settled('lost', 1480, -20, 1, 'unfinished')).why, 'Your finish didn’t arrive before the race closed.');
+  assert.equal(card(settled('lost', 1480, -20, 1, 'intervals')).why, 'Your run couldn’t be checked. It had keys closer together than the check allows.');
+  assert.equal(card(settled('won', 1805, 10, 21)).why, null);
+  // The label still names the outcome, and the sentence keeps today's words.
+  const absent = card(settled('won', 1805, 10, 21, 'opponent-absent'), 'Lin');
+  assert.deepEqual([absent.label, absent.sentence], ['Rank up', 'Rated win: Lin didn’t finish. Gale III · 1805 · 21 rated races (+10), up from Gust I.']);
+
+  assert.deepEqual(ratingResult({ rated: false, reason: null, outcome: 'won', after: 1520, delta: 0, races: 3 }, 'Lin'),
+    { kind: 'unrated', sentence: 'Not rated: you and Lin have raced each other too often today.' });
+  assert.equal(ratingResult({ rated: false, reason: 'no-trace' }).kind, 'unrated');
+  assert.equal(ratingResult(null), null);
 });
 
 test('pairing takes the closest rating within a gap that widens with the longer wait, never yourself or a stale player', () => {

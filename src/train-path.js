@@ -15,7 +15,7 @@ import { SLOW_FLOOR_MS, keyboardOf, learnerEvidence, paceAgainst, paceCopy, pace
 
 export const AHEAD_STEPS = 3;
 
-// The rule for "fixed", as the UI contract and DESIGN.md state it. A target behind you is fixed when the learner no
+// The rule for "fixed", as the UI contract states it. A target behind you is fixed when the learner no
 // longer queues it and at least two runs since its drill hold observations of the kind it was drilled for (first
 // tries for a target drilled for its misses, clean intervals for a pair drilled for its pace), at least 20 of them
 // between those runs, with no first-try miss among them, or a mean slowdown of 20 ms or less. Otherwise it is drilled.

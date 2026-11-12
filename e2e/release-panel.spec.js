@@ -1,11 +1,11 @@
 import { test, expect, openApp, chooseWords, passageText, typeInto } from './fixtures.js';
 
-const version = (page) => page.getByRole('button', { name: 'What’s new in v0.4.0', exact: true });
-const panel = (page) => page.getByRole('dialog', { name: 'v0.4.0', exact: true });
+const version = (page) => page.getByRole('button', { name: 'What’s new in v0.5.0', exact: true });
+const panel = (page) => page.getByRole('dialog', { name: 'v0.5.0', exact: true });
 
 test('the footer version opens What’s new by keyboard and returns focus on Escape, Close and the backdrop', async ({ page }) => {
   await openApp(page);
-  await expect(version(page)).toHaveText('v0.4.0');
+  await expect(version(page)).toHaveText('v0.5.0');
   await version(page).focus();
 
   for (const key of ['Enter', 'Space']) {
