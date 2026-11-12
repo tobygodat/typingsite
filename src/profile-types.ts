@@ -74,6 +74,11 @@ export type CloudProfileData = Omit<Profile, 'attempts'>;
 
 export interface HistoricalRecord { [key: string]: unknown }
 
+type UnvalidatedPreferenceKey = 'mode' | 'punctuation' | 'numbers' | 'quoteLength' | 'difficulty' | 'fontSize' | 'liveMetrics' | 'keyboard' | 'focusMode' | 'theme';
+
+export type PreferencesInUse = HistoricalRecord & Omit<Preferences, UnvalidatedPreferenceKey>;
+
+
 export type HistoricalTrace = Attempt | HistoricalRecord;
 
 export type HistoricalRun = RunRecord | HistoricalRecord;

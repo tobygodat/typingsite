@@ -16,7 +16,7 @@ export const DEFAULT_SPEED_UNIT = 'wpm';
 // re-scored or re-keyed.
 let shown: SpeedUnit = DEFAULT_SPEED_UNIT;
 
-export function normalizeSpeedUnit(unit: unknown) {
+export function normalizeSpeedUnit(unit: unknown): SpeedUnit {
   return unit === 'wpm' || unit === 'cpm' ? unit : DEFAULT_SPEED_UNIT;
 }
 

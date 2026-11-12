@@ -1,10 +1,10 @@
 import { isRecord } from './domain-values.js';
 import { isAttempt, isRunRecord, isTrainingLoop, replaySource, isConditions } from './domain-history.js';
-import type { HydratedProfile, HistoricalRecord } from './profile-types.js';
+import type { HydratedProfile, HistoricalRecord, PreferencesInUse } from './profile-types.js';
 
 export { isAttempt, isRunRecord, isTrainingLoop };
 
-export type { HydratedProfile } from './profile-types.js';
+export type { HydratedProfile, PreferencesInUse } from './profile-types.js';
 
 function includes<T>(values: readonly T[], value: unknown): value is T { return values.some((known) => known === value); }
 
@@ -127,63 +127,55 @@ export function emptyProfile(): Profile {
   };
 }
 
-export function validPreferences(value: HistoricalRecord): HistoricalRecord {
-  value.strictSpace = value.strictSpace === true;
-  value.quickEnd = value.quickEnd !== false;
-  value.correction = correctionPreference(value);
-  value.stopOnError = value.correction === 'mandatory';
-
-  if (!includes(DAILY_GOALS, value.dailyGoal)) value.dailyGoal = 0;
-
-  if (!includes(MIN_ACCURACY_OPTIONS, value.minAccuracy)) value.minAccuracy = 0;
-
-  if (!includes(MIN_WPM_OPTIONS, value.minWpm)) value.minWpm = 0;
-
-  if (!includes(wordListIds, value.wordList)) value.wordList = DEFAULT_WORD_LIST;
-  value.sound = normalizeSoundMode(value.sound);
-  value.soundVolume = normalizeSoundVolume(value.soundVolume);
-  value.speedUnit = normalizeSpeedUnit(value.speedUnit);
-
-  if (!includes(CODE_LANGUAGES, value.codeLanguage)) value.codeLanguage = DEFAULT_CODE_LANGUAGE;
-
-  if (!includes(bookIds, value.book)) value.book = DEFAULT_BOOK;
-  value.wordHighlight = normalizeWordHighlight(value.wordHighlight);
-  value.wordHighlightSlide = value.wordHighlightSlide === true;
-  value.typingFont = normalizeFont(value.typingFont, TYPING_FONTS);
-  value.appFont = normalizeFont(value.appFont, APP_FONTS);
-  value.tape = value.tape === true;
-  value.adaptive = value.adaptive === true;
-  value.repeatQuotes = value.repeatQuotes === true;
-  value.layout = normalizeLayout(value.layout);
-  value.fingerMap = value.fingerMap === true;
-  value.keybindings = normalizeKeybindings(value.keybindings, value.restartKey);
-  delete value.restartKey;
+export function validPreferences(value: HistoricalRecord): PreferencesInUse {
+  const correction = correctionPreference(value);
   const customText = typeof value.customText === 'string' ? normalizeCustomText(value.customText) : '';
-  value.customText = customTextProblem(customText) ? '' : customText;
 
-  if (!includes(CUSTOM_ORDERS, value.customOrder)) value.customOrder = 'as-written';
+  const normalized = {
+    strictSpace: value.strictSpace === true,
+    quickEnd: value.quickEnd !== false,
+    correction,
+    stopOnError: correction === 'mandatory',
+    dailyGoal: includes(DAILY_GOALS, value.dailyGoal) ? value.dailyGoal : 0,
+    minAccuracy: includes(MIN_ACCURACY_OPTIONS, value.minAccuracy) ? value.minAccuracy : 0,
+    minWpm: includes(MIN_WPM_OPTIONS, value.minWpm) ? value.minWpm : 0,
+    wordList: includes(wordListIds, value.wordList) ? value.wordList : DEFAULT_WORD_LIST,
+    sound: normalizeSoundMode(value.sound),
+    soundVolume: normalizeSoundVolume(value.soundVolume),
+    speedUnit: normalizeSpeedUnit(value.speedUnit),
+    codeLanguage: includes(CODE_LANGUAGES, value.codeLanguage) ? value.codeLanguage : DEFAULT_CODE_LANGUAGE,
+    book: includes(bookIds, value.book) ? value.book : DEFAULT_BOOK,
+    wordHighlight: normalizeWordHighlight(value.wordHighlight),
+    wordHighlightSlide: value.wordHighlightSlide === true,
+    typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
+    appFont: normalizeFont(value.appFont, APP_FONTS),
+    tape: value.tape === true,
+    adaptive: value.adaptive === true,
+    repeatQuotes: value.repeatQuotes === true,
+    layout: normalizeLayout(value.layout),
+    fingerMap: value.fingerMap === true,
+    keybindings: normalizeKeybindings(value.keybindings, value.restartKey),
+    customText: customTextProblem(customText) ? '' : customText,
+    customOrder: includes(CUSTOM_ORDERS, value.customOrder) ? value.customOrder : 'as-written',
+    trainFocus: includes(FOCUSES, value.trainFocus) ? value.trainFocus : DEFAULT_FOCUS,
+    drillSeconds: includes(DRILL_LENGTHS, value.drillSeconds) ? value.drillSeconds : defaultPreferences.drillSeconds,
+    retest: value.retest !== false,
+    paceCaret: includes(PACE_MODES, value.paceCaret) ? value.paceCaret : 'off',
+    paceWpm: clampPace(value.paceWpm),
+    // A missing custom theme may arrive from another profile copy; retain its chosen id.
+    darkTheme: includes(DARK_THEMES, value.darkTheme) || isCustomId(value.darkTheme) ? value.darkTheme : 'dark',
+    lightTheme: includes(LIGHT_THEMES, value.lightTheme) || isCustomId(value.lightTheme) ? value.lightTheme : 'light',
+    customThemes: normalizeCustomThemes(value.customThemes),
+  };
 
-  if (!includes(FOCUSES, value.trainFocus)) value.trainFocus = DEFAULT_FOCUS;
-
-  if (!includes(DRILL_LENGTHS, value.drillSeconds)) value.drillSeconds = defaultPreferences.drillSeconds;
-  value.retest = value.retest !== false;
-
-  if (!includes(PACE_MODES, value.paceCaret)) value.paceCaret = 'off';
-  value.paceWpm = clampPace(value.paceWpm);
-
-  // A custom theme's id is kept even when the list lacks it (it may arrive from another copy); the app
-  // shows the mode's default until it does.
-  if (!includes(DARK_THEMES, value.darkTheme) && !isCustomId(value.darkTheme)) value.darkTheme = 'dark';
-
-  if (!includes(LIGHT_THEMES, value.lightTheme) && !isCustomId(value.lightTheme)) value.lightTheme = 'light';
-  value.customThemes = normalizeCustomThemes(value.customThemes);
-  // Whether the friends board shares is kept by the board alone (src/friends-board.js), never in the
-  // synced profile, so a copy saved by an earlier build is dropped rather than synced back.
-  delete value.shareBoard;
+  const valid = Object.assign(value, normalized);
+  delete valid.restartKey;
+  // Sharing belongs to the board service, so older profile choices must not sync back.
+  delete valid.shareBoard;
 
   const lengths = normalizeLengthPreferences({ duration: typeof value.duration === 'number' ? value.duration : NaN, count: typeof value.count === 'number' ? value.count : NaN, customDuration: typeof value.customDuration === 'number' ? value.customDuration : null, customCount: typeof value.customCount === 'number' ? value.customCount : null });
 
-  return { ...value, ...lengths };
+  return { ...valid, ...lengths };
 }
 
 // Every setting as used: the stored ones, and the default for each one the profile doesn't store.
