@@ -1,25 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 
-// sw.js precaches exactly the served app shell: a new module, stylesheet, font or icon must be added there.
-// Of the fonts, only the default look's (Literata and Geist Mono): the other typing and app fonts load when
-// picked and are cached from then on.
-test('the service worker precaches every shell file and nothing else', async () => {
-  const source = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
-  const shell = [...source.match(/const SHELL = \[([^\]]*)\]/)[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
+test('the built worker precaches the emitted app and leaves optional fonts on demand', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../dist/.serve-manifest.json', import.meta.url), 'utf8'));
+  const source = await readFile(new URL('../dist/sw.js', import.meta.url), 'utf8');
+  const shell = JSON.parse(source.match(/const SHELL = (\[[^;]+\]);/)[1]);
 
-  const list = async (dir, pattern) => (await readdir(new URL(`../${dir}/`, import.meta.url)))
-    .filter((name) => pattern.test(name)).map((name) => `/${dir}/${name}`);
-
-  const expected = [
-    '/', '/manifest.webmanifest',
-    ...await list('icons', /^[a-z0-9-]+\.(?:svg|png)$/),
-    ...await list('src', /^[a-z-]+\.(?:js|css)$/),
-    ...await list('src/fonts', /^(?:literata|geist-mono)-[a-z0-9-]+\.(?:ttf|woff2)$/),
-  ];
+  const expected = ['/', ...manifest.files.filter((file) => file !== 'index.html' && file !== 'sw.js'
+    && (!/\.(?:ttf|woff2|txt)$/.test(file) || /\/(?:literata|geist-mono)-/.test(file))).map((file) => `/${file}`)];
 
   assert.deepEqual([...shell].sort(), [...expected].sort());
-  assert.match(source, /url\.origin !== self\.location\.origin\) return;/, 'cross-origin requests stay uncached');
-  assert.match(source, /!SHELL\.includes\(key\) && !key\.startsWith\('\/src\/fonts\/'\)/, 'a picked font is cached once used');
+  assert.equal(new Set(shell).size, shell.length);
+  assert.ok(shell.some((file) => file.endsWith('.js')));
+  assert.ok(shell.some((file) => file.endsWith('.css')));
+  assert.match(source, /url\.origin !== self\.location\.origin\)/, 'cross-origin requests stay uncached');
+  assert.match(source, /FONTS\.includes\(key\)/, 'a picked font is cached once used');
+  assert.ok(!source.includes('__SHELL__') && !source.includes('__VERSION__') && !source.includes('__FONTS__'));
+  assert.ok(!manifest.files.some((file) => /(?:\.tsx?$|\.map$|^\.serve)/.test(file)));
 });

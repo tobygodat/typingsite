@@ -50,7 +50,7 @@ export default defineConfig({
     use: { ...engines[name], viewport: { width: 1280, height: 800 } },
   })),
   webServer: {
-    command: 'node server.mjs',
+    command: 'npm run build && node server.mjs',
     env: { PORT: String(port) },
     url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: !process.env.CI,
