@@ -3,7 +3,7 @@
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
 import { retainTraces } from './insights.js';
 import { retainCompositions } from './compose.js';
-import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, trendRun } from './insights.js';
+import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChallengeId, retainRuns, settleDailyFirsts, bestRun } from './insights.js';
 import { keepDays, mergeRunCounts, retainRunCounts, validRunCounts } from './run-counts.js';
 import { conditionKey } from './typing.js';
 
@@ -1094,7 +1094,7 @@ export function mergeSynced(local, cloud) {
     const key = conditionKey(run.conditions);
     const best = { wpm: run.score?.wpm, attemptId: run.id, at: run.at };
 
-    if (trendRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
+    if (bestRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
 
   merged.seenTextIds = [...new Set([...mine.seenTextIds, ...theirs.seenTextIds])];

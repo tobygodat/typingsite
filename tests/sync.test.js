@@ -287,6 +287,27 @@ test('a run the cleared best had blocked becomes the best once that best is drop
   assert.deepEqual(mergeSynced(profile({ runs: [run('a', 1, 99)] }), profile()).bests, {});
 });
 
+test('a merge after a clear never makes a code run a best', () => {
+  const conditions = { mode: 'words', count: 10, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed' };
+  const code = { ...conditions, mode: 'code', codeLanguage: 'js' };
+  const run = (id, n, wpm, extra = {}) => item(id, n, { kind: 'test', status: 'complete', interrupted: false, conditions, score: { wpm, accuracy: 100 }, ...extra });
+  const slower = run('slower', 12, 60);
+  const codeAfter = run('code-after', 12, 99, { conditions: code });
+
+  // The stale device holds a code best and a later, faster code run, beside the ordinary pair that does become a best.
+  const stale = profile({
+    runs: [run('old', 1, 90), run('old-code', 1, 90, { conditions: code }), slower, codeAfter],
+    bests: { [conditionKey(conditions)]: { wpm: 90, attemptId: 'old', at: minute(1) }, [conditionKey(code)]: { wpm: 90, attemptId: 'old-code', at: minute(1) } },
+  });
+
+  const cleared = profile({ historyClearedAt: minute(10) });
+
+  for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
+    assert.deepEqual(Object.keys(merged.bests).filter((key) => key.startsWith('code-')), []);
+    assert.ok(Object.hasOwn(merged.bests, conditionKey(slower.conditions)));
+  }
+});
+
 // An older clear's names can take a record from a copy that already shares a newer clear's marker. The
 // best that record set goes with it, and so does its passage's seen mark, as for a copy that missed a clear.
 for (const retyped of [false, true]) {

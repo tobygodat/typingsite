@@ -231,6 +231,10 @@ export const practiceRun = (run) => validRun(run) && comparableKind(run.kind) &&
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
 export const trendRun = (run) => practiceRun(run) && run.fresh !== false;
 
+// A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
+// never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
+export const bestRun = (run) => trendRun(run) && run.conditions?.mode !== 'code';
+
 // The best earlier completed run on this exact passage and conditions: the score a repeat chases.
 // It is derived from saved summaries and never becomes a personal best.
 export function passageBest(runs, run) {
