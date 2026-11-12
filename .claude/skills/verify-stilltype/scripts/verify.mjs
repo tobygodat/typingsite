@@ -118,35 +118,69 @@ async function freePort() {
   });
 }
 
-// Is `url` serving exactly this checkout's files? The server reads from disk per request, so edits show at once.
-async function servesThisCheckout(url) {
-  const files = ['index.html', 'src/app.js', 'src/styles.css'];
-  const mismatched = [];
-  for (const file of files) {
-    let body;
-    try {
-      const response = await fetch(new URL(file === 'index.html' ? '/' : `/${file}`, url), { signal: AbortSignal.timeout(3000) });
-      if (!response.ok) { mismatched.push(`${file} (HTTP ${response.status})`); continue; }
-      body = Buffer.from(await response.arrayBuffer());
-    } catch (error) { return { ok: false, reason: `no answer at ${url} (${error.cause?.code || error.message})` }; }
-    if (sha(body) !== sha(fs.readFileSync(path.join(root, file)))) mismatched.push(file);
+function compiledBuild() {
+  const directory = path.join(root, 'dist');
+  const manifestFile = path.join(directory, '.serve-manifest.json');
+  const manifest = readJson(manifestFile);
+  if (!manifest) throw new Error('no readable dist/.serve-manifest.json; run serve or npm run build');
+  const files = manifest.files.map((file) => ({ file, bytes: fs.readFileSync(path.join(directory, file)) }));
+  const hash = createHash('sha256');
+  for (const { file, bytes } of files.filter(({ file }) => file !== 'sw.js')) hash.update(file).update(bytes);
+  const version = `stilltype-shell-${hash.digest('hex').slice(0, 12)}`;
+  if (version !== manifest.version) throw new Error(`dist bytes do not match manifest version ${manifest.version}; run serve or npm run build`);
+  const builtAt = fs.statSync(manifestFile).mtimeMs;
+  function newerInput(file) {
+    const info = fs.statSync(path.join(root, file));
+    if (info.isDirectory()) return fs.readdirSync(path.join(root, file)).map((name) => newerInput(`${file}/${name}`)).find(Boolean);
+    return info.mtimeMs > builtAt ? file : null;
   }
-  return mismatched.length ? { ok: false, reason: `${url} serves different ${mismatched.join(', ')} (another checkout or a stale server)` } : { ok: true };
+  const stale = ['index.html', 'src', 'icons', 'manifest.webmanifest', 'scripts/build-static.mjs', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.worker.json'].map(newerInput).find(Boolean);
+  if (stale) throw new Error(`${stale} is newer than dist/.serve-manifest.json; run serve or npm run build`);
+  return { version, files };
+}
+
+function serverOwner(url) {
+  const address = new URL(url);
+  if (address.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(address.hostname) || address.pathname !== '/') {
+    throw new Error('use a local http server URL at / so its checkout can be verified');
+  }
+  const pids = execFileSync('lsof', ['-nP', '-a', `-iTCP:${address.port || 80}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\s+/);
+  for (const pid of pids) {
+    if (fs.readlinkSync(`/proc/${pid}/cwd`) !== root || !fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').includes('server.mjs')) {
+      throw new Error(`${url} belongs to another checkout or is not node server.mjs`);
+    }
+  }
+}
+
+async function servesThisCheckout(url, build) {
+  try { serverOwner(url); } catch (error) { return { ok: false, reason: `cannot verify server ownership at ${url}: ${error.message}` }; }
+  const mismatched = [];
+  for (const { file, bytes } of build.files) {
+    try {
+      const response = await fetch(new URL(file === 'index.html' ? '/' : `/${file}`, url), { signal: AbortSignal.timeout(3000), redirect: 'error' });
+      if (!response.ok) { mismatched.push(`${file} (HTTP ${response.status})`); continue; }
+      if (response.headers.get('x-stilltype-build') !== build.version) mismatched.push(`${file} (build version)`);
+      if (sha(Buffer.from(await response.arrayBuffer())) !== sha(bytes)) mismatched.push(file);
+    } catch (error) { return { ok: false, reason: `no answer at ${url} (${error.cause?.code || error.message})` }; }
+  }
+  return mismatched.length ? { ok: false, reason: `${url} serves different ${mismatched.join(', ')} (another artifact or a stale server)` } : { ok: true, version: build.version };
 }
 
 async function startServer(port, { managed }) {
   if (!(await portFree(port))) fail(`port ${port} is taken by something serve did not start; pass --port N`);
+  execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit' });
+  const build = compiledBuild();
   fs.mkdirSync(stateDir, { recursive: true });
   const log = fs.openSync(path.join(stateDir, managed ? 'server.log' : `server-${port}.log`), 'a');
   const child = spawn(process.execPath, ['server.mjs'], { cwd: root, env: { ...process.env, PORT: String(port) }, detached: managed, stdio: ['ignore', log, log] });
+  fs.closeSync(log);
   const url = `http://127.0.0.1:${port}/`;
-  // Ready means the page and its scripts come back byte-identical to this checkout, not just that a port answers.
   for (let i = 0; i < 50; i++) {
-    if ((await servesThisCheckout(url)).ok) break;
+    if ((await servesThisCheckout(url, build)).ok) break;
     if (child.exitCode !== null) fail(`server exited with ${child.exitCode}; see ${path.join(stateDir, 'server.log')}`);
     await sleep(100);
   }
-  const ready = await servesThisCheckout(url);
+  const ready = await servesThisCheckout(url, build);
   if (!ready.ok) { child.kill(); fail(`server never became ready: ${ready.reason}`); }
   if (managed) {
     child.unref();
@@ -169,7 +203,12 @@ function managedServer() {
 
 async function serve(opts) {
   const running = managedServer();
-  if (running) { console.log(`already serving ${running.url} (pid ${running.pid})`); return; }
+  if (running) {
+    const check = await servesThisCheckout(running.url, compiledBuild());
+    if (!check.ok) fail(`${check.reason}; stop and serve to rebuild`);
+    console.log(`already serving ${running.url} (pid ${running.pid}, ${check.version})`);
+    return;
+  }
   const { url, child } = await startServer(Number(opts.port || defaultPort), { managed: true });
   console.log(`serving ${root}\n  url  ${url}\n  pid  ${child.pid}\n  log  ${path.join(stateDir, 'server.log')}\nstop with: ${process.argv[1]} stop`);
 }
@@ -185,8 +224,8 @@ function stop() {
 async function doctor(opts) {
   let ok = true;
   const line = (good, label, detail) => { if (!good) ok = false; console.log(`${good ? 'ok  ' : 'FAIL'}  ${label.padEnd(11)} ${detail}`); };
-  const major = Number(process.versions.node.split('.')[0]);
-  line(major >= 18, 'node', process.version);
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  line((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22, 'node', process.version);
   const pw = loadPlaywright();
   line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run npm ci');
   const browser = await findChromium(pw);
@@ -196,14 +235,22 @@ async function doctor(opts) {
     : `none runs (tried ${browser.skipped.join(', ')}); set CHROMIUM or run npx playwright install chromium`);
   const dirty = git('status', '--porcelain') ? ' + uncommitted changes' : '';
   line(true, 'checkout', `${root} @ ${branch} ${git('rev-parse', '--short', 'HEAD')}${dirty}`);
+  let build;
+  try { build = compiledBuild(); line(true, 'build', `${build.version}, ${build.files.length} emitted files in dist/`); }
+  catch (error) { line(false, 'build', error.message); }
   const running = managedServer();
   const url = opts.url || running?.url;
   if (!url) line(true, 'server', `none running; shot starts a private one, or run serve (port ${defaultPort})`);
-  else {
-    const check = await servesThisCheckout(url);
-    line(check.ok, 'server', check.ok ? `${url} serves this checkout${running && !opts.url ? ` (pid ${running.pid})` : ''}` : check.reason);
+  else if (build) {
+    const check = await servesThisCheckout(url, build);
+    line(check.ok, 'server', check.ok ? `${url} serves this checkout's ${check.version}${running && !opts.url ? ` (pid ${running.pid})` : ''}` : check.reason);
   }
-  try { fs.mkdirSync(evidenceRoot, { recursive: true }); fs.accessSync(evidenceRoot, fs.constants.W_OK); line(true, 'evidence', evidenceRoot); } catch (error) { line(false, 'evidence', `${evidenceRoot}: ${error.message}`); }
+  try {
+    let existing = evidenceRoot;
+    while (!fs.existsSync(existing)) existing = path.dirname(existing);
+    fs.accessSync(existing, fs.constants.W_OK);
+    line(true, 'evidence', `${evidenceRoot}${existing === evidenceRoot ? '' : ` (not created; ${existing} is writable)`}`);
+  } catch (error) { line(false, 'evidence', `${evidenceRoot}: ${error.message}`); }
   process.exit(ok ? 0 : 1);
 }
 
@@ -380,10 +427,7 @@ async function run(items, opts, label) {
 
   let url = opts.url;
   let privateServer = null;
-  if (url) {
-    const check = await servesThisCheckout(url);
-    if (!check.ok) fail(`${check.reason}. Run doctor.`);
-  } else {
+  if (!url) {
     url = managedServer()?.url;
     if (!url) {
       // A private server lives only as long as this command, even if it fails or is interrupted.
@@ -394,11 +438,15 @@ async function run(items, opts, label) {
     }
   }
 
+  const build = compiledBuild();
+  const verified = await servesThisCheckout(url, build);
+  if (!verified.ok) fail(`${verified.reason}. Run doctor.`);
+
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
   const outDir = path.resolve(opts.out || path.join(evidenceRoot, `${stamp}-${label}`));
   fs.mkdirSync(outDir, { recursive: true });
   const report = {
-    label, url, root, branch, commit: git('rev-parse', 'HEAD'), dirty: Boolean(git('status', '--porcelain')), chromium: browserPath,
+    label, url, root, branch, buildVersion: build.version, commit: git('rev-parse', 'HEAD'), dirty: Boolean(git('status', '--porcelain')), chromium: browserPath,
     started: new Date().toISOString(), seed: opts.seed || '20261009', runs: [],
   };
   let failed = false;
@@ -483,6 +531,11 @@ function list() {
 
 const [command, ...rest] = process.argv.slice(2);
 const opts = parseArgs(rest);
+if (command === 'shot' || command === 'drive') {
+  const require = createRequire(path.join(root, 'package.json'));
+  const { register } = await import(pathToFileURL(require.resolve('tsx/esm/api')).href);
+  register({ tsconfig: path.join(root, 'tsconfig.json') });
+}
 switch (command) {
   case 'serve': await serve(opts); break;
   case 'stop': stop(); break;

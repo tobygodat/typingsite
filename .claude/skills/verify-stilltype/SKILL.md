@@ -1,12 +1,13 @@
 ---
 name: verify-stilltype
-description: Drive the real Stilltype typing-practice web app (index.html + src/, served by server.mjs) in headless Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Uses hosted CI for full suites and local targeted runs for iteration.
+description: Drive the real Stilltype typing-practice web app (compiled dist/, served by server.mjs) in headless Chromium and capture screenshots, ARIA snapshots and a run.json as proof. Use to confirm a UI or behaviour change in the browser, to take the usual screenshots (idle practice page, a finished run's results, the "more" menu open, phone 390/320, light theme, settings, signed in), or to script a one-off flow instead of writing a throwaway Playwright file in /tmp. Uses hosted CI for full suites and local targeted runs for iteration.
 ---
 
 # Verify Stilltype
 
-Stilltype is a web app with no build step: `server.mjs` serves `index.html`, `src/*.js`, `src/styles.css`,
-fonts and the PWA files straight from the checkout. Everything an agent needs is one script:
+Stilltype builds with Vite into `dist/`. `server.mjs` serves only the emitted files listed in
+`dist/.serve-manifest.json`, including hashed JavaScript and CSS, fonts and the PWA files.
+Everything an agent needs is one script:
 
 ```sh
 V=.claude/skills/verify-stilltype/scripts/verify.mjs   # run from the checkout root
@@ -14,13 +15,16 @@ $V                                                     # usage
 ```
 
 It loads Playwright from this checkout's `node_modules`, or the main checkout's when this is a worktree
-without one, drives the first Chromium that runs (see Chromium below), and always attaches the in-memory
-Supabase from `e2e/fake-supabase.js`, so nothing reaches the real project.
+without one. Browser commands register this checkout's `tsx/esm/api` loader before importing the fake backend
+and custom flows, so `.js` import specifiers resolve converted TypeScript modules. Run `npm ci` in this
+checkout first for the build and loader dependencies. It drives the first Chromium that runs
+(see Chromium below), and always attaches the in-memory Supabase from `e2e/fake-supabase.js`, so nothing reaches the real project.
 
 ## Launch
 
 You usually don't need to. `$V shot …` and `$V drive …` start a private server on a free port, use it, and
-kill it when they exit (including on failure or Ctrl-C).
+kill it when they exit (including on failure or Ctrl-C). Each new managed or private server runs
+`npm run build` before starting, including the TypeScript check. A failed build stops the launch.
 
 For several commands in a row, or to look at the app yourself, start a managed server:
 
@@ -28,10 +32,14 @@ For several commands in a row, or to look at the app yourself, start a managed s
 $V serve      # prints url, pid and log; port is fixed per checkout (5200–5799), e.g. http://127.0.0.1:5524/
 ```
 
-Ready means usable: `serve` returns only once `/`, `/src/app.js` and `/src/styles.css` come back
-byte-identical to this checkout. There is no database, migration or seed: a guest starts from defaults and
-writes nothing; signed-in state comes from the fake Supabase in each browser context. Shots and drives use the
-managed server automatically while it runs. Edits to the checkout are live on the next page load; no restart.
+Ready means usable. `serve` returns only once every emitted file in the manifest comes back byte-identical
+to this checkout's `dist/`, with the expected `X-Stilltype-Build` version. It also verifies that the local
+listener runs `server.mjs` in this checkout, using Linux `/proc` and `lsof`. There is no database, migration
+or seed. A guest starts from defaults and writes nothing; signed-in state comes from the fake Supabase
+in each browser context. Shots and drives use the managed server automatically while it runs, after the
+same artifact check. Source edits need a rebuild.
+Run `$V stop` then `$V serve` to rebuild and restart. Calling `serve` with an existing managed server
+checks it without rebuilding. Stop it first if its build is stale.
 
 Don't drive someone else's server. `npm run dev` (5173) and other worktrees' servers (5175, …) may be
 running and serving other code; `--url` is only accepted when doctor passes for it.
@@ -57,9 +65,12 @@ $V doctor                 # or: $V doctor --url http://127.0.0.1:5173/
 
 Read-only. Reports node, the Playwright version and where it came from, the Chromium it picked (and any it
 skipped), the checkout's branch,
-commit and dirty state, whether the server (managed, or `--url`) serves this checkout's exact bytes, and
-that the evidence folder is writable. Exit 0 means it's worth driving. Run it first whenever something looks
-off. A `FAIL server … serves different index.html` means another checkout's server: stop using that URL.
+commit and dirty state, the emitted build version and file count, whether the server (managed, or `--url`)
+serves this checkout's exact compiled bytes and version, and that the evidence folder is writable. Exit 0 means it's worth driving. Run it first whenever something looks
+off. Doctor never builds. Missing output, bytes that disagree with the manifest version, or a build input
+newer than the manifest fail the build check. The timestamp check catches newer source edits; it does not
+prove reproducibility. A server with another working directory, different emitted bytes or a different
+version fails the server check. Stop using that URL and rebuild this checkout before retrying.
 
 ## Drive
 
@@ -228,7 +239,8 @@ verifying a change, and cover every entry point it lists.
 
 ## Gotchas
 
-- `server.mjs` always logs "ready at http://localhost:5173" whatever `PORT` is. Trust the URL `$V` prints.
+- `server.mjs` serves `dist/` without watching source files. Use `$V stop` then `$V serve` after source edits.
+  Doctor checks the current output and never refreshes it.
 - Playwright's headless default system theme is light; the script defaults to `--scheme dark`, the theme
   most people see. Pass `--scheme light` for the light set.
 - Guests' theme pick lasts only for the tab; on reload a guest follows the system again (the inline script in
