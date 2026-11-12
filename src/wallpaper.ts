@@ -28,21 +28,13 @@ export interface WallpaperPixels { width: number; height: number; data: Uint8Cla
 interface LumaImage { width: number; height: number; luma: Uint8ClampedArray<ArrayBuffer> }
 
 function byte(values: Uint8ClampedArray<ArrayBuffer> | Uint32Array<ArrayBuffer>, index: number): number {
-  return values[index] ?? 0;
+  return values[index] ?? Number.NaN;
 }
 
 const BLUR_MAX = 32;
 const OPACITY_MIN = 10;
 const LEVELS = 4;
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-
-
-// The contrast floor: letters at least 4.5:1, the caret at least 3:1; mistyped letters sit on their tint.
-
-
-// Samples per region at most, so a check costs about the same on any screen.
-
-
 
 // Rec. 709 luma, stretched so the darkest and lightest 2% clip: a dim photo uses the whole range too.
 export function greyscale(rgba: Uint8ClampedArray<ArrayBuffer>) {
@@ -79,8 +71,6 @@ const channel = (value: number) => {
 
 export const luminance = ([r = 0, g = 0, b = 0]: readonly number[]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
 export const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-
-
 
 // Lays a cols × rows grid over the image as background-size: cover does (centred, cropped) and hands each cell
 // the pixel spans under it.
@@ -180,7 +170,6 @@ export function readLook(raw?: unknown): WallpaperLook {
     reach: number(saved.reach, 0, 100, 0),
   };
 }
-
 
 interface WallpaperView { look: WallpaperLook; hasImage: boolean; error: boolean }
 
