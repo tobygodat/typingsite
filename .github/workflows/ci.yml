@@ -1,7 +1,6 @@
 name: CI
 
-# Every job runs on the self-hosted runner on tobygdesktop (~/actions-runner, see docs/CONVENTIONS.md).
-# Its .env sets its own npm cache and E2E_PORT, and each job checks out under the runner's _work.
+# Every job runs on GitHub's hosted runners (docs/adr/0018-ci-on-hosted-runners.md).
 on:
   pull_request:
   push:
@@ -22,9 +21,7 @@ permissions:
 jobs:
   unit:
     name: Unit and build checks
-    # Never run a fork's code on the desktop.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, tobygdesktop]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
       group: unit-${{ github.ref }}
@@ -34,6 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm test
@@ -43,7 +41,7 @@ jobs:
     name: Deploy to Cloudflare
     needs: unit
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: [self-hosted, tobygdesktop]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: production
@@ -61,31 +59,34 @@ jobs:
           wranglerVersion: "4.151.0"
 
   e2e:
-    name: Browser e2e
+    name: Browser e2e (${{ matrix.shard }}/6)
     # After the deploy, so on master it reports without delaying it.
     needs: [unit, deploy]
     if: ${{ !cancelled() && needs.unit.result == 'success' }}
-    runs-on: [self-hosted, tobygdesktop]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
+    # One group per shard: in a shared group the shards would cancel each other.
     concurrency:
-      group: e2e-${{ github.ref }}
+      group: e2e-${{ github.ref }}-${{ matrix.shard }}
       cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
     env:
-      CHROMIUM: /usr/bin/chromium
       E2E_BROWSERS: ${{ github.event_name == 'push' && 'all' || inputs.browsers || 'chromium' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
       - run: npm ci --no-audit --no-fund
-      - if: github.event_name == 'push' || inputs.browsers == 'all'
-        run: npx playwright install firefox webkit
-      - run: |
-          if pgrep -f "playwright test" >/dev/null; then set -- --workers=8; fi
-          npx playwright test "$@"
+      - run: npx playwright install --with-deps ${{ env.E2E_BROWSERS == 'all' && 'chromium firefox webkit' || 'chromium' }}
+      - run: npx playwright test --shard=${{ matrix.shard }}/6
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-failures
+          name: e2e-failures-${{ matrix.shard }}
           path: test-results/
+          retention-days: 7
