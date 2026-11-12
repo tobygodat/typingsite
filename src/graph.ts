@@ -1,5 +1,5 @@
 import { at as indexed } from './domain-values.js';
-import type { Attempt, AttemptEvent } from './typing.js';
+import type { Attempt, AttemptEvent, ReplaySource } from './typing.js';
 
 interface SpeedPoint { t: number; wpm: number; misses: number }
 
@@ -27,7 +27,7 @@ function stepMs(durationMs: number) {
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
 // Speed at each point is measured over exactly the trailing three seconds of keystroke timestamps,
 // however coarse the drawn points are; mistakes are summed per drawn point.
-export function speedSeries(attempt: Attempt) {
+export function speedSeries(attempt: ReplaySource) {
   const all = attempt?.events || [];
   const events = all.filter((event): event is Extract<AttemptEvent, { text: string }> => event.type === 'insert' || event.type === 'blocked-insert');
 
@@ -192,7 +192,7 @@ function trace(container: HTMLElement, { durationS, low, high, animate }: { dura
   return { svg, x, y, left: 0, right: width };
 }
 
-export function renderSpeedGraph(container: HTMLElement, attempt: Attempt, { animate = true } = {}) {
+export function renderSpeedGraph(container: HTMLElement, attempt: ReplaySource & Pick<Attempt, 'summary'>, { animate = true } = {}) {
   const series = speedSeries(attempt);
   const averageWpm = attempt?.summary?.score?.wpm ?? 0;
   // Described even while hidden and undrawn, so the label always reads in the unit on screen.
@@ -216,7 +216,7 @@ export function renderSpeedGraph(container: HTMLElement, attempt: Attempt, { ani
 
 // An online race: both racers' speed on one chart over the race clock, which both traces start from the
 // shared start, so the two lines compare directly. Yours is the accent, theirs the text colour.
-export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [Attempt, Attempt], { animate = true } = {}) {
+export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [ReplaySource, ReplaySource], { animate = true } = {}) {
   const series = [mine, theirs].map(speedSeries);
   const ours = inUnit(indexed(series, 0).points);
   const others = inUnit(indexed(series, 1).points);

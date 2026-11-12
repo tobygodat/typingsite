@@ -718,7 +718,9 @@ export function customTextProblem(text: string) {
   return null;
 }
 
-export function replayAttempt(attempt: { text: string; events?: AttemptEvent[]; startedAt?: number | null; endedAt?: number | null }): Replay {
+export type ReplaySource = Pick<Attempt, 'text'> & Partial<Pick<Attempt, 'events' | 'startedAt' | 'endedAt'>>;
+
+export function replayAttempt(attempt: ReplaySource): Replay {
   let typed = '';
   let insertions = 0;
   let correctInsertions = 0;
@@ -816,7 +818,7 @@ function typedAfter(typed: string, event: AttemptEvent, text: string) {
 // recorded in time order, so each call steps forward only through the events that came due since
 // the last one, and starts over only when t goes back (Restart). At every prefix of the events
 // it equals replayAttempt's typed text; scoring never calls this.
-export function replayCursor(attempt: Attempt) {
+export function replayCursor(attempt: ReplaySource) {
   const events = attempt.events || [];
   let applied = 0;
   let typed = '';
@@ -841,11 +843,11 @@ export function replayCursor(attempt: Attempt) {
 
 // The scored bounds (startedAt/endedAt) widened to cover every event, so a timed run's idle tail
 // plays out and the replay clock ends on the elapsed time the result used.
-export function replaySpan(attempt: Attempt) {
+export function replaySpan(attempt: ReplaySource) {
   const offsets = (attempt.events || []).map((event) => event.offsetMs).filter(Number.isFinite);
 
   if (!offsets.length) return { start: 0, end: 0 };
-  const bound = (value: number | null) => (typeof value === 'number' && Number.isFinite(value) ? [value] : []);
+  const bound = (value: ReplaySource['startedAt']) => (typeof value === 'number' && Number.isFinite(value) ? [value] : []);
 
   return { start: Math.min(...offsets, ...bound(attempt.startedAt)), end: Math.max(...offsets, ...bound(attempt.endedAt)) };
 }
@@ -856,7 +858,7 @@ export const RATE_FLOOR_MS = 1000;
 
 // The live numbers at offset t (ms on the attempt clock): the run scored as if it had ended at t. At
 // replaySpan(attempt).end it equals the completed run's score and first-try errors.
-export function replayScoreAt(attempt: Attempt, t: number) {
+export function replayScoreAt(attempt: ReplaySource, t: number) {
   const events = (attempt.events || []).filter((event) => event.offsetMs <= t);
   const replay = replayAttempt({ ...attempt, events, endedAt: Math.min(t, attempt.endedAt ?? t) });
 
