@@ -23,7 +23,7 @@ Stilltype is a static web app: native HTML, CSS and JavaScript modules with no r
 - **Settings and palette.** The settings dialog, and the ⌘K / Ctrl-K palette. Each palette group is listed once, in the order of its first command. Monkeytype import.
 - **Rules.** Five correction policies, strict space, quick end, minimums, repeat quotes and the pace caret.
 - **Display.** Ten themes in a mode (system, dark, light), with a dark and a light pick. Up to five custom themes, from the editor or generated from a short description (20 a day). A background image ([ADR 0010](adr/0010-background-image.md)). Text size, typing and app fonts, word highlight (optionally sliding), one-line tape, wpm or cpm, live metrics, an on-screen keyboard with five layouts and a finger map, focus mode and sounds.
-- **Accounts.** Email or Google, sync, clear history with Undo, and account deletion.
+- **Accounts.** Email or Google, sync, clear history with Undo, account deletion, and Export my data (a file of this device's copy).
 - Offline shell, What's new, and anonymous feature suggestions.
 
 `docs/ui-contract.md` describes each screen's behaviour in more detail.

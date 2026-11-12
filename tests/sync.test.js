@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CONDITION_SETS_FROM, HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
+  CONDITION_SETS_FROM, HISTORY, MAX_STORED_ATTEMPTS, cacheProfile, capHistory, clearProfile, exportCopy, fetchCloudProfile, insertCloudProfile, joinHolds, mergeAndHold,
   mergeSynced, profileKey, revokeClear, rowCopy, sameProfile, sameRow, stampAfter, storedCopy, undoClearHere, updateCloudProfile,
   withConditionSets,
 } from '../src/account.js';
@@ -258,6 +258,19 @@ test('a clear drops what the other side held from before it, without losing late
   assert.ok(later.seenTextIds.includes('q-other'));
 });
 
+test('a stored copy with malformed records loads without them', () => {
+  assert.deepEqual(ids(normalizeProfile(profile({ runs: [null, 7, 'x', [], { id: 'r1', at: minute(1) }] })).runs), ['r1']);
+  assert.deepEqual(ids(normalizeProfile(profile({ loops: [null, 3, { id: 'l1', at: minute(1) }] })).loops), ['l1']);
+  assert.deepEqual(ids(normalizeProfile(profile({ attempts: [null, 'x', { id: 'a1', at: minute(1) }] })).attempts), ['a1']);
+  assert.deepEqual(normalizeProfile(profile({ seenTextIds: [1, null, 'quote-3'] })).seenTextIds, ['quote-3']);
+  assert.deepEqual(normalizeProfile(profile({ bests: [] })).bests, {});
+  assert.deepEqual(normalizeProfile(profile({ bests: { a: null, b: 5, c: { wpm: 80, attemptId: 'r1', at: minute(1) } } })).bests,
+    { c: { wpm: 80, attemptId: 'r1', at: minute(1) } });
+  const legacy = profile({ loops: {}, attempts: [{ id: 'a1', at: minute(1) }] });
+  delete legacy.runs;
+  assert.doesNotThrow(() => normalizeProfile(legacy));
+});
+
 test('a run the cleared best had blocked becomes the best once that best is dropped', () => {
   const conditions = { mode: 'words', count: 10, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed' };
   const key = conditionKey(conditions);
@@ -272,6 +285,27 @@ test('a run the cleared best had blocked becomes the best once that best is drop
 
   // Without a clear, history alone never changes a best.
   assert.deepEqual(mergeSynced(profile({ runs: [run('a', 1, 99)] }), profile()).bests, {});
+});
+
+test('a merge after a clear never makes a code run a best', () => {
+  const conditions = { mode: 'words', count: 10, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed' };
+  const code = { ...conditions, mode: 'code', codeLanguage: 'js' };
+  const run = (id, n, wpm, extra = {}) => item(id, n, { kind: 'test', status: 'complete', interrupted: false, conditions, score: { wpm, accuracy: 100 }, ...extra });
+  const slower = run('slower', 12, 60);
+  const codeAfter = run('code-after', 12, 99, { conditions: code });
+
+  // The stale device holds a code best and a later, faster code run, beside the ordinary pair that does become a best.
+  const stale = profile({
+    runs: [run('old', 1, 90), run('old-code', 1, 90, { conditions: code }), slower, codeAfter],
+    bests: { [conditionKey(conditions)]: { wpm: 90, attemptId: 'old', at: minute(1) }, [conditionKey(code)]: { wpm: 90, attemptId: 'old-code', at: minute(1) } },
+  });
+
+  const cleared = profile({ historyClearedAt: minute(10) });
+
+  for (const merged of [mergeSynced(cleared, stale), mergeSynced(stale, cleared)]) {
+    assert.deepEqual(Object.keys(merged.bests).filter((key) => key.startsWith('code-')), []);
+    assert.ok(Object.hasOwn(merged.bests, conditionKey(slower.conditions)));
+  }
 });
 
 // An older clear's names can take a record from a copy that already shares a newer clear's marker. The
@@ -1435,6 +1469,26 @@ test('stored copies leave out each trace’s summary, and loading rebuilds it ex
   for (const [n, trace] of loaded.attempts.entries()) assert.equal(JSON.stringify(trace).length, JSON.stringify(traces[n]).length);
   assert.deepEqual(storedCopy(profile()), profile());
   assert.deepEqual(storedCopy({ version: 2 }), { version: 2 });
+});
+
+test('an export is this device’s stored copy, dated, and reads back as the same profile', () => {
+  const mine = profile({ runs: [item('r1', 1)], attempts: [item('a1', 1)], loops: [item('l1', 2)], bests: { k: { wpm: 80, at: minute(1) } } });
+  const result = exportCopy(mine, Date.parse(minute(30)));
+  const data = JSON.parse(result.text);
+  assert.equal(result.name, 'stilltype-export-2026-10-01.json');
+  assert.equal(data.version, 2);
+  assert.equal(data.exportedAt, minute(30));
+  const read = normalizeProfile(data);
+  const stored = normalizeProfile(JSON.parse(JSON.stringify(storedCopy(mine, Date.parse(minute(30))))));
+
+  for (const field of ['runs', 'attempts', 'loops', 'bests']) assert.deepEqual(read[field], stored[field], field);
+});
+
+test('an export never carries the sign-in', () => {
+  const mine = profile({ runs: [item('r1', 1)], attempts: [item('a1', 1)], loops: [item('l1', 2)], bests: { k: { wpm: 80, at: minute(1) } } });
+  const { text } = exportCopy(mine, 0);
+  assert.ok(!text.includes('refresh_token'));
+  assert.ok(!text.includes('access_token'));
 });
 
 test('copies holding compact traces settle with each other and with a full copy from an older build', () => {
