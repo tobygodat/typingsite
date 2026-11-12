@@ -48,6 +48,12 @@ Preconditions:
 - **Themes.** Run `$V drive .claude/skills/verify-stilltype/flows/train-path-themes.mjs --delay 40`. One shot of the
   path with history per built-in theme, each picked in settings → appearance; contrast is guarded by
   `tests/contrast.test.js`.
+- A drill left waiting while Train, Progress and Challenge open, then Practice, still the drill:
+  `$V drive .claude/skills/verify-stilltype/flows/train-waiting-drill.mjs`.
+- The open step's Drill button clear of the dock on first view, 44px, nothing sideways:
+  `$V drive .claude/skills/verify-stilltype/flows/train-drill-dock.mjs --width 320 --height 568 --mobile`.
+- The since-line in counts, and a loop whose drill was interrupted, on Train and in Progress's runs view:
+  `TOB448_ONLY=since $V drive .claude/skills/verify-stilltype/flows/tob448-follow-ups.mjs` (or `loop`).
 
 ## Gotchas
 

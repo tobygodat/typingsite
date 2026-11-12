@@ -4,7 +4,8 @@ import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, r
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
-import { dayKey } from '../src/insights.js';
+import { MAX_PATTERN_RUNS, dayKey, retainRuns } from '../src/insights.js';
+import { weekChange as weekChangeBefore } from './week-change-reference.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -341,4 +342,116 @@ test('the overview is the same whatever order the history arrives in, and after 
 
 test('the list shows a few units, ranked, and keeps the rest', () => {
   assert.equal(SHOWN_MOVERS, 3);
+});
+
+// The learner "a week ago" is fitted at the moment the week began, not now (TOB-448). Its decay reads each record's
+// age, so the moment matters: two undated clean runs keep their full weight while the dated ones fade, and "qu",
+// missed in two of five runs a month ago, is named by the learner at the week's start and not by one fitted now.
+// Clean this week, it is fixed since the week began only by the learner of the week's start.
+test('the learner a week ago is fitted at the start of the week', () => {
+  const undated = [0, 1].map((i) => ({ ...run(`u${i}`, daysAgo(60), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }), at: null, day: null }));
+  const month = Array.from({ length: 5 }, (_, i) => run(`b${i}`, daysAgo(30 + i), { patterns: withBackground([['qu', 10, i < 2 ? 2 : 0, 10, 200, 0]]) }));
+  const week = Array.from({ length: 3 }, (_, i) => run(`a${i}`, daysAgo(3 - i), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+  const runs = [...undated, ...month, ...week];
+  const named = (at) => recommend([...undated, ...month], [], 'balanced', at).queue.some((item) => item.unit === 'qu');
+  assert.equal(named(THEN), true);
+  assert.equal(named(NOW), false);
+  assert.deepEqual(weekMovers({ runs, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`), ['qu:week']);
+});
+
+// A loop on another keyboard is no drill of this keyboard's unit (TOB-448): "ck", named here a week ago and clean here
+// since, is fixed since the week began, judged at the week's start, whatever was drilled on the Dvorak layout yesterday.
+test('loops on another keyboard leave this keyboard’s movers alone', () => {
+  const dvorak = { ...conditions, layout: 'dvorak' };
+  const before = Array.from({ length: 5 }, (_, i) => run(`b${i}`, daysAgo(12 - i), { patterns: withBackground([['ck', 8, 1, 8, 200, 0]]) }));
+  const after = Array.from({ length: 6 }, (_, i) => run(`a${i}`, daysAgo(5 - i), { patterns: withBackground([['ck', 15, 0, 15, 200, 0]]) }));
+  const elsewhere = run('d', daysAgo(1), { cond: dvorak, patterns: withBackground([['ck', 12, 0, 12, 200, 0]]) });
+  const runs = [...before, ...after, elsewhere];
+  const movers = (loops) => weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
+  assert.deepEqual(movers([]), ['ck:week']);
+  assert.deepEqual(movers([{ ...loop('ld', 'ck', elsewhere), conditions: dvorak }]), ['ck:week']);
+});
+
+// A loop counts as a week ago when it was saved before midnight at the start of the week, and from that midnight on
+// it is this week's (TOB-448). "qu" was drilled long ago and fixed well before the week; drilled again just before
+// midnight, it is judged since that drill, a week ago one run of evidence, so its fix since is this week's. Drilled
+// again on the stroke of midnight or just after, the week ago is the old drill's, already fixed then, so it isn't listed.
+test('a loop counts as a week ago only when it was saved before the week began', () => {
+  const weak = Array.from({ length: 5 }, (_, i) => run(`w${i}`, daysAgo(40 - i), { patterns: withBackground([['qu', 10, 3, 10, 200, 0]]) }));
+  const first = run('t1', daysAgo(35), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) });
+  const clean = Array.from({ length: 60 }, (_, i) => run(`c${i}`, new Date(daysAgo(34 - Math.floor(i / 2)).getTime() + (i % 2) * 3_600_000), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+  const week = Array.from({ length: 3 }, (_, i) => run(`n${i}`, daysAgo(3 - i), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) }));
+
+  const movers = (at) => {
+    const again = run('t2', new Date(at - 60_000), { patterns: withBackground([['qu', 10, 0, 10, 200, 0]]) });
+    const second = { ...loop('l2', 'qu', again), at: new Date(at).toISOString() };
+    const runs = [...weak, first, ...clean, again, ...week].sort((a, b) => (a.at < b.at ? -1 : 1));
+
+    return weekMovers({ runs, loops: [loop('l1', 'qu', first), second], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`);
+  };
+
+  // The week began at midnight six days back: Thursday 5 November, for a Wednesday noon.
+  assert.equal(THEN, new Date(2026, 10, 5, 0, 0, 0).getTime());
+  assert.deepEqual(movers(THEN - 60_000), ['qu:drill']);
+  assert.deepEqual(movers(THEN), []);
+  assert.deepEqual(movers(THEN + 60_000), []);
+});
+
+// The practice row's week is today and the six days before; the week before is the seven before those (TOB-448).
+test('the practice row splits its weeks at the start of the sixth day back', () => {
+  const minutes = (id, days, amount) => ({ ...run(id, daysAgo(days)), elapsedMs: amount * 60_000 });
+  const practice = weekPractice([minutes('a', 13, 1), minutes('b', 7, 2), minutes('c', 6, 4), minutes('d', 0, 8), minutes('e', 14, 16)], {}, 0, NOW_DATE);
+  assert.deepEqual([practice.previous, practice.current], [3, 12]);
+});
+
+// Progress's overview is master's on every history (TOB-448): the same as the version built on master's evidenceSince
+// and sinceDrilled (tests/week-change-reference.js), over random profiles under and over MAX_PATTERN_RUNS count-carrying
+// runs, stored as retainRuns stores them (so the older runs of a long profile have lost their counts), with undated
+// runs and runs on another keyboard, loops drilled before the week and in it, and every focus.
+test('the overview is the same as master’s on random histories, short and trimmed', () => {
+  const random = seeded(4480);
+  const pairs = ['qu', 'ex', 'ck', 'ol', 'th', 'an'];
+  const dvorak = { ...conditions, layout: 'dvorak' };
+  let trimmed = 0;
+  let movers = 0;
+
+  for (let round = 0; round < 48; round += 1) {
+    const count = round % 2 ? MAX_PATTERN_RUNS + 20 + Math.floor(random() * 80) : 10 + Math.floor(random() * 90);
+    const turn = Math.floor(random() * 30);
+
+    const all = Array.from({ length: count }, (_, i) => {
+      const back = Math.floor(((count - i) / count) * 40);
+
+      const rows = pairs.map((pair, p) => {
+        const late = back < (turn + p * 3) % 20;
+        const n = 4 + Math.floor(random() * 10);
+        const errors = Array.from({ length: n }, () => random() < (late ? 0.02 : 0.25)).filter(Boolean).length;
+        const slow = late ? 0 : Math.round(random() * 80);
+
+        return [pair, n, errors, n, 200 + slow, slow];
+      });
+
+      const made = run(`r${round}-${i}`, daysAgo(back, 8 + (i % 12), i % 60), { wpm: 50 + random() * 40, patterns: withBackground(rows),
+        cond: random() < 0.1 ? dvorak : conditions });
+
+      return random() < 0.03 ? { ...made, at: null, day: null } : made;
+    });
+
+    const runs = retainRuns(all);
+    trimmed += runs.some((item) => item.at && !item.patterns.length) ? 1 : 0;
+    const dated = runs.filter((item) => item.at && item.conditions === conditions);
+
+    const loops = Array.from({ length: Math.floor(random() * 6) }, (_, i) => loop(`l${round}-${i}`, pairs[Math.floor(random() * pairs.length)],
+      dated[Math.floor(random() * dated.length)], random() < 0.4 ? 'slow' : 'errors'));
+
+    for (const focus of FOCUSES) {
+      const args = { runs, loops, practiceDays: {}, key: KEY, conditions, focus, goal: 0, period: '30', now: NOW };
+      const week = weekChange(args);
+      assert.deepEqual(week, weekChangeBefore(args), `round ${round}, ${focus}`);
+      movers += week.movers.length;
+    }
+  }
+
+  assert.ok(trimmed >= 10, `the generator trims long profiles (${trimmed})`);
+  assert.ok(movers > 20, `the generator moves units (${movers})`);
 });

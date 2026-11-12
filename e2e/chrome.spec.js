@@ -274,6 +274,50 @@ test.describe('reduced motion', () => {
   });
 });
 
+// ⌘K pressed while the palette fades out after Escape opens it again (TOB-448). The fade once counted as open, so the
+// press closed it a second time and the palette was gone. The page's clock holds the fade still, so this is the
+// same on any machine.
+test('the commands binding reopens the palette while it fades out', async ({ page }) => {
+  await page.clock.install();
+  await openApp(page);
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('#palette-input')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#palette')).toHaveClass(/is-closing/);
+  await page.keyboard.press('Control+k');
+  await page.clock.runFor(1000);
+  await expect(page.locator('#palette')).toHaveAttribute('open', '');
+  await expect(page.locator('#palette')).not.toHaveClass(/is-closing/);
+  await expect(page.locator('#palette-input')).toBeFocused();
+  await page.locator('#palette-input').fill('practice c');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
+
+  // Escape still closes it, and focus goes back where it was before the first press.
+  await page.keyboard.press('Escape');
+  await page.clock.runFor(1000);
+  await expect(page.locator('#palette')).not.toHaveAttribute('open', '');
+  await expect(page.locator('#typing-input')).toBeFocused();
+});
+
+// An exact prefix ranks first (TOB-448). A long fuzzy match gains on every letter it keeps in a row, so "practice c"
+// once ranked "practice" (its letters, then the c of its own keywords) above "practice calendar".
+test('the palette ranks a label that starts with the query above a fuzzy match', async ({ page }) => {
+  await openApp(page);
+
+  for (const [query, label] of [['practice c', 'practice calendar'], ['words · 10 w', 'words · 10 words'], ['words · 100', 'words · 100 words'],
+    ['sound · clic', 'sound · clicks'], ['layout · dv', 'layout · dvorak'], ['app font · i', 'app font · inter']]) {
+    await page.keyboard.press('Control+k');
+    await page.locator('#palette-input').fill(query);
+    await expect(page.locator('#palette-list [aria-selected="true"] .opt-text'), query).toHaveText(label);
+    await page.keyboard.press('Escape');
+  }
+
+  // A label that holds the query ranks above one that only holds its letters in order.
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill('calendar');
+  await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
+});
+
 test('a palette jump puts focus on the new screen’s heading, or in the passage on Practice', async ({ page }) => {
   await openApp(page);
   await page.locator('#account-trigger').focus();

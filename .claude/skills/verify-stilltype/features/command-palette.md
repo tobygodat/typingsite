@@ -36,6 +36,9 @@ Preconditions:
   `page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Commands' })` and
   wait for `#palette-input`. Shoot the open dialog.
 - **No matches.** In a flow file, fill `#palette-input` with "zzzz" and wait for `#palette-empty` to be visible.
+- Every label's prefixes typed into the palette, each ranking its own label first:
+  `$V drive .claude/skills/verify-stilltype/flows/palette-prefix-scan.mjs`. "practice c" and the palette's "progress"
+  from a detail view: `TOB448_ONLY=palette $V drive .claude/skills/verify-stilltype/flows/tob448-follow-ups.mjs`.
 
 ## Gotchas
 

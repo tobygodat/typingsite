@@ -487,6 +487,24 @@ for (const [width, height] of [[390, 844], [320, 568]]) {
       await page.screenshot({ path: test.info().outputPath(`train-path-${width}.png`), fullPage: true });
     });
 
+    // With drills behind you, the open step's button opens clear of the dock, whatever the screen's height (TOB-448).
+    // At 320 × 568 it once opened half under the dock.
+    test(`at ${width}px the open step’s Drill button opens clear of the dock, full size, with nothing sideways`, async ({ page, supabase }) => {
+      await withHistory(page, supabase, `dock-${width}@stilltype.test`);
+      await openView(page, 'Train');
+      await expect(page.locator('#train-unit')).toHaveText('th');
+      const [button, dock] = [await box(page, '#start-drill'), await box(page, '.dock')];
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.y + button.height).toBeLessThanOrEqual(dock.y);
+      expect(button.y).toBeGreaterThanOrEqual(0);
+      // The open step's target is in view above it.
+      const head = await box(page, '#train-current .path-head');
+      expect(head.y).toBeGreaterThanOrEqual(0);
+      expect(await overflow(page)).toBeLessThanOrEqual(0);
+      await page.locator('#start-drill').click();
+      await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+    });
+
     test(`at ${width}px a new guest’s path is the one open step`, async ({ page }) => {
       await openApp(page);
       await openView(page, 'Train');

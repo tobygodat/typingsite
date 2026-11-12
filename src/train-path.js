@@ -33,34 +33,70 @@ export const basisOf = (loop) => (loop.targetBasis ? loop.targetBasis : loop.tar
 // hold an observation of that kind, so a run that typed the pair but timed none of it is no run of pace evidence. A
 // side with no observations is null. Undated records belong to neither side.
 export function evidenceSince(unit, basis, split, records) {
-  const tally = (side) => {
-    const held = side.map((record) => record.units.find((item) => item.unit === unit))
-      .filter((item) => item && (basis === 'slow' ? item.timed > 0 : item.seen > 0));
+  const entries = [];
 
-    if (!held.length) return null;
-    const sum = (count) => held.reduce((total, item) => total + count(item), 0);
+  for (const record of records) {
+    const item = record.at === null ? null : record.units.find((row) => row.unit === unit);
 
-    if (basis === 'slow') {
-      const intervals = sum((item) => item.timed);
+    if (item) entries.push([record.at, item]);
+  }
 
-      return { runs: held.length, intervals, ms: sum((item) => item.timed * item.slowMs) / intervals };
-    }
-
-    return { runs: held.length, tries: sum((item) => item.seen), errors: sum((item) => item.errors) };
-  };
-
-  const dated = records.filter((record) => record.at !== null);
-
-  return { basis, before: tally(dated.filter((record) => record.at < split)), after: tally(dated.filter((record) => record.at >= split)) };
+  return tallySince(entries, basis, split);
 }
+
+// Every unit's observations in one pass over the records: for each dated record, in order, its first row for the
+// unit, as evidenceSince reads it. A path of many loops then reads each record once, not once per loop.
+export function evidenceIndex(records) {
+  const byUnit = new Map();
+
+  for (const record of records) {
+    if (record.at === null) continue;
+    const seen = new Set();
+
+    for (const item of record.units) {
+      if (seen.has(item.unit)) continue;
+      seen.add(item.unit);
+
+      if (!byUnit.has(item.unit)) byUnit.set(item.unit, []);
+      byUnit.get(item.unit).push([record.at, item]);
+    }
+  }
+
+  return byUnit;
+}
+
+// A unit's [at, row] entries, oldest record first, split at `split` and summed of one kind, in one walk. Each side
+// adds in record order, so its sums are the same to the last bit as summing that side's rows on their own.
+function tallySince(entries = [], basis, split) {
+  const slow = basis === 'slow';
+  const sides = [{ runs: 0, a: 0, b: 0 }, { runs: 0, a: 0, b: 0 }];
+
+  for (const [at, item] of entries) {
+    if (!(slow ? item.timed > 0 : item.seen > 0)) continue;
+    const side = at < split ? sides[0] : at >= split ? sides[1] : null;
+
+    if (!side) continue;
+    side.runs += 1;
+    side.a += slow ? item.timed : item.seen;
+    side.b += slow ? item.timed * item.slowMs : item.errors;
+  }
+
+  const read = ({ runs, a, b }) => (!runs ? null : slow ? { runs, intervals: a, ms: b / a } : { runs, tries: a, errors: b });
+
+  return { basis, before: read(sides[0]), after: read(sides[1]) };
+}
+
+// Where a loop's evidence splits: its retest's date, else the loop's own.
+const splitOf = (loop, retestAt) => Date.parse(retestAt || loop.at);
 
 // A drilled target's evidence, split at its retest: before its drill and from its retest on, of one kind (by default
 // the kind it was drilled for).
 export function sinceDrilled(loop, runs, records = learnerEvidence(runs, keyboardOf(loop.conditions)), basis = basisOf(loop)) {
-  const split = Date.parse(runs.find((run) => run.id === loop.afterAttemptId)?.at || loop.at);
-
-  return evidenceSince(loop.target, basis, split, records);
+  return evidenceSince(loop.target, basis, retestSplit(loop, runs), records);
 }
+
+// Where a loop's evidence splits, found among the runs: its retest's date (ms), else the loop's own.
+const retestSplit = (loop, runs) => splitOf(loop, runs.find((run) => run.id === loop.afterAttemptId)?.at);
 
 // The one rule for "fixed" (see FIXED_RUNS). `since` is sinceDrilled's, of the kind the target was drilled for. Train
 // asks it of a drilled target, split at its retest; Progress also asks it of a unit never drilled, split where its week
@@ -97,7 +133,13 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
   const ahead = head ? open.filter((item) => item.unit !== head.unit).slice(0, AHEAD_STEPS) : [];
   const shown = new Set([current.unit, ...ahead.map((item) => item.unit), trained].filter(Boolean));
   const queued = new Set(queue.map((item) => item.unit));
-  const records = learnerEvidence(runs, keyboard);
+  // One pass over the runs and one over the evidence, whatever the number of loops (TOB-448). The first run with
+  // an id is its retest, as runs.find would pick.
+  const index = evidenceIndex(learnerEvidence(runs, keyboard));
+  const retestAt = new Map();
+
+  for (const run of runs) if (!retestAt.has(run.id)) retestAt.set(run.id, run.at);
+  const since = (loop, basis) => tallySince(index.get(loop.target), basis, splitOf(loop, retestAt.get(loop.afterAttemptId)));
 
   // Each drilled target once, by its newest loop on this keyboard, newest nearest the open step.
   const newest = new Map();
@@ -105,13 +147,13 @@ export function trainPath({ recommendation, loops = [], runs = [], keyboard, aft
   for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
 
   // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
-  if (current.unit && newest.has(current.unit)) current.since = sinceDrilled(newest.get(current.unit), runs, records, current.was.basis === 'slow' ? 'slow' : 'errors');
+  if (current.unit && newest.has(current.unit)) current.since = since(newest.get(current.unit), current.was.basis === 'slow' ? 'slow' : 'errors');
 
   const behind = [...newest.values()].sort(byDate).filter((loop) => !shown.has(loop.target)).map((loop) => {
     const basis = basisOf(loop);
-    const since = sinceDrilled(loop, runs, records);
+    const evidence = since(loop, basis);
 
-    return { unit: loop.target, state: isFixed(since, queued.has(loop.target)) ? 'fixed' : 'drilled', basis, retest: retestOf(loop, basis), since, loopId: loop.id };
+    return { unit: loop.target, state: isFixed(evidence, queued.has(loop.target)) ? 'fixed' : 'drilled', basis, retest: retestOf(loop, basis), since: evidence, loopId: loop.id };
   });
 
   return { behind, just: after ? { unit: trained } : null, current, ahead };
@@ -135,16 +177,17 @@ export function evidenceCopy(was, { all = false } = {}) {
 // A step ahead, quietly: "5 of 40 missed", or "120 ms slower".
 export const aheadCopy = (was) => (was.basis === 'slow' ? paceShift(was.slowMs) : `${missedCopy(was)} missed`);
 
-// The open step's "since you drilled it" line: its figure over the runs before the drill and from the retest on.
+// The open step's "since you drilled it" line: its figure over the runs before the drill and from the retest on. It
+// states counts, never a rate (TOB-448): "2 of 6" since a drill reads as the two misses it is, where "33%" read as a
+// trend. A pace says how many clean intervals it is read over since, as a step behind you does.
 export function sinceCopy(since) {
   const { basis, before, after } = since || {};
 
   if (!before || !after) return '';
 
-  if (basis === 'slow') return `${paceShift(before.ms)} → ${paceAgainst(after.ms)} since you drilled it`;
-  const rate = (side) => Math.round((side.errors / side.tries) * 100);
+  if (basis === 'slow') return `${paceShift(before.ms)} → ${paceAgainst(after.ms)} since you drilled it, over ${plural(after.intervals, 'interval')}`;
 
-  return `${rate(before)}% → ${rate(after)}% missed since you drilled it`;
+  return `${before.errors} of ${before.tries} → ${after.errors} of ${after.tries} missed since you drilled it`;
 }
 
 // A step behind you: the retest's own read-back, then, once runs after the retest hold it, what they show.
