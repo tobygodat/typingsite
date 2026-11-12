@@ -1,3 +1,5 @@
+import { createApplicationLifetime } from './application-lifetime.js';
+import { startPageWork, replaceAccountLifetime, disposePageWork, WorkCancelled } from './async-runtime.js';
 import { flushSync } from 'react-dom';
 import { createTypingHost } from './typing-host.js';
 import { renderText, updateCharacterStates } from './passage-view.js';
@@ -92,7 +94,15 @@ function copyParts(value) {
   });
 }
 
-export function attachApplication(practice, learning, palette, settingsView, compose) {
+export async function attachApplication(practice, learning, palette, settingsView, compose) {
+startPageWork();
+const lifetime = createApplicationLifetime();
+const setTimeout = lifetime.timeout;
+const clearTimeout = lifetime.clearTimeout;
+const setInterval = lifetime.interval;
+const clearInterval = lifetime.clearInterval;
+const requestAnimationFrame = lifetime.frame;
+const cancelAnimationFrame = lifetime.cancelFrame;
 const selectSetting = settingsView.select;
 const disableSetting = settingsView.disable;
 const onSetting = settingsView.onSetting;
@@ -119,7 +129,21 @@ const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'rand
 let storageAvailable = true;
 
 // No session means guest mode: default settings, and nothing leaves this tab.
+const identityOf = (value) => value ? value.user.id + ':' + (value.signInId || '') : null;
+let activeIdentity;
+let identityEpoch = 0;
+
+async function replaceIdentity(value) {
+  const next = identityOf(value);
+
+  if (activeIdentity === next) return;
+  activeIdentity = next;
+  identityEpoch += 1;
+  await replaceAccountLifetime(next);
+}
+
 let session = account.loadSession();
+await replaceIdentity(session);
 let syncTimer = 0;
 
 // Saves only count as edits once the account row has been compared with the device cache;
@@ -202,7 +226,7 @@ const previewGlide = createWordGlide();
 
 $('settings-preview-passage').append(previewGlide.element);
 
-new ResizeObserver(() => placePreviewGlide({ instant: true })).observe($('settings-preview-passage'));
+lifetime.observeResize(() => placePreviewGlide({ instant: true }), $('settings-preview-passage'));
 
 // from: a word offset to slide in from, to show the slide being turned on.
 function placePreviewGlide({ instant = false, from = 0 } = {}) {
@@ -1264,11 +1288,11 @@ function commitCustomLength({ leaving = false } = {}) {
 function bindCustomLength() {
   const form = $('custom-length-form');
   const input = $('custom-length-input');
-  $('custom-length').addEventListener('click', () => openCustomLength(learning.preferences.mode));
+  $('custom-length').addEventListener('click', () => openCustomLength(learning.preferences.mode), { signal: lifetime.signal });
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     commitCustomLength();
-  });
+  }, { signal: lifetime.signal });
   input.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
     // Escape belongs to the field here, not to restart or focus mode.
@@ -1276,13 +1300,13 @@ function bindCustomLength() {
     event.stopPropagation();
     setCustomLengthError('');
     closeCustomLength({ focus: true });
-  });
+  }, { signal: lifetime.signal });
   // Pressing another length, mode or switch in the row means that control wins; the edit is dropped.
   const controls = document.querySelector('.practice-controls');
   controls.addEventListener('pointerdown', (event) => {
     if (!form.hidden && !form.contains(event.target)) dropCustomLength = true;
-  });
-  controls.addEventListener('pointercancel', () => { dropCustomLength = false; });
+  }, { signal: lifetime.signal });
+  controls.addEventListener('pointercancel', () => { dropCustomLength = false; }, { signal: lifetime.signal });
   form.addEventListener('focusout', (event) => {
     // Switching windows keeps the field open; the browser hands focus back on return.
     if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
@@ -1295,7 +1319,7 @@ function bindCustomLength() {
     } else commitCustomLength({ leaving: true });
 
     if (stranded) $('typing-input').focus({ preventScroll: true });
-  });
+  }, { signal: lifetime.signal });
 }
 
 // A mode change resets once, in the new mode, so a quote is never drawn (and marked seen) only to be replaced.
@@ -2948,10 +2972,13 @@ function meanWpm(runs) {
 
 
 // Each word's pace in the chosen unit. A unit change relabels the list in place, keeping the selection.
-function labelWords() {}
+function labelWords() {
+  const result = practice.result.getSnapshot();
+
+  if (result) flushSync(() => practice.result.publish({ ...result }));
+}
 
 // Before any choice the first word is the tab stop and the line below stays empty.
-function selectWord() {}
 
 
 function element(tag, text, className = '') {
@@ -2991,7 +3018,7 @@ function openHistoryRun(id) {
 function targetButton(target, source, ranked) {
   const button = element('button', `Practice “${target}” again`, 'btn btn-secondary');
   button.type = 'button';
-  button.addEventListener('click', () => practiceTarget(target, source, ranked));
+  button.addEventListener('click', () => practiceTarget(target, source, ranked), { signal: lifetime.signal });
 
   return button;
 }
@@ -3425,7 +3452,7 @@ function renderTestPills(shapes) {
     const { text, label } = shapeLabel(shape);
     const button = pill(text, { pressed: shape === selected, disabled: !shape.variants.length, label });
     button.dataset.shape = shape.id;
-    button.addEventListener('click', () => chooseProgress({ key: shape.variants[0].key }));
+    button.addEventListener('click', () => chooseProgress({ key: shape.variants[0].key }), { signal: lifetime.signal });
     row.push(button);
   });
   $('progress-tests').replaceChildren(...row);
@@ -3468,15 +3495,15 @@ function progressLanding() {
 let keyboardInput = false;
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'OS', 'CapsLock', 'Fn']);
 
-document.addEventListener('keydown', (event) => { if (!MODIFIER_KEYS.has(event.key)) keyboardInput = true; }, true);
+document.addEventListener('keydown', (event) => { if (!MODIFIER_KEYS.has(event.key)) keyboardInput = true; }, { capture: true, signal: lifetime.signal });
 
-document.addEventListener('pointerdown', () => { keyboardInput = false; }, true);
+document.addEventListener('pointerdown', () => { keyboardInput = false; }, { capture: true, signal: lifetime.signal });
 
 // Focus the page moves to a heading or figure (.focus-landing) shows its ring by this rule alone, never by an engine's
 // own :focus-visible guess, which in Chromium counts a lone modifier as keyboard use.
 function focusShown(target, { scroll = false } = {}) {
   target.toggleAttribute('data-focus-ring', keyboardInput);
-  target.addEventListener('blur', () => target.removeAttribute('data-focus-ring'), { once: true });
+  target.addEventListener('blur', () => target.removeAttribute('data-focus-ring'), { ...{ once: true }, signal: lifetime.signal });
   target.focus({ preventScroll: !scroll });
 }
 
@@ -3751,7 +3778,7 @@ function practiceRow(practice) {
   open.type = 'button';
   open.setAttribute('aria-label', 'practice calendar');
   // The row is drawn again on the way back, so the way back finds its new button.
-  open.addEventListener('click', () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') }));
+  open.addEventListener('click', () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') }), { signal: lifetime.signal });
   const streak = practice.streak ? `${plural(practice.streak, 'day')} in a row${practice.goal ? ` at ${practice.goal} min` : ''}` : '';
   const change = changeLine(goalMinutes(practice.previous), `${goalMinutes(practice.current)} min`, streak && `· ${streak}`, 'mover-change num');
   row.append(open, change, statusWord(practice.status, 'neutral'));
@@ -4277,7 +4304,7 @@ function renderLessons() {
       const button = element('button', passed ? 'Repeat' : 'Start', 'btn btn-ghost btn-sm');
       button.type = 'button';
       button.setAttribute('aria-label', `${passed ? 'Repeat' : 'Start'} lesson ${index + 1}, ${keysLabel(lesson.keys)}`);
-      button.addEventListener('click', start(index));
+      button.addEventListener('click', start(index), { signal: lifetime.signal });
       row.append(button);
     }
 
@@ -4880,19 +4907,8 @@ function forgetTraining() {
   selectedTarget = null;
   // The practised words came from the cleared runs, so Run again starts a normal test.
   wordsPassage = null;
-  showSpeed($('result-wpm'), null);
-
-  for (const id of ['result-accuracy', 'result-time', 'result-consistency']) $(id).textContent = '—';
-  $('result-accuracy-fact').removeAttribute('title');
-  $('result-standing').hidden = true;
-  $('result-words').replaceChildren();
-  selectWord(null);
-  $('result-delta').textContent = 'No run yet.';
-  $('result-comparison-note').textContent = '';
-  $('run-card').hidden = true;
   showResult(null);
   $('speed-graph').replaceChildren();
-  $('result-drill').hidden = true;
   $('ghost-result').hidden = true;
   renderGhostOffer(null);
   trainAfter = null;
@@ -5190,7 +5206,7 @@ async function pushOnce({ cloud: known } = {}) {
   if (!signedInAs(userId)) return false;
 
   try {
-    session = await account.freshSession(session);
+    session = await freshAccountSession();
 
     if (!signedInAs(userId)) return false;
     let cloud = known;
@@ -5268,7 +5284,7 @@ async function pullProfile({ force = false } = {}) {
   if (!signedInAs(userId)) return;
 
   try {
-    session = await account.freshSession(session);
+    session = await freshAccountSession();
 
     if (!signedInAs(userId)) return;
     const cloud = await account.fetchCloudProfile(session);
@@ -5330,12 +5346,24 @@ function redrawLessons() {
 }
 
 // The device's copy and the account row are merged, and whatever the row lacks goes up.
+async function freshAccountSession() {
+  const epoch = identityEpoch;
+  const fresh = await account.freshSession(session);
+
+  if (epoch !== identityEpoch) throw new WorkCancelled('Account changed.');
+  await replaceIdentity(fresh);
+
+  if (activeIdentity !== identityOf(fresh)) throw new WorkCancelled('Account changed.');
+
+  return fresh;
+}
+
 async function syncOnLoad() {
   if (!session) return;
   const userId = session.user.id;
 
   try {
-    session = await account.freshSession(session);
+    session = await freshAccountSession();
     const cloud = await account.fetchCloudProfile(session);
 
     if (cloudChecked || !signedInAs(userId)) return;
@@ -5398,7 +5426,7 @@ async function repairBoardNow() {
   if (!session) return;
 
   try {
-    session = await account.freshSession(session);
+    session = await freshAccountSession();
     const cloud = await account.fetchCloudProfile(session);
 
     if (cloud) repairBoard(cloud);
@@ -5408,6 +5436,7 @@ async function repairBoardNow() {
 // Puts the account's profile in the device cache, then starts over as that user. A device copy kept
 // at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
 async function enterAccount(newSession) {
+  await replaceIdentity(newSession);
   account.clearSignedOut(newSession.user.id);
 
   try {
@@ -5477,6 +5506,7 @@ async function signOutAccount() {
 
   // The cache goes only if it still holds what the last push sent, checked as it is removed.
   await account.signOut(session, { sentText: synced ? sentText : null });
+  await replaceIdentity(null);
   location.reload();
 }
 
@@ -5663,46 +5693,46 @@ async function continueWithGoogle() {
 
 function bindAccount() {
   const menu = $('account');
-  $('account-create').addEventListener('click', () => openAccountDialog('create'));
-  $('account-signin').addEventListener('click', () => openAccountDialog('signin'));
-  $('account-google').addEventListener('click', continueWithGoogle);
-  $('account-dialog-google').addEventListener('click', continueWithGoogle);
-  $('account-signout').addEventListener('click', signOutAccount);
-  $('account-export').addEventListener('click', exportData);
-  $('account-delete').addEventListener('click', openDeleteAccount);
+  $('account-create').addEventListener('click', () => openAccountDialog('create'), { signal: lifetime.signal });
+  $('account-signin').addEventListener('click', () => openAccountDialog('signin'), { signal: lifetime.signal });
+  $('account-google').addEventListener('click', continueWithGoogle, { signal: lifetime.signal });
+  $('account-dialog-google').addEventListener('click', continueWithGoogle, { signal: lifetime.signal });
+  $('account-signout').addEventListener('click', signOutAccount, { signal: lifetime.signal });
+  $('account-export').addEventListener('click', exportData, { signal: lifetime.signal });
+  $('account-delete').addEventListener('click', openDeleteAccount, { signal: lifetime.signal });
   $('confirm-delete-input').addEventListener('input', (event) => {
     if (!deletingAccount) $('confirm-delete-account').disabled = event.target.value !== DELETE_WORD;
-  });
-  $('delete-account-form').addEventListener('submit', (event) => { event.preventDefault(); deleteAccountNow(); });
-  $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close());
+  }, { signal: lifetime.signal });
+  $('delete-account-form').addEventListener('submit', (event) => { event.preventDefault(); deleteAccountNow(); }, { signal: lifetime.signal });
+  $('cancel-delete-account').addEventListener('click', () => $('delete-account-dialog').close(), { signal: lifetime.signal });
   // While the request is out, the dialog stays: its answer decides what happens next.
-  $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); });
-  $('account-form').addEventListener('submit', submitAccount);
-  $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'));
-  $('account-cancel').addEventListener('click', () => $('account-dialog').close());
-  $('account-confirm-done').addEventListener('click', () => $('account-dialog').close());
+  $('delete-account-dialog').addEventListener('cancel', (event) => { if (deletingAccount) event.preventDefault(); }, { signal: lifetime.signal });
+  $('account-form').addEventListener('submit', submitAccount, { signal: lifetime.signal });
+  $('account-switch').addEventListener('click', () => openAccountDialog(accountMode === 'create' ? 'signin' : 'create'), { signal: lifetime.signal });
+  $('account-cancel').addEventListener('click', () => $('account-dialog').close(), { signal: lifetime.signal });
+  $('account-confirm-done').addEventListener('click', () => $('account-dialog').close(), { signal: lifetime.signal });
   document.addEventListener('pointerdown', (event) => {
     if (menu.open && !menu.contains(event.target)) closeAccountMenu();
-  });
+  }, { signal: lifetime.signal });
   menu.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !menu.open) return;
     event.preventDefault();
     event.stopPropagation();
     closeAccountMenu();
     menu.querySelector('summary').focus();
-  });
+  }, { signal: lifetime.signal });
   // Only one corner panel at a time; a keyboard open sends no pointerdown to close the other. This
   // runs as the menu opens: its toggle event comes a task later and would close a panel opened since.
-  new MutationObserver(() => {
+  lifetime.observeMutation(() => {
     if (menu.open) { settingsView?.close(); $('inbox').open = false; }
-  }).observe(menu, { attributeFilter: ['open'] });
+  }, menu, { attributeFilter: ['open'] });
   // Hiding sends nothing: unsent changes wait in the device cache for the pending push or the next return
   // or load (a hidden page's keepalive write is capped at 64 KiB, far below a profile). Other devices'
   // changes come in when it is shown again.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') saveRunCounts();
     else pullProfile();
-  });
+  }, { signal: lifetime.signal });
   addEventListener('online', () => {
     if (!session) return;
 
@@ -5710,7 +5740,7 @@ function bindAccount() {
     else pullProfile({ force: true });
 
     if (cloudChecked) friendsBoard?.resume();
-  });
+  }, { signal: lifetime.signal });
   // Another tab signed in to this account saved: merge its copy. Only what the copy lacks is written back
   // (absorbCache), so tabs settle rather than echo each other. Mid-run the merge waits; the save at the
   // end of the run merges it then. While this tab follows a sign-out that sent everything, only that
@@ -5730,7 +5760,7 @@ function bindAccount() {
 
     if (runInProgress()) cacheWaiting = true;
     else if (absorbCache()) showMerged();
-  });
+  }, { signal: lifetime.signal });
 }
 
 // Another tab signed this account out (or deleted it: account.forgetAccount leaves the marker first),
@@ -5756,6 +5786,7 @@ function followSessionElsewhere(event) {
 
   if (!signedOut) return false;
   signedOutElsewhere = true;
+  void replaceIdentity(null);
   // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
   friendsBoard?.signOut();
   clearTimeout(syncTimer);
@@ -6010,17 +6041,17 @@ function bindEvents() {
     }
 
     if (event.target.closest('[data-action="open-lessons"]')) openLessons();
-  });
+  }, { signal: lifetime.signal });
   $('mode-more').addEventListener('click', (event) => {
     if (event.target.closest('button')) $('mode-more').open = false;
-  });
+  }, { signal: lifetime.signal });
   document.addEventListener('pointerdown', (event) => {
     if ($('mode-more').open && !$('mode-more').contains(event.target)) $('mode-more').open = false;
-  });
-  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.());
-  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.());
-  $('custom-text').addEventListener('input', updateCustomState);
-  $('custom-use').addEventListener('click', useCustomText);
+  }, { signal: lifetime.signal });
+  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.(), { signal: lifetime.signal });
+  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.(), { signal: lifetime.signal });
+  $('custom-text').addEventListener('input', updateCustomState, { signal: lifetime.signal });
+  $('custom-use').addEventListener('click', useCustomText, { signal: lifetime.signal });
   Object.assign(practice.choices, {
     chooseMode(mode) {
       customOpen = false;
@@ -6067,15 +6098,15 @@ function bindEvents() {
   $('show-all-runs').addEventListener('click', () => {
     showAllRuns();
     $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
-  });
-  narrowColumn.addEventListener('change', () => renderGoal());
-  $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
-  $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)));
-  $('goal-calendar').addEventListener('keydown', moveGoalFocus);
-  $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target));
-  $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); });
-  $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()));
-  $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()));
+  }, { signal: lifetime.signal });
+  narrowColumn.addEventListener('change', () => renderGoal(), { signal: lifetime.signal });
+  $('goal-day-select').addEventListener('change', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)), { signal: lifetime.signal });
+  $('goal-day-select').addEventListener('focus', (event) => captionGoalDay([...$('goal-calendar').children].find((cell) => cell.dataset.day === event.target.value)), { signal: lifetime.signal });
+  $('goal-calendar').addEventListener('keydown', moveGoalFocus, { signal: lifetime.signal });
+  $('goal-calendar').addEventListener('focusin', (event) => captionGoalDay(event.target), { signal: lifetime.signal });
+  $('goal-calendar').addEventListener('focusout', (event) => { if (!$('goal-calendar').contains(event.relatedTarget)) captionGoalDay(null); }, { signal: lifetime.signal });
+  $('goal-calendar').addEventListener('pointerover', (event) => captionGoalDay(event.target.closest('.goal-day') || focusedGoalDay()), { signal: lifetime.signal });
+  $('goal-calendar').addEventListener('pointerleave', () => captionGoalDay(focusedGoalDay()), { signal: lifetime.signal });
   onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
   onSetting('typing-font', (value) => { learning.preferences.typingFont = value; applyFonts(); saveChoice('typingFont'); });
   onSetting('app-font', (value) => { learning.preferences.appFont = value; applyFonts(); saveChoice('appFont'); });
@@ -6090,7 +6121,7 @@ function bindEvents() {
   keybindingEditor.refresh();
   createWallpaper({ onSetting, selectSetting, layer: $('wallpaper'), input: $('wallpaper-file'), remove: $('wallpaper-remove'), error: $('wallpaper-error'), style: $('wallpaper-style'), blur: $('wallpaper-blur'), opacity: $('wallpaper-opacity'), reach: $('wallpaper-reach'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
   settingsView.configure(() => keybindingEditor.stopRecording());
-  $('settings-trigger').addEventListener('click', () => settingsView.open());
+  $('settings-trigger').addEventListener('click', () => settingsView.open(), { signal: lifetime.signal });
   onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
   onSetting('keyboard-toggle', (value) => { learning.preferences.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
   onSetting('finger-toggle', (value) => { learning.preferences.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
@@ -6112,34 +6143,34 @@ function bindEvents() {
     generate: (vibe) => account.generateTheme(session, vibe),
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
   });
-  $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }));
-  prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); });
+  $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }), { signal: lifetime.signal });
+  prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); }, { signal: lifetime.signal });
   onSetting('pace-select', (value) => setPaceCaret(value));
   $('pace-wpm').addEventListener('change', (event) => {
     const field = event.target;
     learning.preferences.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
     field.dataset.shown = field.value;
     setPaceCaret('custom', { speed: true });
-  });
+  }, { signal: lifetime.signal });
   // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
-  $('pace-wpm').addEventListener('blur', showPace);
+  $('pace-wpm').addEventListener('blur', showPace, { signal: lifetime.signal });
   onSetting('focus-toggle', (value) => { learning.preferences.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
   onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
   onSetting('sound-select', (value) => setSound(value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
-  $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }));
-  $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'));
+  $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }), { signal: lifetime.signal });
+  $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'), { signal: lifetime.signal });
   $('exit-focus').addEventListener('click', () => {
     learning.preferences.focusMode = false;
     applyPreferences();
     saveProfile();
     focusPractice();
-  });
+  }, { signal: lifetime.signal });
 
   practice.connectNative(typingHost);
 
-  for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock);
-  $('typing-input').addEventListener('blur', () => setCapsWarning(false));
+  for (const type of ['keydown', 'keyup']) $('typing-input').addEventListener(type, syncCapsLock, { signal: lifetime.signal });
+  $('typing-input').addEventListener('blur', () => setCapsWarning(false), { signal: lifetime.signal });
   // Every press is recorded before anything handles it, so the run it starts (resetSession) has its class. A tap
   // or a pen press is touch; a mouse click, or a key pressed outside a text field, is a physical keyboard. Any key
   // in a text field (the passage, the palette's search) may come from a soft keyboard, so it leaves the class as
@@ -6158,13 +6189,13 @@ function bindEvents() {
     showBest();
 
     if (practice.attempt.status === 'ready') armPace();
-  }, true);
+  }, { capture: true, signal: lifetime.signal });
   document.addEventListener('keydown', (event) => {
     if (!event.target.matches?.(TEXT_FIELDS)) activationInput = 'physical-keyboard';
-  }, true);
+  }, { capture: true, signal: lifetime.signal });
   // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
-  document.addEventListener('beforeinput', () => { typedCount += 1; }, true);
-  $('restart-button').addEventListener('click', () => resetSession(practice.sessionKind, { focus: true }));
+  document.addEventListener('beforeinput', () => { typedCount += 1; }, { capture: true, signal: lifetime.signal });
+  $('restart-button').addEventListener('click', () => resetSession(practice.sessionKind, { focus: true }), { signal: lifetime.signal });
   const replayView = createReplayView($('replay-dialog'));
   practice.commands.watchReplay = () => replayView.open(practice.shownResult);
   practice.commands.runAgain = runAgain;
@@ -6207,37 +6238,37 @@ function bindEvents() {
     const button = event.target.closest('[data-period]');
 
     if (button) chooseProgress({ period: button.dataset.period });
-  });
-  $('progress-variants').addEventListener('change', (event) => chooseProgress({ key: event.target.value }));
+  }, { signal: lifetime.signal });
+  $('progress-variants').addEventListener('change', (event) => chooseProgress({ key: event.target.value }), { signal: lifetime.signal });
   $('progress-tabs').addEventListener('click', (event) => {
     const tab = event.target.closest('[role="tab"]');
 
     if (tab) showProgressView(tab.dataset.viewTab);
-  });
-  $('progress-tabs').addEventListener('keydown', moveProgressTab);
-  $('take-standard').addEventListener('click', () => setTestShape('standard'));
-  $('empty-standard').addEventListener('click', () => setTestShape('standard'));
+  }, { signal: lifetime.signal });
+  $('progress-tabs').addEventListener('keydown', moveProgressTab, { signal: lifetime.signal });
+  $('take-standard').addEventListener('click', () => setTestShape('standard'), { signal: lifetime.signal });
+  $('empty-standard').addEventListener('click', () => setTestShape('standard'), { signal: lifetime.signal });
   $('progress-more').addEventListener('click', (event) => {
     const link = event.target.closest('[data-progress-open]');
 
     if (link) openProgressDetail(link.dataset.progressOpen, { opener: link });
-  });
-  $('progress-back').addEventListener('click', closeProgressDetail);
+  }, { signal: lifetime.signal });
+  $('progress-back').addEventListener('click', closeProgressDetail, { signal: lifetime.signal });
   $('more-movers').addEventListener('click', () => {
     progressState.moversOpen = !progressState.moversOpen;
     renderMovers(progressWeek);
-  });
-  $('key-heatmap').addEventListener('keydown', moveHeatFocus);
+  }, { signal: lifetime.signal });
+  $('key-heatmap').addEventListener('keydown', moveHeatFocus, { signal: lifetime.signal });
   $('key-heatmap').addEventListener('focusin', (event) => {
     const cell = event.target.closest('.key');
 
     if (cell && cell.dataset.letter !== heatKey) selectHeatKey(cell.dataset.letter);
-  });
+  }, { signal: lifetime.signal });
   $('key-heatmap').addEventListener('click', (event) => {
     const cell = event.target.closest('.key');
 
     if (cell && !$('key-heatmap').hasAttribute('aria-hidden')) selectHeatKey(cell.dataset.letter, { focus: true });
-  });
+  }, { signal: lifetime.signal });
   $('heat-legend').replaceChildren(...[...HEAT_STEPS, HEAT_NONE].map(({ step, label }) => {
     const item = element('li', label);
     item.dataset.heat = step;
@@ -6245,11 +6276,11 @@ function bindEvents() {
     return item;
   }));
   $('key-select').append(new Option('Choose a key', ''), ...[...'abcdefghijklmnopqrstuvwxyz'].map((letter) => new Option(letter, letter)));
-  $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null));
-  coarsePointer.addEventListener('change', () => renderKeys(heatRuns));
-  $('training-conditions').addEventListener('change', renderTraining);
-  $('train-path').addEventListener('scroll', pathEdges, { passive: true });
-  $('start-daily').addEventListener('click', startDaily);
+  $('key-select').addEventListener('change', (event) => selectHeatKey(event.target.value || null), { signal: lifetime.signal });
+  coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
+  $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
+  $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
+  $('start-daily').addEventListener('click', startDaily, { signal: lifetime.signal });
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   learning.commands.back = () => {
     if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
@@ -6265,7 +6296,7 @@ function bindEvents() {
     focusResult($('run-again'));
   };
 
-  $('mode-drill').addEventListener('click', toggleManualTarget);
+  $('mode-drill').addEventListener('click', toggleManualTarget, { signal: lifetime.signal });
   $('manual-target').addEventListener('submit', (event) => {
     event.preventDefault();
     const raw = $('manual-target-input').value.trim();
@@ -6276,19 +6307,19 @@ function bindEvents() {
     if (!valid) return;
     const target = normalizeManualTarget(raw);
     startDrill({ kind: 'manual', target, title: `Practice “${target}”` });
-  });
+  }, { signal: lifetime.signal });
 
-  $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); });
-  $('ghost-offer-form').addEventListener('submit', sendGhost);
-  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd());
+  $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && session) loadGhostFriends(); }, { signal: lifetime.signal });
+  $('ghost-offer-form').addEventListener('submit', sendGhost, { signal: lifetime.signal });
+  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd(), { signal: lifetime.signal });
   $('ghost-result-action').addEventListener('click', () => {
     if (ghostRace?.state === 'failed') submitGhostRun();
     else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
-  });
+  }, { signal: lifetime.signal });
 
-  $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); });
+  $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); }, { signal: lifetime.signal });
   typingHost.attach($('race-input'), 'race');
-  $('race-input').addEventListener('blur', markRaceInterrupted);
+  $('race-input').addEventListener('blur', markRaceInterrupted, { signal: lifetime.signal });
   $('start-next-player').addEventListener('click', () => {
     // A short unblur of the passage, then the typing stage takes over.
     const reveal = () => { $('race-handoff').hidden = true; $('race-handoff').classList.remove('is-revealing'); setupRacePlayer(); };
@@ -6301,26 +6332,26 @@ function bindEvents() {
 
     $('race-handoff').classList.add('is-revealing');
     setTimeout(reveal, 200);
-  });
-  $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); });
+  }, { signal: lifetime.signal });
+  $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); }, { signal: lifetime.signal });
 
-  $('clear-history').addEventListener('click', () => { quoteFilters.dismiss(); $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); });
-  $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; });
-  $('confirm-clear').addEventListener('click', clearHistory);
-  $('cancel-clear').addEventListener('click', () => $('clear-dialog').close());
-  $('undo-clear').addEventListener('click', undoClear);
+  $('clear-history').addEventListener('click', () => { quoteFilters.dismiss(); $('confirm-clear-input').value = ''; $('confirm-clear').disabled = true; $('clear-dialog').showModal(); $('confirm-clear-input').focus(); }, { signal: lifetime.signal });
+  $('confirm-clear-input').addEventListener('input', (event) => { $('confirm-clear').disabled = event.target.value !== 'clear'; }, { signal: lifetime.signal });
+  $('confirm-clear').addEventListener('click', clearHistory, { signal: lifetime.signal });
+  $('cancel-clear').addEventListener('click', () => $('clear-dialog').close(), { signal: lifetime.signal });
+  $('undo-clear').addEventListener('click', undoClear, { signal: lifetime.signal });
 
-  $('suggest-trigger').addEventListener('click', openSuggest);
-  $('suggest-text').addEventListener('input', updateSuggestCount);
-  $('suggest-form').addEventListener('submit', sendSuggestion);
-  $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close());
-  $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); });
+  $('suggest-trigger').addEventListener('click', openSuggest, { signal: lifetime.signal });
+  $('suggest-text').addEventListener('input', updateSuggestCount, { signal: lifetime.signal });
+  $('suggest-form').addEventListener('submit', sendSuggestion, { signal: lifetime.signal });
+  $('cancel-suggest').addEventListener('click', () => $('suggest-dialog').close(), { signal: lifetime.signal });
+  $('suggest-dialog').addEventListener('click', (event) => { if (event.target === $('suggest-dialog')) $('suggest-dialog').close(); }, { signal: lifetime.signal });
   $('release-trigger').addEventListener('click', () => {
     markInterrupted(NOTICES.focusLost);
     compose.interrupt(NOTICES.composeFocusLost);
     markRaceInterrupted();
     $('release-dialog').showModal();
-  });
+  }, { signal: lifetime.signal });
 
   // Focus goes back to the version in the same task that closes the panel. The close event comes a task
   // later, when focus may already be back in the passage, and would take it from the keys being typed.
@@ -6329,18 +6360,18 @@ function bindEvents() {
     $('release-trigger').focus({ preventScroll: true });
   };
 
-  $('release-close').addEventListener('click', closeRelease);
-  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) closeRelease(); });
-  $('release-dialog').addEventListener('cancel', (event) => { event.preventDefault(); closeRelease(); });
+  $('release-close').addEventListener('click', closeRelease, { signal: lifetime.signal });
+  $('release-dialog').addEventListener('click', (event) => { if (event.target === $('release-dialog')) closeRelease(); }, { signal: lifetime.signal });
+  $('release-dialog').addEventListener('cancel', (event) => { event.preventDefault(); closeRelease(); }, { signal: lifetime.signal });
 
-  $('import-trigger').addEventListener('click', openImport);
-  $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); });
-  $('import-choose').addEventListener('click', () => $('import-file').click());
-  $('import-file').addEventListener('change', readImportFile);
-  $('import-form').addEventListener('submit', importSettings);
-  $('cancel-import').addEventListener('click', () => $('import-dialog').close());
-  $('import-done').addEventListener('click', () => $('import-dialog').close());
-  $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); });
+  $('import-trigger').addEventListener('click', openImport, { signal: lifetime.signal });
+  $('import-text').addEventListener('input', () => { $('import-error').textContent = ''; updateImportButton(); }, { signal: lifetime.signal });
+  $('import-choose').addEventListener('click', () => $('import-file').click(), { signal: lifetime.signal });
+  $('import-file').addEventListener('change', readImportFile, { signal: lifetime.signal });
+  $('import-form').addEventListener('submit', importSettings, { signal: lifetime.signal });
+  $('cancel-import').addEventListener('click', () => $('import-dialog').close(), { signal: lifetime.signal });
+  $('import-done').addEventListener('click', () => $('import-dialog').close(), { signal: lifetime.signal });
+  $('import-dialog').addEventListener('click', (event) => { if (event.target === $('import-dialog')) $('import-dialog').close(); }, { signal: lifetime.signal });
 
   document.addEventListener('keydown', (event) => {
     if (event.defaultPrevented) return;
@@ -6436,14 +6467,14 @@ function bindEvents() {
 
     if (quickRestart(event)) return;
     document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
-  }, true);
-  document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')));
+  }, { capture: true, signal: lifetime.signal });
+  document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')), { signal: lifetime.signal });
   window.addEventListener('blur', () => {
     document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
     markInterrupted(NOTICES.focusLost);
     compose.interrupt(NOTICES.composeFocusLost);
     markRaceInterrupted();
-  });
+  }, { signal: lifetime.signal });
 
   // The chrome fades while typing; a real mouse nudge (not layout-induced jitter) brings it back.
   let pointer = null;
@@ -6453,7 +6484,7 @@ function bindEvents() {
     if (!pointer || document.body.dataset.running !== 'true' || moved > 4) pointer = { x: event.clientX, y: event.clientY };
 
     if (moved > 4) showChrome(true);
-  });
+  }, { signal: lifetime.signal });
 }
 
 function updateCustomCount() {
@@ -6942,7 +6973,7 @@ function paletteCommands(query) {
 }
 
 function bindPalette() {
-  $('palette-trigger').addEventListener('click', () => palette.open());
+  $('palette-trigger').addEventListener('click', () => palette.open(), { signal: lifetime.signal });
   palette.configure({
     getCommands: paletteCommands,
     onOpen: () => {
@@ -6971,7 +7002,7 @@ function toggleGhost() {
 }
 
 // A focused input takes the sequence's "b" and starts the run; restart the same passage clean.
-listenForSequence(() => {
+const stopSequence = listenForSequence(() => {
   toggleGhost();
 
   if (practice.attempt?.status === 'running' && document.body.dataset.view === 'practice') resetSession(practice.sessionKind, { focus: true, selectedPassage: passage });
@@ -6992,9 +7023,9 @@ function relayoutText() {
 addEventListener('resize', () => {
   relayoutText();
   scrollablePath();
-});
+}, { signal: lifetime.signal });
 
-document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); });
+document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); }, { signal: lifetime.signal });
 
 // Both observers below redraw in the next frame: a redraw resizes the box it observes, and doing that
 // inside the observer's own callback is a resize loop, which browsers report as an error.
@@ -7002,7 +7033,7 @@ document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(
 // comes back into view after a resize on another screen.
 let graphFrame = 0;
 
-new ResizeObserver(() => {
+lifetime.observeResize(() => {
   cancelAnimationFrame(graphFrame);
   graphFrame = requestAnimationFrame(() => {
     const graph = $('speed-graph');
@@ -7012,13 +7043,13 @@ new ResizeObserver(() => {
     if (!practice.shownResult || !width || Math.abs(Number(graph.querySelector('svg')?.getAttribute('width')) - width) <= 1) return;
     renderSpeedGraph(graph, practice.shownResult, { animate: false });
   });
-}).observe($('speed-graph'));
+}, $('speed-graph'));
 
 // The shown view's charts, drawn again at a new width.
 let viewsWidth = 0;
 let viewsFrame = 0;
 
-new ResizeObserver(() => {
+lifetime.observeResize(() => {
   cancelAnimationFrame(viewsFrame);
   viewsFrame = requestAnimationFrame(() => {
     const screen = $('progress-screen');
@@ -7027,7 +7058,7 @@ new ResizeObserver(() => {
     viewsWidth = screen.clientWidth;
     drawProgressView();
   });
-}).observe($('progress-screen'));
+}, $('progress-screen'));
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 
@@ -7062,11 +7093,11 @@ const quoteFilters = createQuoteFilters({
 
 $('mode-more').addEventListener('toggle', () => {
   if ($('mode-more').open) quoteFilters.dismiss();
-});
+}, { signal: lifetime.signal });
 
-$('quote-options').addEventListener('click', () => { $('mode-more').open = false; });
+$('quote-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
 
-$('book-options').addEventListener('click', () => { $('mode-more').open = false; });
+$('book-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
 
 $('book-options').append($('book-page'));
 
@@ -7184,12 +7215,26 @@ setInterval(() => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) { renderDaily(); friendsBoard.rollover(); refreshGoalDay(); }
-});
+}, { signal: lifetime.signal });
 
 // Offline shell (sw.js): installable and playable without a connection. Skipped on localhost so local
 // edits are never served stale; Supabase and other origins are never cached.
 if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
   Promise.resolve(navigator.serviceWorker.register('/sw.js')).catch(() => {});
 }
+
+return {
+  async dispose() {
+    lifetime.dispose();
+    stopSequence();
+    typingHost.dispose();
+    primaryFx.dispose();
+    raceFx.dispose();
+    sounds.dispose();
+    compose.dispose();
+    palette.dispose();
+    await disposePageWork();
+  },
+};
 
 }

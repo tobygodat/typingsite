@@ -22,4 +22,16 @@ const root = createRoot(container);
 
 flushSync(() => root.render(<StrictMode><App practice={practice} learning={learning} palette={palette} settings={settings} compose={compose} /></StrictMode>));
 
-attachApplication(practice, learning, palette, settings, compose);
+const lifecycle = await attachApplication(practice, learning, palette, settings, compose);
+
+function pagehide(event: PageTransitionEvent) {
+  if (!event.persisted) void lifecycle.dispose();
+}
+
+addEventListener('pagehide', pagehide);
+
+if (import.meta.hot) import.meta.hot.dispose(() => {
+  removeEventListener('pagehide', pagehide);
+  root.unmount();
+  void lifecycle.dispose();
+});

@@ -2,9 +2,10 @@
 
 const SEQUENCE = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
 
-export function listenForSequence(onUnlock) {
+export function listenForSequence(onUnlock: () => void) {
   let step = 0;
-  document.addEventListener('keydown', (event) => {
+
+  const listen = (event: KeyboardEvent) => {
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
 
@@ -21,5 +22,9 @@ export function listenForSequence(onUnlock) {
       // A third ↑ still leaves two in a row.
       step = key !== 'ArrowUp' ? 0 : step === 2 ? 2 : 1;
     }
-  }, true);
+  };
+
+  document.addEventListener('keydown', listen, true);
+
+  return () => document.removeEventListener('keydown', listen, true);
 }
