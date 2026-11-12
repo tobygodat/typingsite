@@ -1,6 +1,6 @@
 import { isRecord } from './domain-values.js';
 import type { Attempt, AttemptEvent, Conditions, Replay, Score } from './typing.js';
-import type { RunRecord, TrainingLoop, HistoricalRecord } from './profile-types.js';
+import type { RunRecord, TrainingLoop, HistoricalRecord, AnalysisRun } from './profile-types.js';
 
 export function isScore(value: unknown): value is Score {
   return isRecord(value) && typeof value.wpm === 'number' && typeof value.accuracy === 'number';
@@ -136,8 +136,8 @@ export function isScoredRun(value: unknown): value is import('./profile-types.js
   return isAnalysisRun(value) && isScore(value.score);
 }
 
-export function analysisRuns(values: readonly unknown[]) {
-  return values.filter(isAnalysisRun);
+export function analysisRuns<T>(values: readonly T[]) {
+  return values.filter((value): value is T & AnalysisRun => isAnalysisRun(value));
 }
 
 export function isAnalysisLoop(value: unknown): value is import('./profile-types.js').AnalysisLoop {

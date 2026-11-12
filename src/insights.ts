@@ -256,16 +256,16 @@ export function retainTraces<T>(traces: T[], { max = MAX_TRACES, budget = TRACE_
   return kept.reverse();
 }
 
-export const validRun = (run: unknown) => isRecord(run) && run.status === 'complete' && !run.interrupted;
+export const validRun = <T>(run: T): run is T & HistoricalRecord & { status: 'complete' } => isRecord(run) && run.status === 'complete' && !run.interrupted;
 
 // Completed practice runs and retests, listed in Progress whatever their text. A non-comparable kind (custom
 // text) is never one, whatever kind list it might later share.
-export const practiceRun = (run: unknown) => isRecord(run) && validRun(run) && comparableKind(run.kind) && (run.kind === 'test' || run.kind === 'retest');
+export const practiceRun = <T>(run: T): run is T & HistoricalRecord & { status: 'complete'; kind: 'test' | 'retest' } => isRecord(run) && validRun(run) && comparableKind(run.kind) && (run.kind === 'test' || run.kind === 'retest');
 
 // Two exclusions meet here: by kind (comparableKind, above) and by text, since only fresh text counts toward
 // bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
-export const trendRun = (run: unknown) => isRecord(run) && practiceRun(run) && run.fresh !== false;
+export const trendRun = <T>(run: T): run is T & HistoricalRecord & { status: 'complete'; kind: 'test' | 'retest' } => isRecord(run) && practiceRun(run) && run.fresh !== false;
 
 // A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
 // never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
@@ -294,7 +294,7 @@ const inputClassOf = (run: AnalysisRun | undefined) => run?.conditions?.inputCla
 
 // The runs at one condition key, inside a window of local days when given one (a Progress period's
 // periodWindow). Undated runs fall in no window with a first day.
-export function filterRuns(inputRuns: readonly unknown[], key: string, { from = null, to = null }: Window = {}) {
+export function filterRuns<T>(inputRuns: readonly T[], key: string, { from = null, to = null }: Window = {}) {
   const runs = analysisRuns(inputRuns);
 
   return runs.filter((run) => {
