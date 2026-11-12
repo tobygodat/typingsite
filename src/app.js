@@ -4862,7 +4862,7 @@ async function startGhostRace(id) {
     return;
   }
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
@@ -4899,7 +4899,7 @@ function startOwnGhost() {
 
   if (!best || onlineRoomFirst()) return;
 
-  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(); }
+  if (attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
   ghostRace = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
