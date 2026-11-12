@@ -208,7 +208,7 @@ export function App({ practice, learning, palette, settings, compose }: { practi
 
       <TrainScreen learning={learning} />
 
-      <LearnScreen />
+      <LearnScreen learning={learning} />
 
       <ProgressScreen learning={learning} />
 

@@ -32,6 +32,25 @@ export interface LoopView {
   target: string | null;
 }
 
+export interface LessonFactView { label: string; speedUnit?: boolean; value: CopyPart[]; need: CopyPart[]; met: boolean | null }
+
+export interface LessonRowView { id: string; index: number; keys: string[]; fingers: string; state: 'passed' | 'next' | 'locked'; numbers: CopyPart[]; action: string; actionLabel: string }
+
+export interface LessonView {
+  status: { label: string; tone: string } | null;
+  heading: CopyPart[];
+  copy: string;
+  meta: CopyPart[];
+  facts: LessonFactView[];
+  primary: string;
+  secondary: string;
+  known: string[];
+  fresh: string[];
+  caption: string;
+  saveNote: string;
+  rows: LessonRowView[];
+}
+
 export interface ComparisonView {
   heading: string;
   outcome: string;
@@ -51,7 +70,8 @@ export function createLearningStore() {
   const train = createStore<TrainView | null>(null);
   const comparison = createStore<ComparisonView>({ heading: 'Retest complete.', outcome: 'insufficient', unit: '', compared: true, target: null, accuracy: null, accuracyDelta: '—', wpm: null, wpmDelta: null, conditions: '', caveat: '' });
   const loops = createStore<LoopView[]>([]);
-  const commands = { start() {}, next() {}, target(unit: string) { void unit; }, loopTarget(id: string) { void id; }, back() {} };
+  const lessons = createStore<LessonView | null>(null);
+  const commands = { start() {}, next() {}, target(unit: string) { void unit; }, loopTarget(id: string) { void id; }, back() {}, lessonPrimary() {}, lessonSecondary() {}, lesson(index: number) { void index; } };
 
   function current() {
     if (!state) throw new Error('Learning was read before initialization');
@@ -63,6 +83,7 @@ export function createLearningStore() {
     train,
     comparison,
     loops,
+    lessons,
     commands,
     initialize(profile: SyncedProfile<HydratedProfile>, preferences: Preferences) { state = { profile, preferences, livePreferences: JSON.stringify(preferences) }; },
     get profile() { return current().profile; },

@@ -1,3 +1,4 @@
+import { FINGER_ROWS, FINGER_COLUMNS, fingerMapLabel } from './finger-map.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, replaceAccountLifetime, disposePageWork, WorkCancelled } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -78,7 +79,7 @@ import { createReplayView } from './replay-view.js';
 import { promptText } from './compose.js';
 import { readMonkeytypeSettings } from './monkeytype.js';
 import {
-  FINGER_ZONES, LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
+  LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
 } from './lessons.js';
 import { createRunCounter, runCountTotals } from './run-counts.js';
@@ -4043,7 +4044,6 @@ function renderDaily() {
 // ── Lessons ───────────────────────────────────────────────────────────────
 
 const handoffCopy = () => `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${learning.preferences.drillSeconds}-second drill from your own mistakes once there’s enough evidence${learning.preferences.retest ? ', then retests you on fresh text' : ''}.`;
-let lessonActions = { primary: null, secondary: null };
 
 function lessonCopy(index, current = null) {
   return `${LESSONS[index].focus} ${makeupCopy(index, current?.lessonId === LESSONS[index].id ? current : null)}`;
@@ -4158,36 +4158,7 @@ function lessonHeadline(result) {
   return [`Not yet. Lesson ${n} needs `, needs, ' in one run.'];
 }
 
-function lessonFacts(result) {
-  const { outcome, score } = result;
 
-  const group = (label, value, need) => {
-    const item = document.createElement('div');
-    item.append(element('dt', label), element('dd', value, 'num'));
-
-    if (need) item.append(element('dd', need, 'lesson-need num'));
-
-    return item;
-  };
-
-  // Each target says whether it was met in words, beside the number it qualifies.
-  const met = (item, ok) => {
-    const word = element('dd', '', `status badge ${ok ? 'badge-success' : 'badge-neutral'}`);
-    const dot = element('span', '', 'status-dot');
-    dot.setAttribute('aria-hidden', 'true');
-    word.append(dot, ok ? 'met' : 'not met');
-    item.append(word);
-
-    return item;
-  };
-
-  return [
-    met(group('accuracy', `${score.accuracy}%`, `${outcome.accuracyTarget}% needed`), outcome.accuracyMet),
-    met(group(unitLabel(), speedFigure(score.wpm, { bare: true }), [speedFigure(outcome.wpmTarget, { bare: true }), ' needed']), outcome.speedMet),
-    group('first-try errors', String(result.errors)),
-    group('time', `${(result.elapsedMs / 1000).toFixed(1)} s`),
-  ];
-}
 
 function renderLessons() {
   const progress = learning.profile.lessons;
@@ -4256,59 +4227,37 @@ function renderLessons() {
     primary = [`Start lesson ${next + 1}`, start(next)];
   }
 
-  $('lesson-status').hidden = !status;
+  learning.commands.lessonPrimary = primary[1];
+  learning.commands.lessonSecondary = secondary?.[1] || (() => {});
+  learning.commands.lesson = startLesson;
 
-  if (status) {
-    $('lesson-status').className = `status badge ${status[1]}`;
-    $('lesson-status-word').textContent = status[0];
-  }
+  const facts = result?.valid ? [
+    { label: 'accuracy', value: [result.score.accuracy + '%'], need: [result.outcome.accuracyTarget + '% needed'], met: result.outcome.accuracyMet },
+    { label: 'speed', speedUnit: true, value: copyParts(speedFigure(result.score.wpm, { bare: true })), need: copyParts([speedFigure(result.outcome.wpmTarget, { bare: true }), ' needed']), met: result.outcome.speedMet },
+    { label: 'first-try errors', value: [String(result.errors)], need: [], met: null },
+    { label: 'time', value: [(result.elapsedMs / 1000).toFixed(1) + ' s'], need: [], met: null },
+  ] : [];
 
-  setParts($('lesson-current-heading'), heading);
-  $('lesson-current-copy').textContent = copy;
-  setParts($('lesson-current-meta'), meta);
-  $('lesson-facts').hidden = !result?.valid;
-  $('lesson-facts').replaceChildren(...(result?.valid ? lessonFacts(result) : []));
-  $('lesson-primary').textContent = primary[0];
-  $('lesson-secondary').hidden = !secondary;
-  $('lesson-secondary').textContent = secondary?.[0] || '';
-  lessonActions = { primary: primary[1], secondary: secondary?.[1] || null };
-
-  const fresh = complete ? [] : LESSONS[next].keys;
-  renderFingerMap($('lesson-keyboard'), { known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh });
-  $('finger-caption-keys').textContent = complete ? 'every key learned' : `green edge: lesson ${next + 1}’s keys`;
-  $('lesson-save-note').textContent = isDefaultLayout(learning.preferences.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons.';
-
-  $('lesson-list').replaceChildren(...LESSONS.map((lesson, index) => {
+  const rows = LESSONS.map((lesson, index) => {
     const entry = progress[lesson.id];
     const passed = Boolean(entry?.passed);
     const open = !passed && index <= next;
-    const row = element('li', '', 'lesson-row');
-    row.dataset.state = passed ? 'passed' : open ? 'next' : 'locked';
-    const keys = element('span', '', 'lesson-keys');
-    keys.append(...lesson.keys.map((key) => element('kbd', key)));
-    const main = element('div', '', 'lesson-row-main');
-    main.append(keys, element('span', fingerNames(lesson), 'lesson-row-note'));
-    const state = element('span', '', `lesson-row-state status badge ${passed ? 'badge-success' : open ? 'badge-info' : 'badge-neutral'}`);
-    const dot = element('span', '', 'status-dot');
-    dot.setAttribute('aria-hidden', 'true');
-    state.append(dot, passed ? 'passed' : open ? 'next' : 'locked');
 
-    const numbers = passed ? [speedFigure(entry.passed.wpm), ` · ${entry.passed.accuracy}%`]
-      : entry?.last ? [`${entry.tries} ${entry.tries === 1 ? 'try' : 'tries'} · last `, speedFigure(entry.last.wpm), ` · ${entry.last.accuracy}%${entry.last.inputClass === 'touch' ? ' · touch input' : ''}`] : '';
+    const numbers = passed ? [speedFigure(entry.passed.wpm), ' · ' + entry.passed.accuracy + '%']
+      : entry?.last ? [entry.tries + ' ' + (entry.tries === 1 ? 'try' : 'tries') + ' · last ', speedFigure(entry.last.wpm), ' · ' + entry.last.accuracy + '%' + (entry.last.inputClass === 'touch' ? ' · touch input' : '')] : '';
 
-    const detail = element('div', '', 'lesson-row-detail');
-    detail.append(state, element('span', numbers, 'lesson-row-numbers num'));
-    row.append(element('span', String(index + 1), 'lesson-number num'), main, detail);
+    const action = passed ? 'Repeat' : open ? 'Start' : '';
 
-    if (passed || open) {
-      const button = element('button', passed ? 'Repeat' : 'Start', 'btn btn-ghost btn-sm');
-      button.type = 'button';
-      button.setAttribute('aria-label', `${passed ? 'Repeat' : 'Start'} lesson ${index + 1}, ${keysLabel(lesson.keys)}`);
-      button.addEventListener('click', start(index), { signal: lifetime.signal });
-      row.append(button);
-    }
+    return { id: lesson.id, index, keys: lesson.keys, fingers: fingerNames(lesson), state: passed ? 'passed' : open ? 'next' : 'locked', numbers: copyParts(numbers), action, actionLabel: action + ' lesson ' + (index + 1) + ', ' + keysLabel(lesson.keys) };
+  });
 
-    return row;
+  flushSync(() => learning.lessons.publish({
+    status: status ? { label: status[0], tone: status[1] } : null,
+    heading: copyParts(heading), copy, meta: copyParts(meta), facts,
+    primary: primary[0], secondary: secondary?.[0] || '',
+    known: lessonKeys(complete ? LESSONS.length - 1 : next - 1), fresh: complete ? [] : LESSONS[next].keys,
+    caption: complete ? 'every key learned' : 'green edge: lesson ' + (next + 1) + '’s keys',
+    saveNote: isDefaultLayout(learning.preferences.layout) ? '' : 'Lessons teach QWERTY finger positions. Use QWERTY in your operating system for these lessons.', rows,
   }));
 }
 
@@ -4706,14 +4655,8 @@ function buildKeyboard() {
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
 // Keys learned before this lesson read in the text colour, this lesson's keys get the full green edge.
-const FINGER_ROWS = { left: ['qwert', 'asdfg', 'zxcvb'], right: ['yuiop', 'hjkl;', 'nm'] };
-const FINGER_COLUMNS = { left: [['pinky', 1, 1], ['ring', 2, 1], ['middle', 3, 1], ['index', 4, 2]], right: [['index', 1, 2], ['middle', 3, 1], ['ring', 4, 1], ['pinky', 5, 1]] };
 
-function fingerMapLabel(fresh) {
-  const zones = FINGER_ZONES.map((zone) => `${zone.hand} ${zone.finger}: ${zone.keys.join(' ')}`);
 
-  return `Finger map. ${zones.join('. ')}. Thumbs: space.${fresh.length ? ` New keys: ${fresh.join(' ')}, ${fresh.map((key) => fingerFor(key)).join(' and ')}.` : ''}`;
-}
 
 function renderFingerMap(container, { known = [], fresh = [] } = {}) {
   const key = (letter) => {
@@ -6048,8 +5991,6 @@ function bindEvents() {
   document.addEventListener('pointerdown', (event) => {
     if ($('mode-more').open && !$('mode-more').contains(event.target)) $('mode-more').open = false;
   }, { signal: lifetime.signal });
-  $('lesson-primary').addEventListener('click', () => lessonActions.primary?.(), { signal: lifetime.signal });
-  $('lesson-secondary').addEventListener('click', () => lessonActions.secondary?.(), { signal: lifetime.signal });
   $('custom-text').addEventListener('input', updateCustomState, { signal: lifetime.signal });
   $('custom-use').addEventListener('click', useCustomText, { signal: lifetime.signal });
   Object.assign(practice.choices, {
