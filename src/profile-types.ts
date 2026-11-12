@@ -13,7 +13,7 @@ export type KeyCounts = [letter: string, tries: number, errors: number];
 export type PatternCounts = [pair: string, observations: number, errors: number, timings: number, medianMs: number | null, slowdownMs: number | null];
 
 export interface RunRecord {
-  id: string; at: string | null; kind: Attempt['kind']; status: Attempt['status']; conditions: Conditions; textId: string;
+  id: string; at: string | null; kind: Attempt['kind']; status: Attempt['status']; conditions: Conditions; textId: Attempt['textId'];
   day?: string | null; fresh?: boolean; interrupted: boolean; score: Score; elapsedMs: number; errors: number;
   target: string | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
   minimums?: Minimums | null; stopped?: NonNullable<ReturnType<typeof import('./typing.js').minimumStop>>; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;

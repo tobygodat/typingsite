@@ -32,7 +32,7 @@ export interface Score { wpm: number; accuracy: number }
 export interface Replay { typed: string; insertions: number; correctInsertions: number; mistakes: number; elapsedMs: number; score: Score; firstAttempts: FirstAttempt[]; pairTimings: PairTiming[] }
 
 export interface Attempt {
-  id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string;
+  id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string | null;
   conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
   typed: string; startedAt: number | null; endedAt: number | null; interrupted: boolean; unsupportedInput: boolean;
   summary?: Replay; fresh?: boolean; at?: string | null; stopped?: NonNullable<ReturnType<typeof minimumStop>>; failed?: string | null; lesson?: { id: string; index: number; pairs: number; words: number }; challengeId?: string; trainFocus?: string; dailyDate?: string; dailyFirst?: boolean;

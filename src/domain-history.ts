@@ -74,7 +74,7 @@ function runtimeMetadata(value: HistoricalRecord) {
 
 export function isAttempt(value: unknown): value is Attempt {
   return isRecord(value) && typeof value.id === 'string' && typeof value.eventVersion === 'string' && typeof value.metricVersion === 'string'
-    && isKind(value.kind) && typeof value.text === 'string' && typeof value.textId === 'string' && isConditions(value.conditions)
+    && isKind(value.kind) && typeof value.text === 'string' && nullableString(value.textId) && isConditions(value.conditions)
     && isStatus(value.status) && Array.isArray(value.events) && value.events.every(isAttemptEvent) && typeof value.typed === 'string'
     && (value.startedAt === null || typeof value.startedAt === 'number') && (value.endedAt === null || typeof value.endedAt === 'number')
     && typeof value.interrupted === 'boolean' && typeof value.unsupportedInput === 'boolean' && optional(value, ['summary'], isReplay)
@@ -87,7 +87,7 @@ export function isAttempt(value: unknown): value is Attempt {
 
 export function isRunRecord(value: unknown): value is RunRecord {
   return isRecord(value) && isAnalysisRun(value) && typeof value.id === 'string' && (value.at === null || typeof value.at === 'string')
-    && isKind(value.kind) && isStatus(value.status) && isConditions(value.conditions) && typeof value.textId === 'string'
+    && isKind(value.kind) && isStatus(value.status) && isConditions(value.conditions) && nullableString(value.textId)
     && typeof value.interrupted === 'boolean' && isScore(value.score) && typeof value.elapsedMs === 'number' && typeof value.errors === 'number'
     && (value.target === null || typeof value.target === 'string') && runtimeMetadata(value);
 }
@@ -120,7 +120,8 @@ const nullableNumber = (value: unknown): value is number | null => value === nul
 export function isAnalysisRun(value: unknown): value is import('./profile-types.js').AnalysisRun {
   if (!isRecord(value)) return false;
 
-  return optional(value, ['id', 'kind', 'status', 'textId'], string)
+  return optional(value, ['id', 'kind', 'status'], string)
+    && optional(value, ['textId'], nullableString)
     && optional(value, ['at', 'day', 'target', 'challengeDate'], nullableString)
     && optional(value, ['fresh', 'interrupted', 'firstDailyAttempt', 'adaptive'], boolean)
     && optional(value, ['elapsedMs', 'errors', 'drillSeconds', 'keysVersion'], number)

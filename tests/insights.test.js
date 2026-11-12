@@ -1,3 +1,4 @@
+import { isAnalysisRun, isAttempt, isRunRecord } from '../src/domain-history.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
@@ -1155,4 +1156,23 @@ test('adaptive runs are drill-kind records: flagged, and never a trend point, a 
   assert.equal(trendRun(record), false);
   assert.equal(measuredKind(record.kind), false);
   assert.equal('adaptive' in runRecord({ ...typed, kind: 'test', adaptive: undefined }), false);
+});
+
+
+test('a completed custom run without a corpus id still counts toward daily time and the streak', () => {
+  const today = new Date(2026, 9, 8, 12);
+  const attempt = createAttempt({ id: 'custom-calendar', text: 'abc', textId: null, kind: 'custom', conditions: { mode: 'custom' } });
+  attempt.startedAt = 0;
+  attempt.events = [...attempt.text].map((text, position) => ({ type: 'insert', text, position, offsetMs: position * 20 }));
+  const completed = completeAttempt(attempt, { endedAt: 62.5 });
+  const record = runRecord(completed, today.toISOString());
+  assert.equal(record.textId, null);
+  assert.ok(isAttempt(completed));
+  assert.ok(isRunRecord(record));
+  assert.ok(isAnalysisRun(record));
+  const yesterday = run('yesterday-drill', { kind: 'drill', at: new Date(2026, 9, 7, 12).toISOString(), elapsedMs: 30000 });
+  const byDay = minutesByDay([yesterday, record]);
+  assert.equal(byDay[dayKey(today)], 62.5 / 60000);
+  assert.equal(practiceStreak(byDay, 0, today), 2);
+  assert.equal(trendRun(record), false);
 });
