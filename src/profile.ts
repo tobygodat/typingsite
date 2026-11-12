@@ -29,7 +29,7 @@ import { DAILY_GOALS, dayKey, retainTraces, retainHistory, validPracticeDays, ru
 import { retainRunCounts } from './run-counts.js';
 import { normalizeLessonProgress } from './lessons.js';
 import { normalizeCompositions } from './compose.js';
-import { withoutConditionSets } from './account.js';
+import { withoutConditionSets } from './profile-copy.js';
 import { isCustomId, normalizeCustomThemes } from './custom-themes.js';
 import { DEFAULT_FOCUS, FOCUSES } from './learner.js';
 
