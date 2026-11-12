@@ -6,6 +6,15 @@ on:
   pull_request:
   push:
     branches: [master]
+  # The other engines, on request: `gh workflow run ci.yml --ref <branch> -f browsers=all`.
+  # A manual run never deploys (the deploy job needs a push to master).
+  workflow_dispatch:
+    inputs:
+      browsers:
+        description: Engines for Browser e2e
+        type: choice
+        options: [all, chromium]
+        default: all
 
 permissions:
   contents: read
@@ -57,20 +66,20 @@ jobs:
     needs: [unit, deploy]
     if: ${{ !cancelled() && needs.unit.result == 'success' }}
     runs-on: [self-hosted, tobygdesktop]
-    timeout-minutes: 30
+    timeout-minutes: 45
     concurrency:
       group: e2e-${{ github.ref }}
       cancel-in-progress: true
     env:
       CHROMIUM: /usr/bin/chromium
-      E2E_BROWSERS: ${{ github.event_name == 'push' && 'all' || 'chromium' }}
+      E2E_BROWSERS: ${{ github.event_name == 'push' && 'all' || inputs.browsers || 'chromium' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
       - run: npm ci --no-audit --no-fund
-      - if: github.event_name == 'push'
+      - if: github.event_name == 'push' || inputs.browsers == 'all'
         run: npx playwright install firefox webkit
       - run: |
           if pgrep -f "playwright test" >/dev/null; then set -- --workers=8; fi
