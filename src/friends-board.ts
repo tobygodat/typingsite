@@ -29,7 +29,7 @@ const DailySchema = Schema.Struct({ version: Schema.String, wpm: Schema.Number, 
 const WeekSchema = Schema.Struct({ seconds: Schema.Number, runs: Schema.Number });
 
 const RowSchema = Schema.Struct({
-  self: Schema.optional(Schema.Boolean), id: Schema.optional(Schema.NullOr(Schema.Union([Schema.String, Schema.Number]))), name: Schema.optional(Schema.String),
+  self: Schema.optional(Schema.Boolean), id: Schema.optional(Schema.NullOr(Schema.Union([Schema.String, Schema.Number]))), name: Schema.optional(Schema.NullOr(Schema.String)),
   daily: Schema.optional(Schema.NullOr(DailySchema)), week: Schema.optional(Schema.NullOr(WeekSchema)),
   bests: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, BestSchema))),
 });
