@@ -89,7 +89,7 @@ test('a ranked account reads its rank on the rating line, and a win that crosses
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   await expect(page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Gust I · 1795 · 20 rated races');
   await quick(page).click();
   // Lin races on a light theme.
@@ -206,7 +206,7 @@ test('under reduced motion the rank card appears settled, and a loss across a li
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await openView(page, 'Challenge');
-  await page.locator('#online-name').fill('Ada');
+  await setRaceName(page, 'Ada');
   await quick(page).click();
   const { context, page: lin } = await signedIn(browser, supabase, 'lin@stilltype.test', 'Lin', { reducedMotion: 'reduce' });
 
