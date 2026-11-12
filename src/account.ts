@@ -1,5 +1,34 @@
-// Accounts: Supabase Auth and one row of profile data per user, spoken to over fetch so the app
-// keeps no runtime dependencies. With no session the visitor is a guest and nothing is stored.
+import { isRecord } from './domain-values.js';
+import type { Profile, HydratedProfile, ProfileCopy, CloudProfileData, RunRecord, HistoricalRecord, Best, RunCounts } from './profile-types.js';
+import type { SyncedProfile } from './profile-copy.js';
+
+type HistoryRecord = Partial<RunRecord> | HistoricalRecord;
+
+type MergeBest = Pick<Best, 'wpm'> & { at?: unknown; attemptId?: unknown };
+
+type MergeLessons = Record<string, unknown>;
+
+type MergeProfile = Omit<Partial<Profile>, 'attempts' | 'runs' | 'loops' | 'compositions' | 'bests' | 'preferences' | 'preferencesAt' | 'lessons' | 'historyClearedIds' | 'profileId'> & Partial<Omit<SyncedProfile, keyof Profile | 'historyClearedIds'>> & {
+  profileId?: unknown; attempts?: HistoryRecord[]; runs?: HistoryRecord[]; loops?: HistoryRecord[]; compositions?: HistoryRecord[];
+  bests?: Record<string, MergeBest>; preferences?: Record<string, unknown>; preferencesAt?: Record<string, unknown>; lessons?: MergeLessons; historyClearedIds?: unknown[];
+};
+
+type Holds = Record<string, MergeProfile[]>;
+
+interface Surviving {
+  attempts: HistoryRecord[]; runs: HistoryRecord[]; loops: HistoryRecord[]; compositions: HistoryRecord[];
+  bests: Record<string, MergeBest>; rebest: boolean; lessons: MergeLessons; seenTextIds: string[];
+  practiceDays: Record<string, number>; runCounts: RunCounts; stale: boolean;
+}
+
+const property = (value: MergeProfile, key: string): unknown => Object.getOwnPropertyDescriptor(value, key)?.value;
+
+import { textStamp, withoutConditionSets, withConditionSets, storedCopy, rowCopy } from './profile-copy.js';
+
+export { CONDITION_SETS_FROM, textStamp, withoutConditionSets, withConditionSets, storedCopy, exportCopy, rowCopy } from './profile-copy.js';
+
+// Accounts: Supabase Auth and one row of profile data per user, through scoped fetch requests.
+// With no session the visitor is a guest and nothing is stored.
 // The publishable key is meant for browsers; row-level security limits every row to its owner.
 import { retainTraces } from './insights.js';
 import { retainCompositions } from './compose.js';
@@ -7,8 +36,15 @@ import { mergePracticeDays, retainHistory, validPracticeDays, dayKey, dailyChall
 import { keepDays, mergeRunCounts, retainRunCounts, validRunCounts } from './run-counts.js';
 import { conditionKey } from './typing.js';
 
-const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_-JwGKezfGmITUHTITrhsNw_Izw71gdI';
+import { Schema } from 'effect';
+import { deadline, accountLifetime } from './async-runtime.js';
+import { request, AuthError, SUPABASE_URL, decodeReply, errorDetails, SessionSchema, AuthResponseSchema, UserSchema } from './network.js';
+import type { Session, AuthResponse } from './network.js';
+
+export { request, AuthError } from './network.js';
+
+export type { Session } from './network.js';
+
 export const SESSION_KEY = 'stilltype-session-v1';
 const VERIFIER_KEY = 'stilltype-pkce-verifier';
 
@@ -24,11 +60,9 @@ export const REDIRECT_COPY = {
 
 const LEGACY_PROFILE_KEY = 'stilltype-profile-v2';
 
-export const profileKey = (userId) => `${LEGACY_PROFILE_KEY}:${userId}`;
+export const profileKey = (userId: string) => `${LEGACY_PROFILE_KEY}:${userId}`;
 
-export class AuthError extends Error {}
-
-function base64url(bytes) {
+function base64url(bytes: Uint8Array) {
   let text = '';
 
   for (const byte of bytes) text += String.fromCharCode(byte);
@@ -40,12 +74,12 @@ function createVerifier() {
   return base64url(crypto.getRandomValues(new Uint8Array(32)));
 }
 
-export async function challengeFor(verifier) {
+export async function challengeFor(verifier: string) {
   return base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
 }
 
 // Supabase returns to the app with ?code= (PKCE), #access_token= (email links) or an error in either.
-export function parseAuthRedirect(href) {
+export function parseAuthRedirect(href: string) {
   const url = new URL(href);
   const hash = new URLSearchParams(url.hash.slice(1));
   const error = url.searchParams.get('error_description') || hash.get('error_description') || url.searchParams.get('error') || hash.get('error');
@@ -67,7 +101,7 @@ export function parseAuthRedirect(href) {
 }
 
 // The address without auth parameters, so a reload never replays a used code.
-export function cleanRedirectUrl(href) {
+export function cleanRedirectUrl(href: string) {
   const url = new URL(href);
 
   for (const key of ['code', 'error', 'error_code', 'error_description']) url.searchParams.delete(key);
@@ -78,11 +112,11 @@ export function cleanRedirectUrl(href) {
   return url.toString();
 }
 
-function readJson(key) {
-  try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
+function readJson(key: string): unknown {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
 }
 
-function writeJson(key, value) {
+function writeJson(key: string, value: unknown) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
 
@@ -90,21 +124,23 @@ function writeJson(key, value) {
   } catch { return false; }
 }
 
-function remove(key) {
+function remove(key: string) {
   try { localStorage.removeItem(key); } catch {}
 }
 
-export function loadSession() {
-  const session = readJson(SESSION_KEY);
+export function loadSession(): Session | null {
+  try {
+    const session = Schema.decodeUnknownSync(SessionSchema)(readJson(SESSION_KEY));
 
-  return session?.user?.id && session.refresh_token ? session : null;
+    return session.user.id && session.refresh_token ? session : null;
+  } catch { return null; }
 }
 
 // A sign-in's id is made when it signs in and kept through every refresh, so a tab can tell another tab's
 // refresh of the sign-in they share from a new sign-in there (a guest tab signing in to the same account).
 // Sessions stored before sign-ins had one have none, and count as one sign-in.
-function sessionFrom(data, signInId) {
-  const session = {
+function sessionFrom(data: AuthResponse, signInId?: string) {
+  const session: Session = {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at || Math.floor(Date.now() / 1000) + (data.expires_in || 3600),
@@ -116,81 +152,35 @@ function sessionFrom(data, signInId) {
   return session;
 }
 
-export const sameSignIn = (a, b) => Boolean(a?.user?.id) && a.user.id === b?.user?.id && a.signInId === b?.signInId;
+export const sameSignIn = (a: Session | null, b: Session | null) => Boolean(a?.user?.id) && a?.user.id === b?.user.id && a?.signInId === b?.signInId;
 
-function storeSession(session) {
+function storeSession(session: Session) {
   writeJson(SESSION_KEY, session);
 
   return session;
 }
 
-const storeSignIn = (data) => storeSession(sessionFrom(data, base64url(crypto.getRandomValues(new Uint8Array(9)))));
+const storeSignIn = (data: AuthResponse) => storeSession(sessionFrom(data, base64url(crypto.getRandomValues(new Uint8Array(9)))));
 
-// A request that hasn't finished by then fails as unreachable, so nothing waiting behind it (the push
-// queue, sign-out) can hang on a stalled connection; edits stay on the device, as offline. A caller's own
-// signal (a queue's deadline) aborts it as well.
-const REQUEST_TIMEOUT_MS = 15000;
-
-export async function request(path, { method = 'GET', body, token, headers = {}, signal: callerSignal } = {}) {
-  const timeout = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REQUEST_TIMEOUT_MS) : undefined;
-  const signal = timeout && callerSignal && typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, callerSignal]) : callerSignal || timeout;
-  const sentHeaders = { apikey: SUPABASE_KEY };
-
-  if (token) sentHeaders.Authorization = `Bearer ${token}`;
-
-  if (body) sentHeaders['Content-Type'] = 'application/json';
-  let response;
-  let text;
-
-  try {
-    response = await fetch(`${SUPABASE_URL}${path}`, {
-      method,
-      signal,
-      headers: Object.assign(sentHeaders, headers),
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    text = await response.text();
-  } catch {
-    throw new AuthError('Can’t reach the account service. Check your connection.');
-  }
-
-  let data = null;
-
-  try { data = text ? JSON.parse(text) : null; } catch {}
-
-  if (!response.ok) {
-    const message = data?.msg || data?.error_description || data?.message || data?.error || `Request failed (${response.status}).`;
-    const error = new AuthError(message);
-    error.status = response.status;
-    // Auth errors name themselves in error_code (code is the HTTP status there); PostgREST's in code.
-    const code = data?.error_code || data?.code;
-
-    if (code) error.code = code;
-    throw error;
-  }
-
-  return data;
-}
-
-export async function signUp(email, password, redirectTo) {
+export async function signUp(email: string, password: string, redirectTo: string) {
   const data = await request(`/auth/v1/signup?redirect_to=${encodeURIComponent(redirectTo)}`, { method: 'POST', body: { email, password } });
 
   // With email confirmation on, Supabase returns the user without a session.
-  if (data?.access_token) return { session: storeSignIn(data) };
+  if (data && typeof data === 'object' && 'access_token' in data && data.access_token) return { session: storeSignIn(decodeReply(AuthResponseSchema, data)) };
   writeJson(PENDING_SIGNUP_KEY, { email: email.trim().toLowerCase(), at: Date.now() });
 
   return { confirm: true };
 }
 
-export async function signIn(email, password) {
+export async function signIn(email: string, password: string) {
   const data = await request('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password } });
 
-  return storeSignIn(data);
+  return storeSignIn(decodeReply(AuthResponseSchema, data));
 }
 
 // Asks first, so a provider that is not configured yet gives a sentence rather than a raw error page.
-export async function startGoogleSignIn(redirectTo) {
-  const settings = await request('/auth/v1/settings');
+export async function startGoogleSignIn(redirectTo: string) {
+  const settings = decodeReply(Schema.NullOr(Schema.Struct({ external: Schema.optional(Schema.Struct({ google: Schema.optional(Schema.Boolean) })) })), await request('/auth/v1/settings'));
 
   if (!settings?.external?.google) throw new AuthError('Google sign-in isn’t switched on yet. Use an email and password for now.');
   const verifier = createVerifier();
@@ -207,7 +197,7 @@ export async function startGoogleSignIn(redirectTo) {
 }
 
 // Finishes a Google or email-link return. Returns the new session, or null if the URL carries none.
-export async function completeRedirect(href) {
+export async function completeRedirect(href: string) {
   const redirect = parseAuthRedirect(href);
 
   if (!redirect) return null;
@@ -220,28 +210,32 @@ export async function completeRedirect(href) {
     const verifier = readJson(VERIFIER_KEY);
     remove(VERIFIER_KEY);
 
-    if (!verifier) throw new AuthError('That sign-in link has expired. Try again.');
+    if (typeof verifier !== 'string' || !verifier) throw new AuthError('That sign-in link has expired. Try again.');
     const data = await request('/auth/v1/token?grant_type=pkce', { method: 'POST', body: { auth_code: redirect.code, code_verifier: verifier } });
 
-    return storeSignIn(data);
+    return storeSignIn(decodeReply(AuthResponseSchema, data));
   }
 
   // A token link carries everything needed to sign in, so anyone can make one for their own account. It is
   // taken only as the answer to a sign-up this browser made, for that address, and only once.
-  const pending = readJson(PENDING_SIGNUP_KEY);
+  const rawPending = readJson(PENDING_SIGNUP_KEY);
+  let pending: { email: string; at: number } | null = null;
+
+  try { pending = Schema.decodeUnknownSync(Schema.Struct({ email: Schema.String, at: Schema.Number }))(rawPending); } catch {}
+
   remove(PENDING_SIGNUP_KEY);
 
   if (!pending?.email || !(Date.now() - pending.at < PENDING_SIGNUP_MS)) throw new AuthError(REDIRECT_COPY.refused);
-  const user = await request('/auth/v1/user', { token: redirect.access_token });
+  const user = decodeReply(UserSchema, await request('/auth/v1/user', { token: redirect.access_token || undefined }));
 
   if ((user?.email || '').toLowerCase() !== pending.email) throw new AuthError(REDIRECT_COPY.refused);
 
-  return storeSignIn({ ...redirect, user });
+  return storeSignIn(decodeReply(AuthResponseSchema, { ...redirect, user }));
 }
 
 // Returns a session with a usable access token, refreshing it if it is about to expire. signal lets
 // a caller with a deadline give up on the refresh.
-export async function freshSession(session = loadSession(), { signal } = {}) {
+export async function freshSession(session: Session | null = loadSession(), { signal, timeoutMs }: { signal?: AbortSignal; timeoutMs?: number } = {}) {
   if (!session) return null;
   // Background polls (race, inbox) may already have rotated this user's refresh token; a stale
   // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
@@ -253,18 +247,20 @@ export async function freshSession(session = loadSession(), { signal } = {}) {
   if (session.expires_at - 60 > Date.now() / 1000) return session;
 
   try {
-    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal });
+    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal, timeoutMs, lifetime: accountLifetime() });
     // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
     // (the same account included, whose new session that sign-out's logout didn't end), since this tab
     // read it. Either way it is still the sign-in it refreshed.
-    const refreshed = sessionFrom(data, session.signInId);
+    const refreshed = sessionFrom(decodeReply(AuthResponseSchema, data), session.signInId);
 
     return loadSession()?.refresh_token === session.refresh_token ? storeSession(refreshed) : refreshed;
-  } catch (error) {
+  } catch (cause) {
+    const error = errorDetails(cause);
+
     // A rejected refresh token means the session is over; a network failure keeps it for later. Only the
     // session whose token was refused is removed, never one another tab stored since (a newer token, or
     // another account).
-    if (error.status >= 400 && error.status < 500 && loadSession()?.refresh_token === session.refresh_token) remove(SESSION_KEY);
+    if ((error.status ?? 0) >= 400 && (error.status ?? 0) < 500 && loadSession()?.refresh_token === session.refresh_token) remove(SESSION_KEY);
     throw error;
   }
 }
@@ -274,13 +270,13 @@ export async function freshSession(session = loadSession(), { signal } = {}) {
 // sent everything removes the cache, which stops those tabs already; its marker, { sent }, stands only
 // around that removal, see signOut.) A session that only expired leaves none, so its tabs keep caching
 // for the next sign-in.
-export const signedOutKey = (userId) => `stilltype-signed-out:${userId}`;
+export const signedOutKey = (userId: string) => `stilltype-signed-out:${userId}`;
 
-export function signedOut(userId) {
+export function signedOut(userId: string) {
   try { return localStorage.getItem(signedOutKey(userId)) !== null; } catch { return false; }
 }
 
-export const clearSignedOut = (userId) => remove(signedOutKey(userId));
+export const clearSignedOut = (userId: string) => remove(signedOutKey(userId));
 
 // Touches only what is still this sign-in's: another tab may have signed out, or in as anyone (the same
 // account included), while this one was sending its edits. The device's session is checked here, where
@@ -292,7 +288,7 @@ export const clearSignedOut = (userId) => remove(signedOutKey(userId));
 // Reads of localStorage across tabs can be milliseconds stale, so another tab's save can be in the cache
 // unseen here as it is removed. The removal therefore names the copy it sent, in a marker every tab hears
 // before it, and a tab that hears a different copy removed puts it back (restoreUnsent).
-export async function signOut(session, { sentText = null } = {}) {
+export async function signOut(session: Session | null, { sentText = null }: { sentText?: string | null } = {}) {
   const userId = session?.user?.id;
   const stored = loadSession();
 
@@ -321,31 +317,11 @@ export async function signOut(session, { sentText = null } = {}) {
   try { await request('/auth/v1/logout', { method: 'POST', token: (held || session)?.access_token }); } catch {}
 }
 
-// cyrb53: a fast 53-bit string hash. Not cryptographic; it only tells copies of the cache apart.
-function cyrb53(text) {
-  let h1 = 0xdeadbeef;
-  let h2 = 0x41c6ce57;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const code = text.charCodeAt(i);
-    h1 = Math.imul(h1 ^ code, 2654435761);
-    h2 = Math.imul(h2 ^ code, 1597334677);
-  }
-
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-
-  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
-}
-
-// Names one copy of the device cache in a few characters, so a sign-out marker can say which it sent.
-export const textStamp = (text) => `${text.length.toString(36)}:${cyrb53(text).toString(36)}`;
-
-const storedProfile = (text) => {
+const storedProfile = (text: string | null) => {
   try {
-    const data = JSON.parse(text);
+    const data: unknown = JSON.parse(text || 'null');
 
-    return data?.version === 2 ? withoutConditionSets(data) : null;
+    return isRecord(data) && data.version === 2 ? parseMergeProfile(withoutConditionSets(data)) : null;
   } catch {
     return null;
   }
@@ -355,11 +331,11 @@ const storedProfile = (text) => {
 // copy the tab that heard the removal last saved, or took in holding all it saved. Null when the removed
 // copy is the one sent and the saved copy holds nothing it lacks (a stale copy whose runs a clear in the
 // removed one took out holds nothing more). Otherwise the union of both, to keep for the next sign-in.
-export function unsentCopy(removedText, sent, savedText) {
+export function unsentCopy(removedText: string | null, sent: string, savedText: string | null) {
   const removed = storedProfile(removedText);
   const saved = storedProfile(savedText);
 
-  if (removed && textStamp(removedText) === sent
+  if (removed && textStamp(removedText || '') === sent
     && (!saved || savedText === removedText || sameProfile(mergeSynced(removed, saved), removed))) return null;
 
   return removed && saved ? mergeSynced(removed, saved) : (removed || saved);
@@ -367,7 +343,7 @@ export function unsentCopy(removedText, sent, savedText) {
 
 // Puts back what a sign-out elsewhere removed unsent (unsentCopy), merged with anything stored since. No
 // marker: every tab of the account has already followed the sign-out. Returns whether it wrote.
-export function restoreUnsent(userId, removedText, sent, savedText) {
+export function restoreUnsent(userId: string, removedText: string | null, sent: string, savedText: string | null) {
   const copy = unsentCopy(removedText, sent, savedText);
 
   if (!copy) return false;
@@ -396,36 +372,32 @@ const DELETE_TIMEOUT_MS = 30000;
 
 // Asks the Auth server whether the account still exists: true once it reports the user gone, false
 // while it still knows them, null if it can't say (including when the deadline runs out first).
-async function accountGone(current, signal) {
+async function accountGone(current: Session, signal: AbortSignal) {
   try {
-    return (await request('/auth/v1/user', { token: current.access_token, signal }))?.id === current.user.id ? false : null;
-  } catch (error) {
+    return decodeReply(UserSchema, await request('/auth/v1/user', { token: current.access_token, signal, timeoutMs: DELETE_TIMEOUT_MS })).id === current.user.id ? false : null;
+  } catch (cause) {
+    const error = errorDetails(cause);
+
     return error.code === 'user_not_found' ? true : null;
   }
 }
 
 // Resolves once the account is gone; otherwise throws an AuthError whose message says what happened.
 // Signing out and clearing this device are left to the caller, for after success only.
-export async function deleteAccount(session) {
-  const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(), DELETE_TIMEOUT_MS);
-
-  try {
-    return await deleteBefore(session, deadline.signal);
-  } finally {
-    clearTimeout(timer);
-  }
+export function deleteAccount(session: Session | null) {
+  return accountLifetime().run(deadline((signal) => deleteBefore(session, signal), DELETE_TIMEOUT_MS, errorDetails));
 }
 
 // Each step gets whatever time is left before the deadline; a step it cuts off counts as no reply.
-async function deleteBefore(session, signal) {
+async function deleteBefore(session: Session | null, signal: AbortSignal) {
   let current;
 
   try {
-    current = await freshSession(session, { signal });
-  } catch (error) {
+    current = await freshSession(session, { signal, timeoutMs: DELETE_TIMEOUT_MS });
+  } catch (cause) {
+    const error = errorDetails(cause);
     // A rejected refresh token means the session is over; anything else is the service or the network.
-    const ended = error.status >= 400 && error.status < 500;
+    const ended = (error.status ?? 0) >= 400 && (error.status ?? 0) < 500;
     throw new AuthError(ended ? DELETE_COPY.session : error.status ? DELETE_COPY.failed : DELETE_COPY.offline);
   }
 
@@ -433,10 +405,11 @@ async function deleteBefore(session, signal) {
   let status = 0;
 
   try {
-    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal });
+    await request(DELETE_ACCOUNT_PATH, { method: 'POST', token: current.access_token, body: {}, signal, timeoutMs: DELETE_TIMEOUT_MS });
 
     return;
-  } catch (error) {
+  } catch (cause) {
+    const error = errorDetails(cause);
     status = error.status || 0;
   }
 
@@ -474,7 +447,8 @@ export const THEME_COPY = {
 
 const THEME_ERRORS = ['vibe', 'limit', 'refused', 'timeout', 'failed', 'config', 'session'];
 
-export async function generateTheme(session, vibe) {
+export async function generateTheme(session: Session | null, vibe: string) {
+  const lifetime = accountLifetime();
   let current;
 
   try {
@@ -486,14 +460,16 @@ export async function generateTheme(session, vibe) {
   if (!current) throw new AuthError(THEME_COPY.session);
 
   try {
-    const data = await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe } });
+    const data = decodeReply(Schema.Struct({ theme: Schema.optional(GeneratedThemeSchema) }), await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe }, lifetime }));
 
     if (!data?.theme) throw new AuthError(THEME_COPY.failed);
 
     return data.theme;
-  } catch (error) {
+  } catch (cause) {
+    const error = errorDetails(cause);
+
     // The function's own errors are already one short line; a gateway's or no reply aren't.
-    if (THEME_ERRORS.includes(error.code)) throw error;
+    if (THEME_ERRORS.some((code) => code === error.code)) throw error;
     throw new AuthError(error.status === 401 ? THEME_COPY.session : error.status ? THEME_COPY.failed : THEME_COPY.offline);
   }
 }
@@ -502,7 +478,7 @@ export async function generateTheme(session, vibe) {
 // signed-out marker goes first, so other tabs of the account stop saving for it at the first change they
 // hear (a session removed without one reads as expired, and those tabs would keep caching), and last, so
 // nothing about the account stays on the device.
-export function forgetAccount(session) {
+export function forgetAccount(session: Session | null) {
   const userId = session?.user?.id;
 
   if (userId) writeJson(signedOutKey(userId), true);
@@ -519,18 +495,18 @@ export function forgetAccount(session) {
 // Keystroke recordings (attempts) stay on the device that made them: a row written before that still
 // holds some, and they are left out here. A row so old it has no run summaries keeps them, as they are
 // what normalizeProfile makes its summaries from.
-export async function fetchCloudProfile(session) {
-  const rows = await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token });
+export async function fetchCloudProfile(session: Session) {
+  const rows = decodeReply(Schema.mutable(Schema.Array(ProfileRowSchema)), await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token }));
   const row = rows?.[0] || null;
 
-  return row && Array.isArray(row.data?.runs) ? { ...row, data: rowCopy(row.data) } : row;
+  return row && isRecord(row.data) && Array.isArray(row.data.runs) ? { ...row, data: rowCopy(row.data) } : row;
 }
 
 // An ISO time later than now and than every given stamp, so a device whose clock runs behind still
 // moves a stamp forward rather than writing one that looks older than what it replaces. A clear marker
 // counts as its time (see clearProfile).
-export function stampAfter(...stamps) {
-  const times = stamps.map((stamp) => Date.parse(typeof stamp === 'string' ? stamp.split('~')[0] : stamp) + 1).filter(Number.isFinite);
+export function stampAfter(...stamps: (string | null | undefined)[]) {
+  const times = stamps.map((stamp) => Date.parse(typeof stamp === 'string' ? stamp.split('~')[0] || '' : '') + 1).filter(Number.isFinite);
 
   return new Date(Math.max(Date.now(), ...times)).toISOString();
 }
@@ -540,21 +516,23 @@ export function stampAfter(...stamps) {
 // syncing: a write refused for that column (a project without it yet, PGRST204, or a summary its check
 // refuses) goes again without it, and the rest of this page load leaves it out.
 let boardOff = false;
-const refusesBoard = (error) => error?.status === 400 && ['PGRST204', '23514'].includes(error.code) && /board/.test(error.message || '');
+const refusesBoard = (error: AuthError) => error?.status === 400 && ['PGRST204', '23514'].some((code) => code === error.code) && /board/.test(error.message || '');
 
 // `board(at)` gives the summary of exactly the data written, for a write stamped `at`; null clears the
 // column (an opt-out on this device not yet confirmed: it shows nothing new), undefined leaves it out. A
 // row written without it (by an older build, or after a refusal) keeps an older summary whose stamp no
 // longer matches the row, which the board then hides (and repairBoard mends).
-async function withBoard(board, at, send) {
-  let column;
+async function withBoard<T>(board: BoardWriter | undefined, at: string, send: (column: { board?: BoardColumn | null }) => Promise<T>): Promise<T> {
+  let column: BoardColumn | null | undefined;
 
   try { column = board && !boardOff ? board(at) : undefined; } catch { column = undefined; }
 
   if (column !== undefined) {
     try {
       return await send({ board: column });
-    } catch (error) {
+    } catch (cause) {
+    const error = errorDetails(cause);
+
       if (!refusesBoard(error)) throw error;
       boardOff = true;
     }
@@ -565,7 +543,7 @@ async function withBoard(board, at, send) {
 
 // Writes only if the row is still the version read at `seenAt` (owners may update their own row, see
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
-export async function updateCloudProfile(session, data, seenAt, { board } = {}) {
+export async function updateCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, seenAt: string, { board }: { board?: BoardWriter } = {}) {
   const at = stampAfter(seenAt);
 
   const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(seenAt)}&select=updated_at`, {
@@ -575,11 +553,11 @@ export async function updateCloudProfile(session, data, seenAt, { board } = {}) 
     body: { data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
 
-  return rows?.[0]?.updated_at || null;
+  return decodeReply(Schema.NullOr(Schema.Array(Schema.Struct({ updated_at: Schema.String }))), rows)?.[0]?.updated_at || null;
 }
 
 // Creates the row only if the account has none. Null means another writer created it first.
-export async function insertCloudProfile(session, data, { board } = {}) {
+export async function insertCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, { board }: { board?: BoardWriter } = {}) {
   const at = new Date().toISOString();
 
   const rows = await withBoard(board, at, (column) => request('/rest/v1/profiles?select=updated_at', {
@@ -589,13 +567,13 @@ export async function insertCloudProfile(session, data, { board } = {}) {
     body: { user_id: session.user.id, data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
 
-  return rows?.[0]?.updated_at || null;
+  return decodeReply(Schema.NullOr(Schema.Array(Schema.Struct({ updated_at: Schema.String }))), rows)?.[0]?.updated_at || null;
 }
 
 // Writes a summary into the row's `board` column only while the row is still the version it was counted
 // from (its `updated_at` is `at`), so it can only ever describe that exact row: a row another write has
 // moved since is left alone, and that write carries its own summary. True when it was sent.
-export async function repairBoard(session, board, at) {
+export async function repairBoard(session: Session, board: BoardColumn | null, at: string) {
   if (boardOff) return false;
 
   try {
@@ -607,7 +585,9 @@ export async function repairBoard(session, board, at) {
     });
 
     return true;
-  } catch (error) {
+  } catch (cause) {
+    const error = errorDetails(cause);
+
     if (!refusesBoard(error)) throw error;
     boardOff = true;
 
@@ -615,97 +595,20 @@ export async function repairBoard(session, board, at) {
   }
 }
 
-// Each run and loop names the conditions it was typed at, and most share a few sets, so a stored copy keeps
-// each set once in conditionSets, under a stamp of its JSON, and a record names its set by that stamp
-// (conditionSet, where conditions was). Loading puts every record's conditions back exactly as they were
-// (withoutConditionSets, in normalizeProfile), so nothing that reads or merges a copy sees the table.
-// Builds from before it read only inline conditions and throw on a record without them, so a copy is
-// written this way only from CONDITION_SETS_FROM, once tabs still running one have had six weeks to reload.
-export const CONDITION_SETS_FROM = '2026-12-01T00:00:00Z';
-const CONDITIONED = ['runs', 'loops'];
-const renamed = (record, from, to, value) => Object.fromEntries(Object.entries(record).map(([key, held]) => (key === from ? [to, value] : [key, held])));
-
-export function withoutConditionSets(copy) {
-  if (!copy || typeof copy !== 'object') return copy;
-  const { conditionSets, ...rest } = copy;
-  const sets = conditionSets && typeof conditionSets === 'object' ? conditionSets : {};
-  const named = (record) => record && typeof record === 'object' && 'conditionSet' in record;
-
-  for (const name of CONDITIONED) {
-    if (!Array.isArray(rest[name]) || !rest[name].some(named)) continue;
-    rest[name] = rest[name].flatMap((record) => {
-      if (!named(record)) return [record];
-
-      if (record.conditions) {
-        const { conditionSet, ...inline } = record;
-
-        return [inline];
-      }
-
-      // A set this copy lacks (a tab on a build from before kept another copy's table): the record is left
-      // out here, and comes back from any copy that holds it whole.
-      return Object.hasOwn(sets, record.conditionSet) ? [renamed(record, 'conditionSet', 'conditions', { ...sets[record.conditionSet] })] : [];
-    });
-  }
-
-  return rest;
-}
-
-export function withConditionSets(profile, now = Date.now()) {
-  if (now < Date.parse(CONDITION_SETS_FROM) || !profile || typeof profile !== 'object') return profile;
-  const copy = { ...withoutConditionSets(profile) };
-  const sets = {};
-  const texts = {};
-
-  for (const name of CONDITIONED) {
-    if (!Array.isArray(copy[name])) continue;
-    copy[name] = copy[name].map((record) => {
-      if (!record?.conditions || typeof record.conditions !== 'object') return record;
-      const text = JSON.stringify(record.conditions);
-      const stamp = textStamp(text);
-
-      // Two sets with one stamp: the second stays inline.
-      if (texts[stamp] !== undefined && texts[stamp] !== text) return record;
-      texts[stamp] = text;
-      sets[stamp] = record.conditions;
-
-      return renamed(record, 'conditions', 'conditionSet', stamp);
-    });
-  }
-
-  return Object.keys(sets).length ? { ...copy, conditionSets: sets } : copy;
-}
-
-// The copy written to the device cache. A trace's summary is the replay of its own events (completeAttempt)
-// and over half its size, so it is left out and rebuilt on load (normalizeProfile).
-const withoutSummary = ({ summary, ...trace }) => trace;
-
-export const storedCopy = (profile, now = Date.now()) => withConditionSets(Array.isArray(profile?.attempts)
-  ? { ...profile, attempts: profile.attempts.map((trace) => (trace?.summary ? withoutSummary(trace) : trace)) } : profile, now);
-
-// The file "Export my data" saves: this device's stored copy as it is, keystroke recordings included, with
-// the moment it was made. It stays a stored copy at its top level, so anything that reads one reads it
-// (normalizeProfile, scripts/evaluate-learner.mjs --profile). The sign-in is kept elsewhere and is never in it.
-export function exportCopy(profile, now = Date.now()) {
-  const at = new Date(now).toISOString();
-
-  return { name: `stilltype-export-${at.slice(0, 10)}.json`, text: JSON.stringify({ ...storedCopy(profile, now), exportedAt: at }, null, 1) };
-}
-
-export function loadCachedProfile(userId) {
+export function loadCachedProfile(userId: string) {
   return readJson(profileKey(userId));
 }
 
-export function cacheProfile(userId, data) {
+export function cacheProfile(userId: string, data: Profile | HydratedProfile | ProfileCopy) {
   return writeJson(profileKey(userId), storedCopy(data));
 }
 
 // The device cache as text, so a tab can tell whether another tab has written it since.
-export function loadCachedProfileText(userId) {
+export function loadCachedProfileText(userId: string) {
   try { return localStorage.getItem(profileKey(userId)); } catch { return null; }
 }
 
-export function cacheProfileText(userId, text) {
+export function cacheProfileText(userId: string, text: string) {
   try {
     localStorage.setItem(profileKey(userId), text);
 
@@ -723,22 +626,24 @@ export const MAX_STORED_ATTEMPTS = 24;
 // after a save or merge. Items are never edited once stored, so an id names one record everywhere.
 // A new collection is added here and nowhere else.
 export const HISTORY = {
-  attempts: { at: 'at', keep: (items) => retainTraces(items) },
-  runs: { at: 'at', keep: retainRuns },
-  loops: { at: 'at', keep: (items) => items },
+  attempts: { at: 'at', keep: (items: HistoryRecord[]) => retainTraces(items) },
+  runs: { at: 'at', keep: (items: HistoryRecord[]) => retainRuns(items) },
+  loops: { at: 'at', keep: (items: HistoryRecord[]) => items },
   // Composing practice's numbers (src/compose.js): never runs, never text, the newest MAX_COMPOSITIONS.
   compositions: { at: 'at', keep: retainCompositions },
 };
 
-const list = (value) => (Array.isArray(value) ? value.filter((item) => item !== null && item !== undefined) : []);
-const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-const recordId = (item) => String(item.id ?? JSON.stringify(item));
+const HISTORY_NAMES = Object.keys(HISTORY).filter((name): name is keyof typeof HISTORY => Object.hasOwn(HISTORY, name));
 
-export function capHistory(profile) {
+const list = <T>(value: readonly T[] | null | undefined): NonNullable<T>[] => value ? value.filter((item): item is NonNullable<T> => item !== null && item !== undefined) : [];
+const compare = <T extends string | number>(a: T, b: T) => (a < b ? -1 : a > b ? 1 : 0);
+const recordId = (item: HistoryRecord) => String(item.id ?? JSON.stringify(item));
+
+export function capHistory<T extends MergeProfile>(profile: T) {
   Object.assign(profile, retainHistory(list(profile.runs), validPracticeDays(profile.practiceDays)));
   profile.runCounts = retainRunCounts(profile.runCounts);
 
-  for (const [name, { keep }] of Object.entries(HISTORY)) if (name !== 'runs') profile[name] = keep(list(profile[name]));
+  for (const name of HISTORY_NAMES) if (name !== 'runs') profile[name] = HISTORY[name].keep(list(profile[name]));
 
   return profile;
 }
@@ -746,8 +651,8 @@ export function capHistory(profile) {
 // Whether best `a` beats `b`: the higher wpm, then the earlier record (a later run has to beat a best,
 // not match it), then the attempt id. A total order, so every copy keeps the same best for a tie
 // whichever side merged first, and copies settle instead of rewriting the row on every load.
-const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
-  && (compare(a.at || '', b.at || '') || compare(String(a.attemptId ?? ''), String(b.attemptId ?? ''))) < 0);
+const beatsBest = (a: MergeBest, b: MergeBest | undefined) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
+  && (compareRelational(a.at || '', b.at || '') || compare(String(a.attemptId ?? ''), String(b.attemptId ?? ''))) < 0);
 
 // historyClearedIds: the records each clear named (see clearProfile), as [marker, id] pairs, so an undo
 // drops exactly the ids its own clear named. Every clear that hasn't been undone keeps its pairs: two
@@ -759,18 +664,17 @@ const beatsBest = (a, b) => !b || a.wpm > b.wpm || (a.wpm === b.wpm
 // bring its record back (stamped ahead, it sorts after both markers). A clear names the records it
 // removed and those the clears it knew of had named, so its pairs grow only with records stamped ahead
 // of a clock (every run and loop, at most, after a clock corrected far backward), and its undo drops them.
-const namedPairs = (side) => list(side.historyClearedIds).flatMap((entry) => {
+const namedPairs = (side: MergeProfile): [string, string][] => list(side.historyClearedIds).flatMap((entry) => {
   const [marker, id] = typeof entry === 'string' ? [side.historyClearedAt, entry] : Array.isArray(entry) ? entry : [];
 
   return marker && typeof marker === 'string' && id && typeof id === 'string' ? [[marker, id]] : [];
 });
 
-const liveNamed = (pairs, undone) => [...new Map(pairs.filter(([marker]) => !undone.includes(marker))
-  .map((pair) => [JSON.stringify(pair), pair])).values()]
+const liveNamed = (pairs: [string, string][], undone: string[]) => [...new Map(pairs.flatMap((pair): [string, [string, string]][] => undone.includes(pair[0]) ? [] : [[JSON.stringify(pair), pair]])).values()]
   .sort((a, b) => compare(a[0], b[0]) || compare(a[1], b[1]));
 
 // The ids a copy's clears named (a merged or cleared copy holds only clears not undone).
-export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) => id));
+export const clearedIds = (profile: MergeProfile) => new Set(namedPairs(profile).map(([, id]) => id));
 
 // The clears not undone that a copy knows of (`heard`), and those it has applied (`applied`): its marker,
 // the older clears it keeps (appliedClears, heardClears) and those its named pairs speak for. A copy
@@ -778,10 +682,10 @@ export const clearedIds = (profile) => new Set(namedPairs(profile).map(([, id]) 
 // clear whatever its stamp (a clock running behind the clearing one stamps a later run earlier). So once
 // its newest marker is undone, a copy still answers to the older clears it had applied, and to those it
 // only heard of as one that never applied them; none is forgotten.
-const isMarker = (marker) => typeof marker === 'string' && marker !== '';
+const isMarker = (marker: string | undefined): marker is string => typeof marker === 'string' && marker !== '';
 
-function clearsOf(side, undone) {
-  const live = (marker) => isMarker(marker) && !undone.includes(marker);
+function clearsOf(side: MergeProfile, undone: string[]) {
+  const live = (marker: string | undefined): marker is string => isMarker(marker) && !undone.includes(marker);
   const applied = new Set([side.historyClearedAt, ...list(side.appliedClears)].filter(live));
   const heard = new Set([...applied, ...list(side.heardClears), ...namedPairs(side).map(([marker]) => marker)].filter(live));
 
@@ -789,11 +693,11 @@ function clearsOf(side, undone) {
 }
 
 // The clears a copy has applied, undone ones included: the training a tab offers was checked against them.
-export const clearsApplied = (profile) => new Set([profile.historyClearedAt, ...list(profile.appliedClears)].filter(isMarker));
+export const clearsApplied = (profile: MergeProfile) => new Set([profile.historyClearedAt, ...list(profile.appliedClears)].filter(isMarker));
 
 // Writes a copy's clears: the newest as historyClearedAt, and the older ones it applied or only heard of.
-function setClears(profile, clearedAt, applied, heard) {
-  const older = (marker) => marker < clearedAt;
+function setClears<T extends MergeProfile>(profile: T, clearedAt: string, applied: Set<string>, heard: Set<string>) {
+  const older = (marker: string) => marker < clearedAt;
 
   const fields = {
     historyClearedAt: clearedAt,
@@ -802,8 +706,8 @@ function setClears(profile, clearedAt, applied, heard) {
   };
 
   for (const [field, value] of Object.entries(fields)) {
-    if (value?.length) profile[field] = value;
-    else delete profile[field];
+    if (value?.length) Object.assign(profile, { [field]: value });
+    else Reflect.deleteProperty(profile, field);
   }
 
   return profile;
@@ -821,25 +725,28 @@ function setClears(profile, clearedAt, applied, heard) {
 // clear. So is every record named by a clear this copy knows of: it was made before that clear, so before
 // this one, and that clear's undo, arriving later, must not bring it back past this one. The cleared copy
 // holds nothing, so it has applied every clear it knows of.
-export function clearProfile(profile) {
+export function clearProfile(profile: Profile): SyncedProfile;
+export function clearProfile(profile: HydratedProfile): SyncedProfile<HydratedProfile>;
+export function clearProfile(profile: MergeProfile): MergeProfile;
+export function clearProfile(profile: MergeProfile): MergeProfile {
   const undone = list(profile.undoneClears);
   const { heard } = clearsOf(profile, undone);
   const marker = `${stampAfter(profile.historyClearedAt, ...undone, ...heard)}~${base64url(crypto.getRandomValues(new Uint8Array(6)))}`;
   const known = liveNamed(namedPairs(profile), undone);
   const ahead = new Set(known.map(([, id]) => id));
 
-  for (const [name, { at }] of Object.entries(HISTORY)) {
-    for (const item of list(profile[name])) if ((item[at] || '') > marker && item.id) ahead.add(String(item.id));
+  for (const name of HISTORY_NAMES) {
+    for (const item of list(profile[name])) if ((item.at || '') > marker && item.id) ahead.add(String(item.id));
   }
 
   for (const best of Object.values(profile.bests || {})) if ((best?.at || '') > marker && best.attemptId) ahead.add(String(best.attemptId));
-  const named = liveNamed([...known, ...[...ahead].map((id) => [marker, id])], undone);
+  const named = liveNamed([...known, ...[...ahead].map((id): [string, string] => [marker, id])], undone);
   const emptied = { ...profile, bests: {}, seenTextIds: [], practiceDays: {}, runCounts: {} };
 
   if (profile.lessons) emptied.lessons = {};
   const cleared = setClears(emptied, marker, heard, heard);
 
-  for (const name of Object.keys(HISTORY)) cleared[name] = [];
+  for (const name of HISTORY_NAMES) cleared[name] = [];
 
   if (named.length) cleared.historyClearedIds = named;
   else delete cleared.historyClearedIds;
@@ -847,7 +754,7 @@ export function clearProfile(profile) {
   return cleared;
 }
 
-const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 'object' ? side.preferencesAt : {});
+const stampsOf = (side: MergeProfile) => (side.preferencesAt && typeof side.preferencesAt === 'object' ? side.preferencesAt : {});
 
 // Each setting comes from the side that changed it last. preferencesAt maps a setting to when it last
 // changed and is stamped on every change, so a font size changed on one device survives a test shape
@@ -859,20 +766,20 @@ const stampsOf = (side) => (side.preferencesAt && typeof side.preferencesAt === 
 // value that sorts first, so every copy picks the same one and copies settle. A setting one side lacks
 // (an older build) comes from the side that has it, whichever was saved later: reading a copy
 // (normalizeProfile) leaves out what it lacks rather than filling in a default that would count as a choice.
-const valueOrder = (value) => JSON.stringify(value) ?? '';
+const valueOrder = (value: unknown) => JSON.stringify(value) ?? '';
 
 // Whether `theirs` wins over `mine` given each one's stamp: the later stamp, then the value that sorts
 // first, so both sides of a merge pick the same one.
-const takesTheirs = (myStamp, theirStamp, mine, theirs) => theirStamp > myStamp
+const takesTheirs = (myStamp: unknown, theirStamp: unknown, mine: unknown, theirs: unknown) => compareRelational(theirStamp, myStamp) > 0
   || (theirStamp === myStamp && valueOrder(theirs) < valueOrder(mine));
 
-function mergePreferences(local, cloud) {
+function mergePreferences(local: MergeProfile, cloud: MergeProfile) {
   const mine = local.preferences || {};
   const theirs = cloud.preferences || {};
   const myStamps = stampsOf(local);
   const theirStamps = stampsOf(cloud);
-  const preferences = {};
-  const preferencesAt = {};
+  const preferences: Record<string, unknown> = {};
+  const preferencesAt: Record<string, unknown> = {};
 
   for (const key of new Set([...Object.keys(mine), ...Object.keys(theirs)])) {
     const a = myStamps[key] || '';
@@ -883,7 +790,7 @@ function mergePreferences(local, cloud) {
 
     preferences[key] = (fromCloud ? theirs[key] : mine[key]) ?? (fromCloud ? mine[key] : theirs[key]);
 
-    if (a || b) preferencesAt[key] = a > b ? a : b;
+    if (a || b) preferencesAt[key] = compareRelational(a, b) > 0 ? a : b;
   }
 
   return { preferences, preferencesAt };
@@ -893,12 +800,12 @@ function mergePreferences(local, cloud) {
 // copy of a record wins, on either, whichever side merges (the caps trim it again where they should). A
 // daily attempt either copy labels a repeat stays one: the copy that says first may be from before its
 // device held the earlier try, which a clear can since have taken from every copy.
-const fullness = (record) => [record.patterns?.length || 0, Array.isArray(record.missedWords) ? 1 : 0];
+const fullness = (record: HistoryRecord): [unknown, number] => [lengthOf(record.patterns) || 0, Array.isArray(record.missedWords) ? 1 : 0];
 
-const fuller = (held, other) => {
+const fuller = (held: HistoryRecord, other: HistoryRecord) => {
   const [heldPatterns, heldWords] = fullness(held);
   const [otherPatterns, otherWords] = fullness(other);
-  const kept = otherPatterns > heldPatterns || (otherPatterns === heldPatterns && otherWords > heldWords) ? other : held;
+  const kept = compareRelational(otherPatterns, heldPatterns) > 0 || (otherPatterns === heldPatterns && otherWords > heldWords) ? other : held;
 
   return kept.firstDailyAttempt && (held.firstDailyAttempt === false || other.firstDailyAttempt === false)
     ? { ...kept, firstDailyAttempt: false } : kept;
@@ -909,22 +816,22 @@ const fuller = (held, other) => {
 // Such a build stamps updatedAt on every save and passes through fields it doesn't know, so this build
 // writes mergeStamp with every updatedAt it writes (here and in mergeSynced): a copy whose updatedAt
 // isn't its mergeStamp was last saved by an older build, even one this build had saved before.
-export function stampProfile(profile, at = new Date().toISOString()) {
+export function stampProfile<T extends MergeProfile>(profile: T, at = new Date().toISOString()) {
   profile.updatedAt = at;
   profile.mergeStamp = at;
 
   return profile;
 }
 
-const stampOf = (value) => (typeof value === 'string' ? value : '');
-const savedByOlderBuild = (side) => stampOf(side.updatedAt) !== '' && side.mergeStamp !== side.updatedAt;
+const stampOf = (value: unknown) => (typeof value === 'string' ? value : '');
+const savedByOlderBuild = (side: MergeProfile) => stampOf(side.updatedAt) !== '' && side.mergeStamp !== side.updatedAt;
 
 // The date a copy's history starts: its earliest record or best (an undated one counts as earliest),
 // and no later than its last save.
-function historyStart(side) {
+function historyStart(side: MergeProfile) {
   let start = stampOf(side.updatedAt);
 
-  const dates = [...Object.entries(HISTORY).flatMap(([name, { at }]) => list(side[name]).map((item) => item[at])),
+  const dates = [...HISTORY_NAMES.flatMap((name) => list(side[name]).map((item) => item.at)),
     ...Object.values(side.bests || {}).filter(Boolean).map((best) => best.at)];
 
   for (const date of dates) if (stampOf(date) < start) start = stampOf(date);
@@ -936,11 +843,11 @@ function historyStart(side) {
 // later replace the other whole, and all their Clear History left was an empty copy and the runs made
 // since. A copy an older build saved last starts at its earliest record or best; a copy this build saved
 // starts where the copy it last took that from did (legacyClearedAt, carried by every merge).
-const legacyStart = (side) => (savedByOlderBuild(side) ? historyStart(side) : stampOf(side.legacyClearedAt));
+const legacyStart = (side: MergeProfile) => (savedByOlderBuild(side) ? historyStart(side) : stampOf(side.legacyClearedAt));
 
 // The fields mergeSynced has a rule of its own for. The rest (version, and any field this build
 // doesn't know) are passed through.
-const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt',
+const MERGED_FIELDS = new Set([...HISTORY_NAMES, 'bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt',
   'historyClearedAt', 'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'legacyClearedAt', 'updatedAt',
   'mergeStamp', 'profileId', 'practiceDays', 'runCounts']);
 
@@ -950,32 +857,36 @@ const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 
 // lesson: the most tries either side counted (tries made apart on two devices aren't summed, so this can
 // undercount, never double count), the later last result and the earlier pass (the first pass is the one
 // kept). Ties break on the numbers, so every copy settles on the same result whichever side merges.
-function survivingLessons(lessons, after) {
-  const kept = {};
+function survivingLessons(lessons: MergeLessons | undefined, after: (stamp: unknown) => boolean) {
+  const kept: MergeLessons = {};
 
   for (const [id, entry] of Object.entries(lessons && typeof lessons === 'object' ? lessons : {})) {
-    if (!entry || typeof entry !== 'object' || !after(entry.last?.at)) continue;
-    kept[id] = { ...entry, passed: entry.passed && after(entry.passed.at) ? entry.passed : null };
+    if (!entry || typeof entry !== 'object' || !after(rawField(rawField(entry, 'last'), 'at'))) continue;
+    const passed = rawField(entry, 'passed');
+    kept[id] = { ...entry, passed: passed && after(rawField(passed, 'at')) ? passed : null };
   }
 
   return kept;
 }
 
-const resultOrder = (a, b) => compare(a.at || '', b.at || '') || compare(a.wpm ?? 0, b.wpm ?? 0)
-  || compare(a.accuracy ?? 0, b.accuracy ?? 0) || compare(String(a.inputClass ?? ''), String(b.inputClass ?? ''));
+const resultOrder = (a: unknown, b: unknown) => compareRelational(rawField(a, 'at') || '', rawField(b, 'at') || '')
+  || compareRelational(rawField(a, 'wpm') ?? 0, rawField(b, 'wpm') ?? 0)
+  || compareRelational(rawField(a, 'accuracy') ?? 0, rawField(b, 'accuracy') ?? 0)
+  || compare(String(rawField(a, 'inputClass') ?? ''), String(rawField(b, 'inputClass') ?? ''));
 
-const laterResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
-const earlierResult = (a, b) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
+const laterResult = (a: unknown, b: unknown) => (!a ? b || null : !b ? a : resultOrder(a, b) >= 0 ? a : b);
+const earlierResult = (a: unknown, b: unknown) => (!a ? b || null : !b ? a : resultOrder(a, b) <= 0 ? a : b);
 
-function mergeLessons(mine = {}, theirs = {}) {
-  const merged = {};
+function mergeLessons(mine: MergeLessons = {}, theirs: MergeLessons = {}) {
+  const merged: MergeLessons = {};
 
   for (const id of [...new Set([...Object.keys(mine), ...Object.keys(theirs)])].sort()) {
     const [a, b] = [mine[id], theirs[id]];
+
     merged[id] = !a || !b ? a || b : {
-      tries: Math.max(a.tries || 0, b.tries || 0),
-      last: laterResult(a.last || null, b.last || null),
-      passed: earlierResult(a.passed || null, b.passed || null),
+      tries: Math.max(Number(rawField(a, 'tries') || 0), Number(rawField(b, 'tries') || 0)),
+      last: laterResult(rawField(a, 'last') || null, rawField(b, 'last') || null),
+      passed: earlierResult(rawField(a, 'passed') || null, rawField(b, 'passed') || null),
     };
   }
 
@@ -1026,53 +937,56 @@ function mergeLessons(mine = {}, theirs = {}) {
 //   copies settle, rather than an older build that kept a stale value writing it back over a newer one
 //   on every sync. A field only one side has comes from that side, so one a newer build wrote survives
 //   an older build's merge.
-export function mergeSynced(local, cloud) {
+export function mergeSynced(local: Profile, cloud: Profile): SyncedProfile;
+export function mergeSynced(local: HydratedProfile, cloud: HydratedProfile): SyncedProfile<HydratedProfile>;
+export function mergeSynced(local: MergeProfile, cloud: MergeProfile): MergeProfile;
+export function mergeSynced(local: MergeProfile, cloud: MergeProfile): MergeProfile {
   const undone = [...new Set([...list(local.undoneClears), ...list(cloud.undoneClears)])].sort();
-  const clears = [clearsOf(local, undone), clearsOf(cloud, undone)];
+  const clears: [ReturnType<typeof clearsOf>, ReturnType<typeof clearsOf>] = [clearsOf(local, undone), clearsOf(cloud, undone)];
   const heard = new Set(clears.flatMap(({ heard: markers }) => [...markers]));
   const clearedAt = [...heard].sort().at(-1) || '';
   const named = liveNamed([...namedPairs(local), ...namedPairs(cloud)], undone);
   const namedIds = new Set(named.map(([, id]) => id));
 
-  const shownBy = (items) => {
-    const shown = new Set();
+  const shownBy = (items: HistoryRecord[]) => {
+    const shown = new Set<unknown>();
 
     for (const item of items) {
       if (item.textId) shown.add(item.textId);
 
-      if (item.challengeDate) shown.add(dailyChallengeId(item.challengeDate));
+      if (item.challengeDate) shown.add(dailyChallengeId(String(item.challengeDate)));
     }
 
     return shown;
   };
 
-  const starts = [legacyStart(local), legacyStart(cloud)];
+  const starts: [string, string] = [legacyStart(local), legacyStart(cloud)];
   const later = compare(stampOf(local.updatedAt), stampOf(cloud.updatedAt)) || compare(starts[0], starts[1]);
   const legacyAt = later < 0 ? starts[1] : starts[0];
 
-  const surviving = (side, { applied }, saved, start) => {
+  const surviving = (side: MergeProfile, { applied }: { applied: Set<string> }, saved: number, start: string): Surviving => {
     // Judged by the newest clear standing, unless this side applied it (see clearsOf), and, when saved
     // earlier, by the later start of the copy saved later (legacyClearedAt).
     const stale = Boolean(clearedAt) && !applied.has(clearedAt);
     const behind = saved < 0 && start < legacyAt;
 
-    const after = (stamp, id) => !namedIds.has(String(id ?? '')) && (!stale || (stamp || '') > clearedAt)
-      && (!behind || (stamp || '') > legacyAt);
+    const after = (stamp: unknown, id: unknown) => !namedIds.has(String(id ?? '')) && (!stale || compareRelational(stamp || '', clearedAt) > 0)
+      && (!behind || compareRelational(stamp || '', legacyAt) > 0);
 
-    const kept = {};
-    const taken = [];
+    const kept: Surviving = { attempts: [], runs: [], loops: [], compositions: [], bests: {}, rebest: false, lessons: {}, seenTextIds: [], practiceDays: {}, runCounts: {}, stale: false };
+    const taken: HistoryRecord[] = [];
 
-    for (const [name, { at }] of Object.entries(HISTORY)) {
+    for (const name of HISTORY_NAMES) {
       kept[name] = [];
 
-      for (const item of list(side[name])) (after(item[at], item.id) ? kept[name] : taken).push(item);
+      for (const item of list(side[name])) (after(item.at, item.id) ? kept[name] : taken).push(item);
     }
 
     const bests = Object.entries(side.bests || {}).filter(([, best]) => best);
     kept.bests = Object.fromEntries(bests.filter(([, best]) => after(best.at, best.attemptId)));
     kept.rebest = stale || Object.keys(kept.bests).length < bests.length;
     kept.lessons = survivingLessons(side.lessons, (stamp) => after(stamp, null));
-    const shown = shownBy(Object.keys(HISTORY).flatMap((name) => kept[name]));
+    const shown = shownBy(HISTORY_NAMES.flatMap((name) => kept[name]));
     const gone = shownBy(taken);
     kept.seenTextIds = list(side.seenTextIds).filter((id) => shown.has(id) || (!stale && !behind && !gone.has(id)));
     const cutoff = [stale ? clearedAt : null, behind ? legacyAt : null].filter(Boolean).sort().at(-1);
@@ -1087,26 +1001,27 @@ export function mergeSynced(local, cloud) {
   const mine = surviving(local, clears[0], later, starts[0]);
   const theirs = surviving(cloud, clears[1], -later, starts[1]);
 
-  const merged = { ...cloud, ...local };
+  const merged: MergeProfile = { ...cloud, ...local };
 
   for (const key of Object.keys(merged)) {
     if (MERGED_FIELDS.has(key)) continue;
-    const [mineValue, theirValue] = [local[key], cloud[key]];
+    const [mineValue, theirValue] = [property(local, key), property(cloud, key)];
 
     if (mineValue === undefined || (theirValue !== undefined
-      && takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mineValue, theirValue))) merged[key] = theirValue;
+      && takesTheirs(local.updatedAt || '', cloud.updatedAt || '', mineValue, theirValue))) Object.assign(merged, { [key]: theirValue });
   }
 
-  for (const [name, { at, keep }] of Object.entries(HISTORY)) {
-    const byId = new Map();
+  for (const name of HISTORY_NAMES) {
+    const { keep } = HISTORY[name];
+    const byId = new Map<string, HistoryRecord>();
 
     for (const item of [...mine[name], ...theirs[name]]) {
       const id = recordId(item);
-      byId.set(id, byId.has(id) ? fuller(byId.get(id), item) : item);
+      byId.set(id, byId.has(id) ? fuller(byId.get(id) || item, item) : item);
     }
 
     // Settled before the caps, so the day's earliest attempt is found even if the cap then drops it.
-    const union = settleDailyFirsts([...byId.values()].sort((a, b) => compare(a[at] || '', b[at] || '') || compare(recordId(a), recordId(b))));
+    const union = settleDailyFirsts([...byId.values()].sort((a, b) => compareRelational(a.at || '', b.at || '') || compare(recordId(a), recordId(b))));
 
     if (name === 'runs') Object.assign(merged, retainHistory(union, mergePracticeDays(mine, theirs, union)));
     else merged[name] = keep(union);
@@ -1121,8 +1036,14 @@ export function mergeSynced(local, cloud) {
   // On a side whose best a clear took, that best may have kept a later run from becoming one. With the old
   // best gone, that run is the best it would have been: the same rule storeAttempt uses.
   for (const run of [mine, theirs].filter((kept) => kept.rebest).flatMap((kept) => kept.runs)) {
-    const key = conditionKey(run.conditions);
-    const best = { wpm: run.score?.wpm, attemptId: run.id, at: run.at };
+    const conditions = run.conditions;
+    const score = run.score;
+    const wpm = isRecord(score) ? score.wpm : undefined;
+
+    const key = conditionKey(isRecord(conditions) ? conditions : undefined);
+
+    if (typeof wpm !== 'number') continue;
+    const best = { wpm, attemptId: run.id, at: run.at };
 
     if (bestRun(run) && Number.isFinite(best.wpm) && beatsBest(best, merged.bests[key])) merged.bests[key] = best;
   }
@@ -1137,7 +1058,7 @@ export function mergeSynced(local, cloud) {
 
   if (Object.keys(preferencesAt).length) merged.preferencesAt = preferencesAt;
   else delete merged.preferencesAt;
-  const answered = new Set([...heard].filter((marker) => [mine, theirs].every((kept, n) => kept.stale || clears[n].applied.has(marker))));
+  const answered = new Set([...heard].filter((marker) => [mine, theirs].every((kept, n) => kept.stale || (clears[n]?.applied.has(marker) ?? false))));
   setClears(merged, clearedAt, answered, heard);
 
   if (named.length) merged.historyClearedIds = named;
@@ -1162,7 +1083,10 @@ export function mergeSynced(local, cloud) {
 // Undo after a clear: the history from before it (`before`) comes back even if the clear's `marker` has
 // already reached other tabs, devices or the account row, because the marker is recorded as undone and no
 // copy that heard of it applies it again. Anything added anywhere since the clear is kept.
-export function revokeClear(current, before, marker) {
+export function revokeClear(current: HydratedProfile, before: HydratedProfile, marker: string): SyncedProfile<HydratedProfile>;
+export function revokeClear(current: Profile, before: Profile, marker: string): SyncedProfile;
+export function revokeClear(current: MergeProfile, before: MergeProfile, marker: string): MergeProfile;
+export function revokeClear(current: MergeProfile, before: MergeProfile, marker: string): MergeProfile {
   const undone = [...list(before.undoneClears), ...list(current.undoneClears), ...(marker ? [marker] : [])];
 
   return mergeSynced({ ...before, undoneClears: undone }, current);
@@ -1172,9 +1096,9 @@ export function revokeClear(current, before, marker) {
 // merged here: those copies as they were before it. Kept side by side, never merged with each other: a
 // merge would apply one copy's clear to another and drop what the hold is for. Each list is released by
 // its own clear's undo only, so a newer clear never drops what an older one holds.
-const holdCopy = (list_, copy) => (list_.some((held) => held === copy || sameProfile(held, copy)) ? list_ : [...list_, copy]);
+const holdCopy = (list_: MergeProfile[], copy: MergeProfile) => (list_.some((held) => held === copy || sameProfile(held, copy)) ? list_ : [...list_, copy]);
 
-export function joinHolds(a, b) {
+export function joinHolds(a: Holds, b: Holds) {
   const out = { ...a };
 
   for (const [marker, copies] of Object.entries(b || {})) for (const copy of copies) out[marker] = holdCopy(out[marker] || [], copy);
@@ -1183,10 +1107,10 @@ export function joinHolds(a, b) {
 }
 
 // The ids a copy holds that a clear's named pairs can take: its records', and those its bests point to.
-const heldIds = (copy) => {
+const heldIds = (copy: MergeProfile) => {
   const ids = new Set();
 
-  for (const name of Object.keys(HISTORY)) for (const item of list(copy[name])) if (item.id !== undefined && item.id !== null) ids.add(String(item.id));
+  for (const name of HISTORY_NAMES) for (const item of list(copy[name])) if (item.id !== undefined && item.id !== null) ids.add(String(item.id));
 
   for (const best of Object.values(copy.bests || {})) if (best?.attemptId) ids.add(String(best.attemptId));
 
@@ -1201,7 +1125,10 @@ const heldIds = (copy) => {
 // copies already share a newer marker, and the clearing device may hold less of the record than the copy
 // it was taken from (only its summary, once the 24-trace cap has dropped the trace). Returns
 // { merged, holds }; the caller keeps holds in memory.
-export function mergeAndHold(holds, local, cloud) {
+export function mergeAndHold(holds: Holds, local: Profile, cloud: Profile): { merged: SyncedProfile; holds: Holds };
+export function mergeAndHold(holds: Holds, local: HydratedProfile, cloud: HydratedProfile): { merged: SyncedProfile<HydratedProfile>; holds: Holds };
+export function mergeAndHold(holds: Holds, local: MergeProfile, cloud: MergeProfile): { merged: MergeProfile; holds: Holds };
+export function mergeAndHold(holds: Holds, local: MergeProfile, cloud: MergeProfile): { merged: MergeProfile; holds: Holds } {
   holds = { ...holds };
   let merged = mergeSynced(local, cloud);
   const sides = [local, cloud];
@@ -1209,7 +1136,7 @@ export function mergeAndHold(holds, local, cloud) {
   const released = Object.keys(holds).filter((marker) => list(merged.undoneClears).includes(marker));
 
   for (const marker of released) {
-    for (const copy of holds[marker]) {
+    for (const copy of holds[marker] || []) {
       merged = mergeSynced({ ...copy, undoneClears: [...new Set([...list(copy.undoneClears), ...list(merged.undoneClears)])] }, merged);
       sides.push(copy);
     }
@@ -1220,7 +1147,7 @@ export function mergeAndHold(holds, local, cloud) {
   const marker = merged.historyClearedAt;
   const pairs = namedPairs(merged);
   const undone = list(merged.undoneClears);
-  const knowing = (side) => (undone.length ? { ...side, undoneClears: undone } : side);
+  const knowing = (side: MergeProfile) => (undone.length ? { ...side, undoneClears: undone } : side);
 
   for (const side of sides) {
     const ids = pairs.length ? heldIds(side) : new Set();
@@ -1235,7 +1162,10 @@ export function mergeAndHold(holds, local, cloud) {
 }
 
 // Undo here of the clear `marker`, made in this tab from `before`: released with everything held for it.
-export function undoClearHere(holds, current, marker, before) {
+export function undoClearHere(holds: Holds, current: Profile, marker: string, before: Profile): { merged: SyncedProfile; holds: Holds };
+export function undoClearHere(holds: Holds, current: HydratedProfile, marker: string, before: HydratedProfile): { merged: SyncedProfile<HydratedProfile>; holds: Holds };
+export function undoClearHere(holds: Holds, current: MergeProfile, marker: string, before: MergeProfile): { merged: MergeProfile; holds: Holds };
+export function undoClearHere(holds: Holds, current: MergeProfile, marker: string, before: MergeProfile): { merged: MergeProfile; holds: Holds } {
   const undone = { ...current, undoneClears: [...new Set([...list(current.undoneClears), marker])] };
 
   return mergeAndHold(joinHolds(holds, { [marker]: [before] }), undone, undone);
@@ -1243,14 +1173,14 @@ export function undoClearHere(holds, current, marker, before) {
 
 // A digest of everything a merge can change, without walking every keystroke: two profiles with the
 // same signature hold the same records, bests, seen passages and settings.
-export function syncSignature(profile) {
-  const sorted = (object) => Object.keys(object || {}).sort().map((key) => [key, object[key]]);
+export function syncSignature(profile: MergeProfile) {
+  const sorted = <T>(object: Record<string, T> | undefined): [string, T | undefined][] => Object.keys(object || {}).sort().map((key) => [key, object?.[key]]);
 
-  const rest = Object.keys(profile).filter((key) => profile[key] !== undefined && !(key in HISTORY)
+  const rest = Object.keys(profile).filter((key) => property(profile, key) !== undefined && !Object.hasOwn(HISTORY, key)
     && !['bests', 'seenTextIds', 'lessons', 'preferences', 'preferencesAt', 'practiceDays', 'runCounts'].includes(key)).sort();
 
   return JSON.stringify([
-    Object.keys(HISTORY).map((name) => list(profile[name]).map((item) => [item.id, item.patterns?.length ?? null, item.firstDailyAttempt ?? null])),
+    HISTORY_NAMES.map((name) => list(profile[name]).map((item) => [item.id, lengthOf(item.patterns) ?? null, item.firstDailyAttempt ?? null])),
     sorted(profile.bests).map(([key, best]) => [key, best?.wpm, best?.at, best?.attemptId]),
     [...list(profile.seenTextIds)].sort(),
     sorted(profile.preferences),
@@ -1258,33 +1188,27 @@ export function syncSignature(profile) {
     sorted(profile.lessons),
     sorted(validPracticeDays(profile.practiceDays)),
     sorted(validRunCounts(profile.runCounts)).map(([counter, days]) => [counter, sorted(days)]),
-    rest.map((key) => [key, profile[key]]),
+    rest.map((key) => [key, property(profile, key)]),
   ]);
 }
 
-export const sameProfile = (a, b) => syncSignature(a) === syncSignature(b);
+export const sameProfile = (a: MergeProfile, b: MergeProfile) => syncSignature(a) === syncSignature(b);
 
-// The account row: everything but the keystroke recordings, which stay on the device (fetchCloudProfile).
-// A copy is compared with the row by what the row holds, so recordings held here never call for a write.
-export const rowCopy = (profile) => {
-  const { attempts, ...rest } = profile || {};
-
-  return rest;
-};
-
-export const sameRow = (a, b) => sameProfile(rowCopy(a), rowCopy(b));
+export const sameRow = (a: MergeProfile, b: MergeProfile) => sameProfile(rowCopy(a), rowCopy(b));
 
 // Folds a one-off import (the pre-accounts profile) into a profile: runs and loops by id, the higher best.
 // The base keeps its preferences unless it has no history of its own yet.
-export function mergeProfiles(base, extra) {
-  const byId = (items) => [...new Map(items.map((item) => [item.id, item])).values()];
+export function mergeProfiles(base: Profile, extra: Profile): Profile;
+export function mergeProfiles(base: HydratedProfile, extra: HydratedProfile): HydratedProfile;
+export function mergeProfiles(base: Profile | HydratedProfile, extra: Profile | HydratedProfile): Profile | HydratedProfile {
+  const byId = <T extends { id?: unknown }>(items: T[]) => [...new Map(items.map((item) => [item.id, item])).values()];
   const bests = { ...extra.bests };
 
   for (const [key, best] of Object.entries(base.bests)) {
-    if (!bests[key] || best.wpm >= bests[key].wpm) bests[key] = best;
+    if (!bests[key] || best.wpm >= (bests[key]?.wpm ?? 0)) bests[key] = best;
   }
 
-  const baseIsNew = Object.keys(HISTORY).every((key) => !base[key]?.length) && !Object.keys(base.practiceDays || {}).length;
+  const baseIsNew = HISTORY_NAMES.every((key) => !base[key]?.length) && !Object.keys(base.practiceDays || {}).length;
   const runs = byId([...(extra.runs || []), ...(base.runs || [])]);
 
   return {
@@ -1315,23 +1239,94 @@ export const MAX_SUGGESTION = 1000;
 // Every value body[data-view] takes; the table's feature_suggestions_view_check holds the same list.
 // Train shared the results screen when the table was made, so it is stored as "results" too.
 const SUGGESTION_VIEWS = new Set(['practice', 'results', 'progress', 'compete', 'learn']);
-const SUGGESTION_VIEW_NAMES = { train: 'results' };
+const SUGGESTION_VIEW_NAMES = new Map([['train', 'results']]);
 
 // The row to store, or the sentence to show instead.
-export function suggestionRow(text, view) {
+export function suggestionRow(text: string, view: string) {
   const body = typeof text === 'string' ? text.trim() : '';
 
   if (!body) return { error: 'Write a suggestion first.' };
 
   if (body.length > MAX_SUGGESTION) return { error: `Keep it under ${MAX_SUGGESTION} characters.` };
-  const name = SUGGESTION_VIEW_NAMES[view] || view;
+  const name = SUGGESTION_VIEW_NAMES.get(view) || view;
 
   return { row: { body, view: SUGGESTION_VIEWS.has(name) ? name : null } };
 }
 
-export async function sendSuggestion(text, view) {
+export async function sendSuggestion(text: string, view: string) {
   const { row, error } = suggestionRow(text, view);
 
   if (error) throw new AuthError(error);
   await request('/rest/v1/feature_suggestions', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: row });
+}
+
+function openSchema<const Fields extends Schema.Struct.Fields>(fields: Fields) {
+  return Schema.StructWithRest(Schema.Struct(fields), [Schema.Record(Schema.String, Schema.Unknown)]);
+}
+
+const HistoryRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
+
+
+const MergeProfileSchema = openSchema({
+  version: Schema.optional(Schema.Literal(2)), profileId: Schema.optional(Schema.Unknown),
+  preferences: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)), preferencesAt: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  attempts: Schema.optional(Schema.mutable(Schema.Array(HistoryRecordSchema))), runs: Schema.optional(Schema.mutable(Schema.Array(HistoryRecordSchema))),
+  loops: Schema.optional(Schema.mutable(Schema.Array(HistoryRecordSchema))), compositions: Schema.optional(Schema.mutable(Schema.Array(HistoryRecordSchema))),
+  bests: Schema.optional(Schema.Record(Schema.String, openSchema({ wpm: Schema.Number }))),
+  seenTextIds: Schema.optional(Schema.mutable(Schema.Array(Schema.String))), practiceDays: Schema.optional(Schema.Record(Schema.String, Schema.Number)),
+  runCounts: Schema.optional(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.mutable(Schema.Tuple([Schema.Number, Schema.Number]))))),
+  lessons: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  historyClearedAt: Schema.optional(Schema.String), appliedClears: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  heardClears: Schema.optional(Schema.mutable(Schema.Array(Schema.String))), undoneClears: Schema.optional(Schema.mutable(Schema.Array(Schema.String))),
+  historyClearedIds: Schema.optional(Schema.mutable(Schema.Array(Schema.Unknown))),
+  legacyClearedAt: Schema.optional(Schema.String), mergeStamp: Schema.optional(Schema.String), updatedAt: Schema.optional(Schema.String),
+});
+
+function parseMergeProfile(value: unknown): MergeProfile {
+  return decodeReply(MergeProfileSchema, value);
+}
+
+const ProfileRowSchema = openSchema({ data: Schema.optional(Schema.Unknown), updated_at: Schema.optional(Schema.String), board: Schema.optional(Schema.Unknown) });
+
+export interface BoardColumn {
+  v: number; at: string;
+  days: Record<string, { version: string; wpm: number; accuracy: number; attempts: number }>;
+  weeks: Record<string, { seconds: number; runs: number }>;
+  bests: Record<string, { wpm: number; accuracy: number; date: string }>;
+}
+
+type BoardWriter = (at: string) => BoardColumn | null | undefined;
+
+const GeneratedThemeSchema = Schema.Struct({
+  name: Schema.String, mode: Schema.Literals(['dark', 'light']), colors: Schema.Record(Schema.String, Schema.String),
+});
+
+export type GeneratedTheme = typeof GeneratedThemeSchema.Type;
+
+function relationalValue(value: unknown): string | number {
+  if (typeof value === 'string' || typeof value === 'number') return value;
+
+  if (value === undefined) return NaN;
+
+  if (value === null || typeof value === 'boolean') return Number(value);
+
+  return String(value);
+}
+
+function compareRelational(a: unknown, b: unknown): number {
+  const first = relationalValue(a);
+  const second = relationalValue(b);
+
+  return first < second ? -1 : first > second ? 1 : 0;
+}
+
+function lengthOf(value: unknown): unknown {
+  if (typeof value === 'string' || Array.isArray(value)) return value.length;
+
+  return isRecord(value) ? value.length : undefined;
+}
+
+
+function rawField(value: unknown, key: string): unknown {
+  return isRecord(value) ? value[key] : undefined;
 }

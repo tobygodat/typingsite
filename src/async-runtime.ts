@@ -21,11 +21,16 @@ export class AsyncLifetime {
     if (!this.active || signal?.aborted) throw new WorkCancelled('Work was cancelled.');
     const fiber = Effect.runSync(Effect.forkIn(Effect.scoped(program), this.scope));
     const exit = await Effect.runPromiseExit(Effect.ensuring(Fiber.join(fiber), Fiber.interrupt(fiber)), { signal });
+
     if (!this.active || signal?.aborted) throw new WorkCancelled('Work was cancelled.');
+
     if (Exit.isSuccess(exit)) return exit.value;
     const failure = Cause.findError(exit.cause);
+
     if (Result.isSuccess(failure)) throw failure.success;
-    throw new WorkCancelled('Work was cancelled.');
+
+    if (Cause.hasInterruptsOnly(exit.cause)) throw new WorkCancelled('Work was cancelled.');
+    throw Cause.squash(exit.cause);
   }
 
   async close(): Promise<void> {
@@ -37,7 +42,7 @@ export class AsyncLifetime {
 export const createAsyncPage = (): AsyncLifetime => new AsyncLifetime();
 
 let page = createAsyncPage();
-let account: { identity: string; lifetime: AsyncLifetime } | undefined;
+let account: { identity: string | null; lifetime: AsyncLifetime } | undefined = { identity: null, lifetime: new AsyncLifetime(page) };
 
 export function pageLifetime(): AsyncLifetime {
   return page;
@@ -45,9 +50,9 @@ export function pageLifetime(): AsyncLifetime {
 
 /** Call before publishing a different sign-in, including another sign-in to the same user. */
 export async function replaceAccountLifetime(identity: string | null): Promise<void> {
-  if (identity !== null && account?.identity === identity && account.lifetime.active) return;
+  if (account?.identity === identity && account.lifetime.active) return;
   const previous = account;
-  account = identity === null ? undefined : { identity, lifetime: new AsyncLifetime(page) };
+  account = { identity, lifetime: new AsyncLifetime(page) };
   await previous?.lifetime.close();
 }
 
@@ -62,7 +67,10 @@ export async function disposePageWork(): Promise<void> {
 }
 
 export function startPageWork(): void {
-  if (!page.active) page = createAsyncPage();
+  if (!page.active) {
+    page = createAsyncPage();
+    account = { identity: null, lifetime: new AsyncLifetime(page) };
+  }
 }
 
 export function within<A, E>(program: Effect.Effect<A, E>, milliseconds: number, failure: () => E): Effect.Effect<A, E> {
@@ -71,4 +79,15 @@ export function within<A, E>(program: Effect.Effect<A, E>, milliseconds: number,
 
 export function abortable<A, E>(send: (signal: AbortSignal) => PromiseLike<A>, failure: (cause: unknown) => E): Effect.Effect<A, E> {
   return Effect.tryPromise({ try: send, catch: failure });
+}
+
+export function deadline<A, E>(send: (signal: AbortSignal) => PromiseLike<A>, milliseconds: number, failure: (cause: unknown) => E): Effect.Effect<A, E> {
+  return Effect.scoped(Effect.gen(function*() {
+    const controller = yield* Effect.acquireRelease(Effect.sync(() => new AbortController()),
+      (held) => Effect.sync(() => held.abort()));
+
+    yield* Effect.forkChild(Effect.sleep(milliseconds).pipe(Effect.andThen(Effect.sync(() => controller.abort()))));
+
+    return yield* abortable(() => send(controller.signal), failure);
+  }));
 }

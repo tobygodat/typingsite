@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Effect } from 'effect';
-import { AsyncLifetime, abortable, within, WorkCancelled } from '../src/async-runtime.js';
+import { AsyncLifetime, abortable, deadline, within, WorkCancelled } from '../src/async-runtime.js';
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -9,13 +9,16 @@ function stalled() {
   let observed;
   let started;
   const ready = new Promise((resolve) => { started = resolve; });
+
   const program = abortable((signal) => {
     observed = signal;
     started();
+
     return new Promise((resolve, reject) => {
       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
     });
   }, (cause) => cause);
+
   return { program, ready, signal: () => observed };
 }
 
@@ -66,5 +69,30 @@ test('closing an account interrupts child requests while the page remains usable
   await rejected;
   assert.equal(work.signal().aborted, true);
   assert.equal(await page.run(Effect.succeed('guest')), 'guest');
+  await page.close();
+});
+
+
+test('disposing an account releases the shared deadline signal and its in-flight request', async () => {
+  const account = new AsyncLifetime();
+  let signal;
+
+  const pending = account.run(deadline((received) => {
+    signal = received;
+
+    return new Promise((resolve, reject) => received.addEventListener('abort', () => reject(received.reason), { once: true }));
+  }, 30000, (cause) => cause));
+
+  const rejected = assert.rejects(pending, WorkCancelled);
+  await turn();
+  await account.close();
+  await rejected;
+  assert.equal(signal.aborted, true);
+});
+
+test('the Promise boundary preserves an Effect defect instead of reporting it as cancellation', async () => {
+  const page = new AsyncLifetime();
+  const defect = new Error('unexpected failure');
+  await assert.rejects(page.run(Effect.die(defect)), (error) => error === defect);
   await page.close();
 });
