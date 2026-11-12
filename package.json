@@ -7,7 +7,7 @@
     "dev": "npm run build && node server.mjs",
     "start": "node server.mjs",
     "build": "node scripts/build-static.mjs",
-    "evaluate:learner": "node scripts/evaluate-learner.mjs",
+    "evaluate:learner": "node --import tsx scripts/evaluate-learner.mjs",
     "lint": "oxlint --deny-warnings",
     "test": "node --import tsx --test",
     "test:e2e": "playwright test",

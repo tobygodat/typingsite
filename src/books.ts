@@ -1,5 +1,5 @@
 import { at } from './domain-values.js';
-import type { RunRecord } from './insights.js';
+import type { RunRecord } from './profile-types.js';
 export interface BookPage { id: string; book: string; text: string; page: number }
 // Book mode: the opening sections of four public-domain books, typed a page at a time.
 // The text is in book-texts.js (generated); pagination and the place in each book live here.
