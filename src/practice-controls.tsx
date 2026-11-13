@@ -28,6 +28,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
 
       if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
     };
+
     document.addEventListener('pointerdown', dismiss);
 
     return () => document.removeEventListener('pointerdown', dismiss);
