@@ -7,7 +7,7 @@ import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample } from './week-chan
 import type { weekChange } from './week-change.js';
 import type { LearningStore } from './learning-store.js';
 import type { MoverView } from './progress-sections.js';
-import type { ScoredRun } from './profile-types.js';
+import type { AnalysisRun } from './profile-types.js';
 
 const plural = (count: number | undefined, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -85,7 +85,7 @@ export function createProgressFigures(learning: LearningStore) {
   }
 
 
-  function renderTrendFigures(runs: readonly ScoredRun[], note: string) {
+  function renderTrendFigures(runs: readonly AnalysisRun[], note: string) {
     const stats = periodStats(runs);
     const speed = (wpm: number) => [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()];
     const day = stats.best?.at ? ` on ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ', date unavailable';

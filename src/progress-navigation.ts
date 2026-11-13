@@ -7,7 +7,9 @@ export type ProgressTrend = 'speed' | 'accuracy' | 'consistency';
 
 export const PROGRESS_DETAILS: Record<ProgressDetail, string> = { '': '', runs: 'Runs', trends: 'Trends', keys: 'Keys', calendar: 'Practice', standard: 'Standard score', compose: 'Composing' };
 
-type Opener = HTMLElement | (() => HTMLElement | null) | null;
+type FocusTarget = HTMLElement | SVGElement;
+
+type Opener = FocusTarget | (() => FocusTarget | null) | null;
 
 interface ProgressNavigationState { period: ProgressPeriod; key: string; view: ProgressTrend; allRuns: boolean; detail: ProgressDetail; moversOpen: boolean }
 
@@ -57,7 +59,7 @@ export function createProgressNavigation() {
     ports?.history();
     const target = typeof back === 'function' ? back() : back;
 
-    if (target?.isConnected && !target.hidden) target.focus();
+    if (target?.isConnected && !('hidden' in target && target.hidden)) target.focus();
     else ports?.landFocus({ scroll: true });
   }
 

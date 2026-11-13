@@ -945,3 +945,17 @@ test('under forced colours the small and full charts draw their lines in system 
   await page.locator('#week-speed button').click();
   await expect.poll(() => stroke('#progress-trend .trend-line')).toBe(system);
 });
+
+test('an id-less historical chart point opens its retained row without inventing a run id', async ({ page, supabase }) => {
+  const historical = run(0, 60, 95);
+  delete historical.id;
+  await openProgress(page, supabase, [historical]);
+  await page.locator('#week-speed button').click();
+  await page.locator('#progress-trend .trend-dot').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'runs');
+  const row = page.locator('#run-history > details[open]');
+  await expect(row).toHaveCount(1);
+  expect(await row.getAttribute('data-run-id')).toBeNull();
+  await expect(row.locator('summary')).toBeFocused();
+});

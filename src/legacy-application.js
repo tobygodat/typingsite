@@ -1,5 +1,5 @@
+import { createProgressHistory } from './progress-history.js';
 import { createGhostLaunch } from './ghost-launch.js';
-import { createProgressFigures } from './progress-figures.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
@@ -37,7 +37,7 @@ import {
 } from './typing.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
-import { BOOKS, BOOK_VERSION, bookName, bookPage, bookPlace, openBook } from './books.js';
+import { BOOKS, BOOK_VERSION, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength } from './lengths.js';
 import { layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight } from './word-highlight.js';
@@ -55,13 +55,11 @@ import { challengePayload, challengeTextId,
   listChallenges } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
 import { missedCopy } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
-import { renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
-import { weekChange } from './week-change.js';
+import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, wpmFromSpeed } from './units.js';
 import {
   LESSONS, LESSON_ACCURACY, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
-  lessonsStarted, makeupShort, nextLessonIndex,
+  makeupShort, nextLessonIndex,
 } from './lessons.js';
 import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
@@ -296,7 +294,7 @@ const adaptivePassage = trainingPolicy.adaptivePassage;
 const drillPassage = trainingPolicy.drillPassage;
 
 const trainingResults = createTrainingResults(learning, training, sync, { conditions, recommendation: trainingRecommendation, baseline: baselineFor,
-  layoutMismatch, practiceTarget, startDrill, history: renderHistory });
+  layoutMismatch, practiceTarget, startDrill, history: () => renderHistory() });
 
 const updateComparison = trainingResults.update;
 const showComparison = trainingResults.show;
@@ -783,7 +781,7 @@ function applySpeedUnit() {
   if (document.body.dataset.view === 'progress') {
     drawProgressView();
 
-    if (progressWeek) renderLead(progressWeek.lead);
+    progressHistory.relabelLead();
   }
 }
 
@@ -1889,15 +1887,7 @@ function dateCopy(at) {
   return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
 }
 
-function openHistoryRun(id) {
-  if (progressState.detail !== 'runs') openProgressDetail('runs', { opener: document.activeElement, focus: false });
-  const find = () => [...$('run-history').children].find((item) => item.dataset.runId === id);
 
-  if (!find() && listedRuns.some((run) => run.id === id)) showAllRuns();
-  const row = find();
-
-  if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
-}
 
 // The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
 // Older corpus or standard recipe versions need a new baseline; a code run is never one.
@@ -1946,114 +1936,27 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 // in the line below, so the values never depend on a hover tooltip. Ten keys in a phone-width row
 // cannot each be a 44px touch target, so on coarse pointers the heatmap is a picture and a native
 // "Key" select drives the same line.
-const coarsePointer = window.matchMedia('(pointer: coarse)');
-let heatRuns = [];
-
-function renderKeys(runs) { heatRuns = runs; learning.progress.keys.show(runs, coarsePointer.matches); }
-
-// Marks one key as chosen (and, in the grid, the tab stop) and shows its numbers; with no key
-// chosen yet, "q" is the stop.
-
-// The practice calendar (Sunday-first columns), static by design: 26 weeks across the column, fewer on a phone.
-// The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
-// Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
-// focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
-
-
-// The day the Progress page was last drawn for (renderHistory).
-let historyDay = '';
-
 const narrowColumn = window.matchMedia('(max-width: 760px)');
 
 const practiceProgress = createPracticeProgress(learning, { inputLayout, recipeSummary, conditionTail, dateCopy,
   calendarWeeks: () => narrowColumn.matches ? 17 : 26, coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
 
-const renderStandardScore = practiceProgress.standard;
+
 const renderGoal = practiceProgress.goal;
-const renderComposeHistory = practiceProgress.composing;
+
 
 
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = learning.progress.navigation.state;
-const { renderLead, renderMovers, renderTrendFigures } = createProgressFigures(learning);
-learning.progress.navigation.configure({ history: renderHistory, draw: drawProgressView, focusShown, landFocus: (options) => landProgressFocus(options) });
-
-// The run list opens on the newest few, and one button builds the rest. Choosing a period, test or
-// condition set, or another profile, opens it on the newest few again.
-const RECENT_RUNS = 10;
-let listedRuns = [];
-
-function chooseProgress(choice) {
-  if (Object.entries(choice).every(([name, value]) => progressState[name] === value)) return;
-  Object.assign(progressState, choice, { allRuns: false });
-  renderHistory();
-}
-
-function renderRunRows() {
-  const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
-  const previous = learning.progress.runs.getSnapshot();
-  flushSync(() => learning.progress.runs.publish({ rows: shown.map(runRow), total: listedRuns.length, revision: previous.revision + 1 }));
-}
-
-function showAllRuns() {
-  progressState.allRuns = true;
-  const previous = learning.progress.runs.getSnapshot();
-  flushSync(() => learning.progress.runs.publish({ ...previous, rows: listedRuns.map(runRow) }));
-}
-
-// What the width-dependent charts last drew from, so a resize, a unit change or a new view redraws them:
-// the runs and the period window they were selected from, taken on the same day.
-let progressRuns = [];
-let progressTrendNote = '';
-let progressWindow = null;
-
-// The overview's week (weekChange), kept so a unit change can redraw the lead without closing anything.
-let progressWeek = null;
-
-
-const shapeLabel = (shape) => {
-  if (shape.mode === 'words') return { text: `${shape.size} words` };
-
-  if (shape.mode === 'time') return { text: `${shape.size} s`, label: `${shape.size} seconds` };
-
-  if (shape.mode === 'quote') return { text: `${shape.size} quote` };
-
-  if (shape.mode === 'code') return { text: `code · ${shape.size}` };
-
-  if (shape.mode === 'book') return { text: bookName(shape.size) };
-
-  return { text: shape.mode };
-};
-
-// One pill per test length in testShapes' order; a length without runs is disabled.
-function renderTestPills(shapes) {
-  const selected = shapes.find((shape) => shape.variants.some((variant) => variant.key === progressState.key));
-  const focused = document.activeElement?.closest('#progress-tests') ? { ...document.activeElement.dataset } : null;
-  const variants = selected?.variants || [];
-  const labels = conditionLabels(variants.map((variant) => variant.conditions));
-  const tests = shapes.map((shape) => ({ id: shape.id, mode: shape.mode, ...shapeLabel(shape), key: shape.variants[0]?.key, selected: shape === selected, disabled: !shape.variants.length }));
-  const previous = learning.progress.filters.view.getSnapshot();
-  flushSync(() => learning.progress.filters.view.publish({ ...previous, tests, variants: variants.map((variant, i) => ({ key: variant.key, label: labels[i] })), key: progressState.key, period: progressState.period }));
-
-  if (focused) {
-    const pill = [...$('progress-tests').children].find((node) => node.dataset.shape === focused.shape && !node.disabled && node.isConnected);
-
-    if (pill?.checkVisibility()) pill.focus({ preventScroll: true }); else landProgressFocus();
-  }
-}
+const progressHistory = createProgressHistory(learning, practiceProgress, { describe: describeConditions, describeRun, date: dateCopy, loops: renderLoops, focusShown });
+const { renderHistory, renderWeek, drawProgressView, chooseProgress, hasAnyHistory } = progressHistory;
 
 // Where focus lands on Progress when what held it is gone, hidden or disabled (TOB-448): somewhere a sighted keyboard
 // user can see it. In a detail view, the view's own heading; on the overview, the empty state's heading, or the lead's
 // figure. The page's heading is for screen readers only, so it is never the landing. The view is the one on screen (a
 // view of rows stays until it is left, after a clear too); the overview's state is read from the history, so a landing
 // chosen mid-redraw is the one the redraw ends on.
-function progressLanding() {
-  if ($('progress-screen').dataset.detail) return $('progress-detail-heading');
-
-  return learning.profile.runs.some(practiceRun) || learning.profile.loops.length ? $('lead-figure') : $('progress-empty-title');
-}
-
 // Whether the person's last input was a key. Where the page moves focus for them, each engine guesses differently
 // whether to show its ring (Firefox shows none after the element that held focus is gone), so the landing shows it
 // by this instead: a ring for someone using the keyboard, none after a click or a tap (TOB-448).
@@ -2073,123 +1976,23 @@ function focusShown(target, { scroll = false } = {}) {
   target.focus({ preventScroll: !scroll });
 }
 
-const landProgressFocus = (options) => focusShown(progressLanding(), options);
 
-function runRow(run) {
-  const trace = learning.profile.attempts.find((a) => a.id === run.id);
 
-  return { id: run.id, wpm: run.score.wpm, accuracy: run.score.accuracy,
-    date: dateCopy(run.at) + (run.kind === 'retest' ? ' · retest' : run.conditions?.mode === 'standard' ? ' · standard' : '') + (run.fresh === false ? ' · repeated text' : ''),
-    errors: run.errors, time: (run.elapsedMs / 1000).toFixed(1) + ' s', description: copyParts(describeRun(run)),
-    textNote: 'Text: ' + run.textId + ' · ' + (run.fresh === false ? 'previously displayed' : 'fresh when displayed'), passage: trace?.text };
-}
 
-function renderHistory() {
-  // One moment for the whole page, so the week, every figure, chart and list read the same days.
-  const date = new Date();
-  const { source, key, span, runRows, loops } = renderOverview(date);
-  renderStandardScore();
-  renderTraining();
-  renderGoal(date);
-  renderKeys(source ? filterRuns(learning.profile.runs, key, span) : []);
-  listedRuns = [...runRows].reverse();
-  renderRunRows();
-  renderLoops(loops);
-  renderComposeHistory();
-  showProgressDetail();
-}
+
+
 
 // The overview, and the conditions it reads: the lead, what moved it, the small charts and the quiet links. Every
 // change to the history redraws it (followHistory, through renderWeek), whatever the page shows; the detail views
 // wait for renderHistory, so a row someone has open there stays open.
-function renderOverview(date) {
-  historyDay = dayKey(date);
-  const listed = learning.profile.runs.filter(practiceRun);
-  const hasProgress = listed.length > 0 || learning.profile.loops.length > 0;
-  const hasHistory = hasAnyHistory();
-  // Conditions never mix: the lead, the charts and every list read one exact condition set. A length opens on its
-  // most used set; with no choice yet, on the length of the newest run.
-  const shapes = testShapes([...listed, ...learning.profile.loops]);
-  const variants = shapes.flatMap((shape) => shape.variants);
 
-  // An emptied history keeps the choice, so undoing a clear comes back to the conditions that were showing.
-  if (variants.length && !variants.some((variant) => variant.key === progressState.key)) {
-    const newest = listed.at(-1) || learning.profile.loops.at(-1);
-    progressState.key = (newest && shapes.find((shape) => shape.id === shapeOf(newest.conditions))?.variants[0].key) || variants[0]?.key || '';
-    progressState.allRuns = false;
-  }
-
-  renderTestPills(shapes);
-  const source = variants.find((variant) => variant.key === progressState.key)?.conditions;
-  const key = source ? progressState.key : '';
-  const period = progressState.period;
-
-  const siblings = shapes.find((shape) => shape.variants.some((variant) => variant.key === key))?.variants.map((variant) => variant.conditions);
-  flushSync(() => learning.progress.filters.view.publish({ ...learning.progress.filters.view.getSnapshot(), hasSource: Boolean(source), conditions: source ? describeConditions(source, siblings) : '' }));
-
-  const week = weekChange({ runs: learning.profile.runs, loops: learning.profile.loops, practiceDays: learning.profile.practiceDays, key, conditions: source || null,
-    focus: learning.preferences.trainFocus, goal: learning.preferences.dailyGoal, period, now: date.getTime() });
-
-  progressWeek = week;
-  renderLead(week.lead);
-  renderMovers(week);
-  progressRuns = week.charts.runs;
-  progressWindow = week.charts.window;
-
-  // What the charts can't show: an empty period, or runs listed that aren't drawn.
-  const span = periodWindow(period, date);
-  const runRows = source ? filterRuns(listed, key, span) : [];
-  const repeats = runRows.length - progressRuns.length;
-  const repeatCopy = repeats ? `${repeats} repeated-text ${repeats === 1 ? 'run' : 'runs'} not charted.` : '';
-  progressTrendNote = progressRuns.length
-    ? [progressRuns.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
-    : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
-  flushSync(() => learning.progress.charts.publish({ visible: Boolean(progressRuns.length) }));
-
-  // Everything else, one step away.
-  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
-  const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
-  const links = { runs: hasProgress, keys: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
-
-  flushSync(() => learning.progress.overview.publish({ hasHistory, hasProgress, links,
-    runsLabel: runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs' }));
-
-  // The full charts are opened from a small chart, not a link, and stay open through their own filters.
-  if (progressState.detail && !{ ...links, trends: hasProgress }[progressState.detail]) progressState.detail = '';
-
-  return { source, key, span, runRows, loops };
-}
 
 // Under the fuller charts, the period in figures: the median speed and accuracy of the runs charted, the fastest
 // single run with its day (the chart names the best day's median, which can be another day), and how many runs.
 // Speeds are speed figures, so a unit change rewords them.
 // A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
 // kept where it was. A detail view of rows keeps them until it is left, so a row someone has open stays open.
-function renderWeek() {
-  const open = progressState.detail;
-  const focused = $('progress-screen').contains(document.activeElement) ? document.activeElement : null;
-  renderOverview(new Date());
 
-  // The full charts keep no rows, so when a clear from another tab leaves them nothing to draw they close whole,
-  // back to the overview. A view of rows stays as it is until it is left.
-  if (open === 'trends' && !progressState.detail) {
-    showProgressDetail();
-  } else {
-    // The full charts follow at once too, unless focus is on one of their points, which a redraw would drop: then
-    // they wait, whole, for the view's next drawing.
-    const held = ['progress-trend', 'accuracy-trend', 'progress-spread'].some((id) => $(id).contains(document.activeElement));
-
-    if (!progressState.detail || (progressState.detail === 'trends' && !held)) drawProgressView();
-  }
-
-  // Focus that was on the page and now rests on nothing, or on something hidden or disabled, lands where Progress
-  // lands it (progressLanding), never on the body. Focus that wasn't on the page stays where it was. A row drawn again
-  // has already taken its focus back (renderMovers).
-  const now = document.activeElement;
-  const lost = focused && (!now || now === document.body || now.disabled || Boolean(now.closest('[hidden]')));
-
-  if (lost) landProgressFocus();
-}
 
 // The lead: the change in speed, this week against the week before, with the two medians beside it and one line of
 // sample sizes and conditions; or, without two weeks to compare, what there is and when a change can show. Speeds
@@ -2244,44 +2047,8 @@ function renderLoops(loops) {
 // Everything the overview doesn't show sits one step away in a detail view, each with a way back. The conditions
 // and the period move into a view that reads them, and back to the overview after.
 const openProgressDetail = learning.progress.navigation.open;
-const showProgressDetail = learning.progress.navigation.showDetail;
-const openTrend = learning.progress.navigation.openTrend;
 
-// Only what is on screen is drawn: a hidden chart has no width to draw to.
-const shownProgressView = () => progressState.view;
 
-function drawProgressView() {
-  const detail = progressState.detail;
-  const view = detail === 'trends' ? shownProgressView() : '';
-  const overview = !detail && !$('week-charts').hidden && document.body.dataset.view === 'progress';
-
-  const draw = {
-    'week-speed': () => renderWeekChart($('week-speed'), progressRuns, 'wpm', { period: progressWindow, onOpen: () => openTrend('speed') }),
-    'week-accuracy': () => renderWeekChart($('week-accuracy'), progressRuns, 'accuracy', { period: progressWindow, onOpen: () => openTrend('accuracy') }),
-    'progress-trend': () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { period: progressWindow }),
-    'accuracy-trend': () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { period: progressWindow }),
-    'progress-spread': () => renderSpread($('progress-spread'), progressRuns),
-    'practice-runs': () => renderRunsPerDay($('practice-runs'), practiceProgress.runsPerDay),
-  };
-
-  const shown = { 'week-speed': overview, 'week-accuracy': overview, 'progress-trend': view === 'speed', 'accuracy-trend': view === 'accuracy',
-    'progress-spread': view === 'consistency', 'practice-runs': detail === 'calendar' && !$('practice-goal').hidden };
-
-  for (const [id, render] of Object.entries(draw)) {
-    if (shown[id]) render();
-    else $(id).replaceChildren();
-  }
-
-  // The figures and the note under the full charts are drawn with them, so the three never tell of different runs.
-  if (detail === 'trends') {
-    renderTrendFigures(progressRuns, progressTrendNote);
-  }
-}
-
-function hasAnyHistory() {
-  return learning.profile.runs.length > 0 || learning.profile.attempts.length > 0 || learning.profile.loops.length > 0 || learning.profile.compositions.length > 0
-    || lessonsStarted(learning.profile.lessons) || Object.keys(learning.profile.practiceDays).length > 0 || Object.keys(learning.profile.runCounts).length > 0;
-}
 
 // Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
 
@@ -2853,10 +2620,7 @@ function bindEvents() {
   onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
   learning.progress.filters.commands.choose = chooseProgress;
   learning.progress.commands.calendar = () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') });
-  learning.progress.commands.showAll = () => {
-    showAllRuns();
-    $('run-history').children[RECENT_RUNS]?.querySelector('summary').focus();
-  };
+  learning.progress.commands.showAll = progressHistory.showAll;
 
   narrowColumn.addEventListener('change', () => renderGoal(), { signal: lifetime.signal });
   onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
@@ -2978,12 +2742,9 @@ function bindEvents() {
   practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
   learning.progress.commands.standard = () => setTestShape('standard');
-  learning.progress.commands.movers = () => {
-    progressState.moversOpen = !progressState.moversOpen;
-    renderMovers(progressWeek);
-  };
+  learning.progress.commands.movers = progressHistory.movers;
 
-  coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
+  matchMedia('(pointer: coarse)').addEventListener('change', progressHistory.refreshKeys, { signal: lifetime.signal });
   $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   learning.commands.back = () => {
@@ -3789,7 +3550,7 @@ inbox.refresh();
 const refreshGoalDay = () => {
   const today = dayKey(new Date());
 
-  if (document.body.dataset.view === 'progress' && today !== historyDay) renderHistory();
+  if (document.body.dataset.view === 'progress' && today !== progressHistory.day) renderHistory();
   else if (today !== practiceProgress.day) renderGoal();
 };
 

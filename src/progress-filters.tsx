@@ -8,7 +8,7 @@ export type ProgressPeriod = '7' | '30' | 'all';
 export type ProgressDetail = '' | 'runs' | 'trends' | 'keys' | 'calendar' | 'standard' | 'compose';
 
 interface FilterView {
-  tests: { id: string; mode: string; text: string; label?: string; key?: string; selected: boolean; disabled: boolean }[];
+  tests: { id: string; mode: unknown; text: string; label?: string; key?: string; selected: boolean; disabled: boolean }[];
   variants: { key: string; label: string }[];
   key: string; conditions: string; hasSource: boolean; period: ProgressPeriod;
 }

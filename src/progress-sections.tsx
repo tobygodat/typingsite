@@ -9,7 +9,7 @@ import type { CopyPart } from './practice-session.js';
 import { Copy } from './results-card.js';
 import { formatSpeed, unitText } from './units.js';
 
-export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: CopyPart[]; textNote: string; passage?: string }
+export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: CopyPart[]; textNote: string; passage?: string | number | boolean | null }
 
 export interface CompositionRowView { id: string; wpm: number | null; backspaceRate: number | null; prompt: string; detail: string }
 
