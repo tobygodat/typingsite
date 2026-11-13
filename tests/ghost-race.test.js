@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeConditions, challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
+import { challengeConditions, challengeOutcome, challengePayload, isChallengePayloadSource, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
   resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS, SENDABLE_KINDS } from '../src/ghost-race.js';
 import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
@@ -266,4 +266,22 @@ test('a stored result is told apart from this run by its numbers', () => {
   assert.equal(sameScore(score, { ...score }), true);
   assert.equal(sameScore(score, { ...score, elapsedMs: 6760 }), false);
   assert.equal(sameScore(score, null), false);
+});
+
+
+test('retained traces ignore future events without requiring current Attempt state', () => {
+  const completed = run('alpha beta', { text: 'alpha beta', end: 30000,
+    conditions: { mode: 'time', duration: 30, wordList: '200', correctionPolicy: 'mandatory', inputClass: 'physical-keyboard' } });
+
+  const expected = challengePayload(completed);
+  assert.ok(expected);
+
+  const retained = { status: completed.status, kind: completed.kind, text: completed.text, textId: completed.textId,
+    conditions: completed.conditions, startedAt: completed.startedAt, endedAt: completed.endedAt,
+    events: [{ type: 'future-note', future: true, offsetMs: { unused: true } }, ...completed.events] };
+
+  const original = JSON.stringify(retained);
+  assert.equal(isChallengePayloadSource(retained), true);
+  assert.deepEqual(challengePayload(retained), expected);
+  assert.equal(JSON.stringify(retained), original);
 });
