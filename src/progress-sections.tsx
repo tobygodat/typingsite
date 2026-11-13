@@ -3,7 +3,7 @@ import { createProgressNavigation } from './progress-navigation.js';
 import { createProgressFilters } from './progress-filters.js';
 import { createProgressKeys } from './progress-keys.js';
 import { createProgressCalendar } from './progress-calendar.js';
-import { useSyncExternalStore } from 'react';
+import { Fragment, useSyncExternalStore } from 'react';
 import { createStore } from './store.js';
 import type { CopyPart } from './practice-session.js';
 import { Copy } from './results-card.js';
@@ -26,9 +26,11 @@ export function createProgressSections() {
   const lead = createStore<LeadView>({ figure: null, spoken: '', sentence: [], sample: '', note: '', state: 'none', tone: 'none' });
   const movers = createStore<{ rows: MoverView[]; open: boolean; extra: number; shown: number }>({ rows: [], open: false, extra: 0, shown: 0 });
   const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, keys: false, calendar: false, standard: false, compose: false }, runsLabel: 'All runs' });
+  const trends = createStore<{ parts: CopyPart[][]; note: string }>({ parts: [], note: '' });
+  const charts = createStore({ visible: false });
   const commands = { showAll() {}, calendar() {}, clear() {}, standard() {}, movers() {} };
 
-  return { patterns: createTrainingPatterns(), navigation: createProgressNavigation(), overview, filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
+  return { trends, charts, patterns: createTrainingPatterns(), navigation: createProgressNavigation(), overview, filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
 }
 
 export type ProgressSections = ReturnType<typeof createProgressSections>;
@@ -77,4 +79,16 @@ export function ProgressMore({ progress }: { progress: ProgressSections }) {
   const view = useSyncExternalStore(progress.overview.subscribe, progress.overview.getSnapshot, progress.overview.getSnapshot);
 
   return <nav id="progress-more" className="progress-more" aria-label="More progress"><button id="open-runs" className="btn btn-ghost" type="button" data-progress-open="runs" onClick={(event) => progress.navigation.open('runs', { opener: event.currentTarget })} hidden={!view.links.runs}>{view.runsLabel}</button><button className="btn btn-ghost" type="button" data-progress-open="keys" onClick={(event) => progress.navigation.open('keys', { opener: event.currentTarget })} hidden={!view.links.keys}>Keys</button><button className="btn btn-ghost" type="button" data-progress-open="calendar" onClick={(event) => progress.navigation.open('calendar', { opener: event.currentTarget })} hidden={!view.links.calendar}>Practice calendar</button><button className="btn btn-ghost" type="button" data-progress-open="standard" onClick={(event) => progress.navigation.open('standard', { opener: event.currentTarget })} hidden={!view.links.standard}>Standard score</button><button className="btn btn-ghost" type="button" data-progress-open="compose" onClick={(event) => progress.navigation.open('compose', { opener: event.currentTarget })} hidden={!view.links.compose}>Composing</button><button id="clear-history" className="btn btn-ghost danger-text clear-history" type="button" disabled={!view.hasHistory} hidden={!view.hasHistory} onClick={() => progress.commands.clear()}>Clear history</button></nav>;
+}
+
+export function ProgressTrendFigures({ progress }: { progress: ProgressSections }) {
+  const { parts } = useSyncExternalStore(progress.trends.subscribe, progress.trends.getSnapshot, progress.trends.getSnapshot);
+
+  return <p id="trend-figures" className="trend-figures" hidden={!parts.length}>{parts.map((part, index) => <Fragment key={index}>{index ? ' · ' : ''}<span><Copy parts={part} /></span></Fragment>)}</p>;
+}
+
+export function ProgressTrendNote({ progress }: { progress: ProgressSections }) {
+  const { note } = useSyncExternalStore(progress.trends.subscribe, progress.trends.getSnapshot, progress.trends.getSnapshot);
+
+  return <p id="progress-trend-note" className="result-note">{note}</p>;
 }

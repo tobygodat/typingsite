@@ -4,7 +4,7 @@ import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
 import { ProgressKeys } from './progress-keys.js';
 import { PracticeProgress } from './progress-calendar.js';
-import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore } from './progress-sections.js';
+import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 
@@ -15,6 +15,7 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
   const overview = useSyncExternalStore(progress.overview.subscribe, progress.overview.getSnapshot, progress.overview.getSnapshot);
   const lead = useSyncExternalStore(progress.lead.subscribe, progress.lead.getSnapshot, progress.lead.getSnapshot);
   const movers = useSyncExternalStore(progress.movers.subscribe, progress.movers.getSnapshot, progress.movers.getSnapshot);
+  const charts = useSyncExternalStore(progress.charts.subscribe, progress.charts.getSnapshot, progress.charts.getSnapshot);
   const filtersInDetail = ['runs', 'trends', 'keys'].includes(detail);
   const periodInDetail = filtersInDetail || detail === 'calendar';
 
@@ -51,7 +52,7 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
             <button id="more-movers" className="quiet-link more-movers" type="button" aria-expanded={movers.open} aria-controls="week-movers" hidden={movers.extra < 1} onClick={() => progress.commands.movers()}>{movers.extra < 1 ? '' : movers.open ? 'Fewer' : `${movers.extra} more`}</button>
           </div>
 
-          <div id="week-charts" className="week-charts" hidden>
+          <div id="week-charts" className="week-charts" hidden={!charts.visible}>
             <div className="week-charts-head">
               {!periodInDetail && <ProgressPeriodControl progress={learning.progress} />}
             </div>
@@ -94,8 +95,8 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
             <div id="view-consistency" className="view-panel" role="tabpanel" aria-labelledby="tab-consistency" tabIndex={0} hidden={tab !== 'consistency'}>
               <div id="progress-spread" className="progress-spread"></div>
             </div>
-            <p id="trend-figures" className="trend-figures" hidden></p>
-            <p id="progress-trend-note" className="result-note"></p>
+            <ProgressTrendFigures progress={progress} />
+            <ProgressTrendNote progress={progress} />
           </section>
 
           <section id="detail-keys" className="detail-panel" data-panel="keys" aria-labelledby="progress-detail-heading" hidden={detail !== 'keys'}>

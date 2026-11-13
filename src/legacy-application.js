@@ -1,3 +1,4 @@
+import { createProgressFigures } from './progress-figures.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
@@ -53,10 +54,10 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
 import { missedCopy } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, runDay, trendRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
 import { renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
-import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
-import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
+import { weekChange } from './week-change.js';
+import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, wpmFromSpeed } from './units.js';
 import {
   LESSONS, LESSON_ACCURACY, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupShort, nextLessonIndex,
@@ -1987,6 +1988,7 @@ const renderComposeHistory = practiceProgress.composing;
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = learning.progress.navigation.state;
+const { renderLead, renderMovers, renderTrendFigures } = createProgressFigures(learning);
 learning.progress.navigation.configure({ history: renderHistory, draw: drawProgressView, focusShown, landFocus: (options) => landProgressFocus(options) });
 
 // The run list opens on the newest few, and one button builds the rest. Choosing a period, test or
@@ -2145,7 +2147,6 @@ function renderOverview(date) {
   renderMovers(week);
   progressRuns = week.charts.runs;
   progressWindow = week.charts.window;
-  $('week-charts').hidden = !progressRuns.length;
 
   // What the charts can't show: an empty period, or runs listed that aren't drawn.
   const span = periodWindow(period, date);
@@ -2155,6 +2156,7 @@ function renderOverview(date) {
   progressTrendNote = progressRuns.length
     ? [progressRuns.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
     : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
+  flushSync(() => learning.progress.charts.publish({ visible: Boolean(progressRuns.length) }));
 
   // Everything else, one step away.
   const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
@@ -2173,22 +2175,6 @@ function renderOverview(date) {
 // Under the fuller charts, the period in figures: the median speed and accuracy of the runs charted, the fastest
 // single run with its day (the chart names the best day's median, which can be another day), and how many runs.
 // Speeds are speed figures, so a unit change rewords them.
-function renderTrendFigures(runs) {
-  const stats = periodStats(runs);
-  const speed = (wpm) => [speedFigure(wpm, { bare: true, whole: true }), ' ', unitLabel()];
-  const day = stats.best?.at ? ` on ${new Date(stats.best.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ', date unavailable';
-
-  const parts = stats.count ? [
-    ['median ', ...speed(stats.wpm)],
-    [`${Number(stats.accuracy.toFixed(1))}% accuracy`],
-    ['best run ', ...speed(stats.best.score.wpm), day],
-    [plural(stats.count, 'run')],
-  ] : [];
-
-  $('trend-figures').replaceChildren(...parts.flatMap((part, i) => [i ? ' · ' : '', element('span', part)]));
-  $('trend-figures').hidden = !stats.count;
-}
-
 // A change to the history (followHistory) or the train focus, on Progress: the overview follows at once, with focus
 // kept where it was. A detail view of rows keeps them until it is left, so a row someone has open stays open.
 function renderWeek() {
@@ -2221,71 +2207,6 @@ function renderWeek() {
 // sample sizes and conditions; or, without two weeks to compare, what there is and when a change can show. Speeds
 // read whole, in the unit on screen, and the change is the difference of the two figures printed, so they add up.
 // A unit change redraws it (applySpeedUnit).
-function renderLead(lead) {
-  const whole = (wpm) => Math.round(speedValue(wpm));
-  const bare = (wpm) => speedFigure(wpm, { bare: true, whole: true });
-  const day = (key) => new Date(`${key}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-  const runs = (count) => plural(count, 'run');
-  const { current, previous } = lead;
-  let figure = null;
-  let spoken = '';
-  let sentence = [];
-  let sample = '';
-  let note = '';
-  let tone = 'none';
-
-  if (lead.state === 'change') {
-    const change = whole(current.median) - whole(previous.median);
-    tone = change > 0 ? 'gain' : change < 0 ? 'drop' : 'flat';
-    figure = `${change > 0 ? '+' : change < 0 ? '−' : ''}${Math.abs(change)}`;
-    spoken = change ? `${Math.abs(change)} ${unitText('{unit}')} ${change > 0 ? 'faster' : 'slower'} than the week before.` : 'The same as the week before.';
-    sentence = [bare(current.median), ' this week, ', bare(previous.median), ' the week before'];
-    sample = `medians of ${current.count} and ${runs(previous.count)}`;
-  } else if (lead.state === 'this-week') {
-    figure = String(whole(current.median));
-    sentence = ['this week so far'];
-    sample = `median of ${runs(current.count)}`;
-    note = previous.count ? `The week before has ${runs(previous.count)}, too few for a median.` : '';
-  } else if (lead.state === 'last-week') {
-    figure = String(whole(previous.median));
-    sentence = ['the week before'];
-    sample = `median of ${runs(previous.count)}`;
-    note = current.count ? `${runs(current.count)} this week, too few for a median.` : 'No runs this week yet.';
-  } else if (lead.state === 'thin') {
-    figure = String(whole(lead.latest.score.wpm));
-    sentence = [current.count ? 'your latest run' : `your latest run, ${day(runDay(lead.latest))}`];
-    sample = current.count ? `${runs(current.count)} this week` : `${runs(previous.count)} the week before`;
-    note = `A week has a median from ${WEEK_MIN_RUNS} runs.`;
-  } else {
-    sentence = ['No runs at these conditions in the last two weeks'];
-  }
-
-  flushSync(() => learning.progress.lead.publish({ figure, spoken, sentence: copyParts(sentence), sample, note, state: lead.state, tone }));
-}
-
-// What moved it: the units fixed this week, ranked (weekMovers), the first SHOWN_MOVERS shown and the rest behind one
-// "more"; then practice.
-function renderMovers(week) {
-  const open = progressState.moversOpen;
-
-  const rows = week.movers.map((mover) => {
-    const copy = moverCopy(mover);
-
-    return { unit: mover.unit, before: copy.before, after: copy.after,
-      tail: [copy.tail || 'over ' + plural(mover.after.intervals, 'clean interval'), mover.split === 'drill' && 'since your drill'].filter(Boolean).join(' '),
-      title: moverSample(mover), status: 'fixed' };
-  });
-
-  if (week.practice) {
-    const practice = week.practice;
-    const streak = practice.streak ? plural(practice.streak, 'day') + ' in a row' + (practice.goal ? ' at ' + practice.goal + ' min' : '') : '';
-    rows.push({ practice: true, before: goalMinutes(practice.previous), after: goalMinutes(practice.current) + ' min', tail: streak ? '· ' + streak : '', status: practice.status });
-  }
-
-  flushSync(() => learning.progress.movers.publish({ rows, open, extra: week.movers.length - SHOWN_MOVERS, shown: SHOWN_MOVERS }));
-
-}
-
 // Practice, a plain fact: minutes the week before → this week, and the streak (at the goal, when one is set).
 
 
@@ -2365,8 +2286,7 @@ function drawProgressView() {
 
   // The figures and the note under the full charts are drawn with them, so the three never tell of different runs.
   if (detail === 'trends') {
-    renderTrendFigures(progressRuns);
-    $('progress-trend-note').textContent = progressTrendNote;
+    renderTrendFigures(progressRuns, progressTrendNote);
   }
 }
 
