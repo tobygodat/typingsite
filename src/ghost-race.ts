@@ -7,16 +7,36 @@ import { Schema } from 'effect';
 import { accountLifetime } from './async-runtime.js';
 import { decodeReply, errorDetails } from './network.js';
 import type { Session } from './network.js';
-import type { Attempt, HistoricalAttempt, AttemptEvent, Conditions } from './typing.js';
+import type { Attempt, AttemptEvent, Conditions } from './typing.js';
 import { TraceSchema, ChallengeSchema, ConditionsSchema } from './network-race.js';
 import type { CompactTrace, ChallengeScore, GhostChallenge, RaceConditions } from './network-race.js';
 import { at, isRecord } from './domain-values.js';
+import { isAttemptEvent } from './domain-history.js';
+import type { HistoricalRecord } from './profile-types.js';
 
 export type { CompactTrace, ChallengeScore, GhostChallenge } from './network-race.js';
 
 import { METRIC_VERSION, quoteCorpus, replayAttempt, textId } from './typing.js';
 import { wordListIds } from './words.js';
 import { comparableKind } from './insights.js';
+
+export type TraceSource = Partial<Pick<Attempt, 'startedAt' | 'endedAt'>> & {
+  text?: Attempt['text'] | null; events?: AttemptEvent[] | null; interrupted?: unknown; unsupportedInput?: unknown;
+};
+
+export interface ChallengePayloadSource extends TraceSource {
+  status?: unknown; kind?: unknown; conditions?: Conditions | HistoricalRecord; textId?: unknown;
+}
+
+export function isChallengePayloadSource(value: unknown): value is ChallengePayloadSource {
+  if (!isRecord(value)) return false;
+
+  return (value.text == null || typeof value.text === 'string')
+    && (value.events == null || (Array.isArray(value.events) && value.events.every(isAttemptEvent)))
+    && (value.startedAt == null || typeof value.startedAt === 'number')
+    && (value.endedAt == null || typeof value.endedAt === 'number')
+    && (value.conditions === undefined || isRecord(value.conditions));
+}
 
 const TRACE_VERSION = 1;
 export const MAX_TRACE_KEYS = 6000;
@@ -44,7 +64,7 @@ const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 // {v, k, t, e}: k is one printable character per insertion and U+0008 per deletion, t the whole
 // milliseconds since the previous key, e the end of the run. The clock starts at the first key.
 // Blocked keys change nothing, so they are left out. A run that lost focus or used IME is not sent.
-export function encodeTrace(attempt: HistoricalAttempt | null | undefined) {
+export function encodeTrace(attempt: TraceSource | null | undefined) {
   if (!attempt || attempt.interrupted || attempt.unsupportedInput) return null;
   const origin = attempt.startedAt ?? 0;
   const text = attempt.text || '';
@@ -91,7 +111,7 @@ export function encodeTrace(attempt: HistoricalAttempt | null | undefined) {
 }
 
 // Why a finished, uninterrupted run has no trace: a character it can't stand in for, or its size.
-export const traceTrouble = (attempt: HistoricalAttempt | null | undefined) => ((attempt?.events || []).some((event) => event.type === 'insert' && ASTRAL.test(event.text || ''))
+export const traceTrouble = (attempt: TraceSource | null | undefined) => ((attempt?.events || []).some((event) => event.type === 'insert' && ASTRAL.test(event.text || ''))
   ? 'character' : 'length');
 
 export function traceBytes(trace: CompactTrace) {
@@ -158,7 +178,7 @@ export function ghostPoints(trace: CompactTrace, textLength: number) {
   return points;
 }
 
-const challengeDuration = (conditions: Conditions = {}) => conditions.mode === 'time' && typeof conditions.duration === 'number' && TIMED.includes(conditions.duration || 0) ? conditions.duration : null;
+const challengeDuration = (conditions: Conditions | HistoricalRecord = {}) => conditions.mode === 'time' && typeof conditions.duration === 'number' && TIMED.includes(conditions.duration || 0) ? conditions.duration : null;
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
 // service refuses any other (supabase/migrations/20261009100000_ghost_challenges.sql); a received row is
@@ -203,13 +223,13 @@ export function challengeConditions(conditions: unknown, duration: number | null
   return decodeReply(ConditionsSchema, conditions);
 }
 
-function furthestTyped(attempt: HistoricalAttempt) {
+function furthestTyped(attempt: TraceSource, text: string) {
   let typed = 0;
   let furthest = 0;
 
   for (const event of attempt.events || []) {
     if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, event.count || 1));
-    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(attempt.text.length, typed + event.text.length);
+    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(text.length, typed + event.text.length);
     furthest = Math.max(furthest, typed);
   }
 
@@ -218,36 +238,41 @@ function furthestTyped(attempt: HistoricalAttempt) {
 
 // A word or quote run sends its whole passage. A timed run's passage is far longer than anyone
 // types, so it is cut at a word boundary past the sender's furthest point, with room to spare.
-export function challengeText(attempt: HistoricalAttempt) {
+export function challengeText(attempt: ChallengePayloadSource) {
   const duration = challengeDuration(attempt.conditions);
 
   if (!duration) return attempt.text;
-  const limit = Math.max(furthestTyped(attempt), Math.min(Math.ceil(duration * CHARS_PER_SECOND), MAX_CHALLENGE_TEXT - 50));
-  const end = attempt.text.indexOf(' ', limit);
+  const text = attempt.text;
 
-  return end < 0 ? attempt.text : attempt.text.slice(0, end);
+  if (typeof text !== 'string') throw new TypeError('A timed challenge needs its recorded text');
+  const limit = Math.max(furthestTyped(attempt, text), Math.min(Math.ceil(duration * CHARS_PER_SECOND), MAX_CHALLENGE_TEXT - 50));
+  const end = text.indexOf(' ', limit);
+
+  return end < 0 ? text : text.slice(0, end);
 }
 
 // The payload for one finished run, or null when it cannot be sent. A run that is never compared (custom
 // text, or any other non-comparable kind) is never a ghost to race, whatever SENDABLE_KINDS says.
-export function challengePayload(attempt: Attempt | null | undefined) {
+export function challengePayload(attempt: ChallengePayloadSource | null | undefined) {
   if (!attempt || attempt.status !== 'complete' || attempt.interrupted || !comparableKind(attempt.kind)
-    || !SENDABLE_KINDS.includes(attempt.kind)) return null;
+    || !SENDABLE_KINDS.some((kind) => kind === attempt.kind)) return null;
   const trace = encodeTrace(attempt);
 
   if (!trace) return null;
   const passage = challengeText(attempt);
+
+  if (typeof passage !== 'string') throw new TypeError('A challenge needs its recorded text');
 
   if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
   const duration = challengeDuration(attempt.conditions);
   // Only conditions the service accepts and a friend's app can set up again.
   const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
 
-  if (source.strictSpace === false) delete source.strictSpace;
+  if ('strictSpace' in source && source.strictSpace === false) delete source.strictSpace;
 
-  if (source.quickEnd === true) delete source.quickEnd;
+  if ('quickEnd' in source && source.quickEnd === true) delete source.quickEnd;
 
-  if (source.layout === 'qwerty') delete source.layout;
+  if ('layout' in source && source.layout === 'qwerty') delete source.layout;
   const conditions = challengeConditions(source, duration);
 
   if (!conditions) return null;
