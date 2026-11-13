@@ -53,6 +53,13 @@
   },
   "overrides": [
     {
+      "files": ["src/run-copy.ts"],
+      "rules": {
+        // Run labels consume raw retained custom-order, minimum and speed fields at their presentation boundary.
+        "anti-slop/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": ["src/rematch-conditions.ts", "src/online-race.ts"],
       "rules": {
         // Inbox rematches forward raw retained conditions until passage and RPC consumers read their fields.
