@@ -174,7 +174,7 @@ export function lessonPassage(index: number, random = Math.random) {
 
 // The label for a lesson's text, before it is drawn (index) or for a drawn passage (with counts).
 // Beside a drawn passage the label stays short, so the finger map under it stays in view.
-export function makeupCopy(index: number, passage: { words: number } | null = null) {
+export function makeupCopy(index: number, passage: { words?: unknown } | null = null) {
   const makeup = lessonMakeup(index);
   const words = passage?.words ? `${passage.words} real words` : 'real words';
 
@@ -185,7 +185,7 @@ export function makeupCopy(index: number, passage: { words: number } | null = nu
   return `${words.charAt(0).toUpperCase()}${words.slice(1)} from the common-word lists, using only keys you’ve learned.`;
 }
 
-export function makeupShort(index: number, passage: { words: number } | null = null) {
+export function makeupShort(index: number, passage: { words?: unknown } | null = null) {
   const makeup = lessonMakeup(index);
   const words = passage?.words ? `${passage.words} real words` : 'real words';
 
