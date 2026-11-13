@@ -53,6 +53,13 @@
   },
   "overrides": [
     {
+      "files": ["src/history-selection.ts"],
+      "rules": {
+        // Historical property and date readers preserve raw stored values until selection consumes them.
+        "anti-slop/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": ["src/loop-history.ts"],
       "rules": {
         // Historical comparison and timing fields stay raw until their display readers consume them.
