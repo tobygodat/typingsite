@@ -66,7 +66,7 @@ export function raceSetupText(conditions: Conditions) {
 
 // A fresh passage for these conditions, never one in seenIds where another can be had. A timed passage is
 // cut at a word boundary to what 400 wpm types on its clock.
-export function racePassage(conditions: Pick<Conditions, 'mode' | 'count' | 'duration' | 'punctuation' | 'numbers' | 'wordList' | 'quoteLength' | 'difficulty'>, { seenIds = [], random = Math.random }: { seenIds?: string[]; random?: () => number } = {}) {
+export function racePassage(conditions: Pick<Conditions, 'mode' | 'count' | 'duration' | 'punctuation' | 'numbers' | 'wordList' | 'quoteLength' | 'difficulty'>, { seenIds = [], random = Math.random }: { seenIds?: readonly unknown[]; random?: () => number } = {}) {
   const { mode, count, punctuation = false, numbers = false, wordList, quoteLength = 'any', difficulty = 'any', duration } = conditions;
 
   const wanted: PassageOptions = { mode, count, duration: mode === 'time' ? duration : 0, punctuation, numbers, quoteLength, difficulty, seenIds, random };

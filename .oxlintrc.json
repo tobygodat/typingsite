@@ -53,6 +53,13 @@
   },
   "overrides": [
     {
+      "files": ["src/rematch-conditions.ts", "src/online-race.ts"],
+      "rules": {
+        // Inbox rematches forward raw retained conditions until passage and RPC consumers read their fields.
+        "anti-slop/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": ["src/recorded-text.ts"],
       "rules": {
         // Retained text fields are read lazily so malformed historical values keep their original return or error behavior.

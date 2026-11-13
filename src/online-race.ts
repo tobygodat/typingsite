@@ -6,7 +6,7 @@ import { errorDetails } from './network.js';
 import type { Session } from './network.js';
 import type { Attempt } from './typing.js';
 import type { RaceRoom, RaceEntry, RacePlayer, RaceCredentials, Friend, RaceInvite, PeopleLinks } from './multiplayer.js';
-import type { RaceConditions } from './network-race.js';
+import { rematchFields, rematchPassage } from './rematch-conditions.js';
 import type { GhostChallenge } from './ghost-race.js';
 import type { RaceOptions } from './race-options.js';
 import type { PassageView } from './passage-view.js';
@@ -424,14 +424,9 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     });
   }
 
-  // A rematch keeps the race's conditions with a fresh passage. A race from before options was a medium quote.
-  function rematchPassage(conditions: RaceConditions = {}) {
-    return racePassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', ...conditions }, { seenIds: conditions.textId ? [conditions.textId] : [] });
-  }
-
   // Same opponent, same settings, a fresh passage. Picks Rematch on a closed race, or takes the pick back;
   // once both have picked, the service opens the next race and both tabs move to it (followRematch).
-  function pickRematch(from: RaceCredentials, conditions: RaceConditions = {}, want = true) {
+  function pickRematch(from: RaceCredentials, conditions: unknown = {}, want = true) {
     if (busy) return;
     navigate('compete');
     show('people');
@@ -444,7 +439,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     perform(async () => {
       const passage = want ? rematchPassage(conditions) : null;
-      const result = await request((signal) => multiplayer.rematchRace(getSession(), from, { want, passage: passage ?? undefined, conditions: passage ? { ...conditions, textId: passage.id } : {} }, signal));
+      const result = await request((signal) => multiplayer.rematchRace(getSession(), from, { want, passage: passage ?? undefined, conditions: passage ? { ...rematchFields(conditions), textId: passage.id } : {} }, signal));
 
       // The same race comes back with the pick, unless this seat moved: a service from before picks opens
       // or joins the rematch at once.
@@ -1350,7 +1345,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
       pickRematch(credentials, room?.conditions, !me.rematch);
     },
     raceLink, copyLink, leave, joinInvite,
-    rematchRoom(roomId: string, conditions: RaceConditions) { pickRematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions); },
+    rematchRoom(roomId: string, conditions: unknown) { pickRematch(credentials?.roomId === roomId ? credentials : { roomId }, conditions); },
     get liveRoomId() { return room && !terminal(room) ? room.id : null; },
     get mode() { return view; },
     get pending() { return busy || restoring; },

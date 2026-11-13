@@ -211,7 +211,7 @@ export function boardSummary(runs: readonly unknown[], dailyKey: string) {
 // The profile row's `board` column: the summary of the runs in the copy being written, and `at`, that
 // write's `updated_at`. The service shows it only while the row's `updated_at` is still `at`, so a
 // write that leaves it out (an older build) hides it rather than letting it describe another copy.
-export const boardColumn = (runs: readonly unknown[], dailyKey: string, at: string) => ({ v: BOARD_V, at, ...boardSummary(runs, dailyKey) });
+export const boardColumn = (runs: readonly unknown[], dailyKey: string, at: string | undefined) => ({ v: BOARD_V, at, ...boardSummary(runs, dailyKey) });
 
 // Whether a profile row's summary describes that row, in this build's shape.
 export function boardCurrent(row: unknown) {

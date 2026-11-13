@@ -1,6 +1,7 @@
 // Atomic race RPCs keep the start clock, seats and results on the server. Invite capabilities and
 // occupied guest-seat capabilities are independent: forwarding an invite cannot take a seat.
 import { request, freshSession, loadSession, AuthError } from './account.js';
+import type { HistoricalRecord } from './profile-types.js';
 import type { Session } from './network.js';
 import { Schema } from 'effect';
 import { isRecord } from './domain-values.js';
@@ -17,13 +18,13 @@ type Passage = string | { id?: string; text: string };
 
 interface RaceSetup { passage: Passage; conditions?: RaceConditions; displayName: string; inviteEmail?: string; friendId?: string }
 
-interface RematchSetup { want?: boolean; passage?: Passage; conditions?: RaceConditions }
+interface RematchSetup { want?: boolean; passage?: Passage; conditions?: RaceConditions | HistoricalRecord }
 
 interface RaceProgress { typed: string; keystrokes: number; errors: number; finished?: boolean; trace?: CompactTrace | null }
 
 interface CreateRaceData { passage?: string; conditions: RaceConditions; displayName: string; inviteEmail: string; friendId?: string }
 
-interface RematchData { want: boolean; passage?: string; conditions?: RaceConditions }
+interface RematchData { want: boolean; passage?: string; conditions?: RaceConditions | HistoricalRecord }
 
 type RaceActionData = CreateRaceData | RematchData | RaceProgress & { sequence: number }
   | { email: string; name: string } | { friendId: string } | { inviteToken: string | null; displayName: string } | { ready: boolean };
