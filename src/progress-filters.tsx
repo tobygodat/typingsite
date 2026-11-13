@@ -16,7 +16,6 @@ interface FilterView {
 export function createProgressFilters() {
   return {
     view: createStore<FilterView>({ tests: [], variants: [], key: '', conditions: '', hasSource: false, period: '30' }),
-    detail: createStore<ProgressDetail>(''),
     open: createStore(false),
     commands: { choose(choice: { key?: string; period?: ProgressPeriod }) { void choice; } },
   };

@@ -7,7 +7,7 @@ import { createTrainingResults } from './training-results.js';
 import { createInputPresentation } from './input-presentation.js';
 import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
-import { copyParts, setParts, plain, setText, element } from './native-copy.js';
+import { copyParts, setParts, plain, element } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -2038,7 +2038,8 @@ const renderComposeHistory = practiceProgress.composing;
 
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
-const progressState = { period: '30', key: '', view: 'speed', allRuns: false, detail: '', moversOpen: false };
+const progressState = learning.progress.navigation.state;
+learning.progress.navigation.configure({ history: renderHistory, draw: drawProgressView, focusShown, landFocus: (options) => landProgressFocus(options) });
 
 // The run list opens on the newest few, and one button builds the rest. Choosing a period, test or
 // condition set, or another profile, opens it on the newest few again.
@@ -2192,8 +2193,6 @@ function renderOverview(date) {
     focus: learning.preferences.trainFocus, goal: learning.preferences.dailyGoal, period, now: date.getTime() });
 
   progressWeek = week;
-  $('progress-empty').hidden = hasProgress;
-  $('week-lead').hidden = !hasProgress;
   renderLead(week.lead);
   renderMovers(week);
   progressRuns = week.charts.runs;
@@ -2313,8 +2312,6 @@ function renderLead(lead) {
     sentence = ['No runs at these conditions in the last two weeks'];
   }
 
-  $('week-lead').dataset.state = lead.state;
-  $('week-lead').dataset.tone = tone;
   flushSync(() => learning.progress.lead.publish({ figure, spoken, sentence: copyParts(sentence), sample, note, state: lead.state, tone }));
 }
 
@@ -2338,11 +2335,7 @@ function renderMovers(week) {
   }
 
   flushSync(() => learning.progress.movers.publish({ rows, open, extra: week.movers.length - SHOWN_MOVERS, shown: SHOWN_MOVERS }));
-  $('week-moved').hidden = !rows.length;
-  const extra = week.movers.length - SHOWN_MOVERS;
-  $('more-movers').hidden = extra < 1;
-  $('more-movers').textContent = extra < 1 ? '' : open ? 'Fewer' : extra + ' more';
-  $('more-movers').setAttribute('aria-expanded', String(open));
+
 }
 
 // Practice, a plain fact: minutes the week before → this week, and the streak (at the goal, when one is set).
@@ -2393,47 +2386,12 @@ function renderLoops(loops) {
 
 // Everything the overview doesn't show sits one step away in a detail view, each with a way back. The conditions
 // and the period move into a view that reads them, and back to the overview after.
-const PROGRESS_DETAILS = { runs: 'Runs', trends: 'Trends', keys: 'Keys', calendar: 'Practice', standard: 'Standard score', compose: 'Composing' };
-
-let detailOpener = null;
-
-function openProgressDetail(name, { opener = null, focus = true } = {}) {
-  progressState.detail = name;
-  detailOpener = opener;
-  showProgressDetail({ focus });
-  // A view opens at its top, as a new page would, whatever the overview was scrolled to.
-  window.scrollTo({ top: 0, behavior: 'instant' });
-}
-
-function closeProgressDetail() {
-  const back = detailOpener;
-  progressState.detail = '';
-  detailOpener = null;
-  // What changed while the view was open (a merge or a clear elsewhere) shows on the way back.
-  renderHistory();
-  const opener = typeof back === 'function' ? back() : back;
-
-  if (opener?.isConnected && !opener.hidden) opener.focus();
-  else landProgressFocus({ scroll: true });
-}
-
-function showProgressDetail({ focus = false } = {}) {
-  const name = progressState.detail;
-  $('progress-screen').dataset.detail = name;
-  $('progress-overview').hidden = Boolean(name);
-  $('progress-detail').hidden = !name;
-
-  for (const panel of $('progress-detail').querySelectorAll('[data-panel]')) panel.hidden = panel.dataset.panel !== name;
-  flushSync(() => learning.progress.filters.detail.publish(name));
-
-  setText($('progress-detail-heading'), PROGRESS_DETAILS[name] || '');
-  drawProgressView();
-
-  if (focus && name) focusShown($('progress-detail-heading'));
-}
+const openProgressDetail = learning.progress.navigation.open;
+const showProgressDetail = learning.progress.navigation.showDetail;
+const openTrend = learning.progress.navigation.openTrend;
 
 // Only what is on screen is drawn: a hidden chart has no width to draw to.
-const shownProgressView = () => $('progress-tabs').querySelector('[aria-selected="true"]')?.dataset.viewTab;
+const shownProgressView = () => progressState.view;
 
 function drawProgressView() {
   const detail = progressState.detail;
@@ -2462,42 +2420,6 @@ function drawProgressView() {
     renderTrendFigures(progressRuns);
     $('progress-trend-note').textContent = progressTrendNote;
   }
-}
-
-// A small chart opens its fuller chart, on its own tab, with the chart's own button to return to.
-function openTrend(view) {
-  progressState.view = view;
-  selectTrendTab(view);
-  // The small chart is drawn again on the way back, so the way back finds its new button.
-  openProgressDetail('trends', { opener: () => $(view === 'speed' ? 'week-speed' : 'week-accuracy').querySelector('button') });
-}
-
-function selectTrendTab(view, { focus = false } = {}) {
-  for (const tab of $('progress-tabs').querySelectorAll('[role="tab"]')) {
-    const on = tab.dataset.viewTab === view;
-    tab.setAttribute('aria-selected', String(on));
-    tab.tabIndex = on ? 0 : -1;
-    $(tab.getAttribute('aria-controls')).hidden = !on;
-
-    if (on && focus) tab.focus();
-  }
-}
-
-// The trends are tabs: one panel at a time, arrow keys move between tabs and show each as they go.
-function showProgressView(view, { focus = false } = {}) {
-  progressState.view = view;
-  selectTrendTab(view, { focus });
-  drawProgressView();
-}
-
-function moveProgressTab(event) {
-  const tabs = [...$('progress-tabs').querySelectorAll('[role="tab"]')];
-  const from = tabs.indexOf(event.target);
-  const to = { ArrowRight: from + 1, ArrowLeft: from - 1, Home: 0, End: tabs.length - 1 }[event.key];
-
-  if (from < 0 || to === undefined) return;
-  event.preventDefault();
-  showProgressView(tabs[(to + tabs.length) % tabs.length].dataset.viewTab, { focus: true });
 }
 
 function hasAnyHistory() {
@@ -3471,24 +3393,11 @@ function bindEvents() {
 
   practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-  $('progress-tabs').addEventListener('click', (event) => {
-    const tab = event.target.closest('[role="tab"]');
-
-    if (tab) showProgressView(tab.dataset.viewTab);
-  }, { signal: lifetime.signal });
-  $('progress-tabs').addEventListener('keydown', moveProgressTab, { signal: lifetime.signal });
-  $('take-standard').addEventListener('click', () => setTestShape('standard'), { signal: lifetime.signal });
-  $('empty-standard').addEventListener('click', () => setTestShape('standard'), { signal: lifetime.signal });
-  $('progress-more').addEventListener('click', (event) => {
-    const link = event.target.closest('[data-progress-open]');
-
-    if (link) openProgressDetail(link.dataset.progressOpen, { opener: link });
-  }, { signal: lifetime.signal });
-  $('progress-back').addEventListener('click', closeProgressDetail, { signal: lifetime.signal });
-  $('more-movers').addEventListener('click', () => {
+  learning.progress.commands.standard = () => setTestShape('standard');
+  learning.progress.commands.movers = () => {
     progressState.moversOpen = !progressState.moversOpen;
     renderMovers(progressWeek);
-  }, { signal: lifetime.signal });
+  };
 
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
   $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
@@ -3956,7 +3865,7 @@ function jumpTo(view) {
   // Progress is its overview, from one of its own detail views too, as from any other screen (TOB-448).
   if (view === 'progress' && document.body.dataset.view === 'progress' && progressState.detail) {
     progressState.detail = '';
-    detailOpener = null;
+    learning.progress.navigation.forgetOpener();
     renderHistory();
   }
 
