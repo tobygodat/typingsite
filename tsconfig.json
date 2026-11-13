@@ -8,8 +8,6 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noEmit": true,
-    "allowJs": true,
-    "checkJs": false,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "types": ["vite/client"]

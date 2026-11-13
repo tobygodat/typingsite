@@ -58,7 +58,7 @@ Batch all findings into that proof. Demonstrated in-scope correctness, security 
 
 ## Layout and naming
 
-- `docs/ARCHITECTURE.md` has the code map. One module per concern in `src/`, named in kebab case. Browser modules use `.ts`; React components use `.tsx`. Keep `.js` import specifiers so Vite and the Node tsx loader resolve the same graph. View components use the screen or feature name (`compose.ts`, `compose-view.tsx`).
+- `docs/ARCHITECTURE.md` has the code map. One module per concern in `src/`, named in kebab case. Browser modules use `.ts`; React components use `.tsx`. Keep `.js` import specifiers so Vite and the Node tsx loader resolve the same graph. All maintained browser sources are strict-checked TypeScript; the client configuration does not allow JavaScript imports. The worker is checked separately with worker globals. View components use the screen or feature name (`compose.ts`, `compose-view.tsx`).
 - React owns screen, list, control and dialog markup. Native typing, graph and canvas hosts own only their ref subtrees. Never clear or replace React children imperatively.
 - `index.html` contains the document shell and the prepaint marker. The build inlines checked `src/prepaint.ts` before CSS.
 - Keep keystroke recording and immediate input feedback synchronous. Publish cached view snapshots afterward. Effects own async lifetimes and release native leases; cleanup does not finish a run.
