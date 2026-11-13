@@ -43,7 +43,7 @@ export function createApplication() {
     deletion: createAccountDeletion(accounts),
     themeEditor: createThemeEditor(),
     wallpaper: createWallpaper(),
-    challenge: createChallengeStore(),
+    challenge: createChallengeStore(learning),
     quoteFilters: createQuoteFilters(),
     compose: createCompose(),
     settings: createSettings(),

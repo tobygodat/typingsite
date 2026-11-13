@@ -76,5 +76,10 @@ function lessonConditions(): Conditions {
   };
 }
 
-return { settingsConditions, conditions, customConditions, practiceMinimums, inputLayout, lessonConditions };
+function dailyConditions(): Conditions {
+  return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
+}
+
+return { dailyConditions, settingsConditions, conditions, customConditions, practiceMinimums, inputLayout, lessonConditions };
 }

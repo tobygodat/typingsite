@@ -20,7 +20,7 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge }: Application) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -160,7 +160,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
       <ProgressScreen learning={learning} />
 
-      <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} />
+      <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} local={challenge.local} daily={challenge.daily} />
     </main>
 
     <footer className="site-footer">

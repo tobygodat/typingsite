@@ -1,6 +1,5 @@
 import { createPracticeConditions } from './practice-conditions.js';
 import { copyParts, setParts, plain, setText, element } from './native-copy.js';
-import { markEndFailure } from './practice-run.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -16,7 +15,6 @@ import {
   STANDARD_SECONDS,
   STANDARD_VERSION,
   compareAttempts,
-  completeAttempt,
   conditionKey,
   createAttempt,
   inputRules,
@@ -58,7 +56,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, firstTriesAt, dailyPassage, evidenceRun, filterRuns, missedAndSlowWords, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, firstTriesAt, evidenceRun, filterRuns, missedAndSlowWords, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
 import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
@@ -90,6 +88,8 @@ function updateComparison(patch) {
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
+const renderDaily = challenge.daily.refresh;
+const todayPassage = challenge.daily.passage;
 const renderLengthOptions = lengthEditor.refresh;
 const setCustomLengthError = lengthEditor.error;
 const openCustomLength = lengthEditor.open;
@@ -194,7 +194,12 @@ const STOP_HOLD_MS = 600;
 // measuring always follow the layout on screen (see tapeLayout).
 const onTape = () => document.body.dataset.tape === 'true';
 const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCharacters: (index) => primaryTextView?.ensureForward(index), tape: onTape });
-const raceFx = createTypingFx(document.querySelector('.race-typing-wrap'), $('race-text-display'), { ensureCharacters: (index) => race.textView?.ensureForward(index) });
+const race = challenge.local.state;
+const raceFx = challenge.local.fx;
+const setupRacePlayer = challenge.local.prepare;
+const showRaceRestartHint = challenge.local.restartHint;
+const updateRaceProgress = challenge.local.progress;
+const finishRacePlayer = challenge.local.finish;
 
 // The settings preview's sliding highlight: on "little" for this word, "room" for next word. It is placed
 // while the preview is on screen: as it appears or resizes, and as the highlight settings change.
@@ -246,7 +251,7 @@ let composeOpen = false;
 
 // The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
-const { settingsConditions, conditions, customConditions, practiceMinimums, inputLayout, lessonConditions } = createPracticeConditions(learning, () => lessonIndex);
+const { conditions, customConditions, practiceMinimums, inputLayout, lessonConditions, dailyConditions } = createPracticeConditions(learning, () => lessonIndex);
 let lessonResult = null;
 
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
@@ -285,18 +290,7 @@ const offerBusy = () => Boolean(offerRun) && offerSending === offerRun;
 let trainingClears = account.clearsApplied(learning.profile);
 let trainingLegacyAt = learning.profile.legacyClearedAt || '';
 
-let race = {
-  passage: null,
-  conditions: null,
-  names: [],
-  player: 0,
-  attempt: null,
-  startTime: null,
-  results: [],
-  characters: [],
-  textView: null,
-  notice: '',
-};
+
 
 // Runs started and finished (src/run-counts.js). A start is counted at the first key but written with the
 // next save (the run's end, a restart, leaving the page), never on the keystroke itself.
@@ -1461,7 +1455,7 @@ function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
     if (sticky) primaryNotice = message;
   } else if (type === 'online') typingHost.online.notice(message);
   else {
-    $('race-help').textContent = message;
+    challenge.local.message(message);
 
     if (sticky) race.notice = message;
   }
@@ -1524,11 +1518,11 @@ function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
 
     if (passageComplete(targetAttempt, replay.typed)) typingHost.online.finish();
   } else {
-    const help = $('race-help');
+    const help = challenge.local.view.getSnapshot().help;
 
-    if (rule) help.textContent = withRule(race.notice, rule);
-    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.textContent.endsWith(notice))) {
-      if (race.notice) help.textContent = race.notice;
+    if (rule) challenge.local.message(withRule(race.notice, rule));
+    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.endsWith(notice))) {
+      if (race.notice) challenge.local.message(race.notice);
       else showRaceRestartHint();
     }
 
@@ -3085,17 +3079,9 @@ function renderComposeHistory() {
 }
 
 // Everyone types the daily passage under the same rules, whatever their practice settings.
-function dailyConditions() {
-  return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
-    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
-}
 
-function todayPassage() {
-  const daily = dailyPassage();
 
-  return { ...daily, id: daily.sourceTextId, challengeId: daily.id, corpus: CORPUS_VERSION,
-    firstDailyAttempt: !learning.profile.seenTextIds.includes(daily.id), fresh: !learning.profile.seenTextIds.includes(daily.sourceTextId) };
-}
+
 
 function startDaily() {
   if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
@@ -3106,25 +3092,7 @@ function startDaily() {
   resetSession('daily', { focus: true });
 }
 
-function renderDaily() {
-  const daily = dailyPassage();
-  $('daily-date').textContent = `${daily.day} · english · resets 00:00 UTC`;
-  const completed = learning.profile.runs.filter((r) => r.kind === 'daily' && validRun(r));
-  const today = completed.filter((r) => r.challengeDate === daily.day && conditionKey(r.conditions) === conditionKey(dailyConditions()));
-  const best = [...today].sort((a, b) => b.score.wpm - a.score.wpm || b.score.accuracy - a.score.accuracy)[0];
-  const layout = isDefaultLayout(learning.preferences.layout) ? '' : ` in ${layoutLabel(learning.preferences.layout)}`;
-  setParts($('daily-status'), best
-    ? ['Today’s best: ', speedFigure(best.score.wpm), ` · ${best.score.accuracy}% accuracy${layout}.`]
-    : `No completed physical-keyboard attempt${layout} today.`);
-  $('daily-history-panel').hidden = !completed.length;
-  $('daily-history').replaceChildren(...[...completed].reverse().slice(0, 30).map((run) => {
-    const row = element('div', '', 'daily-result');
-    row.append(element('strong', [speedFigure(run.score.wpm), ` · ${run.score.accuracy}%`], 'num'),
-      element('span', `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${inputLabel(run.conditions)}`));
 
-    return row;
-  }));
-}
 
 // ── Lessons ───────────────────────────────────────────────────────────────
 
@@ -3701,131 +3669,18 @@ function raceUnderWay() {
   return Boolean(race.conditions) && race.results.length < 2;
 }
 
-function startRace() {
-  race = {
-    passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }),
-    conditions: raceConditions(),
-    names: [$('player-one-name').value.trim() || 'Player one', $('player-two-name').value.trim() || 'Player two'],
-    player: 0,
-    attempt: null,
-    startTime: null,
-    results: [],
-    characters: [],
-    textView: null,
-    notice: '',
-  };
 
-  if (race.passage?.id && !learning.profile.seenTextIds.includes(race.passage.id)) {
-    learning.profile.seenTextIds.push(race.passage.id);
-    saveProfile();
-  }
 
-  $('compete-setup').hidden = true;
-  $('race-leaderboard').hidden = true;
-  $('race-handoff').hidden = true;
-  syncRules();
-  setupRacePlayer();
-}
 
-function setupRacePlayer() {
-  typingHost.clearFor('race');
-  race.attempt = createAttempt({ id: uid(), text: race.passage.text, textId: race.passage.id, kind: 'race', conditions: { ...race.conditions } });
-  race.startTime = null;
-  race.notice = '';
-  raceRunChanged();
-  $('race-stage').hidden = false;
-  $('race-player').textContent = race.names[race.player];
-  $('race-input').value = '';
-  $('race-input').disabled = false;
-  race.textView = renderText($('race-text-display'), race.passage.text);
-  race.characters = race.textView.characters;
-  raceFx.reset(race.characters);
-  $('race-accessible-passage').textContent = race.passage.text;
-  updateRaceProgress(replayAttempt(race.attempt));
-  showRaceRestartHint();
-  $('race-input').focus({ preventScroll: true });
-}
 
 // A key hint: hidden on touch-only devices (.key-hint in styles.css), where there is no restart key.
-function showRaceRestartHint() {
-  const hint = learning.preferences.keybindings.restart ? `${bindingLabel(learning.preferences.keybindings.restart)} restarts.` : 'Restart shortcut is disabled.';
-  $('race-help').replaceChildren(element('span', hint, 'key-hint'));
-}
 
-function updateRaceProgress(replay) {
-  const percent = Math.round((replay.typed.length / race.attempt.text.length) * 100);
-  $('race-progress').firstElementChild.style.setProperty('--progress', String(percent / 100));
-  $('race-progress').setAttribute('aria-valuenow', String(percent));
-}
 
-function finishRacePlayer() {
-  markEndFailure(race.attempt);
 
-  typingHost.clearFor('race');
-  const valid = !race.attempt.interrupted && !race.attempt.unsupportedInput;
-  const completed = completeAttempt(race.attempt, { endedAt: offsetFor('race'), status: valid ? 'complete' : 'interrupted' });
-  completed.interrupted = race.attempt.interrupted;
 
-  if (race.attempt.failed) completed.failed = race.attempt.failed;
-  race.attempt = completed;
-  raceRunChanged();
-  race.results.push({ name: race.names[race.player], attempt: completed });
-  $('race-input').disabled = true;
-  $('race-stage').hidden = true;
 
-  if (race.player === 0) {
-    race.player = 1;
-    $('handoff-name').textContent = race.names[1];
-    $('handoff-veil').textContent = race.passage.text;
-    $('race-handoff').classList.remove('is-revealing');
-    $('race-handoff').hidden = false;
-    announce(`${race.names[0]} finished. Pass the keyboard to ${race.names[1]}.`);
-  } else {
-    syncRules();
-    renderRaceResults();
-  }
-}
 
-function renderRaceResults() {
-  $('race-leaderboard').hidden = false;
-  const valid = race.results.filter((result) => result.attempt.status === 'complete');
-  const ordered = [...valid].sort((a, b) => b.attempt.summary.score.wpm - a.attempt.summary.score.wpm || b.attempt.summary.score.accuracy - a.attempt.summary.score.accuracy);
 
-  const tied = ordered.length === 2
-    && ordered[0].attempt.summary.score.wpm === ordered[1].attempt.summary.score.wpm
-    && ordered[0].attempt.summary.score.accuracy === ordered[1].attempt.summary.score.accuracy;
-
-  $('race-winner').textContent = ordered.length !== 2
-    ? 'A fair result needs two uninterrupted runs.'
-    : tied ? 'It’s a tie.' : `${ordered[0].name} leads.`;
-
-  const ranked = [...race.results].sort((a, b) => {
-    if (a.attempt.status !== b.attempt.status) return a.attempt.status === 'complete' ? -1 : 1;
-
-    return b.attempt.summary.score.wpm - a.attempt.summary.score.wpm || b.attempt.summary.score.accuracy - a.attempt.summary.score.accuracy;
-  });
-
-  $('race-results').replaceChildren(...ranked.map((result) => {
-    const row = document.createElement('article');
-    const score = result.attempt.summary.score;
-    row.className = 'race-result-row';
-    const name = document.createElement('strong');
-    name.textContent = result.name;
-    const speed = document.createElement('span');
-    speed.className = 'num';
-    speed.append(result.attempt.status === 'complete' ? speedFigure(score.wpm) : result.attempt.failed ? `failed · ${result.attempt.failed}` : 'interrupted');
-    const accuracy = document.createElement('span');
-    accuracy.className = 'num';
-    accuracy.textContent = `${score.accuracy}% accuracy`;
-    const elapsed = document.createElement('span');
-    elapsed.className = 'num';
-    elapsed.textContent = `${(result.attempt.summary.elapsedMs / 1000).toFixed(1)} s`;
-    row.append(name, speed, accuracy, elapsed);
-
-    return row;
-  }));
-  announce('Challenge complete.');
-}
 
 // What this tab holds in memory about the runs a clear removes: the baseline, the drill and retest it
 // offers, and the results on show.
@@ -4594,7 +4449,6 @@ function bindEvents() {
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
   $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
   $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
-  $('start-daily').addEventListener('click', startDaily, { signal: lifetime.signal });
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   learning.commands.back = () => {
     if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
@@ -4617,24 +4471,6 @@ function bindEvents() {
     if (ghostRace?.state === 'failed') submitGhostRun();
     else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
   }, { signal: lifetime.signal });
-
-  $('compete-setup').addEventListener('submit', (event) => { event.preventDefault(); startRace(); }, { signal: lifetime.signal });
-  typingHost.attach($('race-input'), 'race');
-  $('race-input').addEventListener('blur', markRaceInterrupted, { signal: lifetime.signal });
-  $('start-next-player').addEventListener('click', () => {
-    // A short unblur of the passage, then the typing stage takes over.
-    const reveal = () => { $('race-handoff').hidden = true; $('race-handoff').classList.remove('is-revealing'); setupRacePlayer(); };
-
-    if (reducedMotion.matches) {
-      reveal();
-
-      return;
-    }
-
-    $('race-handoff').classList.add('is-revealing');
-    setTimeout(reveal, 200);
-  }, { signal: lifetime.signal });
-  $('race-again').addEventListener('click', () => { $('race-leaderboard').hidden = true; $('compete-setup').hidden = false; $('player-one-name').focus(); }, { signal: lifetime.signal });
 
   // Focus goes back to the version in the same task that closes the panel. The close event comes a task
   // later, when focus may already be back in the passage, and would take it from the keys being typed.
@@ -5283,6 +5119,15 @@ compose.configure({
   },
 });
 
+challenge.daily.configure({ conditions: dailyConditions, inputLabel, start: startDaily });
+
+challenge.local.configure({ conditions: raceConditions, changed: raceRunChanged, offset: () => offsetFor('race'),
+  clearInput: () => typingHost.clearFor('race'), wire: (input) => typingHost.attach(input, 'race'), interrupt: markRaceInterrupted,
+  restartBinding: () => learning.preferences.keybindings.restart, reducedMotion: () => reducedMotion.matches,
+  rules: syncRules, announce,
+  seen(id) { if (!learning.profile.seenTextIds.includes(id)) { learning.profile.seenTextIds.push(id); saveProfile(); } },
+});
+
 lengthEditor.configure({ reset(focus = false) { resetSession('practice', { focus }); }, controls: setModeControls,
   glide() { updateGlide($('duration-options'), { instant: true }); },
   focusPractice() { $('typing-input').focus({ preventScroll: true }); },
@@ -5449,7 +5294,7 @@ return {
     onlineRace.dispose();
     practice.replay.dispose();
     primaryFx.dispose();
-    raceFx.dispose();
+    challenge.local.dispose();
     sounds.dispose();
     compose.dispose();
     challenge.quick.dispose();
