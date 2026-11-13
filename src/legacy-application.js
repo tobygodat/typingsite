@@ -7,7 +7,7 @@ import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
 import { copyParts, setParts, plain, setText, element } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
-import { startPageWork, disposePageWork } from './async-runtime.js';
+import { startPageWork, disposePageWork, pageLifetime } from './async-runtime.js';
 import { flushSync } from 'react-dom';
 import { createInputController } from './input.js';
 import { NOTICES } from './input-notices.js';
@@ -3373,7 +3373,7 @@ async function signOutAccount() {
   for (let round = 0; round < 2 && !synced; round += 1) {
     absorbCache();
     sync.state.unsynced = true;
-    synced = await pushProfile();
+    synced = await pushProfile({ lifetime: pageLifetime() });
 
     if (overtaken()) return;
 

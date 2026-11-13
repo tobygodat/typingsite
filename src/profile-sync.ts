@@ -1,3 +1,4 @@
+import type { AsyncLifetime } from './async-runtime.js';
 import * as account from './account.js';
 import { emptyProfile, normalizeProfile } from './profile.js';
 import { isRecord } from './domain-values.js';
@@ -27,7 +28,7 @@ interface SyncPorts {
 
 interface ProfileSyncState { syncTimer: number; cloudChecked: boolean; unsynced: boolean; localEdits: number; lastCloudAt: string | null; cacheText: string | null; lastPull: number; cacheWaiting: boolean; signedOutElsewhere: boolean; pendingSignOut: string | null; sentText: string | null; storageAvailable: boolean; heldClears: ProfileHolds }
 
-interface PushOptions { cloud?: CloudRow }
+interface PushOptions { cloud?: CloudRow; lifetime?: AsyncLifetime }
 
 const PULL_INTERVAL_MS = 15000;
 
@@ -170,7 +171,7 @@ export function createProfileSync(learning: LearningStore, accounts: AccountSess
     return run;
   }
 
-  async function pushOnce({ cloud: known }: PushOptions) {
+  async function pushOnce({ cloud: known, lifetime }: PushOptions) {
     const initial = session();
 
     if (!initial || disposed) return false;
@@ -184,7 +185,7 @@ export function createProfileSync(learning: LearningStore, accounts: AccountSess
     if (!signedInAs(userId)) return false;
 
     try {
-      accounts.session = await accounts.fresh();
+      accounts.session = await accounts.fresh({ lifetime });
 
       if (!signedInAs(userId)) return false;
       let cloud = known;
@@ -195,7 +196,7 @@ export function createProfileSync(learning: LearningStore, accounts: AccountSess
         if (!active) return false;
 
         if (cloud === undefined) {
-          cloud = await account.fetchCloudProfile(active);
+          cloud = await account.fetchCloudProfile(active, { lifetime });
 
           if (!signedInAs(userId)) return false;
         }
@@ -207,8 +208,8 @@ export function createProfileSync(learning: LearningStore, accounts: AccountSess
         const board = ports?.boardFor(merged);
 
         if (theirs && account.sameRow(merged, theirs)) written = cloud?.updated_at ?? null;
-        else if (cloud) written = await account.updateCloudProfile(active, merged, cloud.updated_at, { board });
-        else written = await account.insertCloudProfile(active, merged, { board });
+        else if (cloud) written = await account.updateCloudProfile(active, merged, cloud.updated_at, { board, lifetime });
+        else written = await account.insertCloudProfile(active, merged, { board, lifetime });
 
         if (!signedInAs(userId)) return false;
 

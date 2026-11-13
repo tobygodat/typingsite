@@ -1,3 +1,4 @@
+import type { AsyncLifetime } from './async-runtime.js';
 import { flushSync } from 'react-dom';
 import * as account from './account.js';
 import type { Session } from './network.js';
@@ -42,9 +43,9 @@ export function createAccountSession() {
     await replaceAccountLifetime(next);
   }
 
-  async function fresh() {
+  async function fresh({ lifetime }: { lifetime?: AsyncLifetime } = {}) {
     const epoch = identityEpoch;
-    const result = await account.freshSession(session);
+    const result = await account.freshSession(session, { lifetime });
 
     if (disposed || epoch !== identityEpoch) throw new WorkCancelled('Account changed.');
     await replaceIdentity(result);
