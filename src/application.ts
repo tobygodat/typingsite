@@ -1,3 +1,4 @@
+import { createDisplayedUnits } from './displayed-units.js';
 import { createGhostResult } from './ghost-result.js';
 import { createGhostOffer } from './ghost-offer.js';
 import { createNavigation } from './navigation.js';
@@ -38,6 +39,7 @@ export function createApplication() {
 
   return {
     accounts, learning, practice, sync,
+    displayedUnits: createDisplayedUnits(),
     navigation: createNavigation(),
     training: createTrainingMemory(),
     editors: createPracticeEditors(learning, sync),

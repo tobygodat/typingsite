@@ -390,7 +390,7 @@ export type ComposeController = ReturnType<typeof createCompose>;
 
 interface ProgressStyle extends CSSProperties { '--progress': string }
 
-export function ComposeSurface({ compose }: { compose: ComposeController }) {
+export function ComposeSurface({ compose, visible = false }: { compose: ComposeController; visible?: boolean }) {
   const view = useSyncExternalStore(compose.view.subscribe, compose.view.getSnapshot, compose.view.getSnapshot);
   const input = useRef<HTMLTextAreaElement>(null);
   const next = useRef<HTMLButtonElement>(null);
@@ -402,7 +402,7 @@ export function ComposeSurface({ compose }: { compose: ComposeController }) {
   const progressStyle: ProgressStyle = { '--progress': String(view.progress) };
 
   return (
-        <form id="compose-form" data-state={view.finished ? 'done' : 'ready'} onSubmit={(event) => event.preventDefault()} className="compose-form" autoComplete="off" noValidate hidden>
+        <form id="compose-form" data-state={view.finished ? 'done' : 'ready'} onSubmit={(event) => event.preventDefault()} className="compose-form" autoComplete="off" noValidate hidden={!visible}>
           <div className="measure-row compose-measure">
             <div className="compose-intro">
               <p className="sr-only">Composing practice. Write in response to the prompt; there is no text to copy.</p>
@@ -445,7 +445,7 @@ export function ComposeSurface({ compose }: { compose: ComposeController }) {
           <section id="compose-result" className="compose-result" aria-labelledby="compose-result-heading" hidden={!view.result}>
             <h2 id="compose-result-heading">{view.result?.heading}</h2>
             <dl className="compose-facts">
-              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" className="num" data-bare="" data-wpm={view.result?.wpm ?? undefined}>{view.result?.wpm === null || !view.result ? '—' : formatSpeed(view.result.wpm, { bare: true })}</strong><span data-speed-unit="">wpm</span></dd></div>
+              <div><dt>free-typing speed</dt><dd><strong id="compose-wpm" className="num" data-bare="" data-wpm={view.result?.wpm ?? undefined}>{view.result?.wpm === null || !view.result ? '—' : formatSpeed(view.result.wpm, { bare: true })}</strong><span data-speed-unit="">{unitText('{unit}')}</span></dd></div>
               <div><dt>backspace rate</dt><dd><strong id="compose-backspace" className="num">{view.result?.backspaceRate ?? '—'}</strong><span>%</span></dd></div>
               <div><dt>active typing</dt><dd><strong id="compose-active" className="num">{view.result ? (view.result.summary.activeMs / 1000).toFixed(1) : '—'}</strong><span>s</span></dd></div>
               <div><dt>characters</dt><dd><strong id="compose-characters" className="num">{view.result?.summary.characters ?? '—'}</strong></dd></div>

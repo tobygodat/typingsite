@@ -1,3 +1,4 @@
+import { PracticeIntro, PracticeBest, PracticeEgg } from './practice-intro.js';
 import { GhostResult } from './ghost-result.js';
 import { GhostOffer } from './ghost-offer.js';
 import { useSyncExternalStore } from 'react';
@@ -24,7 +25,10 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation, ghostOffer, ghostResult }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation, ghostOffer, ghostResult, displayedUnits }: Application) {
+  useSyncExternalStore(displayedUnits.view.subscribe, displayedUnits.view.getSnapshot, displayedUnits.view.getSnapshot);
+  const intro = useSyncExternalStore(practice.intro.subscribe, practice.intro.getSnapshot, practice.intro.getSnapshot);
+  const controls = useSyncExternalStore(practice.controls.subscribe, practice.controls.getSnapshot, practice.controls.getSnapshot);
   const view = useSyncExternalStore(navigation.view.subscribe, navigation.view.getSnapshot, navigation.view.getSnapshot);
   const shown = view.screen === 'results' ? 'practice' : view.screen;
   const restartLabel = bindingLabel(view.keys.restart);
@@ -65,37 +69,15 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </div>
 
     <main id="main-content">
-      <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title" hidden={shown !== 'practice'}>
+      <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session={intro.kind} aria-labelledby="session-title" hidden={shown !== 'practice'}>
         <PracticeControls practice={practice} quoteFilters={quoteFilters} lengthEditor={lengthEditor} />
 
         <CustomTextEditor controller={editors} />
         <ManualTargetEditor controller={editors} />
 
-        <form id="typing-form" className="typing-form" autoComplete="off">
+        <form id="typing-form" className="typing-form" autoComplete="off" hidden={controls.composing}>
           <div className="measure-row">
-            <div className="session-intro">
-              <div className="session-line">
-                <span id="typing-status" className="status" role="status"><span className="status-dot" aria-hidden="true"></span>Ready</span>
-                <span id="session-kicker" className="session-kicker">open practice</span>
-              </div>
-              <h1 id="session-title">Practice</h1>
-              <p id="session-description"></p>
-              <p id="condition-line">english · common words · 30 s</p>
-            </div>
-            <div id="live-stats" className="live-stats">
-              <div className="live-stat timer-stat">
-                <strong id="timer" className="num">30</strong><span id="timer-unit">s</span>
-                <small id="timer-label" className="sr-only">remaining</small>
-              </div>
-              <div className="live-stat">
-                <strong id="live-wpm" className="num" data-bare="">—</strong><span data-speed-unit="">wpm</span>
-              </div>
-              <div className="live-stat">
-                <strong id="live-accuracy" className="num">—</strong><span>%<span className="sr-only"> input accuracy</span></span>
-              </div>
-              <small id="pace-label" className="pace-label" hidden></small>
-            </div>
-            <p id="caps-warning" className="caps-warning" aria-hidden="true">Caps Lock is on</p>
+            <PracticeIntro practice={practice} />
           </div>
 
           <TypingSurface practice={practice} />
@@ -128,7 +110,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
           </div>
         </div>
 
-        <ComposeSurface compose={compose} />
+        <ComposeSurface compose={compose} visible={controls.composing} />
 
         <div className="shortcut-row key-hint" aria-hidden="true">
           <span className="compose-shortcut"><kbd className="mod-key">{view.mac ? '⌘' : 'ctrl'}</kbd><kbd>enter</kbd> done</span>
@@ -148,7 +130,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </main>
 
     <footer className="site-footer">
-      <span id="best" className="personal-best num">No best yet</span>
+      <PracticeBest practice={practice} />
       <AccountGuestNote controller={accounts} />
       <span className="footer-links">
         <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog" onClick={() => suggestion.open()}>suggest a feature</button>
@@ -183,7 +165,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
   <div id="egg-toast" className="toast egg-toast" role="status" hidden>
     <span className="ghost-mark" aria-hidden="true"></span>
-    <span id="egg-feedback"></span>
+    <PracticeEgg practice={practice} />
   </div>
 
   <SuggestionToast controller={suggestion} />

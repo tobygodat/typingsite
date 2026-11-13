@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { createPracticeKeyboard } from './practice-keyboard.js';
 import { createReplayView } from './replay-view.js';
 import type { Attempt, Replay } from './typing.js';
@@ -42,6 +43,11 @@ export interface ResultView {
   againLabel: string;
   replay: boolean;
   graph: boolean;
+}
+
+interface PracticeIntroView {
+  kind: SessionKind; kicker: string; title: string; description: string; conditions: CopyPart[];
+  best: CopyPart[]; caps: boolean | null; pace: CopyPart[]; paceVisible: boolean; egg: CopyPart[];
 }
 
 export interface PracticeControlsView {
@@ -96,6 +102,8 @@ export function createPracticeSession() {
   let origin: number | null = null;
   let purpose: SessionKind = 'practice';
   let displayed: SealedRun | null = null;
+  const intro = createStore<PracticeIntroView>({ kind: 'practice', kicker: 'open practice', title: 'Practice', description: '', conditions: ['english · common words · 30 s'], best: ['No best yet'], caps: null, pace: [], paceVisible: false, egg: [] });
+  const presentIntro = (patch: Partial<Omit<PracticeIntroView, 'kind'>>) => flushSync(() => intro.publish({ ...intro.getSnapshot(), ...patch }));
   const result = createStore<ResultView | null>(null);
   const controls = createStore<PracticeControlsView>({ visible: true, minimums: [], minimumVisible: false, bookPage: 1, mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, manualOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
   const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {}, manual() {}, lessons() {} };
@@ -106,7 +114,7 @@ export function createPracticeSession() {
   };
 
   return {
-    result,
+    result, intro, presentIntro,
     keyboard: createPracticeKeyboard(),
     replay: createReplayView(),
     attachPrimary(input: HTMLTextAreaElement) {
@@ -134,7 +142,11 @@ export function createPracticeSession() {
     get startTime() { return origin; },
     set startTime(value: number | null) { origin = value; },
     get sessionKind() { return purpose; },
-    set sessionKind(value: SessionKind) { purpose = value; },
+    set sessionKind(value: SessionKind) {
+      if (purpose === value) return;
+      purpose = value;
+      flushSync(() => intro.publish({ ...intro.getSnapshot(), kind: value }));
+    },
     get shownResult() { return displayed; },
     set shownResult(run: SealedRun | null) { displayed = run; },
   };

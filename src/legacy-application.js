@@ -56,7 +56,7 @@ import { challengePayload, challengeTextId,
   listChallenges } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
-import { formatSpeed, showSpeed, showSpeedUnit, speedFigure, speedValue, wpmFromSpeed } from './units.js';
+import { formatSpeed, showSpeed, speedFigure, speedValue, wpmFromSpeed } from './units.js';
 import {
   LESSONS, LESSON_ACCURACY, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
   makeupShort, nextLessonIndex,
@@ -65,7 +65,7 @@ import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM
 
 
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer, ghostResult }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer, ghostResult, displayedUnits }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const glides = createControlGlides(lifetime);
@@ -284,7 +284,7 @@ const { restartKind, drillLength, sessionDurationMs, ruleLimits, ruleSession, se
 
 const trainingPolicy = createTrainingPolicy(learning, practice, training, sync, { conditions, inputLayout, retainedBaseline, recommendation: trainingRecommendation,
   reset: resetSession, controls: setModeControls, applyPreferences, manual: showManualTarget, unavailable: showUnavailableRetest,
-  description: (text) => { $('session-description').textContent = text; },
+  description: (text) => practice.presentIntro({ description: text }),
 });
 
 const layoutMismatch = trainingPolicy.layoutMismatch;
@@ -433,10 +433,8 @@ function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
 
 // Caps Lock warning: read from the modifier state on each key event in the typing field.
 function setCapsWarning(on) {
-  const warning = $('caps-warning');
-
-  if ((warning.dataset.on === 'true') === on) return;
-  warning.dataset.on = String(on);
+  if ((practice.intro.getSnapshot().caps === true) === on) return;
+  practice.presentIntro({ caps: on });
 
   if (on) announce('Caps Lock is on');
 }
@@ -661,13 +659,13 @@ function showBest() {
 
   // Code runs have their own key but never set a best. (A custom session over code says it isn't counted.)
   if (key && (practice.attempt?.conditions || conditions()).mode === 'code') {
-    $('best').textContent = 'Code runs aren’t ranked';
+    practice.presentIntro({ best: ['Code runs aren’t ranked'] });
 
     return;
   }
 
   const best = key && learning.profile.bests[key];
-  setParts($('best'), !key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet');
+  practice.presentIntro({ best: copyParts(!key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet') });
 }
 
 // The mode a theme belongs to, a custom one's by its background; null for 'system' or a theme not saved.
@@ -774,7 +772,7 @@ function applyPreferences() {
 // (the pace field follows in showPace).
 function applySpeedUnit() {
   selectSetting('speed-unit', learning.preferences.speedUnit);
-  const changed = showSpeedUnit(learning.preferences.speedUnit);
+  const changed = displayedUnits.select(learning.preferences.speedUnit);
 
   if (!changed) return;
   labelWords();
@@ -997,10 +995,9 @@ function configureSessionCopy() {
       : ['ghost race', `Race ${ghostResult.race?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
   }[practice.sessionKind];
 
-  $('session-kicker').textContent = copy[0];
-  $('session-title').textContent = copy[1];
-  $('session-description').textContent = copy[2];
-  $('typing-screen').dataset.session = practice.sessionKind;
+  practice.presentIntro({ kicker: copy[0] });
+  practice.presentIntro({ title: copy[1] });
+  practice.presentIntro({ description: copy[2] });
   document.body.dataset.session = practice.sessionKind;
   flushSync(() => practice.controls.publish({ ...practice.controls.getSnapshot(), visible: practice.sessionKind === 'practice' || practice.sessionKind === 'custom', bookPage: bookPlace(learning.profile.runs, learning.preferences.book) + 1 }));
   // Every new run (resetSession) brings its own settings and input class to the footer best.
@@ -1080,7 +1077,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
       $('accessible-passage').textContent = 'No passage matches these filters.';
       $('typing-status').textContent = 'No matching text';
       $('typing-status').className = 'badge badge-warning';
-      $('condition-line').textContent = describeConditions();
+      practice.presentIntro({ conditions: copyParts(describeConditions()) });
       $('input-help').textContent = 'Try another quote length or difficulty.';
       showSpeed($('live-wpm'), null);
 
@@ -1150,7 +1147,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
   $('typing-status').innerHTML = '<span class="status-dot" aria-hidden="true"></span>Ready';
   // Open practice hides the condition line, so a repeated passage says so in the footer, before and during the run.
   setPassageNotice(repeatedTextNotice());
-  setParts($('condition-line'), describeRun(practice.attempt));
+  practice.presentIntro({ conditions: copyParts(describeRun(practice.attempt)) });
   configureSessionCopy();
   updateLive(true);
 
@@ -1202,9 +1199,7 @@ function openCompose() {
     // Composing replaces any custom passage or open custom editor, as a mode button does.
     editors.customOpen = false;
     document.body.dataset.compose = 'true';
-    $('typing-form').hidden = true;
-    $('compose-form').hidden = false;
-    configureSessionCopy();
+        configureSessionCopy();
     setModeControls();
     switchView('practice');
     compose.open({ focus: true });
@@ -1221,8 +1216,6 @@ function closeCompose() {
   composeOpen = false;
   compose.close();
   document.body.dataset.compose = 'false';
-  $('typing-form').hidden = false;
-  $('compose-form').hidden = true;
   setModeControls();
 }
 
@@ -1335,8 +1328,7 @@ function showPace() {
   const pace = ghostPace();
   // A ghost race's caret is the friend's run, not the pacer, so the pace isn't labelled there.
   const shown = on && practice.sessionKind !== 'challenge';
-  $('pace-label').hidden = !shown;
-  setParts($('pace-label'), shown ? ['pace ', speedFigure(pace.wpm)] : '');
+  practice.presentIntro({ paceVisible: shown, pace: copyParts(shown ? ['pace ', speedFigure(pace.wpm)] : '') });
   selectSetting('pace-select', learning.preferences.paceCaret);
   // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
   // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
@@ -2104,7 +2096,7 @@ function forgetTraining() {
   // A retest nobody has started compares with the baseline just forgotten, so a practice test takes its place; a
   // drill nobody has started stands alone now, with no retest after it, and says so (TOB-448).
   if (practice.attempt?.status === 'ready' && practice.sessionKind === 'retest') resetSession('practice', { show: false });
-  else if (practice.attempt?.status === 'ready' && practice.sessionKind === 'drill') $('session-description').textContent = learning.preferences.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.';
+  else if (practice.attempt?.status === 'ready' && practice.sessionKind === 'drill') practice.presentIntro({ description: learning.preferences.mode === 'code' ? CODE_DRILL_NOTE : 'Standalone drill.' });
 
   if (document.body.dataset.view === 'train') renderTrain();
 }
@@ -2612,7 +2604,7 @@ function bindEvents() {
     if (activationInput !== 'touch' || !['ready', 'running'].includes(practice.attempt?.status) || practice.attempt.conditions.inputClass === 'touch') return;
     practice.attempt.conditions.inputClass = 'touch';
     practice.attempt.conditions.layout = inputLayout('touch');
-    setParts($('condition-line'), describeRun(practice.attempt));
+    practice.presentIntro({ conditions: copyParts(describeRun(practice.attempt)) });
     showBest();
 
     if (practice.attempt.status === 'ready') armPace();
@@ -3002,7 +2994,7 @@ function labelPassage(fresh, exhausted) {
   passage.exhausted = exhausted;
   practice.attempt.fresh = fresh;
   setPassageNotice(repeatedTextNotice());
-  setParts($('condition-line'), describeRun(practice.attempt));
+  practice.presentIntro({ conditions: copyParts(describeRun(practice.attempt)) });
 }
 
 // An unstarted repeated passage that repeats-off would have replaced with unseen text.
@@ -3029,7 +3021,7 @@ function setMinimum(key, value) {
 
   if (practice.attempt.status === 'ready') {
     practice.attempt.minimums = practiceMinimums();
-    setParts($('condition-line'), describeRun(practice.attempt));
+    practice.presentIntro({ conditions: copyParts(describeRun(practice.attempt)) });
   } else if (practice.attempt.status === 'running') resetSession('practice');
 }
 
@@ -3244,7 +3236,7 @@ function bindPalette() {
 function toggleGhost() {
   const on = !ghostOn();
   const pace = ghostPace('best');
-  setParts($('egg-feedback'), on ? ['Ghost pacer · ', speedFigure(pace.wpm), pace.fromBest ? ' (your best)' : ''] : 'Ghost off');
+  practice.presentIntro({ egg: copyParts(on ? ['Ghost pacer · ', speedFigure(pace.wpm), pace.fromBest ? ' (your best)' : ''] : 'Ghost off') });
   $('egg-toast').hidden = false;
   $('egg-toast').classList.toggle('is-solo', $('history-toast').hidden);
   clearTimeout(toggleGhost.timer);

@@ -2,7 +2,7 @@ import { Component, Fragment, createRef, useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import type { LearningStore, TrainView } from './learning-store.js';
 import { aheadCopy, behindCopy } from './train-path.js';
-import { formatSpeed } from './units.js';
+import { formatSpeed, unitText } from './units.js';
 
 const FIGURE = /(?:\d+(?:%| of \d+)(?: missed)?|\d+ ms (?:slower|faster)|\d+ (?:clean )?intervals?|at your pace)(?: →)?/g;
 
@@ -28,7 +28,7 @@ function Comparison({ learning }: { learning: LearningStore }) {
     <dl className="comparison-rows">
       <div id="comparison-target-row" hidden={!value.target}><dt id="comparison-target-label">{value.target?.label ?? 'missed'}</dt><dd><strong id="comparison-target" className="num">{value.target?.value ?? '—'}</strong><span id="comparison-target-was">{value.target?.was}</span></dd></div>
       <div><dt>accuracy</dt><dd><strong className="num"><span id="comparison-accuracy-now">{value.accuracy ?? '—'}</span><b>%</b></strong><span id="comparison-accuracy" className="num">{value.accuracyDelta}</span></dd></div>
-      <div><dt data-speed-unit="">wpm</dt><dd><strong id="comparison-wpm-now" className="num" data-bare="" data-wpm={value.wpm ?? undefined}>{value.wpm === null ? '—' : formatSpeed(value.wpm, { bare: true })}</strong><span id="comparison-wpm" className="num" data-bare="" data-signed="" data-wpm={value.wpmDelta ?? undefined}>{value.wpmDelta === null ? '—' : formatSpeed(value.wpmDelta, { bare: true, signed: true })}</span></dd></div>
+      <div><dt data-speed-unit="">{unitText('{unit}')}</dt><dd><strong id="comparison-wpm-now" className="num" data-bare="" data-wpm={value.wpm ?? undefined}>{value.wpm === null ? '—' : formatSpeed(value.wpm, { bare: true })}</strong><span id="comparison-wpm" className="num" data-bare="" data-signed="" data-wpm={value.wpmDelta ?? undefined}>{value.wpmDelta === null ? '—' : formatSpeed(value.wpmDelta, { bare: true, signed: true })}</span></dd></div>
     </dl>
     <p id="comparison-conditions" className="condition-copy">{value.conditions}</p>
     <p id="comparison-caveat">{value.caveat}</p>

@@ -1,3 +1,5 @@
+import { formatSpeed, unitText } from './units.js';
+import { MIN_WPM_OPTIONS } from './profile.js';
 import type { SettingsImport } from './import-dialog.js';
 import { AccountSaved } from './account-view.js';
 import type { AccountSession } from './account-session.js';
@@ -181,13 +183,8 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
           <div className="preference-row">
             <div className="preference-copy"><strong id="min-wpm-label">minimum speed</strong></div>
             <fieldset className="setting-options" id="min-wpm" aria-labelledby="min-wpm-label" disabled={view.disabled['min-wpm'] ?? false} onClick={(event) => choose('min-wpm', event)}>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '0', true)} /><span data-speed-unit="any {unit}">any wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '20')} /><span data-wpm="20">20 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '30')} /><span data-wpm="30">30 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '40')} /><span data-wpm="40">40 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '60')} /><span data-wpm="60">60 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '80')} /><span data-wpm="80">80 wpm</span></label>
-              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '100')} /><span data-wpm="100">100 wpm</span></label>
+              <label className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', '0', true)} /><span data-speed-unit="any {unit}">{unitText('any {unit}')}</span></label>
+              {MIN_WPM_OPTIONS.filter((value) => value !== 0).map((value) => <label key={value} className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', String(value))} /><span data-wpm={value}>{formatSpeed(value)}</span></label>)}
             </fieldset>
           </div>
           <div className="preference-row">
@@ -246,7 +243,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">live wpm and accuracy</strong></div>
+            <div className="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">{unitText('live {unit} and accuracy')}</strong></div>
             <fieldset className="setting-options" id="live-toggle" aria-labelledby="live-toggle-label" disabled={view.disabled['live-toggle'] ?? false} onClick={(event) => choose('live-toggle', event)}>
               <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'false', true)} /><span>off</span></label>
               <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'true')} /><span>on</span></label>

@@ -1,6 +1,6 @@
 import { Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CopyPart, PracticeSession, ResultView, ResultWord } from './practice-session.js';
-import { formatSpeed } from './units.js';
+import { formatSpeed, unitText } from './units.js';
 
 export function Copy({ parts }: { parts: readonly CopyPart[] }) {
   return parts.map((part, index) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment>
@@ -49,7 +49,7 @@ export function ResultsCard({ practice }: { practice: PracticeSession }) {
       <div className="run-card-head">
         <div className="run-card-score">
           <strong id="result-wpm" className="num" data-bare="" data-wpm={result?.wpm ?? undefined}>{result?.wpm === null || !result ? '—' : formatSpeed(result.wpm, { bare: true })}</strong>
-          <span className="run-card-unit" data-speed-unit="">wpm</span>
+          <span className="run-card-unit" data-speed-unit="">{unitText('{unit}')}</span>
         </div>
         <div className="run-card-side">
           <dl className="run-card-facts">
