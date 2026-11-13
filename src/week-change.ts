@@ -1,5 +1,5 @@
 import { analysisRuns, analysisLoops } from './domain-history.js';
-import type { AnalysisLoop, ScoredRun } from './profile-types.js';
+import type { AnalysisLoop, ScoredRun, HistoricalRecord } from './profile-types.js';
 import { at as indexed } from './domain-values.js';
 import type { Conditions } from './typing.js';
 
@@ -147,7 +147,7 @@ export function weekPractice(runs: readonly unknown[], practiceDays: Record<stri
   return { status: now > was ? 'more' : now < was ? 'less' : 'same', current, previous, streak: practiceStreak(byDay, goal, date), goal };
 }
 
-export function weekChange({ runs = [], loops = [], practiceDays = {}, key = '', conditions = null, focus, goal = 0, period = '30', now }: { runs?: readonly unknown[]; loops?: readonly unknown[]; practiceDays?: Record<string, number>; key?: string; conditions?: Conditions | null; focus: string; goal?: number; period?: string; now: number }) {
+export function weekChange({ runs = [], loops = [], practiceDays = {}, key = '', conditions = null, focus, goal = 0, period = '30', now }: { runs?: readonly unknown[]; loops?: readonly unknown[]; practiceDays?: Record<string, number>; key?: string; conditions?: Conditions | HistoricalRecord | null; focus: string; goal?: number; period?: string; now: number }) {
   const date = new Date(now);
   const trend = analysisRuns(runs).filter(trendRun);
   const charted = key ? filterRuns(trend, key, periodWindow(period, date)) : [];

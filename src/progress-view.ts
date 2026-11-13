@@ -256,7 +256,7 @@ function measureText(chart: SVGElement, text: string) {
 // dot. Speed is saved in wpm and drawn in the chosen display unit (wpm or cpm). A point opens the day's
 // most recent run. Days sit by date across the period's window (periodWindow), the one the runs were
 // selected from, so every point lands inside the plot; without one, from the first run's day to the last's.
-export function renderTrend(container: HTMLElement, runs: RunRecord[], onSelect: (id: string) => void, metric: Metric = 'wpm', { period = null }: { period?: Period | null } = {}) {
+export function renderTrend(container: HTMLElement, runs: readonly unknown[], onSelect: (id: string | undefined) => void, metric: Metric = 'wpm', { period = null }: { period?: Period | null } = {}) {
   container.replaceChildren();
   const days = runsByDay(runs);
 
@@ -321,7 +321,7 @@ export function renderTrend(container: HTMLElement, runs: RunRecord[], onSelect:
     const tip = svgNode('title', {});
     tip.textContent = label;
     dot.append(tip);
-    const open = () => onSelect(latestRun(day.runs).id ?? '');
+    const open = () => onSelect(latestRun(day.runs).id);
     dot.addEventListener('click', open);
     dot.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
@@ -371,7 +371,7 @@ const WEEK_AXIS = 24;
 const WEEK_LABELS = 40;
 const WEEK_END = 104;
 
-export function renderWeekChart(container: HTMLElement, runs: RunRecord[], metric: Metric, { period = null, onOpen }: { period?: Period | null; onOpen: () => void }) {
+export function renderWeekChart(container: HTMLElement, runs: readonly unknown[], metric: Metric, { period = null, onOpen }: { period?: Period | null; onOpen: () => void }) {
   const focused = container.contains(document.activeElement);
   container.replaceChildren();
   const days = runsByDay(runs);
