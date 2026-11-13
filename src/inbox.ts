@@ -13,17 +13,17 @@ import type { Session } from './network.js';
 import type { RaceInvite } from './multiplayer.js';
 import type { GhostChallenge } from './ghost-race.js';
 import type { Conditions } from './typing.js';
-import { isConditions } from './domain-history.js';
+import type { HistoricalRecord } from './profile-types.js';
 import { isRecord } from './domain-values.js';
 import type { RaceResult } from './race-result.js';
 
-export interface InboxEntry {
+export type InboxEntry = {
   id: string; kind: string; text: string; at?: string; read?: boolean;
   closed?: boolean; until?: string | null; completedAt?: string | null;
   local?: boolean; roomId?: string; challengeId?: string; conditions?: Conditions; race?: RaceResult;
 }
 
-export interface InboxAction { label: string; run(entry: InboxEntry): void; available?(entry: InboxEntry): boolean }
+export interface InboxAction { label: string; run(entry: HistoricalRecord): void; available?(entry: HistoricalRecord): boolean }
 
 export interface InboxOptions {
   getSession(): Session | null;
@@ -36,7 +36,7 @@ export interface InboxOptions {
 
 export type InboxCopyPart = CopyPart;
 
-export interface InboxRow { entry: Readonly<InboxEntry>; copy: readonly InboxCopyPart[]; meta: string; action: string | null; waiting: boolean }
+export interface InboxRow { entry: Readonly<HistoricalRecord>; id: string; kind: string; copy: readonly InboxCopyPart[]; meta: string; action: string | null; waiting: boolean }
 
 export interface InboxSnapshot {
   signedIn: boolean; unread: number; rows: readonly InboxRow[]; toast: InboxRow | null;
@@ -46,18 +46,10 @@ export interface InboxFocusHost { toastFocused(): boolean; focusTrigger(): void 
 
 type InboxListener = (invites: RaceInvite[], error: Error | null, challenges: GhostChallenge[]) => void;
 
-function savedEntry(value: unknown): InboxEntry | null {
-  if (!isRecord(value) || typeof value.id !== 'string' || !value.id || typeof value.text !== 'string' || !value.text) return null;
-  const normalized = normalizeInboxEntry(value);
+function savedEntry(value: unknown): HistoricalRecord | null {
+  if (!isRecord(value) || !value.id || !value.text) return null;
 
-  return { ...normalized, id: value.id, text: value.text, kind: typeof value.kind === 'string' ? value.kind : '',
-    at: typeof value.at === 'string' ? value.at : undefined, read: Boolean(value.read), closed: Boolean(value.closed),
-    until: typeof value.until === 'string' ? value.until : null,
-    completedAt: typeof value.completedAt === 'string' ? value.completedAt : null,
-    local: Boolean(value.local), roomId: typeof value.roomId === 'string' ? value.roomId : undefined,
-    challengeId: typeof value.challengeId === 'string' ? value.challengeId : undefined,
-    conditions: isConditions(value.conditions) ? value.conditions : undefined,
-    race: raceResultOf(normalized) ?? undefined };
+  return normalizeInboxEntry(value);
 }
 
 const STORE = 'stilltype-inbox-v1:';
@@ -73,8 +65,8 @@ const DAY_MS = 86400000;
 const WEEK_MS = 7 * DAY_MS;
 const TOAST_MS = 18000;
 
-export function ago(at: string, now = Date.now()) {
-  const minutes = Math.round((now - Date.parse(at)) / 60000);
+export function ago(at: unknown, now = Date.now()) {
+  const minutes = Math.round((now - Date.parse(String(at))) / 60000);
 
   if (!(minutes >= 1)) return 'just now';
 
@@ -83,17 +75,17 @@ export function ago(at: string, now = Date.now()) {
 
   if (hours < 24) return `${hours} h ago`;
 
-  return new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  return new Date(typeof at === 'number' || typeof at === 'boolean' || at === null ? Number(at) : String(at)).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
 // An entry as shown: a result's speeds are figures in the chosen unit, read from its saved scores or,
 // for a ghost race or a result saved before the setting, from its sentence. Anything else reads as saved.
-function copyOf(entry: InboxEntry): InboxCopyPart[] {
+function copyOf(entry: HistoricalRecord): InboxCopyPart[] {
   const race = raceResultOf(entry);
 
   if (race) return [`${race.lead} ${race.opponent}: `, { kind: 'speed', wpm: race.wpm[0] }, ' to ', { kind: 'speed', wpm: race.wpm[1], bare: true }, '.'];
 
-  return (entry.kind === 'challenge-result' && resultParts(entry.text, (wpm): CopyPart => ({ kind: 'speed', wpm }))) || [entry.text];
+  return (entry.kind === 'challenge-result' && resultParts(String(entry.text), (wpm): CopyPart => ({ kind: 'speed', wpm }))) || [String(entry.text)];
 }
 
 export function createInbox(initial?: InboxOptions) {
@@ -103,7 +95,7 @@ export function createInbox(initial?: InboxOptions) {
 
   const getSession = () => options.getSession();
   const announce = (text: string) => options.announce(text);
-  let entries: InboxEntry[] = [];
+  let entries: HistoricalRecord[] = [];
   let invites: RaceInvite[] = [];
   let challengesListed: GhostChallenge[] = [];
   let delivered = new Set<string>();
@@ -113,8 +105,8 @@ export function createInbox(initial?: InboxOptions) {
   let configured = false;
   let identity = getSession();
   let lifetime = new AsyncLifetime(accountLifetime());
-  let pendingToast: InboxEntry | null = null;
-  let toastEntry: InboxEntry | null = null;
+  let pendingToast: HistoricalRecord | null = null;
+  let toastEntry: HistoricalRecord | null = null;
   let toastLeft = 0;
   let toastStarted = 0;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,8 +116,8 @@ export function createInbox(initial?: InboxOptions) {
   let hovered = false;
   const listeners = new Set<InboxListener>();
   const viewListeners = new Set<() => void>();
-  let waiting = new Set<string>();
-  const toasted = new Set<string>();
+  let waiting = new Set<unknown>();
+  const toasted = new Set<unknown>();
   const userId = () => getSession()?.user.id || null;
   const running = () => options.isRunning();
   let snapshot: InboxSnapshot = { signedIn: false, unread: 0, rows: [], toast: null };
@@ -138,11 +130,11 @@ export function createInbox(initial?: InboxOptions) {
     for (const listener of viewListeners) listener();
   }
 
-  function toRow(entry: InboxEntry): InboxRow {
+  function toRow(entry: HistoricalRecord): InboxRow {
     const closed = isClosed(entry);
 
-    return { entry: { ...entry }, copy: copyOf(entry), meta: `${ago(entry.at ?? '')}${closed ? ' · closed' : ''}`,
-      action: closed ? null : options.actions[entry.kind]?.label ?? null, waiting: waiting.has(entry.kind) };
+    return { entry: { ...entry }, id: String(entry.id), kind: String(entry.kind), copy: copyOf(entry), meta: `${ago(entry.at ?? '')}${closed ? ' · closed' : ''}`,
+      action: closed ? null : options.actions[String(entry.kind)]?.label ?? null, waiting: waiting.has(entry.kind) };
   }
 
   function active(session: Session | null) {
@@ -201,9 +193,9 @@ export function createInbox(initial?: InboxOptions) {
 
   // The service lists every open ghost race and every result from the last week, so those stay
   // reachable however many there are; everything else keeps the newest MAX_ENTRIES.
-  const freshResult = (at: string | null | undefined) => Date.now() - Date.parse(at ?? '') < WEEK_MS;
+  const freshResult = (at: unknown) => Date.now() - Date.parse(String(at)) < WEEK_MS;
 
-  function kept(entry: InboxEntry) {
+  function kept(entry: HistoricalRecord) {
     if (entry.kind === 'challenge') return !isClosed(entry);
 
     return entry.kind === 'challenge-result' && freshResult(entry.completedAt || entry.at);
@@ -228,18 +220,18 @@ export function createInbox(initial?: InboxOptions) {
 
   // An entry's action lapses when the service would no longer honour it (`until`), or when the
   // action says the thing it points at is gone (an opponent-joined entry for a race already left).
-  function isClosed(entry: InboxEntry) {
+  function isClosed(entry: HistoricalRecord) {
     if (entry.closed) return true;
 
-    if (entry.until && Date.now() > Date.parse(entry.until)) return true;
+    if (entry.until && Date.now() > Date.parse(String(entry.until))) return true;
 
-    return options.actions[entry.kind]?.available?.(entry) === false;
+    return options.actions[String(entry.kind)]?.available?.(entry) === false;
   }
 
   // A toast speaks for its entry as the inbox holds it now. Once the entry has closed, been replaced by
   // another kind (a ghost race answered on another device becomes its result) or gone, the toast goes too,
   // so its button never acts on what was. Guests keep no entries, so their toast stands for itself.
-  function current(shown: InboxEntry) {
+  function current(shown: HistoricalRecord) {
     if (!userId()) return !isClosed(shown);
     const entry = entries.find((value) => value.id === shown.id);
 
@@ -295,7 +287,7 @@ export function createInbox(initial?: InboxOptions) {
     toasted.add(entry.id);
   }
 
-  function showToast(entry: InboxEntry) {
+  function showToast(entry: HistoricalRecord) {
     if (!current(entry)) return;
 
     if (running()) {
@@ -410,7 +402,7 @@ export function createInbox(initial?: InboxOptions) {
 
       if (listed.status === 'rejected') throw listed.reason;
       invites = listed.value;
-      const open = new Set(invites.map((invite) => `invite:${invite.id}`));
+      const open = new Set<unknown>(invites.map((invite) => `invite:${invite.id}`));
 
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
@@ -456,7 +448,7 @@ export function createInbox(initial?: InboxOptions) {
     }
   }
 
-  function act(entry: InboxEntry, toast = false) {
+  function act(entry: HistoricalRecord, toast = false) {
     if (disposed || forgotten || waiting.has(entry.kind)) return;
 
     if (toast) {
@@ -465,7 +457,7 @@ export function createInbox(initial?: InboxOptions) {
 
       if (known && !known.read) { known.read = true; save(); render(); }
 
-      if (current(entry)) options.actions[entry.kind]?.run(entry);
+      if (current(entry)) options.actions[String(entry.kind)]?.run(entry);
     } else {
       if (isClosed(entry)) {
         render();
@@ -473,7 +465,7 @@ export function createInbox(initial?: InboxOptions) {
         return;
       }
 
-      options.actions[entry.kind]?.run(entry);
+      options.actions[String(entry.kind)]?.run(entry);
     }
   }
 
@@ -555,7 +547,7 @@ export function createInbox(initial?: InboxOptions) {
     // Marks these kinds' actions as waiting (none, once the request has landed).
     wait(kinds: string[]) {
       if (disposed) return;
-      waiting = new Set(kinds);
+      waiting = new Set<unknown>(kinds);
       snapshot = { ...snapshot, rows: snapshot.rows.map((row) => ({ ...row, waiting: waiting.has(row.entry.kind) })),
         toast: snapshot.toast ? { ...snapshot.toast, waiting: waiting.has(snapshot.toast.entry.kind) } : null };
 

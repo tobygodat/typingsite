@@ -27,9 +27,9 @@ class InboxList extends Component<ListProps, ListState, FocusSnapshot | null> {
   render() {
     const { view, controller, close } = this.props;
 
-    return <ul ref={this.list} id="inbox-list" className="inbox-list">{view.rows.map((row) => <li key={row.entry.id} className="inbox-entry" data-kind={row.entry.kind} data-unread={!row.entry.read ? 'true' : undefined}>
+    return <ul ref={this.list} id="inbox-list" className="inbox-list">{view.rows.map((row) => <li key={row.id} className="inbox-entry" data-kind={row.kind} data-unread={!row.entry.read ? 'true' : undefined}>
       <p><Copy parts={row.copy} /></p><span className="inbox-meta">{row.meta}</span>
-      {row.action && <button type="button" className="btn btn-secondary btn-sm" data-inbox-action={row.entry.kind} aria-disabled={row.waiting ? 'true' : undefined} onClick={() => {
+      {row.action && <button type="button" className="btn btn-secondary btn-sm" data-inbox-action={row.kind} aria-disabled={row.waiting ? 'true' : undefined} onClick={() => {
         if (row.waiting) return;
         close();
         controller.act(row.entry);
