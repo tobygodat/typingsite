@@ -1,3 +1,4 @@
+import { createSessionRules } from './session-rules.js';
 import { createProgressHistory } from './progress-history.js';
 import { createGhostLaunch } from './ghost-launch.js';
 import { createLessonController } from './lesson-controller.js';
@@ -20,7 +21,6 @@ import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
   RATE_FLOOR_MS,
-  STANDARD_SECONDS,
   STANDARD_VERSION,
   conditionKey,
   createAttempt,
@@ -276,6 +276,11 @@ const lessons = createLessonController(learning, sync, {
 
 const { lessonCopy, startLesson, openLessons, finishLesson, renderLessons } = lessons;
 const { conditions, customConditions, practiceMinimums, inputLayout, lessonConditions, dailyConditions } = createPracticeConditions(learning, () => lessons.index);
+
+const { restartKind, drillLength, sessionDurationMs, ruleLimits, ruleSession, sessionConditions, raceUnderWay } = createSessionRules(
+  learning, practice, training, challenge.local, onlineRace, ghostResult, navigation,
+  { conditions, daily: dailyConditions, custom: customConditions, lesson: lessonConditions, ghost: ghostConditions, race: raceConditions });
+
 
 const trainingPolicy = createTrainingPolicy(learning, practice, training, sync, { conditions, inputLayout, retainedBaseline, recommendation: trainingRecommendation,
   reset: resetSession, controls: setModeControls, applyPreferences, manual: showManualTarget, unavailable: showUnavailableRetest,
@@ -951,30 +956,14 @@ function setPassageNotice(text) {
 }
 
 // Restarting or changing a setting keeps a custom passage; every other session restarts as practice.
-const restartKind = () => (practice.sessionKind === 'custom' && learning.preferences.customText ? 'custom' : 'practice');
+
 
 // A drill runs the length it started with. That is its context's, or its own once another device's clear
 // has taken the context from under a drill that is waiting or under way. A drill not yet drawn takes the setting.
-const drillLength = () => training.context?.drill?.duration
-  || (['ready', 'running'].includes(practice.attempt?.status) && practice.attempt.drillSeconds)
-  || learning.preferences.drillSeconds;
+
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
-function sessionDurationMs(kind = practice.sessionKind) {
-  if (kind === 'challenge') return ghostResult.race?.duration ? ghostResult.race.duration * 1000 : null;
 
-  if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
-
-  if (kind === 'drill') return drillLength() * 1000;
-
-  if (kind === 'custom') return null;
-
-  if (learning.preferences.mode === 'time') return learning.preferences.duration * 1000;
-
-  if (learning.preferences.mode === 'standard') return STANDARD_SECONDS * 1000;
-
-  return null;
-}
 
 // Why strict space and quick end can't change a session's run, read from the session itself (its
 // kind, its timing and the conditions its run was built with), never from the test-shape
@@ -982,54 +971,20 @@ function sessionDurationMs(kind = practice.sessionKind) {
 // quick end does nothing there ('' when it applies); fixed names a session that keeps the rules it
 // started with (the daily's are set, a retest has to match its baseline, custom text keeps the
 // defaults, and a race under way keeps its own for both players).
-const FIXED_RULE_KINDS = ['daily', 'retest', 'custom', 'lesson', 'missed', 'challenge'];
 
-function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.includes(kind) }) {
-  return {
-    fixed: run.mode === 'standard' ? 'standard' : fixed ? kind : '',
-    quickEnd: sessionDurationMs(kind) !== null ? (kind === 'drill' ? 'drill' : 'timed')
-      : run.correctionPolicy === 'relaxed' ? '' : 'stopOnError',
-  };
-}
+
+
 
 // The session the rule switches act on. On the Challenge screen's one-keyboard tab it is the race:
 // the one under way, whose rules startRace fixed for both players, or else the next one. Elsewhere
 // it is the run waiting or in progress or, once it's over, the next one, which Run again makes the
 // daily again, the same custom text or a practice run.
-function ruleSession() {
-  if (document.body.dataset.view === 'compete' && onlineRace?.mode === 'local') {
-    return raceUnderWay() ? { kind: 'race', run: race.conditions, fixed: true } : { kind: 'race', run: raceConditions() };
-  }
 
-  if (practice.attempt && ['ready', 'running'].includes(practice.attempt.status)) return { kind: practice.sessionKind, run: practice.attempt.conditions };
-  const kind = practice.sessionKind === 'daily' ? 'daily' : restartKind();
-
-  return { kind, run: sessionConditions(kind) };
-}
 
 // The conditions a new run of this kind is built with. The daily's rules are fixed and a retest
 // takes its baseline's, whatever the switches say now. A rule that can't change the run is recorded
 // at its default, so a drill's conditions and key never carry quick end.
-function sessionConditions(kind, run = conditions()) {
-  if (kind === 'daily') return dailyConditions();
 
-  if (kind === 'custom') return customConditions();
-
-  if (kind === 'lesson') return lessonConditions();
-
-  if (kind === 'challenge') return ghostConditions();
-
-  if (kind === 'missed') return { ...run, strictSpace: false, quickEnd: true };
-
-  if (kind === 'retest' && training.baseline) {
-    run.strictSpace = training.baseline.conditions.strictSpace === true;
-    run.quickEnd = training.baseline.conditions.quickEnd !== false;
-  }
-
-  if (ruleLimits({ kind, run }).quickEnd) run.quickEnd = true;
-
-  return run;
-}
 
 function configureSessionCopy() {
   const copy = {
@@ -2152,9 +2107,7 @@ function raceConditions() {
 }
 
 // From its start until the second player finishes. Both turns are built from race.conditions.
-function raceUnderWay() {
-  return Boolean(race.conditions) && race.results.length < 2;
-}
+
 
 
 
