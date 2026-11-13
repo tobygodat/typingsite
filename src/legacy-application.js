@@ -10,9 +10,6 @@ import { renderText, updateCharacterStates } from './passage-view.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
-  CUSTOM_MAX,
-  CUSTOM_MIN_CHARS,
-  CUSTOM_MIN_WORDS,
   atRunEnd,
   awaitingSubmit,
   RATE_FLOOR_MS,
@@ -22,14 +19,12 @@ import {
   completeAttempt,
   conditionKey,
   createAttempt,
-  customTextProblem,
   inputRules,
   makeAdaptive,
   DRILL_SECONDS,
   makeDrill,
   minimumStop,
   normalizeCustomText,
-  normalizeManualTarget,
   orderCustomText,
   passageComplete,
   correctionPreference,
@@ -45,7 +40,7 @@ import {
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
 import { BOOKS, BOOK_VERSION, bookName, bookPage, bookPlace, openBook } from './books.js';
-import { LENGTHS, isPresetLength, parseCustomLength } from './lengths.js';
+import { LENGTHS, isPresetLength } from './lengths.js';
 import { isDefaultLayout, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
@@ -73,11 +68,11 @@ import {
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
 } from './lessons.js';
 import { runCountTotals } from './run-counts.js';
-import { CUSTOM_ORDERS, DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -95,6 +90,18 @@ function updateComparison(patch) {
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
+const renderLengthOptions = lengthEditor.refresh;
+const setCustomLengthError = lengthEditor.error;
+const openCustomLength = lengthEditor.open;
+const closeCustomLength = lengthEditor.close;
+
+
+function openCustom(open = true) { editors.open(open); }
+
+function showManualTarget(open) { editors.manual(open); setModeControls(); }
+
+function toggleManualTarget() { editors.toggleManual(); setModeControls(); }
+
 
 function markKeyboardTargets(target) { practice.keyboard.target(target); }
 
@@ -106,7 +113,7 @@ function renderKeyboard() {
 }
 
 
-let customOpen = false;
+
 
 function customPassage() {
   const text = normalizeCustomText(learning.preferences.customText);
@@ -888,7 +895,7 @@ function applySpeedUnit() {
 function showMinimumNote() {
   const minimums = describeMinimums(practiceMinimums());
   setParts($('minimum-note'), minimums);
-  $('minimum-note').hidden = !minimums.length || customOpen || composeOpen || practice.sessionKind === 'custom';
+  $('minimum-note').hidden = !minimums.length || editors.customOpen || composeOpen || practice.sessionKind === 'custom';
 }
 
 // Why a rule switch can't change the session on hand, shown under it and read as its description.
@@ -948,8 +955,7 @@ function syncLockedSettings() {
 function setModeControls() {
   quoteFilters.dismiss();
   // Composing takes the passage's place, so Custom is never marked over it.
-  const custom = !composeOpen && (customOpen || practice.sessionKind === 'custom');
-  $('custom-options').hidden = !customOpen;
+  const custom = !composeOpen && (editors.customOpen || practice.sessionKind === 'custom');
   syncLockedSettings();
   showMinimumNote();
 
@@ -961,7 +967,7 @@ function setModeControls() {
     lengthMode: ['time', 'words'].includes(learning.preferences.mode) ? learning.preferences.mode : practice.controls.getSnapshot().lengthMode,
     lengthValue: learning.preferences.mode === 'time' ? learning.preferences.duration : learning.preferences.mode === 'words' ? learning.preferences.count : practice.controls.getSnapshot().lengthValue,
     punctuation: Boolean(learning.preferences.punctuation), adaptive: learning.preferences.adaptive,
-    custom, customOpen, composing: composeOpen, codeLanguage: learning.preferences.codeLanguage,
+    custom, customOpen: editors.customOpen, manualOpen: editors.view.getSnapshot().manual, composing: composeOpen, codeLanguage: learning.preferences.codeLanguage,
     standardRecipe: recipeSummary() + ' · ' + correctionLabel(standardConditions().correctionPolicy),
   }));
   showBest();
@@ -970,177 +976,28 @@ function setModeControls() {
 
 // The four presets and the custom pill are relabelled in place, never rebuilt, so a click that
 // lands just as the custom field commits on blur still reaches the button under the pointer.
-function renderLengthOptions() {
-  setCustomLengthError('');
-  const spec = LENGTHS[learning.preferences.mode];
 
-  if (!spec) {
-    closeCustomLength();
-
-    return;
-  }
-
-  const current = learning.preferences[spec.key];
-  $('duration-options').querySelectorAll('[data-length]').forEach((button, index) => {
-    const value = spec.presets[index];
-    const selected = value === current;
-    button.textContent = String(value);
-    button.dataset.length = String(value);
-    button.classList.toggle('is-active', selected);
-    button.setAttribute('aria-pressed', String(selected));
-    button.setAttribute('aria-label', `${value} ${spec.unit}`);
-  });
-  const custom = !isPresetLength(learning.preferences.mode, current);
-  const button = $('custom-length');
-  button.textContent = custom ? String(current) : 'custom';
-  button.classList.toggle('is-active', custom);
-  button.setAttribute('aria-pressed', String(custom));
-  button.setAttribute('aria-label', custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`);
-
-  if ($('custom-length-form').dataset.lengthMode !== learning.preferences.mode) closeCustomLength();
-}
 
 // The custom pill turns into a short field in place. Enter, or leaving the field with a valid
 // number, sets the length; Escape puts the pill back. Guests keep the value for the tab only.
-let dropCustomLength = false;
+
 
 // Set even when unchanged, so a second bad entry is announced again.
-function setCustomLengthError(message) {
-  const node = $('custom-length-error');
 
-  if (message || node.textContent) node.textContent = message;
-}
 
-function openCustomLength(mode = learning.preferences.mode) {
-  const spec = LENGTHS[mode];
 
-  if (!spec) return;
 
-  // A new length restarts the run anyway; a timed run must not end under the open field.
-  if (practice.attempt?.status === 'running') resetSession('practice');
-  const form = $('custom-length-form');
-  const input = $('custom-length-input');
-  form.dataset.lengthMode = mode;
-  dropCustomLength = false;
-  input.value = learning.preferences[spec.customKey] ? String(learning.preferences[spec.customKey]) : '';
-  input.dataset.offered = input.value;
-  input.placeholder = `${spec.min}–${spec.max}`;
-  input.setAttribute('aria-label', `${mode === 'time' ? 'custom time in seconds' : 'custom number of words'}, ${spec.min} to ${spec.max}`);
-  input.setAttribute('aria-invalid', 'false');
-  setCustomLengthError('');
-  $('custom-length').hidden = true;
-  form.hidden = false;
-  document.querySelector('.practice-controls').dataset.editing = 'true';
-  updateGlide($('duration-options'), { instant: true });
-  input.focus({ preventScroll: true });
-  input.select();
-}
 
-function closeCustomLength({ focus = false } = {}) {
-  const form = $('custom-length-form');
 
-  if (form.hidden) return;
-  // Hidden before focus moves, so the field's own focusout sees it closed and does nothing.
-  form.hidden = true;
-  $('custom-length').hidden = false;
-  delete document.querySelector('.practice-controls').dataset.editing;
-  $('custom-length-input').setAttribute('aria-invalid', 'false');
-  updateGlide($('duration-options'), { instant: true });
 
-  // Focus mode hides the row again, pill included, so focus goes back to the passage.
-  if (focus) (learning.preferences.focusMode ? $('typing-input') : $('custom-length')).focus({ preventScroll: true });
-}
 
-function commitCustomLength({ leaving = false } = {}) {
-  const mode = $('custom-length-form').dataset.lengthMode;
-  const spec = LENGTHS[mode];
-  const input = $('custom-length-input');
-  const raw = input.value.trim();
 
-  // Leaving an empty or untouched field is not a request to change anything; the remembered value
-  // offered in the field is applied only with Enter.
-  if (leaving && (!raw || raw === input.dataset.offered)) {
-    closeCustomLength();
-
-    return;
-  }
-
-  const result = parseCustomLength(mode, raw);
-
-  if (!result.ok) {
-    if (leaving) closeCustomLength();
-    else {
-      input.setAttribute('aria-invalid', 'true');
-      input.select();
-    }
-
-    setCustomLengthError(result.message);
-
-    return;
-  }
-
-  closeCustomLength();
-
-  if (learning.preferences.mode === mode && learning.preferences[spec.key] === result.value) {
-    saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
-
-    if (!leaving) $('typing-input').focus({ preventScroll: true });
-
-    return;
-  }
-
-  learning.preferences.mode = mode;
-  learning.preferences[spec.key] = result.value;
-
-  if (!isPresetLength(mode, result.value)) learning.preferences[spec.customKey] = result.value;
-  setModeControls();
-  saveChoice('mode', spec.key, ...(!isPresetLength(mode, result.value) ? [spec.customKey] : []));
-  // Focus stays wherever the person went when they left the field.
-  resetSession('practice', { focus: !leaving });
-}
-
-function bindCustomLength() {
-  const form = $('custom-length-form');
-  const input = $('custom-length-input');
-  $('custom-length').addEventListener('click', () => openCustomLength(learning.preferences.mode), { signal: lifetime.signal });
-  form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    commitCustomLength();
-  }, { signal: lifetime.signal });
-  input.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    // Escape belongs to the field here, not to restart or focus mode.
-    event.preventDefault();
-    event.stopPropagation();
-    setCustomLengthError('');
-    closeCustomLength({ focus: true });
-  }, { signal: lifetime.signal });
-  // Pressing another length, mode or switch in the row means that control wins; the edit is dropped.
-  const controls = document.querySelector('.practice-controls');
-  controls.addEventListener('pointerdown', (event) => {
-    if (!form.hidden && !form.contains(event.target)) dropCustomLength = true;
-  }, { signal: lifetime.signal });
-  controls.addEventListener('pointercancel', () => { dropCustomLength = false; }, { signal: lifetime.signal });
-  form.addEventListener('focusout', (event) => {
-    // Switching windows keeps the field open; the browser hands focus back on return.
-    if (form.hidden || form.contains(event.relatedTarget) || !document.hasFocus()) return;
-    // In focus mode the row hides again as the field closes, so focus bound for it would be lost.
-    const stranded = learning.preferences.focusMode && (!event.relatedTarget || controls.contains(event.relatedTarget));
-
-    if (dropCustomLength) {
-      dropCustomLength = false;
-      closeCustomLength();
-    } else commitCustomLength({ leaving: true });
-
-    if (stranded) $('typing-input').focus({ preventScroll: true });
-  }, { signal: lifetime.signal });
-}
 
 // A mode change resets once, in the new mode, so a quote is never drawn (and marked seen) only to be replaced.
 // Custom text hides the length row, so from its editor or session this goes through setTestShape too, which
 // closes the editor and starts a test in this mode, as the length buttons do.
 function setCustomLengthFromPalette(mode) {
-  if (learning.preferences.mode !== mode || customOpen || practice.sessionKind === 'custom') setTestShape(mode);
+  if (learning.preferences.mode !== mode || editors.customOpen || practice.sessionKind === 'custom') setTestShape(mode);
   else navigate('practice');
   openCustomLength(mode);
 }
@@ -1361,7 +1218,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
 
   // The mode bar marks Custom while a custom session is loaded, so it is redrawn whenever the kind changes.
   // Changing to any session but custom (a lesson or a ghost race too) also closes the custom editor, or Custom would stay marked over it.
-  if (kindChanged && kind !== 'custom') customOpen = false;
+  if (kindChanged && kind !== 'custom') editors.customOpen = false;
 
   if (kindChanged) setModeControls();
 
@@ -1512,7 +1369,7 @@ function openCompose() {
     setSessionKind('practice');
     composeOpen = true;
     // Composing replaces any custom passage or open custom editor, as a mode button does.
-    customOpen = false;
+    editors.customOpen = false;
     document.body.dataset.compose = 'true';
     $('typing-form').hidden = true;
     $('compose-form').hidden = false;
@@ -3529,7 +3386,7 @@ function onlineRoomFirst() {
 // status, anything typed since (in the passage or any field), the custom editor, a local race player, an
 // online room open or on its way, and any dialog.
 function raceContext() {
-  return JSON.stringify([document.body.dataset.view, sessionCount, practice.attempt?.status, typedCount, customOpen, race.attempt?.id,
+  return JSON.stringify([document.body.dataset.view, sessionCount, practice.attempt?.status, typedCount, editors.customOpen, race.attempt?.id,
     race.attempt?.status, onlineRace?.liveRoomId || null, Boolean(onlineRace?.pending), Boolean(document.querySelector('dialog[open]'))]);
 }
 
@@ -4474,7 +4331,7 @@ function importSettings(result) {
   const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
   learning.preferences = validPreferences({ ...learning.preferences, ...result.preferences });
 
-  if (keys.includes('mode')) customOpen = false;
+  if (keys.includes('mode')) editors.customOpen = false;
   applyPreferences();
   setModeControls();
   // The correction rule and the older stop-on-error flag are one choice, saved together as setCorrection does.
@@ -4523,7 +4380,7 @@ function bindEvents() {
     const practice = event.target.closest('[data-action="go-practice"]');
 
     if (practice) {
-      customOpen = false;
+      editors.customOpen = false;
       setModeControls();
       resetSession('practice', { focus: true, leaveCompose: true });
     }
@@ -4536,11 +4393,9 @@ function bindEvents() {
   document.addEventListener('pointerdown', (event) => {
     if ($('mode-more').open && !$('mode-more').contains(event.target)) $('mode-more').open = false;
   }, { signal: lifetime.signal });
-  $('custom-text').addEventListener('input', updateCustomState, { signal: lifetime.signal });
-  $('custom-use').addEventListener('click', useCustomText, { signal: lifetime.signal });
   Object.assign(practice.choices, {
     chooseMode(mode) {
-      customOpen = false;
+      editors.customOpen = false;
       learning.preferences.mode = mode;
       setModeControls();
       saveChoice('mode');
@@ -4562,7 +4417,8 @@ function bindEvents() {
     punctuation(on) { learning.preferences.punctuation = on; setModeControls(); saveProfile(); resetSession('practice', { focus: true }); },
     adaptive(on) { learning.preferences.adaptive = on; setModeControls(); saveProfile(); resetSession('practice', { focus: true }); },
     compose: openCompose,
-    custom: () => openCustom(!customOpen),
+    manual: toggleManualTarget,
+    custom: () => openCustom(!editors.customOpen),
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
   onSetting('numbers-toggle', (value) => {
@@ -4754,19 +4610,6 @@ function bindEvents() {
     focusResult($('run-again'));
   };
 
-  $('mode-drill').addEventListener('click', toggleManualTarget, { signal: lifetime.signal });
-  $('manual-target').addEventListener('submit', (event) => {
-    event.preventDefault();
-    const raw = $('manual-target-input').value.trim();
-    const valid = /^[a-z]{1,8}$/i.test(raw);
-    $('manual-target-input').setAttribute('aria-invalid', String(!valid));
-    $('manual-target-error').textContent = valid ? '' : 'Use 1–8 letters, no spaces or punctuation.';
-
-    if (!valid) return;
-    const target = normalizeManualTarget(raw);
-    startDrill({ kind: 'manual', target, title: `Practice “${target}”` });
-  }, { signal: lifetime.signal });
-
   $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && accounts.session) loadGhostFriends(); }, { signal: lifetime.signal });
   $('ghost-offer-form').addEventListener('submit', sendGhost, { signal: lifetime.signal });
   $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd(), { signal: lifetime.signal });
@@ -4910,90 +4753,31 @@ function bindEvents() {
   }, { signal: lifetime.signal });
 }
 
-function updateCustomCount() {
-  $('custom-count').textContent = `${$('custom-text').value.length.toLocaleString('en')} / ${CUSTOM_MAX.toLocaleString('en')}`;
-}
 
-function setCustomError(message = '') {
-  if ($('custom-error').textContent !== message) $('custom-error').textContent = message;
-  $('custom-text').setAttribute('aria-invalid', String(Boolean(message)));
-}
 
-function customErrorMessage(problem) {
-  if (!problem) return '';
 
-  if (problem.kind === 'empty') return 'Add some text first.';
 
-  if (problem.kind === 'short') return `Use at least ${CUSTOM_MIN_WORDS} words and ${CUSTOM_MIN_CHARS} characters, so the run is long enough to time.`;
 
-  if (problem.kind === 'untypable') return `“${problem.char}” (U+${problem.char.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}) can’t be typed here. Custom text uses the letters, digits, spaces and punctuation of an English keyboard.`;
-
-  return `Keep it to ${CUSTOM_MAX.toLocaleString('en')} characters, about ten minutes of typing. This text has ${problem.length.toLocaleString('en')}.`;
-}
 
 // While the text is too short to time, "Use this text" is off and the line under it says why. Other problems
 // are reported when the button is pressed, and editing clears them.
-function updateCustomState() {
-  updateCustomCount();
-  const problem = customTextProblem(normalizeCustomText($('custom-text').value, Infinity));
-  $('custom-use').disabled = problem?.kind === 'empty' || problem?.kind === 'short';
-  setCustomError(problem?.kind === 'short' ? customErrorMessage(problem) : '');
-}
+
 
 // The panel never opens or closes beside a live run: like the other mode buttons, it restarts the run first.
-function openCustom(open = true) {
-  // The editor opens over a passage, so Custom first leaves composing (dropping what was written, as any mode does).
-  if (composeOpen) resetSession(restartKind(), { leaveCompose: true });
-  else if (practice.attempt?.status === 'running') resetSession(restartKind());
-  customOpen = open;
 
-  if (open) {
-    if (!$('custom-text').value) $('custom-text').value = learning.preferences.customText || '';
-    $('custom-order').value = learning.preferences.customOrder;
-    updateCustomState();
-  }
-
-  setModeControls();
-
-  if (open) $('custom-text').focus();
-}
 
 // "drill" in the more menu: a 1–8 letter target of your own, drilled at once.
-function showManualTarget(open) {
-  $('manual-target').hidden = !open;
-  $('mode-drill').setAttribute('aria-expanded', String(open));
 
-  if (open) $('manual-target-input').focus();
-}
 
-function toggleManualTarget() {
-  showManualTarget($('manual-target').hidden);
-}
+
 
 // Signed in, the text is kept with the other preferences; a guest's preferences live only in memory.
 // Using it is a pick of the text and order shown, stamped even when they match what is stored, so a text
 // waiting from another tab doesn't replace it as the passage is prepared.
-function useCustomText() {
-  const text = normalizeCustomText($('custom-text').value, Infinity);
-  const error = customErrorMessage(customTextProblem(text));
-  setCustomError(error);
 
-  if (error) {
-    $('custom-text').focus();
-
-    return;
-  }
-
-  learning.preferences.customText = text;
-  learning.preferences.customOrder = CUSTOM_ORDERS.includes($('custom-order').value) ? $('custom-order').value : 'as-written';
-  saveChoice('customText', 'customOrder');
-  customOpen = false;
-  resetSession('custom', { focus: true });
-  setModeControls();
-}
 
 function setTestShape(mode, length) {
-  customOpen = false;
+  editors.customOpen = false;
   learning.preferences.mode = mode;
 
   if (mode === 'time' && length) learning.preferences.duration = length;
@@ -5499,6 +5283,21 @@ compose.configure({
   },
 });
 
+lengthEditor.configure({ reset(focus = false) { resetSession('practice', { focus }); }, controls: setModeControls,
+  glide() { updateGlide($('duration-options'), { instant: true }); },
+  focusPractice() { $('typing-input').focus({ preventScroll: true }); },
+});
+
+editors.configure({
+  beforeCustom() {
+    if (composeOpen) resetSession(restartKind(), { leaveCompose: true });
+    else if (practice.attempt?.status === 'running') resetSession(restartKind());
+  },
+  changed: setModeControls,
+  useCustom() { resetSession('custom', { focus: true }); setModeControls(); },
+  drill: startDrill,
+});
+
 quoteFilters.configure({
   read: () => learning.preferences,
   commit(key, value, { focus, trigger }) {
@@ -5527,7 +5326,6 @@ setModeControls();
 
 bindEvents();
 
-bindCustomLength();
 
 bindAccount();
 
@@ -5588,7 +5386,7 @@ onlineRace.configure({
   // are practice's own, so a race falls back to its default).
   practice: () => ({ mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count, punctuation: learning.preferences.punctuation,
     numbers: learning.preferences.numbers, wordList: learning.preferences.wordList, quoteLength: learning.preferences.quoteLength, difficulty: learning.preferences.difficulty, adaptive: learning.preferences.adaptive,
-    session: composeOpen ? 'compose' : customOpen || practice.sessionKind === 'custom' ? 'custom' : practice.sessionKind === 'drill' ? 'drill' : 'practice' }),
+    session: composeOpen ? 'compose' : editors.customOpen || practice.sessionKind === 'custom' ? 'custom' : practice.sessionKind === 'drill' ? 'drill' : 'practice' }),
   // The one-keyboard tab makes the race the session the rule switches act on.
   onModeChange: syncRules,
   onPassageSeen(id) {

@@ -1,3 +1,4 @@
+import { CustomTextEditor, ManualTargetEditor } from './practice-editors.js';
 import { PracticeKeyboard } from './practice-keyboard.js';
 import { HistoryClearDialog, HistoryToast } from './history-clear.js';
 import { ImportDialog } from './import-dialog.js';
@@ -19,7 +20,7 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor }: Application) {
   return <>
   <a className="skip-link" href="#typing-input">Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
@@ -57,34 +58,10 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
     <main id="main-content">
       <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
-        <PracticeControls practice={practice} quoteFilters={quoteFilters} />
+        <PracticeControls practice={practice} quoteFilters={quoteFilters} lengthEditor={lengthEditor} />
 
-        <div id="custom-options" className="custom-options" role="group" aria-label="Custom text" hidden>
-          <label htmlFor="custom-text" className="custom-label">your text
-            <span id="custom-count" className="custom-count">0 / 3,000</span>
-          </label>
-          <textarea id="custom-text" className="input custom-textarea" rows={4} spellCheck={false} placeholder="Paste or type any passage" aria-describedby="custom-count custom-error"></textarea>
-          <div className="custom-actions">
-            <label htmlFor="custom-order">order
-              <select id="custom-order" className="input select">
-                <option value="as-written" selected>as written</option>
-                <option value="shuffled">shuffled words</option>
-                <option value="random">random words</option>
-              </select>
-            </label>
-            <button id="custom-use" className="btn btn-primary btn-sm" type="button">Use this text</button>
-          </div>
-          <p id="custom-error" className="field-error" role="alert"></p>
-        </div>
-
-        <form id="manual-target" className="custom-options manual-target" noValidate hidden>
-          <label htmlFor="manual-target-input" className="sr-only">Letters to drill</label>
-          <div className="input-action">
-            <input id="manual-target-input" className="input" type="text" maxLength={16} placeholder="letters, e.g. br" aria-describedby="manual-target-error" />
-            <button id="apply-manual-target" className="btn btn-secondary" type="submit">Drill it</button>
-          </div>
-          <p id="manual-target-error" className="field-error" role="alert"></p>
-        </form>
+        <CustomTextEditor controller={editors} />
+        <ManualTargetEditor controller={editors} />
 
         <form id="typing-form" className="typing-form" autoComplete="off">
           <div className="measure-row">

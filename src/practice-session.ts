@@ -56,6 +56,7 @@ export interface PracticeControlsView {
   adaptive: boolean;
   custom: boolean;
   customOpen: boolean;
+  manualOpen: boolean;
   composing: boolean;
   codeLanguage: string;
   standardRecipe: string;
@@ -69,6 +70,7 @@ export interface PracticeCommands {
   adaptive(on: boolean): void;
   compose(): void;
   custom(): void;
+  manual(): void;
 }
 
 export interface ResultCommands {
@@ -92,8 +94,8 @@ export function createPracticeSession() {
   let purpose: SessionKind = 'practice';
   let displayed: SealedRun | null = null;
   const result = createStore<ResultView | null>(null);
-  const controls = createStore<PracticeControlsView>({ visible: true, bookPage: 1, mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
-  const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {} };
+  const controls = createStore<PracticeControlsView>({ visible: true, bookPage: 1, mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, manualOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
+  const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {}, manual() {} };
 
   const commands: ResultCommands = {
     runAgain() {}, drill() {}, practiceWords() {}, watchReplay() {},

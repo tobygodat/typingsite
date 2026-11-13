@@ -1,3 +1,5 @@
+import { createCustomLength } from './custom-length.js';
+import { createPracticeEditors } from './practice-editors.js';
 import { createOnlineRace } from './online-race.js';
 import { createPracticeRun } from './practice-run.js';
 import { createPracticeRecording } from './practice-recording.js';
@@ -30,6 +32,8 @@ export function createApplication() {
 
   return {
     accounts, learning, practice, sync,
+    editors: createPracticeEditors(learning, sync),
+    lengthEditor: createCustomLength(learning, practice, sync),
     historyClear: createHistoryClear(learning, practice, sync),
     recording: createPracticeRecording(learning, sync),
     practiceRun: createPracticeRun(practice, learning, sync),
