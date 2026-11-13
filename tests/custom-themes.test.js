@@ -8,7 +8,7 @@ import { BASE_TOKENS, MAX_CUSTOM_THEMES, THEME_TOKENS, contrastIssues, normalize
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
 
 const block = (selector) => {
   const start = css.indexOf(`${selector} {`);

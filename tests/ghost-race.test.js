@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { challengeConditions, challengeOutcome, challengePayload, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
+import { challengeConditions, challengeOutcome, challengePayload, isChallengePayloadSource, challengeText, challengeTextId, encodeTrace, ghostPoints, offerText, outcomeRule,
   resultText, sameScore, scoreTrace, sendChallenge, traceAttempt, traceBytes, traceTrouble, validTrace, MAX_TRACE_KEYS, SENDABLE_KINDS } from '../src/ghost-race.js';
 import { comparable, conditionKey, createAttempt, quoteCorpus, replayAttempt, summarizePatterns, textId, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { runRecord, trendRun } from '../src/insights.js';
@@ -266,4 +266,56 @@ test('a stored result is told apart from this run by its numbers', () => {
   assert.equal(sameScore(score, { ...score }), true);
   assert.equal(sameScore(score, { ...score, elapsedMs: 6760 }), false);
   assert.equal(sameScore(score, null), false);
+});
+
+
+test('retained traces ignore future events without requiring current Attempt state', () => {
+  const completed = run('alpha beta', { text: 'alpha beta', end: 30000,
+    conditions: { mode: 'time', duration: 30, wordList: '200', correctionPolicy: 'mandatory', inputClass: 'physical-keyboard' } });
+
+  const expected = challengePayload(completed);
+  assert.ok(expected);
+
+  const retained = { status: completed.status, kind: completed.kind, text: completed.text, textId: completed.textId,
+    conditions: completed.conditions, startedAt: completed.startedAt, endedAt: completed.endedAt,
+    events: [{ type: 'future-note', future: true, offsetMs: { unused: true } }, ...completed.events] };
+
+  const original = JSON.stringify(retained);
+  assert.equal(isChallengePayloadSource(retained), true);
+  assert.deepEqual(challengePayload(retained), expected);
+  assert.equal(JSON.stringify(retained), original);
+});
+
+
+test('a retained source with no keys returns before malformed text is consumed', () => {
+  const retained = { status: 'complete', kind: 'test', conditions: { mode: 'time', duration: 30, wordList: '200' }, text: 123, events: [] };
+  assert.equal(isChallengePayloadSource(retained), true);
+  assert.equal(challengePayload(retained), null);
+});
+
+
+test('retained condition copies keep every own JSON key for whitelist validation', () => {
+  const completed = run('alpha beta', { text: 'alpha beta', end: 30000,
+    conditions: { mode: 'time', duration: 30, wordList: '200', correctionPolicy: 'mandatory', inputClass: 'physical-keyboard' } });
+
+  const conditions = { ...completed.conditions, ...JSON.parse('{"__proto__":{"future":true}}') };
+  const original = JSON.stringify(conditions);
+  assert.equal(challengePayload({ ...completed, conditions }), null);
+  assert.equal(JSON.stringify(conditions), original);
+});
+
+test('malformed retained quote text reaches the original unfinished result', () => {
+  const retained = { status: 'complete', kind: 'test', textId: 'quote-retained',
+    conditions: { mode: 'quote', quoteLength: 'medium', difficulty: 'any' },
+    startedAt: 0, endedAt: 1000, events: [{ type: 'insert', text: 'alpha beta', offsetMs: 0 }] };
+
+  for (const text of [123, {}, { length: '10' }]) {
+    const source = { ...retained, text };
+    const original = JSON.stringify(source);
+    assert.equal(challengePayload(source), null);
+    assert.equal(JSON.stringify(source), original);
+  }
+
+  const trace = { v: 1, k: 'alpha beta', t: Array(10).fill(0), e: 1000 };
+  assert.deepEqual(scoreTrace(trace, 123), { wpm: 0, accuracy: 0, elapsedMs: 1000, correct: 0, finished: false });
 });

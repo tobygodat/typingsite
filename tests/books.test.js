@@ -16,7 +16,7 @@ test('four books with their first two sections and no more than 150 KB of text',
 
   for (const book of BOOKS) assert.equal(BOOK_TEXTS[book.id].length, 2, book.id);
   assert.match(BOOK_TEXTS.pride[0].paragraphs[0], /^It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife\.$/);
-  assert.ok((await stat(new URL('../src/book-texts.js', import.meta.url))).size < 150_000);
+  assert.ok((await stat(new URL('../src/book-texts.ts', import.meta.url))).size < 150_000);
   assert.equal(bookName('sherlock'), 'sherlock holmes');
 });
 

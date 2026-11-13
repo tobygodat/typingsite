@@ -1,3 +1,5 @@
+import { replayAttempt } from '../src/typing.js';
+import { useCorpusFixture } from './corpus-fixture.js';
 import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter, setRaceName, openRaceLink } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
@@ -206,11 +208,7 @@ test('a dead-key quote mark followed by space is one typed character', async ({ 
 
 test('a quote with \' and " typed on accent keys completes as a counted run', async ({ page, supabase }) => {
   // Master's quotes have no apostrophe, so the precise ones gain one: the run needs both marks.
-  await page.route('**/src/corpus.js', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.text()).replaceAll("difficulty: 'precise', text: '", "difficulty: 'precise', text: 'It\\'s here. ");
-    await route.fulfill({ response, body });
-  });
+  await useCorpusFixture(page, 'accent-quote');
   const user = supabase.addUser('accents@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, user.email);
@@ -245,7 +243,7 @@ test('a quote with \' and " typed on accent keys completes as a counted run', as
   expect(inserts[at + 1].offsetMs).toBe(inserts[at].offsetMs);
   // The cache keeps no summary: replay rebuilds it from the events, and the card shows the replayed speed.
   expect(stored.summary).toBeUndefined();
-  const replayed = await page.evaluate(async (attempt) => (await import('/src/typing.js')).replayAttempt(attempt).score, stored);
+  const replayed = replayAttempt(stored).score;
   await expect(page.locator('#result-wpm')).toHaveText(String(replayed.wpm));
 });
 
@@ -1267,11 +1265,7 @@ test('a doubled mark on a passage’s last letter costs nothing, after a slip to
 
 test('both one-keyboard race players can type with accent keys', async ({ page }) => {
   // Race passages are medium quotes; keep those with quotation marks, so each turn uses the dead key.
-  await page.route('**/src/typing.js', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.text()).replace('const candidates = quoteCorpus.filter(', 'const candidates = quoteCorpus.filter((item) => item.text.includes(\'"\')).filter(');
-    await route.fulfill({ response, body });
-  });
+  await useCorpusFixture(page, 'race-marks');
   await openApp(page);
   const keys = await accentKeys(page);
   await openView(page, 'Challenge');

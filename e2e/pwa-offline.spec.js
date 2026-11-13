@@ -1,3 +1,4 @@
+import { appEntry, appStyles, buildVersion } from './built-assets.js';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { test, expect, openApp, passageText, typeInto } from './fixtures.js';
@@ -29,7 +30,7 @@ async function goOffline(page) {
   try {
     await openApp(page, server.url);
     await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
-    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual(['stilltype-shell-v1']);
+    await expect.poll(() => page.evaluate(() => caches.keys())).toEqual([buildVersion]);
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   } finally {
     await server.stop();
@@ -74,8 +75,8 @@ test('a deploy reaches a page the worker already controls', async ({ page, conte
     await route.fulfill({ response, body: `${await response.text()}\n${extra}\n` });
   });
 
-  await deploy('**/src/styles.css', ':root { --deployed: next; }');
-  await deploy('**/src/app.js', "document.documentElement.dataset.deployed = 'next';");
+  await deploy(`**${appStyles[0]}`,  ':root { --deployed: next; }');
+  await deploy(`**${appEntry}`,  "document.documentElement.dataset.deployed = 'next';");
   const response = await page.reload();
   expect(response.fromServiceWorker()).toBe(true);
   await expect(page.locator('html')).toHaveAttribute('data-deployed', 'next');

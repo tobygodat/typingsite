@@ -1,4 +1,5 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
+import { appEntry, appStyles } from './built-assets.js';
 import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -257,7 +258,7 @@ test('desktop keeps the dock at the top and the passage at three lines', async (
 
 test('Literata and Geist Mono load from this origin', async ({ page }) => {
   const fonts = [];
-  page.on('response', (response) => { if (/\/src\/fonts\//.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
+  page.on('response', (response) => { if (/\/(?:src\/fonts|assets)\/.*\.(?:ttf|woff2)$/.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
   await openApp(page);
   const loaded = await page.evaluate(() => [...document.fonts].flatMap((face) => (face.status === 'loaded' ? [face.family.replace(/"/g, '')] : [])));
   expect(loaded).toEqual(expect.arrayContaining(['Literata', 'Geist Mono']));
@@ -270,8 +271,8 @@ test('Literata and Geist Mono load from this origin', async ({ page }) => {
 test('the server hands out the app and nothing else', async ({ request }) => {
   for (const [path, type] of [
     ['/', 'text/html'],
-    ['/src/app.js', 'text/javascript'],
-    ['/src/styles.css', 'text/css'],
+    [appEntry, 'text/javascript'],
+    [appStyles[0], 'text/css'],
     ['/src/fonts/literata-roman.woff2', 'font/woff2'],
     ['/src/fonts/geist-mono-400.ttf', 'font/ttf'],
     ['/src/fonts/OFL.txt', 'text/plain'],
@@ -281,7 +282,7 @@ test('the server hands out the app and nothing else', async ({ request }) => {
     expect(response.headers()['content-type'], path).toBe(type);
   }
 
-  for (const path of ['/AGENTS.md', '/package.json', '/design/ash/DESIGN.md', '/docs/ui-contract.md', '/src/fonts/geist-400.ttf', '/e2e/fixtures.js', '/src/../server.mjs', '/%2e%2e/server.mjs']) {
+  for (const path of ['/AGENTS.md', '/package.json', '/src/app.js', '/src/sw.ts', '/.serve-manifest.json', '/design/ash/DESIGN.md', '/docs/ui-contract.md', '/src/fonts/geist-400.ttf', '/e2e/fixtures.js', '/src/../server.mjs', '/%2e%2e/server.mjs']) {
     expect((await request.get(path)).status(), path).toBe(404);
   }
 });

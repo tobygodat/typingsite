@@ -1,3 +1,4 @@
+import { useCorpusFixture } from './corpus-fixture.js';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
 import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
@@ -342,11 +343,7 @@ test('an exhausted quote pool refuses a retest and explains why', async ({ page 
 });
 
 test('an empty quote filter says so and recovers', async ({ page }) => {
-  await page.route('**/src/corpus.js', async (route) => {
-    const response = await route.fetch();
-    const body = (await response.text()).replace(/^.*id: 'short-gentle-[^\n]+\n/gm, '');
-    await route.fulfill({ response, body });
-  });
+  await useCorpusFixture(page, 'empty-gentle');
   await openApp(page);
   await page.locator('#mode-quote').click();
   await expect(page.locator('#quote-options')).toBeVisible();

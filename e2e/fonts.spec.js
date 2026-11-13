@@ -1,10 +1,11 @@
+import { fontAssetName } from './built-assets.js';
 // Typing font and app font: settings → appearance and the palette. Display only. Literata for both by
 // default, with no other font file fetched; a picked font loads then, the carets stay on its letters and
 // baseline, and an account's pick is in place before first paint.
 import { test, expect, openApp, openSettings, closeSettings, chooseSetting, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 const family = (page, selector) => page.locator(selector).first().evaluate((node) => getComputedStyle(node).fontFamily.split(',')[0].replaceAll('"', ''));
-const fontFiles = (requests) => [...new Set(requests.filter((url) => url.includes('/src/fonts/')).map((url) => url.split('/src/fonts/')[1]))].sort();
+const fontFiles = (requests) => [...new Set(requests.map(fontAssetName).filter(Boolean))].sort();
 
 async function runPalette(page, label) {
   await page.mouse.move(5, 5);

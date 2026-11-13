@@ -148,7 +148,7 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     const middle = await page.locator('#quote-options').boundingBox();
 
     if (width >= 1000) {
-      const modes = await page.locator('.mode-options').boundingBox();
+      const modes = await page.locator('.practice-rail .mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
       expect(Math.abs(middle.x - modes.x - modes.width - 24)).toBeLessThan(1);
       expect(Math.abs(punctuation.x - middle.x - middle.width - 24)).toBeLessThan(1);

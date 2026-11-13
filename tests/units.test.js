@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CHARS_PER_WORD, CORPUS_VERSION, METRIC_VERSION, conditionKey, metrics } from '../src/typing.js';
-import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, signedNumber, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
+import { DEFAULT_SPEED_UNIT, formatSpeed, normalizeSpeedUnit, setShownSpeedUnit, signedNumber, speedValue, unitText, wpmFromSpeed } from '../src/units.js';
 import { describeSeries } from '../src/graph.js';
 import { resultParts, resultText } from '../src/ghost-race.js';
 import { raceResultParts } from '../src/race-result.js';
@@ -120,4 +120,17 @@ test('a whole figure converts first and rounds once in the unit shown', () => {
   assert.equal(formatSpeed(65.5, { whole: true }, 'cpm'), '328 cpm', 'not 66 wpm × 5 = 330');
   assert.equal(formatSpeed(65.5, { whole: true, bare: true }, 'wpm'), '66');
   assert.equal(formatSpeed(65.4, { whole: true }, 'wpm'), '65 wpm');
+});
+
+
+test('the displayed unit can change without a document or DOM walk', () => {
+  try {
+    assert.equal(setShownSpeedUnit('cpm'), true);
+    assert.equal(formatSpeed(60), '300 cpm');
+    assert.equal(setShownSpeedUnit('cpm'), false);
+    assert.equal(setShownSpeedUnit('invalid'), true);
+    assert.equal(formatSpeed(60), '60 wpm');
+  } finally {
+    setShownSpeedUnit('wpm');
+  }
 });

@@ -945,3 +945,56 @@ test('under forced colours the small and full charts draw their lines in system 
   await page.locator('#week-speed button').click();
   await expect.poll(() => stroke('#progress-trend .trend-line')).toBe(system);
 });
+
+test('an id-less historical chart point opens its retained row without inventing a run id', async ({ page, supabase }) => {
+  const historical = run(0, 60, 95);
+  delete historical.id;
+  await openProgress(page, supabase, [historical]);
+  await page.locator('#week-speed button').click();
+  await page.locator('#progress-trend .trend-dot').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'runs');
+  const row = page.locator('#run-history > details[open]');
+  await expect(row).toHaveCount(1);
+  expect(await row.getAttribute('data-run-id')).toBeNull();
+  await expect(row.locator('summary')).toBeFocused();
+});
+
+test('retained loop comparisons keep absent speed and raw timing-count arithmetic', async ({ page, supabase }) => {
+  const loops = [
+    { id: 'older-comparison', at: NOW.toISOString(), conditions: conditions(), target: null, comparison: { state: 'not-comparable', reason: 'Legacy comparison summary.' } },
+    { id: 'string-counts', at: NOW.toISOString(), conditions: conditions(), target: 'qu', targetTiming: { target: 'qu', beforeCount: '2', afterCount: 1, deltaMs: '5' }, comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'String timing values.' } },
+    { id: 'negative-concat', at: NOW.toISOString(), conditions: conditions(), target: 'ex', targetTiming: { target: 'ex', beforeCount: '-1', afterCount: 2, deltaMs: null }, comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'Negative concatenated timing count.' } },
+  ];
+
+  await openProgress(page, supabase, runs, { extra: { loops } });
+  await openProgressDetail(page, 'runs');
+  const rows = page.locator('#history-list > details');
+  const older = rows.filter({ hasText: 'Legacy comparison summary.' });
+  await expect(older.locator('.history-timing data')).toHaveText('—');
+  expect(await older.locator('.history-timing data').getAttribute('data-wpm')).toBeNull();
+  const counts = rows.filter({ hasText: 'String timing values.' });
+  await expect(counts.locator('.history-conditions')).toContainText('qu · 2 before · 1 after');
+  await counts.locator('summary').click();
+  await expect(counts).toContainText('“qu” clean intervals: 2 before / 1 after. +5 ms median timing change.');
+  await expect(rows.filter({ hasText: 'Negative concatenated timing count.' }).locator('.history-conditions')).not.toContainText('before');
+});
+
+test('each id-less retained loop practices the target of its own row', async ({ page, supabase }) => {
+  const loops = [
+    { at: NOW.toISOString(), conditions: conditions(), target: 'qu', comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'First retained loop.' } },
+    { at: NOW.toISOString(), conditions: conditions(), target: 'ex', comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'Second retained loop.' } },
+  ];
+
+  await openProgress(page, supabase, runs, { extra: { loops } });
+
+  for (const [index, target] of ['qu', 'ex'].entries()) {
+    if (index) await openView(page, 'Progress');
+    await openProgressDetail(page, 'runs');
+    const name = target === 'qu' ? 'First retained loop.' : 'Second retained loop.';
+    const row = page.locator('#history-list > details').filter({ hasText: name });
+    await row.locator('summary').click();
+    await row.getByRole('button', { name: `Practice “${target}” again` }).click();
+    await expect(page.locator('#session-title')).toHaveText(`Practice “${target}”`);
+  }
+});

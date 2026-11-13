@@ -139,10 +139,10 @@ test('the rail and passage sit where quote mode puts them, at desktop and phone 
     await openApp(page);
     await page.locator('#mode-quote').click();
     // From 760px down the rail is display: contents, so its mode bar stands for it.
-    const rail = await page.locator('.mode-options').boundingBox();
+    const rail = await page.locator('.practice-rail .mode-options').boundingBox();
     const quote = await page.locator('#typing-wrap').boundingBox();
     await openBookMode(page);
-    const bookRail = await page.locator('.mode-options').boundingBox();
+    const bookRail = await page.locator('.practice-rail .mode-options').boundingBox();
     expect(bookRail.y, `${width} rail`).toBe(rail.y);
     expect((await page.locator('#typing-wrap').boundingBox()).y, `${width} passage`).toBe(quote.y);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width} no sideways scroll`).toBe(true);

@@ -1,5 +1,7 @@
 import test from 'node:test';
+import { settingsMarkup } from './rendered-markup.js';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { APP_FONTS, DEFAULT_FONT, TYPING_FONTS } from '../src/fonts.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
@@ -18,13 +20,25 @@ test('typing and app fonts default to Literata and drop unknown values', () => {
 });
 
 test('the paint script, settings and stylesheet offer exactly the fonts src/fonts.js lists', async () => {
-  const html = await read('index.html');
+  const html = await read('dist/index.html');
   const css = await read('src/styles.css');
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
-  const listBefore = (key) => JSON.parse(script.match(new RegExp(`(\\[[^\\]]*\\])\\.includes\\(preferences\\?\\.${key}\\)`))[1].replaceAll("'", '"'));
-  assert.deepEqual(listBefore('typingFont'), TYPING_FONTS);
-  assert.deepEqual(listBefore('appFont'), APP_FONTS);
-  const radios = (name) => [...html.matchAll(new RegExp(`name="${name}" value="([a-z-]+)"`, 'g'))].map((match) => match[1]);
+
+  for (const [key, fonts] of [['typingFont', TYPING_FONTS], ['appFont', APP_FONTS]]) {
+    for (const font of [...TYPING_FONTS, 'unknown']) {
+      const root = { dataset: {}, style: { setProperty() {} } };
+      vm.runInNewContext(script, {
+        document: { documentElement: root },
+        localStorage: { getItem: (name) => JSON.stringify(name === 'stilltype-session-v1'
+          ? { user: { id: 'fonts' } } : { preferences: { [key]: font } }) },
+        matchMedia: () => ({ matches: false }),
+      });
+      assert.equal(root.dataset[key], fonts.includes(font) ? font : undefined, `${key} ${font}`);
+    }
+  }
+
+  const settings = settingsMarkup();
+  const radios = (name) => [...settings.matchAll(/<input\b[^>]*>/g)].flatMap(([input]) => (input.includes(`name="${name}"`) ? [input.match(/\bvalue="([^"]+)"/)[1]] : []));
   assert.deepEqual(radios('typing-font'), TYPING_FONTS);
   assert.deepEqual(radios('app-font'), APP_FONTS);
 

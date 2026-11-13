@@ -36,7 +36,7 @@ test('modes, lengths and punctuation float in separate groups; "more" names the 
   // The gliding pill rests under the renamed summary, as it would under any chosen mode.
   const summary = await page.locator('#mode-more-label').boundingBox();
   await expect.poll(async () => {
-    const pill = await page.locator('.mode-options > .glide-pill').boundingBox();
+    const pill = await rail.locator('.mode-options > .glide-pill').boundingBox();
 
     return Math.abs(pill.x - summary.x) + Math.abs(pill.width - summary.width);
   }).toBeLessThan(2);
@@ -97,7 +97,7 @@ for (const width of [1280, 390]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
 
     if (width > 900) {
-      const modes = await page.locator('.mode-options').boundingBox();
+      const modes = await page.locator('.practice-rail .mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
       expect(filters.y + filters.height / 2).toBe(modes.y + modes.height / 2);
       expect(filters.y + filters.height / 2).toBe(punctuation.y + punctuation.height / 2);
