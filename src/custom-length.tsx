@@ -121,7 +121,7 @@ export function createCustomLength(learning: LearningStore, practice: PracticeSe
 
 export type CustomLengthController = ReturnType<typeof createCustomLength>;
 
-export function CustomLengthField({ controller, mode, current }: { controller: CustomLengthController; mode: LengthMode; current: number }) {
+export function CustomLengthField({ controller, mode, current }: { controller: CustomLengthController; mode: LengthMode; current: unknown }) {
   const view = useSyncExternalStore(controller.view.subscribe, controller.view.getSnapshot, controller.view.getSnapshot);
   const pill = useRef<HTMLButtonElement>(null);
   const form = useRef<HTMLFormElement>(null);
@@ -136,7 +136,7 @@ export function CustomLengthField({ controller, mode, current }: { controller: C
     if (controls && input.current && form.current && pill.current) return controller.attach({ controls, input: input.current, form: form.current, pill: pill.current });
   }, [controller]);
 
-  return <><button ref={pill} id="custom-length" type="button" className={custom ? 'is-active' : ''} aria-pressed={custom} aria-label={custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`} hidden={view.open} onClick={() => controller.open()}>{custom ? current : 'custom'}</button>
+  return <><button ref={pill} id="custom-length" type="button" className={custom ? 'is-active' : ''} aria-pressed={custom} aria-label={custom ? `custom ${spec.noun}, ${current} ${spec.unit}` : `custom ${spec.noun}`} hidden={view.open} onClick={() => controller.open()}>{custom ? String(current) : 'custom'}</button>
     <form ref={form} id="custom-length-form" className="custom-length" noValidate hidden={!view.open} data-length-mode={view.mode} onSubmit={(event) => { event.preventDefault(); controller.commit(); }} onBlur={(event) => controller.blur(event.relatedTarget)}>
       <input ref={input} id="custom-length-input" className="custom-length-input" type="text" inputMode="numeric" enterKeyHint="done" maxLength={12} autoComplete="off" spellCheck={false} placeholder={`${editing.min}–${editing.max}`} aria-label={`${view.mode === 'time' ? 'custom time in seconds' : 'custom number of words'}, ${editing.min} to ${editing.max}`} aria-describedby="custom-length-error" aria-invalid={view.invalid} data-offered={view.offered} value={view.text} onChange={(event) => controller.edit(event.currentTarget.value)} onKeyDown={(event) => { if (event.key !== 'Escape') return; event.preventDefault(); event.stopPropagation(); controller.error(''); controller.close({ focus: true }); }} />
     </form></>;

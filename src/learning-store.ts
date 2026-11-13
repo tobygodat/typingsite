@@ -1,7 +1,7 @@
 import { createProgressSections } from './progress-sections.js';
 import type { SyncedProfile } from './profile-copy.js';
 import type { CopyPart } from './practice-session.js';
-import type { PreferencesInUse, HydratedProfile } from './profile-types.js';
+import type { ActivePreferences, HydratedProfile } from './profile-types.js';
 import type { trainPath } from './train-path.js';
 import { createStore } from './store.js';
 
@@ -67,7 +67,7 @@ export interface ComparisonView {
 }
 
 export function createLearningStore() {
-  let state: { profile: SyncedProfile<HydratedProfile>; preferences: PreferencesInUse; livePreferences: string } | null = null;
+  let state: { profile: SyncedProfile<HydratedProfile>; preferences: ActivePreferences; livePreferences: string } | null = null;
   const train = createStore<TrainView | null>(null);
   const comparison = createStore<ComparisonView>({ heading: 'Retest complete.', outcome: 'insufficient', unit: '', compared: true, target: null, accuracy: null, accuracyDelta: '—', wpm: null, wpmDelta: null, conditions: '', caveat: '' });
   const loops = createStore<LoopView[]>([]);
@@ -87,11 +87,11 @@ export function createLearningStore() {
     loops,
     lessons,
     commands,
-    initialize(profile: SyncedProfile<HydratedProfile>, preferences: PreferencesInUse) { state = { profile, preferences, livePreferences: JSON.stringify(preferences) }; },
+    initialize(profile: SyncedProfile<HydratedProfile>, preferences: ActivePreferences) { state = { profile, preferences, livePreferences: JSON.stringify(preferences) }; },
     get profile() { return current().profile; },
     set profile(profile: SyncedProfile<HydratedProfile>) { current().profile = profile; },
     get preferences() { return current().preferences; },
-    set preferences(preferences: PreferencesInUse) { current().preferences = preferences; },
+    set preferences(preferences: ActivePreferences) { current().preferences = preferences; },
     get livePreferences() { return current().livePreferences; },
     set livePreferences(value: string) { current().livePreferences = value; },
   };

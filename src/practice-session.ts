@@ -51,16 +51,16 @@ export interface PracticeControlsView {
   bookPage: number;
   mode: unknown;
   lengthMode: 'time' | 'words';
-  lengthValue: number;
-  duration: number;
-  count: number;
+  lengthValue: unknown;
+  duration: unknown;
+  count: unknown;
   punctuation: boolean;
   adaptive: boolean;
   custom: boolean;
   customOpen: boolean;
   manualOpen: boolean;
   composing: boolean;
-  codeLanguage: string;
+  codeLanguage: unknown;
   standardRecipe: string;
 }
 

@@ -1,3 +1,4 @@
+import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
 import { createInputPresentation } from './input-presentation.js';
 import { createPracticeProgress } from './progress-practice.js';
@@ -18,15 +19,12 @@ import {
   conditionKey,
   createAttempt,
   inputRules,
-  makeAdaptive,
   DRILL_SECONDS,
-  makeDrill,
   normalizeCustomText,
   orderCustomText,
   correctionPreference,
   selectPassage,
   standardConditions,
-  textId,
   consistency,
   characterBreakdown,
   wordHistory,
@@ -52,7 +50,7 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { evidenceCopy, missedCopy } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, trendRun, validRun } from './insights.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, runDay, trendRun, validRun } from './insights.js';
 import { renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
@@ -244,6 +242,22 @@ let composeOpen = false;
 // The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
 const { conditions, customConditions, practiceMinimums, inputLayout, lessonConditions, dailyConditions } = createPracticeConditions(learning, () => lessonIndex);
+
+const trainingPolicy = createTrainingPolicy(learning, practice, training, sync, { conditions, inputLayout, retainedBaseline, recommendation: trainingRecommendation,
+  reset: resetSession, controls: setModeControls, applyPreferences, manual: showManualTarget, unavailable: showUnavailableRetest,
+  description: (text) => { $('session-description').textContent = text; },
+});
+
+const layoutMismatch = trainingPolicy.layoutMismatch;
+const startDrill = trainingPolicy.startDrill;
+const startRetest = trainingPolicy.startRetest;
+const practiceTarget = trainingPolicy.practiceTarget;
+const baselineFor = trainingPolicy.baselineFor;
+const startAdaptiveRetest = trainingPolicy.adaptiveRetest;
+const startWordPractice = trainingPolicy.wordPractice;
+const practiseRecurringWords = trainingPolicy.recurringWords;
+const adaptivePassage = trainingPolicy.adaptivePassage;
+const drillPassage = trainingPolicy.drillPassage;
 
 const trainingResults = createTrainingResults(learning, training, sync, { conditions, recommendation: trainingRecommendation, baseline: baselineFor,
   layoutMismatch, practiceTarget, startDrill, history: renderHistory });
@@ -994,19 +1008,7 @@ function setCustomLengthFromPalette(mode) {
 // after an adaptive run's plain retest was asked for, the passage is the usual one and the run a normal test.
 
 
-function adaptivePassage() {
-  if (training.plainNext) {
-    training.plainNext = false;
 
-    return null;
-  }
-
-  if (!learning.preferences.adaptive || !['time', 'words'].includes(learning.preferences.mode)) return null;
-  const { lean, runs } = trainingRecommendation(conditions());
-
-  return runs && lean.length ? { ...makeAdaptive(lean, { mode: learning.preferences.mode, count: learning.preferences.count, duration: learning.preferences.duration, punctuation: learning.preferences.punctuation,
-    numbers: Boolean(learning.preferences.numbers), wordList: learning.preferences.wordList }), trainFocus: learning.preferences.trainFocus } : null;
-}
 
 function choosePassage(extraSeen = [], { allowRepeats = false } = {}) {
   if (learning.preferences.mode === 'code') return { ...codePassage(learning.preferences.codeLanguage, { seenIds: [...learning.profile.seenTextIds, ...extraSeen] }), corpus: CORPUS_VERSION };
@@ -1677,23 +1679,11 @@ function renderCard(completed) {
 
 // An uncounted `missed` run of these words. It is not a drill, so a drill's context and target from
 // earlier don't carry over into the next retest's record; startDrill sets a target again.
-function startWordPractice(words, { recurring = false } = {}) {
-  const text = practiceWordsPassage(words);
-  training.words = { id: `missed-${textId(text)}`, text, fresh: false, words, recurring };
-  training.context = null;
-  training.target = null;
-  resetSession('missed', { focus: true });
-}
+
 
 // The words you keep missing across runs. Without a baseline in this tab, the newest retained
 // counted run becomes one (as for a recurring pattern), so a fresh-text retest can follow.
-function practiseRecurringWords() {
-  const { words } = recurringMissedWords(learning.profile.runs);
 
-  if (words.length < 2) return;
-  training.baseline ||= retainedBaseline();
-  startWordPractice(words.map((item) => item.word), { recurring: true });
-}
 
 function resultHeadline(completed) {
   if (completed.failed) return `failed · ${completed.failed}`;
@@ -1733,7 +1723,7 @@ function resultHeadline(completed) {
 }
 
 // Code runs never become retest baselines, so a drill at code settings always stands alone.
-const CODE_DRILL_NOTE = 'A standalone drill. Code runs have no fresh-text retest.';
+
 
 // Records the run the results view now shows; Watch replay appears only when it has a trace. A custom run
 // (any non-comparable kind) keeps no trace, so, as with its best, it offers no replay.
@@ -1826,30 +1816,11 @@ function renderResultDrill(completed) {
 
 // The baseline for a fresh-text retest at `source` conditions: this tab's, when it matches, else the newest
 // retained run. Adaptive runs are drill-kind and never one.
-function baselineFor(source) {
-  const key = conditionKey(source);
 
-  return training.baseline?.status === 'complete' && !training.baseline.adaptive && conditionKey(training.baseline.conditions) === key
-    ? training.baseline : retainedBaseline(source);
-}
 
 // After an adaptive run: a fresh-text retest against the newest normal run at the same conditions, or,
 // with none, a plain test that can become the next baseline.
-function startAdaptiveRetest() {
-  const baseline = baselineFor(practice.shownResult.conditions);
 
-  if (!baseline) {
-    training.plainNext = true;
-    resetSession('practice', { focus: true });
-
-    return;
-  }
-
-  training.baseline = baseline;
-  training.target = null;
-  training.context = { target: null, recommendationKind: 'adaptive', policy: DEFAULT_POLICY, focus: practice.shownResult.trainFocus || learning.preferences.trainFocus, baselineAttemptId: baseline.id, drillCompleted: false };
-  startRetest();
-}
 
 // What Train shows while a retest's comparison is up: the unit just retested and the retest's conditions (see
 // showComparison). Null otherwise; opening Train from the dock draws the path afresh.
@@ -1891,85 +1862,21 @@ function pathEdges() {
 
 // A drill of what `recommendation` names, then the retest unless the retest setting is off. The drill keeps the
 // recommendation, its length and the retest setting it started with.
-function startDrill(recommendation) {
-  training.target = recommendation.target || null;
-  const mismatch = training.baseline ? layoutMismatch(training.baseline.conditions) : "";
 
-  if (mismatch) training.baseline = null;
-  const source = training.baseline?.conditions;
 
-  if (source) restoreConditions(source);
-  training.context = { recommendation, target: training.target, recommendationKind: recommendation.kind, policy: recommendation.policy || null,
-    focus: recommendation.focus || null, baselineAttemptId: training.baseline?.id || null, drillCompleted: false, was: recommendation.was || null,
-    retest: learning.preferences.retest };
-  const drill = drillPassage();
-  training.context.drill = { target: training.target, duration: learning.preferences.drillSeconds, wordList: learning.preferences.wordList, textVersion: drill.textVersion };
 
-  if (drill.lean) training.context.drill.lean = drill.lean;
-  showManualTarget(false);
-  resetSession('drill', { focus: true });
-
-  // With no baseline, or the retest off, nothing follows the drill, so it says so where the drill describes itself.
-  if (!training.baseline || !learning.preferences.retest) $('session-description').textContent = learning.preferences.mode === 'code' ? CODE_DRILL_NOTE : `Standalone drill.${mismatch ? ` ${mismatch}` : ''}`;
-}
-
-function startRetest() {
-  if (!training.baseline || training.baseline.status !== 'complete') return;
-  const source = training.baseline.conditions;
-  const mismatch = layoutMismatch(source);
-
-  if (mismatch) {
-    showUnavailableRetest(mismatch);
-
-    return;
-  }
-
-  restoreConditions(source);
-  resetSession('retest', { focus: true });
-}
 
 // The layout is set in the operating system, not here, so restoring conditions never switches it.
 // A baseline typed on another layout (a missing layout means QWERTY) can't be retested on this one.
 // A touch baseline never used the setting, so the setting can't block it.
-function layoutMismatch(source) {
-  const layout = normalizeLayout(source?.layout);
 
-  if (source?.inputClass === 'touch' || layout === learning.preferences.layout) return '';
-
-  return `The baseline was typed on ${layoutLabel(layout)}. Switch the keyboard layout back to ${layoutLabel(layout)} to retest it.`;
-}
 
 // A drill or retest runs at its baseline's conditions without recording them as a settings edit: the
 // saved settings, including a pick from another tab or device made meanwhile, apply again once it ends
 // (resetSession leaves them waiting), and a restore never outranks a choice someone made.
 // Only what the source's mode varies is restored: fields a mode fixes in conditions() (code's and a book's
 // punctuation, numbers and word list; quote's numbers) keep the person's own prose settings.
-function restoreConditions(source) {
-  commitPreferences();
-  const fixedPunctuation = ['code', 'book'].includes(source.mode);
-  const prose = !['quote', 'code', 'book'].includes(source.mode);
 
-  // The standard recipe carries its own settings; restoring it must not overwrite the person's.
-  if (source.mode === 'standard') learning.preferences = { ...learning.preferences, mode: 'standard' };
-  else learning.preferences = {
-    ...learning.preferences,
-    mode: source.mode,
-    duration: source.duration || learning.preferences.duration,
-    count: source.count || learning.preferences.count,
-    punctuation: fixedPunctuation ? learning.preferences.punctuation : Boolean(source.punctuation),
-    numbers: prose ? Boolean(source.numbers) : learning.preferences.numbers,
-    quoteLength: source.quoteLength || learning.preferences.quoteLength,
-    difficulty: source.difficulty || learning.preferences.difficulty,
-    wordList: source.wordList || learning.preferences.wordList,
-    codeLanguage: source.codeLanguage || learning.preferences.codeLanguage,
-    book: source.book || learning.preferences.book,
-    correction: correctionPreference({ correction: source.correctionPolicy, stopOnError: source.correctionPolicy !== 'relaxed' }),
-    stopOnError: source.correctionPolicy === 'mandatory',
-  };
-  learning.livePreferences = JSON.stringify(learning.preferences);
-  applyPreferences();
-  setModeControls();
-}
 
 // "results" is the practice screen showing a finished run in place of the passage.
 function switchView(view) {
@@ -2162,12 +2069,7 @@ function retainedBaseline(source = null) {
 // A drill on a target picked from a list. Patterns across runs and the comparison's Next pass the recommendation
 // whose queue they show, so the loop records the policy and focus that queued it; a past loop's target was picked
 // by hand. Either way the drill brings the counts the learner queues it on, which the comparison reads back.
-function practiceTarget(target, source, ranked = null) {
-  training.baseline = retainedBaseline({ ...source, layout: inputLayout(source.inputClass) });
-  restoreConditions({ ...source, corpus: CORPUS_VERSION });
-  const was = (ranked || trainingRecommendation(source)).queue.find((item) => item.unit === target)?.was ?? null;
-  startDrill({ kind: 'manual', target, title: `Practice “${target}”`, was, policy: ranked?.policy ?? null, focus: ranked?.focus ?? null });
-}
+
 
 // The recommender's pick for `source` conditions. The run just finished always counts toward its own
 // recommendation: its summary is saved even when its trace was too large to keep (the counting rule reads traces).
@@ -2179,9 +2081,7 @@ function trainingRecommendation(source, current = null) {
 
 // A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
-function drillPassage() {
-  return makeDrill(training.target, learning.preferences.wordList, training.context?.recommendation?.lean || []);
-}
+
 
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
 // its observed evidence and its last drill. Redrawn under someone using it, focus stays on the row for the same unit,

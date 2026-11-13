@@ -1,7 +1,7 @@
 import type { HistoricalTrace } from './profile-types.js';
 import type { Recommendation, TargetEvidence } from './learner.js';
 import type { ConditionLabelSource } from './insights.js';
-import type { makeDrill, WeightedUnit } from './typing.js';
+import type { makeDrill } from './typing.js';
 
 export type DrillRecommendation = Pick<Recommendation, 'kind' | 'target' | 'title'> & Partial<Pick<Recommendation, 'reason' | 'was' | 'lean' | 'queue' | 'runs'>> & { policy?: string | null; focus?: string | null };
 
@@ -9,7 +9,7 @@ interface DrillContext {
   target: string | null; recommendationKind: string; policy: string | null; focus?: string | null;
   baselineAttemptId: unknown; drillCompleted: boolean; retest?: boolean; recommendation?: DrillRecommendation;
   was?: TargetEvidence | null;
-  drill?: { target: string | null; duration: number; wordList: string; textVersion: ReturnType<typeof makeDrill>['textVersion']; lean?: WeightedUnit[] };
+  drill?: { target: string | null; duration: number; wordList: unknown; textVersion: ReturnType<typeof makeDrill>['textVersion']; lean?: ReturnType<typeof makeDrill>['lean'] };
 }
 
 export interface TrainingMemory {
