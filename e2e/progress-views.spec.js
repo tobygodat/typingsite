@@ -959,3 +959,23 @@ test('an id-less historical chart point opens its retained row without inventing
   expect(await row.getAttribute('data-run-id')).toBeNull();
   await expect(row.locator('summary')).toBeFocused();
 });
+
+test('retained loop comparisons keep absent speed and raw timing-count arithmetic', async ({ page, supabase }) => {
+  const loops = [
+    { id: 'older-comparison', at: NOW.toISOString(), conditions: conditions(), target: null, comparison: { state: 'not-comparable', reason: 'Legacy comparison summary.' } },
+    { id: 'string-counts', at: NOW.toISOString(), conditions: conditions(), target: 'qu', targetTiming: { target: 'qu', beforeCount: '2', afterCount: 1, deltaMs: '5' }, comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'String timing values.' } },
+    { id: 'negative-concat', at: NOW.toISOString(), conditions: conditions(), target: 'ex', targetTiming: { target: 'ex', beforeCount: '-1', afterCount: 2, deltaMs: null }, comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'Negative concatenated timing count.' } },
+  ];
+
+  await openProgress(page, supabase, runs, { extra: { loops } });
+  await openProgressDetail(page, 'runs');
+  const rows = page.locator('#history-list > details');
+  const older = rows.filter({ hasText: 'Legacy comparison summary.' });
+  await expect(older.locator('.history-timing data')).toHaveText('—');
+  expect(await older.locator('.history-timing data').getAttribute('data-wpm')).toBeNull();
+  const counts = rows.filter({ hasText: 'String timing values.' });
+  await expect(counts.locator('.history-conditions')).toContainText('qu · 2 before · 1 after');
+  await counts.locator('summary').click();
+  await expect(counts).toContainText('“qu” clean intervals: 2 before / 1 after. +5 ms median timing change.');
+  await expect(rows.filter({ hasText: 'Negative concatenated timing count.' }).locator('.history-conditions')).not.toContainText('before');
+});

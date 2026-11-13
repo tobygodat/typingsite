@@ -1,3 +1,4 @@
+import { createLoopHistory } from './loop-history.js';
 import { createSessionRules } from './session-rules.js';
 import { createProgressHistory } from './progress-history.js';
 import { createGhostLaunch } from './ghost-launch.js';
@@ -53,10 +54,9 @@ import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { challengePayload, challengeTextId,
   listChallenges } from './ghost-race.js';
-import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
-import { missedCopy } from './train-path.js';
+import { DEFAULT_POLICY, FOCUSES, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
-import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, wpmFromSpeed } from './units.js';
+import { formatSpeed, showSpeed, showSpeedUnit, speedFigure, speedValue, wpmFromSpeed } from './units.js';
 import {
   LESSONS, LESSON_ACCURACY, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
   makeupShort, nextLessonIndex,
@@ -580,9 +580,7 @@ const startedBy = (event) => (event?.pointerType && event.pointerType !== 'mouse
 let activationInput = 'physical-keyboard';
 const TEXT_FIELDS = 'textarea, input:not([type="checkbox"])';
 
-function signed(value, unit) {
-  return `${signedNumber(value)} ${unit}`;
-}
+
 
 // Copy that holds a speed is a list of parts, each speed a figure that re-texts with the unit (src/units.js).
 // Empty strings, missing values and false are left out: an element with nothing to say stays :empty, a run
@@ -1877,10 +1875,12 @@ function trainingRecommendation(source, current = null) {
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
 // its observed evidence and its last drill. Redrawn under someone using it, focus stays on the row for the same unit,
 // or the first row when that one is gone.
+const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 const renderTraining = learning.progress.patterns.refresh;
 learning.progress.patterns.configure({ learning, conditions, describe: describeConditions, recommendation: trainingRecommendation, practice: practiceTarget, date: dateCopy });
 
-const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 
 // Progress headline: the current standard recipe at one input class (standardInputClass decides), so
 // one touch run can't replace a keyboard score. The other class's best is named in the note.
@@ -1903,6 +1903,8 @@ const renderGoal = practiceProgress.goal;
 
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
+const renderLoops = createLoopHistory(learning, { describe: describeConditions, practice: practiceTarget }).render;
+
 const progressState = learning.progress.navigation.state;
 const progressHistory = createProgressHistory(learning, practiceProgress, { describe: describeConditions, describeRun, date: dateCopy, loops: renderLoops, focusShown });
 const { renderHistory, renderWeek, drawProgressView, chooseProgress, hasAnyHistory } = progressHistory;
@@ -1956,44 +1958,7 @@ function focusShown(target, { scroll = false } = {}) {
 // Practice, a plain fact: minutes the week before → this week, and the streak (at the goal, when one is set).
 
 
-function renderLoops(loops) {
-  learning.commands.loopTarget = (id) => {
-    const loop = learning.profile.loops.find((item) => item.id === id);
 
-    if (loop?.target) practiceTarget(loop.target, loop.conditions);
-  };
-
-  const rows = loops.map((loop) => {
-    const drilled = loop.drillCompleted || Boolean(loop.drill);
-    let conditions = describeConditions(loop.conditions);
-    const pace = loop.targetPace;
-    const timing = loop.targetTiming?.target && loop.targetTiming.beforeCount + loop.targetTiming.afterCount > 0 ? loop.targetTiming : null;
-    const misses = loop.targetMisses;
-
-    if (pace) conditions += ' · ' + pace.target + ' ' + paceShift(pace.now.slowMs) + ' over ' + plural(pace.now.timed, 'interval') + ', was ' + paceShift(pace.was.slowMs) + ' over ' + pace.was.timed;
-    else if (misses) conditions += ' · ' + misses.target + ' missed ' + missedCopy(misses.now) + ', was ' + missedCopy(misses.was);
-    else if (timing) conditions += ' · ' + timing.target + ' · ' + timing.beforeCount + ' before · ' + timing.afterCount + ' after';
-    const notes = [];
-
-    if (timing) notes.push('“' + timing.target + '” clean intervals: ' + timing.beforeCount + ' before / ' + timing.afterCount + ' after. ' + (timing.deltaMs === null ? 'Too few samples to call a timing change.' : signed(timing.deltaMs, 'ms') + ' median timing change.'));
-    notes.push(loop.comparison.reason || 'One retest is feedback, not proof.');
-
-    if (loop.beforeAttemptId && loop.afterAttemptId) notes.push('Baseline ' + loop.beforeAttemptId + ' · retest ' + loop.afterAttemptId + '. Open their run entries above for saved details.');
-
-    return {
-      id: loop.id, date: new Date(loop.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      title: drilled ? loop.target ? '“' + loop.target + '” drill and retest' : 'General drill and retest' : 'Fresh-text check',
-      conditions, accuracy: signed(loop.comparison.accuracyDelta, 'pp'), delta: loop.comparison.wpmDelta, state: loop.comparison.state,
-      facts: [
-        { label: 'before', parts: copyParts(loop.comparison.before ? [speedFigure(loop.comparison.before.wpm), ' · ' + loop.comparison.before.accuracy + '%'] : 'Not retained in this older comparison') },
-        { label: 'after', parts: copyParts(loop.comparison.after ? [speedFigure(loop.comparison.after.wpm), ' · ' + loop.comparison.after.accuracy + '%'] : 'Not retained in this older comparison') },
-        { label: 'drill', parts: [loop.drillCompleted ? (loop.drill?.duration || 60) + ' s · ' + (loop.target || 'general') : drilled ? 'interrupted · ' + (loop.target || 'general') : 'Skipped'] },
-      ], notes, target: loop.target || null,
-    };
-  });
-
-  flushSync(() => learning.loops.publish(rows));
-}
 
 // Practice over the period, whatever the test: days practised, the longest and current streaks (days meeting
 // the goal, or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
