@@ -51,8 +51,8 @@ export function isDefaultLayout(id: unknown) {
   return !id || id === DEFAULT_LAYOUT;
 }
 
-export function layoutLabel(id: string | undefined) {
-  return lookup(LAYOUTS, id ?? DEFAULT_LAYOUT)?.label || String(id || DEFAULT_LAYOUT);
+export function layoutLabel(id: unknown) {
+  return lookup(LAYOUTS, String(id ?? DEFAULT_LAYOUT))?.label || String(id || DEFAULT_LAYOUT);
 }
 
 // Rows of { key, hand, finger, column } for the legend, ending with the space bar (both thumbs).

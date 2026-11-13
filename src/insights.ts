@@ -432,15 +432,23 @@ export function testShapes(inputSources: readonly unknown[]) {
 
 export const CORRECTION_LABELS = { relaxed: 'continue on error', mandatory: 'stop on error', 'no-backspace': 'no backspace', 'fail-word': 'fail on word error', 'fail-any': 'fail on any error' } satisfies Record<string, string>;
 
-export function correctionLabel(policy: string | undefined) {
-  return lookup(CORRECTION_LABELS, policy || 'mandatory') || 'stop on error';
+export function correctionLabel(policy: unknown) {
+  return lookup(CORRECTION_LABELS, String(policy || 'mandatory')) || 'stop on error';
 }
 
 // Every part of a condition key (conditionKey), named as people read it, in the order a conditions line
 // reads. Some parts are on the line only away from their default (`shown`), but name a condition set in
 // either state when sets differ by them. A quote ignores the punctuation setting its key keeps, so the
 // line names it only beside a quote set that differs by it.
-const version = (id: string) => id.replace(/^.*-(v\d+)$/, '$1');
+function conditionText(value: unknown): string {
+  if (typeof value !== 'string') throw new TypeError('A textual condition field is not text.');
+
+  return value;
+}
+
+const version = (id: unknown) => conditionText(id).replace(/^.*-(v\d+)$/, '$1');
+
+export type ConditionLabelSource = Conditions | HistoricalRecord;
 
 const LENGTH_TEXT = {
   words: (c) => `${c.count} words`,
@@ -448,10 +456,10 @@ const LENGTH_TEXT = {
   quote: (c) => `${c.quoteLength || 'any'} quote`,
   code: (c) => `code · ${c.codeLanguage || DEFAULT_CODE_LANGUAGE}`,
   book: (c) => bookName(c.book),
-  standard: (c) => `${(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
-} satisfies Partial<Record<string, (c: Conditions) => string>>;
+  standard: (c) => `${conditionText(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
+} satisfies Partial<Record<string, (c: ConditionLabelSource) => string>>;
 
-interface ConditionPart { name: string; text: (c: Conditions) => unknown; shown?: (c: Conditions) => boolean }
+interface ConditionPart { name: string; text: (c: ConditionLabelSource) => unknown; shown?: (c: ConditionLabelSource) => boolean }
 
 const CONDITION_PARTS: ConditionPart[] = [
   { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
@@ -470,7 +478,7 @@ const CONDITION_PARTS: ConditionPart[] = [
 // The parts a conditions line shows, by name, in reading order. Beside other condition sets (`sets`, as
 // the condition pills list them), a part shown only away from its default is shown whenever they differ
 // by it, so the line names what its pill does.
-export function conditionParts(conditions: Conditions, sets: Conditions[] = []) {
+export function conditionParts(conditions: ConditionLabelSource, sets: readonly ConditionLabelSource[] = []) {
   const differs = (part: ConditionPart) => sets.some((other) => part.text(other) !== part.text(conditions));
 
   return Object.fromEntries(CONDITION_PARTS.flatMap((part) => {
@@ -482,7 +490,7 @@ export function conditionParts(conditions: Conditions, sets: Conditions[] = []) 
 
 // Names for the condition sets at one length: each set's reading of every part the sets disagree on
 // ("plain", "plain · numbers"), so a set's name never depends on how often it was run.
-export function conditionLabels(sets: Conditions[]) {
+export function conditionLabels(sets: readonly ConditionLabelSource[]) {
   const texts = sets.map((conditions) => CONDITION_PARTS.map((part) => part.text(conditions)));
   const differs = CONDITION_PARTS.map((_, i) => new Set(texts.map((values) => values[i])).size > 1);
 

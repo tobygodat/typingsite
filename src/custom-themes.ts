@@ -1,6 +1,6 @@
 import { at, isRecord } from './domain-values.js';
 
-export interface CustomTheme { id: string; name: string; colors: Record<string, string> }
+export interface CustomTheme { id: string; name: string; colors: ThemeColors }
 
 export type ThemeColors = Record<string, string> & { ground: string; danger: string };
 // Custom themes: a name and a hex for each colour token, worn over the dark or light token set by the
@@ -89,7 +89,7 @@ export const mix = (top: string, under: string, alpha: number) => toHex(channels
 
 // Dark or light: whichever of black or white text contrasts more with the background (0.179 is where
 // the two are equal).
-export const themeMode = (colors: ThemeColors) => (luminance(colors.ground) > 0.179 ? 'light' : 'dark');
+export const themeMode = <Colors extends Pick<ThemeColors, 'ground'>>(colors: Colors) => (luminance(colors.ground) > 0.179 ? 'light' : 'dark');
 
 // What has to stay readable on the background: passage text (typed and untyped) and the coral of a
 // mistyped letter on its tint need 4.5:1 (WCAG AA for text), the caret 3:1 (AA for non-text).
@@ -119,6 +119,10 @@ export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? v
 
 // A stored theme as this build uses it: hex colours for every base token and any derived ones
 // overridden, nothing else. Anything short of that is dropped, as are repeats and any past the cap.
+function validColors(colors: Record<string, string>): colors is ThemeColors {
+  return typeof colors.ground === 'string' && typeof colors.danger === 'string' && !BASE_TOKENS.some((token) => !colors[token]);
+}
+
 function normalizeTheme(raw: unknown): CustomTheme | null {
   if (!isRecord(raw) || !isCustomId(raw.id)) return null;
   const name = cleanThemeName(raw.name);
@@ -130,7 +134,7 @@ function normalizeTheme(raw: unknown): CustomTheme | null {
     if (hex) colors[token] = hex;
   }
 
-  if (!name || BASE_TOKENS.some((token) => !colors[token])) return null;
+  if (!name || !validColors(colors)) return null;
 
   return { id: raw.id.slice(0, 64), name, colors };
 }
