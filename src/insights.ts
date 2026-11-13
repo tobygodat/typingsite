@@ -460,26 +460,32 @@ const LENGTH_TEXT = {
   standard: (c) => `${conditionText(c.recipe || '').replace('-', ' ')} · ${c.duration} s`,
 } satisfies Partial<Record<string, (c: ConditionLabelSource) => string>>;
 
-interface ConditionPart { name: string; text: (c: ConditionLabelSource) => unknown; shown?: (c: ConditionLabelSource) => boolean }
+function labelSource(value: ConditionLabelSource | undefined): ConditionLabelSource {
+  if (value === undefined) throw new TypeError('A condition label source is missing');
+
+  return value;
+}
+
+interface ConditionPart { name: string; text: (c: ConditionLabelSource | undefined) => unknown; shown?: (c: ConditionLabelSource | undefined) => boolean }
 
 const CONDITION_PARTS: ConditionPart[] = [
-  { name: 'language', text: (c) => (c.wordList ? `english ${c.wordList}` : 'english') },
-  { name: 'length', text: (c) => lookup(LENGTH_TEXT, String(c.mode ?? ''))?.(c) ?? c.mode },
-  { name: 'text', text: (c) => (c.mode === 'quote' ? c.difficulty || 'any difficulty' : `${c.punctuation ? 'punctuation' : 'plain'}${c.numbers ? ' · numbers' : ''}`) },
-  { name: 'setting', text: (c) => (c.mode === 'quote' ? `punctuation setting ${c.punctuation ? 'on' : 'off'}` : ''), shown: () => false },
-  { name: 'input', text: (c) => (c.inputClass === 'touch' ? 'touch input' : 'physical keyboard') },
-  { name: 'layout', text: (c) => layoutLabel(c.layout || DEFAULT_LAYOUT), shown: (c) => !isDefaultLayout(c.layout) },
-  { name: 'correction', text: (c) => correctionLabel(c.correctionPolicy) },
+  { name: 'language', text: (c) => (labelSource(c).wordList ? `english ${labelSource(c).wordList}` : 'english') },
+  { name: 'length', text: (c) => lookup(LENGTH_TEXT, String(labelSource(c).mode ?? ''))?.(labelSource(c)) ?? labelSource(c).mode },
+  { name: 'text', text: (c) => (labelSource(c).mode === 'quote' ? labelSource(c).difficulty || 'any difficulty' : `${labelSource(c).punctuation ? 'punctuation' : 'plain'}${labelSource(c).numbers ? ' · numbers' : ''}`) },
+  { name: 'setting', text: (c) => (labelSource(c).mode === 'quote' ? `punctuation setting ${labelSource(c).punctuation ? 'on' : 'off'}` : ''), shown: () => false },
+  { name: 'input', text: (c) => (labelSource(c).inputClass === 'touch' ? 'touch input' : 'physical keyboard') },
+  { name: 'layout', text: (c) => layoutLabel(labelSource(c).layout || DEFAULT_LAYOUT), shown: (c) => !isDefaultLayout(labelSource(c).layout) },
+  { name: 'correction', text: (c) => correctionLabel(labelSource(c).correctionPolicy) },
   { name: 'strictSpace', text: (c) => (inputRules(c).includes('strict-space') ? 'strict space' : 'no strict space'), shown: (c) => inputRules(c).includes('strict-space') },
   { name: 'quickEnd', text: (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'), shown: (c) => inputRules(c).includes('quick-end-off') },
-  { name: 'corpus', text: (c) => `corpus ${version(c.corpus || CORPUS_VERSION)}`, shown: () => false },
-  { name: 'metric', text: (c) => `metric ${version(c.metricVersion || METRIC_VERSION)}`, shown: () => false },
+  { name: 'corpus', text: (c) => `corpus ${version(labelSource(c).corpus || CORPUS_VERSION)}`, shown: () => false },
+  { name: 'metric', text: (c) => `metric ${version(labelSource(c).metricVersion || METRIC_VERSION)}`, shown: () => false },
 ];
 
 // The parts a conditions line shows, by name, in reading order. Beside other condition sets (`sets`, as
 // the condition pills list them), a part shown only away from its default is shown whenever they differ
 // by it, so the line names what its pill does.
-export function conditionParts(conditions: ConditionLabelSource, sets: readonly ConditionLabelSource[] = []) {
+export function conditionParts(conditions: ConditionLabelSource, sets: readonly (ConditionLabelSource | undefined)[] = []) {
   const differs = (part: ConditionPart) => sets.some((other) => part.text(other) !== part.text(conditions));
 
   return Object.fromEntries(CONDITION_PARTS.flatMap((part) => {
@@ -628,8 +634,8 @@ export function recurringTargets(inputRuns: readonly unknown[], inputLoops: read
 // Daily practice goal: minutes practised per local calendar day, from the run summaries and the archive.
 export const DAILY_GOALS = [0, 5, 10, 15, 30];
 
-export function dayKey(value: string | number | Date) {
-  const d = new Date(value);
+export function dayKey(value: string | number | Date | null) {
+  const d = new Date(value === null ? 0 : value);
 
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -679,7 +685,7 @@ export function retainHistory<T extends PracticeRecord>(runs: T[], practiceDays:
 
 // Completed learning activities that keep no copy-run summary (lessons and composing) put their
 // actual practice time straight into the same bounded archive. Composing supplies active time.
-export function recordPracticeTime(practiceDays: unknown, at: string, elapsedMs: number) {
+export function recordPracticeTime(practiceDays: unknown, at: string | null, elapsedMs: number) {
   const days = validPracticeDays(practiceDays);
   const day = dayKey(at);
 

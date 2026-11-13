@@ -573,11 +573,11 @@ export async function insertCloudProfile(session: Session, data: Profile | Cloud
 // Writes a summary into the row's `board` column only while the row is still the version it was counted
 // from (its `updated_at` is `at`), so it can only ever describe that exact row: a row another write has
 // moved since is left alone, and that write carries its own summary. True when it was sent.
-export async function repairBoard(session: Session, board: BoardColumn | null, at: string) {
+export async function repairBoard(session: Session, board: BoardColumn | null, at: string | undefined) {
   if (boardOff) return false;
 
   try {
-    await request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(at)}`, {
+    await request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(String(at))}`, {
       method: 'PATCH',
       token: session.access_token,
       headers: { Prefer: 'return=minimal' },
