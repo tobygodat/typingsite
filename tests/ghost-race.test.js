@@ -292,3 +292,14 @@ test('a retained source with no keys returns before malformed text is consumed',
   assert.equal(isChallengePayloadSource(retained), true);
   assert.equal(challengePayload(retained), null);
 });
+
+
+test('retained condition copies keep every own JSON key for whitelist validation', () => {
+  const completed = run('alpha beta', { text: 'alpha beta', end: 30000,
+    conditions: { mode: 'time', duration: 30, wordList: '200', correctionPolicy: 'mandatory', inputClass: 'physical-keyboard' } });
+
+  const conditions = { ...completed.conditions, ...JSON.parse('{"__proto__":{"future":true}}') };
+  const original = JSON.stringify(conditions);
+  assert.equal(challengePayload({ ...completed, conditions }), null);
+  assert.equal(JSON.stringify(conditions), original);
+});

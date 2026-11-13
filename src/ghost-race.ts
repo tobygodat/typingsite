@@ -74,13 +74,9 @@ function rawField(value: unknown, key: string): unknown {
 }
 
 function copyConditions(value: unknown): HistoricalRecord {
-  const copy: HistoricalRecord = {};
+  if (!isRecord(value) && !isReplayTarget(value)) return {};
 
-  if (isRecord(value) || isReplayTarget(value)) {
-    for (const key of Object.keys(value)) copy[key] = rawField(value, key);
-  }
-
-  return copy;
+  return Object.fromEntries(Object.keys(value).map((key): [string, unknown] => [key, rawField(value, key)]));
 }
 
 function traceEvents(value: unknown): Iterable<unknown> {
