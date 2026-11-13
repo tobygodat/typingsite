@@ -1,3 +1,4 @@
+import { createTrainingPatterns } from './training-patterns.js';
 import { createProgressNavigation } from './progress-navigation.js';
 import { createProgressFilters } from './progress-filters.js';
 import { createProgressKeys } from './progress-keys.js';
@@ -27,7 +28,7 @@ export function createProgressSections() {
   const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, keys: false, calendar: false, standard: false, compose: false }, runsLabel: 'All runs' });
   const commands = { showAll() {}, calendar() {}, clear() {}, standard() {}, movers() {} };
 
-  return { navigation: createProgressNavigation(), overview, filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
+  return { patterns: createTrainingPatterns(), navigation: createProgressNavigation(), overview, filters: createProgressFilters(), keys: createProgressKeys(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
 }
 
 export type ProgressSections = ReturnType<typeof createProgressSections>;

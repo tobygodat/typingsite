@@ -1,3 +1,4 @@
+import { TrainingPatterns } from './training-patterns.js';
 import { PROGRESS_DETAILS } from './progress-navigation.js';
 import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
@@ -99,14 +100,7 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
 
           <section id="detail-keys" className="detail-panel" data-panel="keys" aria-labelledby="progress-detail-heading" hidden={detail !== 'keys'}>
             <ProgressKeys controller={learning.progress.keys} />
-            <section className="training-memory" aria-labelledby="training-memory-heading">
-              <h3 id="training-memory-heading">Patterns across runs</h3>
-              <div className="filter-field">
-                <select id="training-conditions" className="input" aria-label="Test conditions"></select>
-              </div>
-              <p id="training-memory-note" className="result-note"></p>
-              <div id="training-targets"></div>
-            </section>
+            <TrainingPatterns controller={progress.patterns} />
           </section>
 
           <section id="detail-calendar" className="detail-panel" data-panel="calendar" aria-labelledby="progress-detail-heading" hidden={detail !== 'calendar'}>

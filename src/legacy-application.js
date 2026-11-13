@@ -51,9 +51,9 @@ import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
 import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
-import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
-import { evidenceCopy, missedCopy } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, runDay, trendRun, validRun } from './insights.js';
+import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
+import { missedCopy } from './train-path.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, runDay, trendRun } from './insights.js';
 import { renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
@@ -1864,27 +1864,6 @@ function localRaceRunning() {
   return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
 }
 
-function conditionOptions(select, sources, fallback = null) {
-  const prior = select.value;
-  const groups = new Map();
-
-  for (const source of [...sources].reverse()) groups.set(conditionKey(source.conditions), source.conditions);
-
-  if (!groups.size && fallback) groups.set(conditionKey(fallback), fallback);
-  select.replaceChildren(...[...groups].map(([key, value]) => {
-    const option = document.createElement('option');
-    option.value = key;
-    option.textContent = describeConditions(value, [...groups.values()]);
-
-    return option;
-  }));
-
-  if (groups.has(prior)) select.value = prior;
-  select.disabled = !groups.size;
-
-  return groups.get(select.value);
-}
-
 // Consistency and the static words list. Display only. The card shows no first-try errors or character
 // breakdown; accuracy's tooltip keeps both, since accuracy is counted from them.
 
@@ -1931,14 +1910,6 @@ function openHistoryRun(id) {
   if (row) { row.open = true; row.scrollIntoView({ block: 'center', behavior: 'instant' }); row.querySelector('summary').focus(); }
 }
 
-function targetButton(target, source, ranked) {
-  const button = element('button', `Practice “${target}” again`, 'btn btn-secondary');
-  button.type = 'button';
-  button.addEventListener('click', () => practiceTarget(target, source, ranked), { signal: lifetime.signal });
-
-  return button;
-}
-
 // The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
 // Older corpus or standard recipe versions need a new baseline; a code run is never one.
 function retainedBaseline(source = null) {
@@ -1972,31 +1943,8 @@ function trainingRecommendation(source, current = null) {
 // Patterns across runs: the learner's queue at the chosen conditions' keyboard, as Train reads it, each unit with
 // its observed evidence and its last drill. Redrawn under someone using it, focus stays on the row for the same unit,
 // or the first row when that one is gone.
-function renderTraining() {
-  const list = $('training-targets');
-  const hadUnit = list.contains(document.activeElement) ? document.activeElement.closest('[data-unit]')?.dataset.unit : undefined;
-
-  const source = conditionOptions($('training-conditions'), learning.profile.runs.filter((r) => validRun(r)
-    && ['test', 'retest', 'daily'].includes(r.kind)), conditions());
-
-  const recommendation = trainingRecommendation(source);
-  const { queue } = recommendation;
-  $('training-memory-note').textContent = queue.length ? '' : 'Not enough evidence yet.';
-  list.replaceChildren(...queue.slice(0, 8).map(({ unit, was }) => {
-    const row = element('article', '', 'training-target');
-    row.dataset.unit = unit;
-    const copy = document.createElement('div');
-    copy.append(element('h3', `Practice “${unit}”`), element('p', evidenceCopy(was)));
-    const loop = [...learning.profile.loops].reverse().find((item) => item.target === unit && keyboardOf(item.conditions) === keyboardOf(source));
-
-    if (loop) copy.append(element('p', `Last practiced ${dateCopy(loop.at)}. Last retest: ${loop.comparison.state}.`));
-    row.append(copy, targetButton(unit, source, recommendation));
-
-    return row;
-  }));
-
-  if (hadUnit !== undefined) (list.querySelector(`[data-unit="${CSS.escape(hadUnit)}"] button`) || list.querySelector('button') || $('training-conditions')).focus({ preventScroll: true });
-}
+const renderTraining = learning.progress.patterns.refresh;
+learning.progress.patterns.configure({ learning, conditions, describe: describeConditions, recommendation: trainingRecommendation, practice: practiceTarget, date: dateCopy });
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
@@ -3400,7 +3348,6 @@ function bindEvents() {
   };
 
   coarsePointer.addEventListener('change', () => renderKeys(heatRuns), { signal: lifetime.signal });
-  $('training-conditions').addEventListener('change', renderTraining, { signal: lifetime.signal });
   $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
   // A finished retest is a run like any other, so its card waits on Practice with everything a result offers.
   learning.commands.back = () => {
