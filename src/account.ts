@@ -1288,12 +1288,7 @@ function parseMergeProfile(value: unknown): MergeProfile {
 
 const ProfileRowSchema = openSchema({ data: Schema.optional(Schema.Unknown), updated_at: Schema.optional(Schema.String), board: Schema.optional(Schema.Unknown) });
 
-export interface BoardColumn {
-  v: number; at: string;
-  days: Record<string, { version: string; wpm: number; accuracy: number; attempts: number }>;
-  weeks: Record<string, { seconds: number; runs: number }>;
-  bests: Record<string, { wpm: number; accuracy: number; date: string }>;
-}
+export type BoardColumn = ReturnType<typeof import('./friends-board.js').boardColumn>;
 
 type BoardWriter = (at: string) => BoardColumn | null | undefined;
 

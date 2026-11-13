@@ -50,13 +50,13 @@ export interface TrainingLoop {
   minimums?: Minimums; inputClass?: InputClass;
 }
 
-export interface Profile {
+export type Profile = {
   version: 2; profileId: string; preferences: Partial<Preferences>; preferencesAt?: Record<string, string>;
   attempts: Attempt[]; runs: RunRecord[]; practiceDays: Record<string, number>; runCounts: RunCounts;
   loops: TrainingLoop[]; seenTextIds: string[]; bests: Record<string, Best>; lessons: LessonProgress;
   historyClearedAt?: string; appliedClears?: string[]; heardClears?: string[]; historyClearedIds?: [string, string][]; undoneClears?: string[]; legacyClearedAt?: string; mergeStamp?: string;
   compositions: CompositionRecord[]; updatedAt?: string; clearedAt?: string; resetAt?: string;
-}
+};
 
 export type LoopRecord = TrainingLoop;
 
