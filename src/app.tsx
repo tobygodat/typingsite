@@ -1,3 +1,4 @@
+import { GhostOffer } from './ghost-offer.js';
 import { useSyncExternalStore } from 'react';
 import { bindingLabel, ariaShortcuts } from './keybindings.js';
 import { CustomTextEditor, ManualTargetEditor } from './practice-editors.js';
@@ -22,7 +23,7 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation, ghostOffer }: Application) {
   const view = useSyncExternalStore(navigation.view.subscribe, navigation.view.getSnapshot, navigation.view.getSnapshot);
   const shown = view.screen === 'results' ? 'practice' : view.screen;
   const restartLabel = bindingLabel(view.keys.restart);
@@ -128,25 +129,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
               <p id="ghost-result-status"></p>
               <button id="ghost-result-action" className="btn btn-secondary" type="button" hidden>Race again</button>
             </article>
-            <details id="ghost-offer" className="manual-panel ghost-offer" hidden>
-              <summary>Challenge a friend with this run</summary>
-              <p className="ghost-offer-copy">They race your keystrokes on this text within 7 days.</p>
-              <div id="ghost-offer-empty" hidden>
-                <p className="ghost-offer-copy">Your friend list is empty.</p>
-                <button id="ghost-offer-friends" className="btn btn-ghost btn-sm" type="button">Add a friend</button>
-              </div>
-              <form id="ghost-offer-form" className="ghost-offer-form" noValidate>
-                <label className="filter-field" htmlFor="ghost-friend">Friend
-                  <select id="ghost-friend" className="input"></select>
-                </label>
-                <label className="filter-field" htmlFor="ghost-name">Name they see
-                  <input id="ghost-name" className="input" type="text" maxLength={24} autoComplete="nickname" placeholder="Name" />
-                </label>
-                <button id="send-ghost" className="btn btn-secondary" type="submit">Send challenge</button>
-              </form>
-              <p id="ghost-offer-status" className="result-note" role="status"></p>
-              <p id="ghost-offer-error" className="field-error" role="alert"></p>
-            </details>
+            <GhostOffer controller={ghostOffer} />
           </div>
         </div>
 

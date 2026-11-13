@@ -49,9 +49,9 @@ import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
-import { forgetRace, listFriends, listRaceInvites } from './multiplayer.js';
-import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
-  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
+import { forgetRace, listRaceInvites } from './multiplayer.js';
+import { challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
+  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
 import { missedCopy } from './train-path.js';
 import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
@@ -66,7 +66,7 @@ import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM
 
 
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const glides = createControlGlides(lifetime);
@@ -310,7 +310,7 @@ let ghostRace = null;
 // A Race carries where it was clicked (raceContext); a later Race replaces it.
 // The friend list belongs to the offer on screen: renderGhostOffer drops it when another run replaces it.
 let ghostRequest = null;
-let friendsRequest = null;
+
 
 // Counts the sessions set up on the practice surface, and everything typed anywhere (a passage or a form
 // field), so a Race can tell whether the person has set up something new or gone on typing since the click.
@@ -319,16 +319,6 @@ let typedCount = 0;
 
 // A Race's error that lands beside a run the person went on typing waits for the run to end (see runChanged).
 let heldRaceError = '';
-let offerRun = null;
-let offerSentTo = new Set();
-
-// One request id per friend for the offered run, repeated on a retry so the service stores it once.
-let offerRequests = new Map();
-
-// The offered run whose send is in flight. Only that request may release the Send button.
-let offerSending = null;
-const offerBusy = () => Boolean(offerRun) && offerSending === offerRun;
-
 // For each clear still in force here, the copies merged here that it removed history from, as they were
 // before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
 // A list goes back only with its own clear's undo. In memory only.
@@ -2554,102 +2544,7 @@ async function submitGhostRun() {
   if (document.body.dataset.view === 'results') announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
 }
 
-let offerFriends = [];
-
-const racerName = () => $('online-name').value.trim() || accounts.session?.user.email.split('@')[0].slice(0, 24) || '';
-
-// "Challenge a friend with this run": shown under a finished practice, retest or daily run.
-function renderGhostOffer(completed = offerRun) {
-  if (completed !== offerRun) {
-    offerRun = completed;
-    offerSentTo = new Set();
-    offerRequests = new Map();
-    friendsRequest = null;
-    $('ghost-offer').open = false;
-    $('ghost-offer-status').textContent = '';
-    $('ghost-offer-error').textContent = '';
-  }
-
-  $('ghost-offer').hidden = !accounts.session || !challengePayload(offerRun);
-}
-
-async function loadGhostFriends() {
-  const select = $('ghost-friend');
-
-  if (!$('ghost-name').value) $('ghost-name').value = racerName();
-
-  if (!offerFriends.length) select.replaceChildren(new Option('Loading friends…', ''));
-  select.disabled = true;
-  $('send-ghost').disabled = true;
-  const request = friendsRequest = {};
-  let friends = offerFriends;
-  let failure = '';
-
-  try { friends = await listFriends(accounts.session); } catch (error) { failure = error.message; }
-
-  // Only the newest list for this offer is drawn.
-  if (friendsRequest !== request) return;
-  offerFriends = friends;
-  $('ghost-offer-error').textContent = failure;
-  const empty = !offerFriends.length;
-  $('ghost-offer-empty').hidden = !empty || Boolean(failure);
-  $('ghost-offer-form').hidden = empty;
-  const prior = select.value;
-  select.replaceChildren(...offerFriends.map((friend) => new Option(friend.email ? `${friend.name} (${friend.email})` : friend.name, friend.id)));
-
-  if (offerFriends.some((friend) => friend.id === prior)) select.value = prior;
-  select.disabled = empty;
-  $('send-ghost').disabled = empty || offerBusy();
-}
-
-async function sendGhost(event) {
-  event.preventDefault();
-  const payload = challengePayload(offerRun);
-  const friend = offerFriends.find((value) => value.id === $('ghost-friend').value);
-  const name = $('ghost-name').value.trim();
-  $('ghost-offer-error').textContent = '';
-
-  if (!payload || !friend || !accounts.session || offerBusy()) return;
-
-  if (!name) {
-    $('ghost-offer-error').textContent = 'Enter the name your friend will see.';
-    $('ghost-name').focus();
-
-    return;
-  }
-
-  if (offerSentTo.has(friend.id)) {
-    $('ghost-offer-status').textContent = `Already sent to ${friend.name}.`;
-
-    return;
-  }
-
-  const run = offerRun;
-
-  if (!offerRequests.has(friend.id)) offerRequests.set(friend.id, crypto.randomUUID());
-  const requestId = offerRequests.get(friend.id);
-  offerSending = run;
-  $('send-ghost').disabled = true;
-  $('ghost-offer-status').textContent = `Sending to ${friend.name}…`;
-
-  try {
-    await sendChallenge(accounts.session, { friendId: friend.id, displayName: name, payload, requestId });
-
-    if (run !== offerRun) return;
-    offerSentTo.add(friend.id);
-    // As with race invitations, the reply never says whether a saved email has an account.
-    $('ghost-offer-status').textContent = `Sent to ${friend.name}. ${friend.email ? `If ${friend.email} has an account, they` : 'They'} have ${CHALLENGE_DAYS} days to race it, and the result arrives in your inbox.`;
-  } catch (error) {
-    if (run !== offerRun) return;
-    $('ghost-offer-status').textContent = '';
-    $('ghost-offer-error').textContent = error.message;
-  } finally {
-    // A reply for an earlier run leaves the button to the offer now on screen.
-    if (offerSending === run) offerSending = null;
-
-    if (run === offerRun) $('send-ghost').disabled = false;
-  }
-}
+const renderGhostOffer = ghostOffer.render;
 
 // The legend follows the chosen layout; typed characters are never remapped. The optional finger
 // map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
@@ -3284,9 +3179,7 @@ function bindEvents() {
     focusResult($('run-again'));
   };
 
-  $('ghost-offer').addEventListener('toggle', () => { if ($('ghost-offer').open && accounts.session) loadGhostFriends(); }, { signal: lifetime.signal });
-  $('ghost-offer-form').addEventListener('submit', sendGhost, { signal: lifetime.signal });
-  $('ghost-offer-friends').addEventListener('click', () => onlineRace?.openAdd(), { signal: lifetime.signal });
+
   $('ghost-result-action').addEventListener('click', () => {
     if (ghostRace?.state === 'failed') submitGhostRun();
     else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
@@ -4117,6 +4010,7 @@ return {
     detachWallpaper?.();
     wallpaper.dispose();
     themeEditor.dispose();
+    ghostOffer.dispose();
     accounts.dispose();
     sync.dispose();
     deletion.dispose();
