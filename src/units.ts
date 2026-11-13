@@ -91,14 +91,22 @@ export function unitLabel(template = '') {
   return node;
 }
 
+export function setShownSpeedUnit(unit: string): boolean {
+  const next = normalizeSpeedUnit(unit);
+
+  if (next === shown) return false;
+  shown = next;
+
+  return true;
+}
+
 // Re-texts every speed and unit word on screen in this unit. Returns whether the unit changed. A figure
 // inside a live region that is showing may be read out again in the new unit: accepted, since a unit change
 // is almost always the person's own, and one synced from another device mid-session is rare.
 export function showSpeedUnit(unit: unknown) {
   const next = normalizeSpeedUnit(unit);
 
-  if (next === shown) return false;
-  shown = next;
+  if (!setShownSpeedUnit(next)) return false;
   document.querySelectorAll<HTMLElement>('[data-wpm]').forEach((node) => showSpeed(node, Number(node.dataset.wpm)));
   document.querySelectorAll<HTMLElement>('[data-speed-unit]').forEach((node) => { node.textContent = unitText(node.dataset.speedUnit || '{unit}'); });
 
