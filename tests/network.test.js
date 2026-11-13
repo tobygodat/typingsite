@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { Effect } from 'effect';
 import { request, requestEffect, AuthError, UNREACHABLE } from '../src/network.js';
-import { AsyncLifetime, replaceAccountLifetime, disposePageWork, startPageWork } from '../src/async-runtime.js';
+import { AsyncLifetime, replaceAccountLifetime, disposePageWork, startPageWork, pageLifetime } from '../src/async-runtime.js';
 
 async function service(run) {
   const nativeFetch = globalThis.fetch;
@@ -313,4 +313,36 @@ test('expired room snapshots retain nullable clocks and the complete settled rat
   const older = roomReply({ id: 'older', passage: 'hello' });
   assert.equal(Object.hasOwn(older, 'players'), false);
   assert.equal(Object.hasOwn(older, 'selfSlot'), false);
+});
+
+test('foreground profile operations retain their page owner across account replacement and abort on page disposal', async () => {
+  const account = await import('../src/account.js');
+
+  const profile = (await import('../src/profile.js')).emptyProfile();
+
+  const session = { user: { id: 'foreground-owner' }, access_token: 'access', refresh_token: 'refresh', expires_at: 9999999999 };
+
+  const operations = [
+    (lifetime) => account.freshSession({ ...session, expires_at: 0 }, { lifetime }),
+    (lifetime) => account.fetchCloudProfile(session, { lifetime }),
+    (lifetime) => account.insertCloudProfile(session, profile, { lifetime }),
+    (lifetime) => account.updateCloudProfile(session, profile, '2026-10-01T00:00:00Z', { lifetime }),
+  ];
+
+  await service(async ({ calls, signals }) => {
+    for (const [index, operation] of operations.entries()) {
+      startPageWork();
+      await replaceAccountLifetime(`foreground:${index}`);
+      const pending = operation(pageLifetime());
+      const rejected = assert.rejects(pending, AuthError);
+      await until(() => calls.length === index + 1);
+      await replaceAccountLifetime(`replacement:${index}`);
+      assert.equal(signals.at(-1).aborted, false);
+      await disposePageWork();
+      await rejected;
+      assert.equal(signals.at(-1).aborted, true);
+    }
+
+    startPageWork();
+  });
 });
