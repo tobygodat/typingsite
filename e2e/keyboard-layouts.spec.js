@@ -76,7 +76,7 @@ test('the finger map names each key’s finger, bands alternate fingers, splits 
   await runCommand(page, 'finger map');
   await expect(page.locator('#keyboard')).toBeVisible();
   await expect(page.locator('#keyboard')).toHaveAttribute('data-fingers', 'true');
-  await expect(page.locator('.finger-legend span')).toHaveText(['index', 'middle', 'ring', 'pinky', 'space · thumbs']);
+  await expect(page.locator('#keyboard .finger-legend span')).toHaveText(['index', 'middle', 'ring', 'pinky', 'space · thumbs']);
 
   const key = (letter) => page.locator(`#keyboard .key[data-key="${letter}"]`);
   await expect(key('f')).toHaveAttribute('data-finger', 'index');
@@ -125,7 +125,7 @@ test('the finger map names each key’s finger, bands alternate fingers, splits 
   await expect(page.locator('#finger-toggle input[value="true"]')).toBeChecked();
   await chooseSetting(page, 'finger-toggle', false);
   await expect(page.locator('#keyboard')).toHaveAttribute('data-fingers', 'false');
-  await expect(page.locator('.finger-legend')).toHaveCount(0);
+  await expect(page.locator('#keyboard .finger-legend')).toHaveCount(0);
   expect(await legend(page, 3)).toBe('xcdvzkh,./');
 });
 
