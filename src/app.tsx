@@ -1,3 +1,4 @@
+import { PracticeKeyboard } from './practice-keyboard.js';
 import { HistoryClearDialog, HistoryToast } from './history-clear.js';
 import { ImportDialog } from './import-dialog.js';
 import { SuggestionDialog, SuggestionToast } from './suggestion-dialog.js';
@@ -118,7 +119,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
             <span id="progress-bar"></span>
           </div>
 
-          <div id="keyboard" className="keyboard" aria-label="On-screen keyboard" hidden></div>
+          <PracticeKeyboard controller={practice.keyboard} />
 
           <div className="typing-footer">
             <div className="input-help-slot">
@@ -178,7 +179,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
       <TrainScreen learning={learning} />
 
-      <LearnScreen learning={learning} />
+      <LearnScreen keyboard={practice.keyboard} learning={learning} />
 
       <ProgressScreen learning={learning} />
 

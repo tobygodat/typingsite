@@ -11,11 +11,11 @@ export function fingerMapLabel(fresh: readonly string[]) {
   return `Finger map. ${zones.join('. ')}. Thumbs: space.${fresh.length ? ` New keys: ${fresh.join(' ')}, ${fresh.map((key) => fingerFor(key)).join(' and ')}.` : ''}`;
 }
 
-export function FingerMap({ id, known, fresh }: { id: string; known: readonly string[]; fresh: readonly string[] }) {
+export function FingerMap({ id, known, fresh, active = null, layout, fingers }: { id: string; known: readonly string[]; fresh: readonly string[]; active?: string | null; layout?: string; fingers?: boolean }) {
   const hands: Hand[] = ['left', 'right'];
-  const keyClass = (letter: string) => `key${letter === ' ' ? ' space' : ''}${fresh.includes(letter) ? ' target' : ''}${letter === ' ' || known.includes(letter) ? ' is-known' : ''}`;
+  const keyClass = (letter: string) => `key${letter === ' ' ? ' space' : ''}${fresh.includes(letter) ? ' target' : ''}${letter === ' ' || known.includes(letter) ? ' is-known' : ''}${active === letter ? ' active' : ''}`;
 
-  return <div id={id} className="keyboard finger-map" role="img" aria-label={fingerMapLabel(fresh)}>
+  return <div id={id} className="keyboard finger-map" role="img" aria-label={fingerMapLabel(fresh)} data-layout={layout} data-fingers={fingers === undefined ? undefined : String(fingers)}>
     {hands.map((hand) => <div key={hand} className={`finger-hand finger-hand-${hand}`}>
       {FINGER_ROWS[hand].flatMap((row, rowIndex) => [...row].map((letter, column) => <span key={letter} className={keyClass(letter)} data-key={letter} style={{ gridArea: `${rowIndex + 1} / ${column + 1}` }}>{letter}</span>))}
       {FINGER_COLUMNS[hand].map(([finger, column, span]) => <span key={finger} className="finger-label" style={{ gridArea: `4 / ${column} / 5 / ${column + span}` }}><span className="finger-label-full">{finger}</span><span className="finger-label-short">{finger[0]}</span></span>)}

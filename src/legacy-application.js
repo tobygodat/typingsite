@@ -1,5 +1,6 @@
+import { createPracticeConditions } from './practice-conditions.js';
+import { copyParts, setParts, plain, setText, element } from './native-copy.js';
 import { markEndFailure } from './practice-run.js';
-import { FINGER_ROWS, FINGER_COLUMNS, fingerMapLabel } from './finger-map.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -12,7 +13,6 @@ import {
   CUSTOM_MAX,
   CUSTOM_MIN_CHARS,
   CUSTOM_MIN_WORDS,
-  METRIC_VERSION,
   atRunEnd,
   awaitingSubmit,
   RATE_FLOOR_MS,
@@ -46,7 +46,7 @@ import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
 import { BOOKS, BOOK_VERSION, bookName, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength, parseCustomLength } from './lengths.js';
-import { DEFAULT_LAYOUT, FINGERS, isDefaultLayout, keyboardRows, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
+import { isDefaultLayout, layoutIds, layoutLabel, normalizeLayout } from './layouts.js';
 import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
@@ -75,15 +75,7 @@ import {
 import { runCountTotals } from './run-counts.js';
 import { CUSTOM_ORDERS, DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
-function copyParts(value) {
-  return [value].flat(Infinity).flatMap((part) => {
-    if (part === null || part === undefined || part === false || part === '') return [];
 
-    if (part instanceof HTMLDataElement && part.dataset.wpm !== undefined) return [{ kind: 'speed', wpm: Number(part.dataset.wpm), bare: 'bare' in part.dataset, signed: 'signed' in part.dataset, whole: 'whole' in part.dataset }];
-
-    return [part instanceof Node ? part.textContent : String(part)];
-  });
-}
 
 export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace }) {
 startPageWork();
@@ -103,6 +95,16 @@ function updateComparison(patch) {
 
 const $ = (id) => document.getElementById(id);
 const now = () => performance.now();
+
+function markKeyboardTargets(target) { practice.keyboard.target(target); }
+
+function renderKeyboard() {
+  const lesson = practice.sessionKind === 'lesson';
+  practice.keyboard.show({ layout: learning.preferences.layout, fingers: learning.preferences.fingerMap,
+    visible: Boolean(learning.preferences.keyboard) || lesson,
+    lesson: lesson ? { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys } : null });
+}
+
 
 let customOpen = false;
 
@@ -230,14 +232,14 @@ let displayedIds = null;
 
 // The label of the practice passage waiting when history was cleared, which undo gives back.
 
-let keyboardBuilt = '';
-let keyboardTarget = null;
+
 
 // Composing practice takes the passage's place on the practice screen; see openCompose.
 let composeOpen = false;
 
 // The lesson being typed and the last lesson result in this tab (shown on the learn screen).
 let lessonIndex = 0;
+const { settingsConditions, conditions, customConditions, practiceMinimums, inputLayout, lessonConditions } = createPracticeConditions(learning, () => lessonIndex);
 let lessonResult = null;
 
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
@@ -400,37 +402,9 @@ function announce(message) {
 
 // The person's own test settings. The standard test ignores them, but a race or the daily
 // challenge started while standard is selected still uses them (minus the recipe).
-function settingsConditions(inputClass = 'physical-keyboard') {
-  const value = {
-    mode: learning.preferences.mode,
-    duration: learning.preferences.mode === 'time' ? learning.preferences.duration : null,
-    count: learning.preferences.mode === 'words' ? learning.preferences.count : null,
-    punctuation: learning.preferences.mode === 'code' || learning.preferences.mode === 'book' || learning.preferences.punctuation,
-    numbers: ['quote', 'code', 'book'].includes(learning.preferences.mode) ? false : Boolean(learning.preferences.numbers),
-    quoteLength: learning.preferences.mode === 'quote' ? learning.preferences.quoteLength : null,
-    difficulty: learning.preferences.mode === 'quote' ? learning.preferences.difficulty : null,
-    wordList: ['quote', 'code', 'book'].includes(learning.preferences.mode) ? null : learning.preferences.wordList,
-  };
 
-  if (learning.preferences.mode === 'code') value.codeLanguage = learning.preferences.codeLanguage;
 
-  if (learning.preferences.mode === 'book') value.book = learning.preferences.book;
 
-  return Object.assign(value, {
-    inputClass,
-    layout: inputLayout(inputClass),
-    correctionPolicy: learning.preferences.correction,
-    strictSpace: learning.preferences.strictSpace,
-    quickEnd: learning.preferences.quickEnd,
-    language: 'en',
-    corpus: learning.preferences.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
-    metricVersion: METRIC_VERSION,
-  });
-}
-
-function conditions(inputClass = 'physical-keyboard') {
-  return learning.preferences.mode === 'standard' ? { ...standardConditions(inputClass), layout: inputLayout(inputClass) } : settingsConditions(inputClass);
-}
 
 
 // "standard v1": the recipe name as people read it, then what the recipe fixes.
@@ -450,12 +424,7 @@ const inputName = (value) => inputLabel(value);
 // It builds on the person's own settings, never the standard recipe: with standard selected underneath,
 // a custom run keeps its own correction rule and gets no recipe, so its key is the same as in any mode.
 // Settings add a language only in code mode and a book and its text version only in book mode, so they are dropped too.
-function customConditions() {
-  const { codeLanguage, book, ...base } = settingsConditions();
 
-  return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false, corpus: CORPUS_VERSION,
-    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: learning.preferences.customOrder };
-}
 
 function describeConditions(value = conditions(), sets = []) {
   const { language, length, text, ...tail } = conditionParts(value, sets);
@@ -473,16 +442,7 @@ function describeConditions(value = conditions(), sets = []) {
 // Minimums ride along on the conditions line without joining the conditions key. The standard test
 // has none: it is one fixed measurement, and a personal filter on which of its runs count would lift
 // its score. Code runs have none either: they are never counted, so there is nothing for a minimum to guard.
-function practiceMinimums() {
-  if (learning.preferences.mode === 'standard' || learning.preferences.mode === 'code') return null;
-  const minimums = {};
 
-  if (learning.preferences.minAccuracy) minimums.accuracy = learning.preferences.minAccuracy;
-
-  if (learning.preferences.minWpm) minimums.wpm = learning.preferences.minWpm;
-
-  return Object.keys(minimums).length ? minimums : null;
-}
 
 function describeMinimums(minimums) {
   const accuracy = minimums?.accuracy ? [`min ${minimums.accuracy}% accuracy`] : [];
@@ -508,9 +468,7 @@ function describeRules(value) {
 // A drill is always DRILL_SECONDS of generated text, whatever the baseline was. Its conditions record
 // quick end at the default (sessionConditions), so only rules that applied are listed.
 // The layout setting describes a physical keyboard, so touch runs always keep the default key.
-function inputLayout(inputClass) {
-  return inputClass === 'touch' ? DEFAULT_LAYOUT : learning.preferences.layout;
-}
+
 
 // The layout is named only when it isn't QWERTY; runs saved before layouts existed read as QWERTY.
 function inputLabel(value) {
@@ -550,13 +508,7 @@ function describeLesson(run) {
 }
 
 // Lesson runs carry their own conditions: never comparable with a practice key, never a best.
-function lessonConditions() {
-  return {
-    mode: 'lesson', lesson: LESSONS[lessonIndex].id, duration: null, count: null, punctuation: false, numbers: false,
-    quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard',
-    correctionPolicy: conditions().correctionPolicy, language: 'en', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION,
-  };
-}
+
 
 // A tap that starts a session focuses the input and opens the soft keyboard, so no pointerdown reaches
 // the input: the activating press says touch instead. A pen opens the soft keyboard (or a handwriting panel)
@@ -576,18 +528,12 @@ function signed(value, unit) {
 // Copy that holds a speed is a list of parts, each speed a figure that re-texts with the unit (src/units.js).
 // Empty strings, missing values and false are left out: an element with nothing to say stays :empty, a run
 // without an error count shows none rather than "undefined", and a part written `when && part` can drop out.
-function setParts(node, parts) {
-  node.replaceChildren(...[parts].flat(Infinity).filter((part) => part !== '' && part !== null && part !== undefined && part !== false));
-}
 
-const plain = (parts) => [parts].flat(Infinity).map((part) => (part instanceof Node ? part.textContent : part)).join('');
+
+
 
 // The live numbers tick ten times a second; only touch the DOM when the text changes.
-function setText(element, value) {
-  const text = String(value);
 
-  if (element.textContent !== text) element.textContent = text;
-}
 
 // Whether an attempt or race is in progress. body[data-running] follows it so the CSS can fade
 // the chrome mid-run, but a pointer nudge only reveals the chrome; the run itself goes on.
@@ -1830,11 +1776,7 @@ function setPaceCaret(mode, { speed = false } = {}) {
   armPace();
 }
 
-function markKeyboardTargets(target) {
-  keyboardTarget = target;
-  const letters = new Set((target || '').toLowerCase());
-  $('keyboard').querySelectorAll('.key').forEach((key) => key.classList.toggle('target', letters.has(key.dataset.key)));
-}
+
 
 // The live readout shows no rate until RATE_FLOOR_MS has passed. Custom text (any non-comparable kind) can
 // be short enough to finish inside that second, so its run card follows the same floor. Built-in passages
@@ -2605,13 +2547,7 @@ function labelWords() {
 // Before any choice the first word is the tab stop and the line below stays empty.
 
 
-function element(tag, text, className = '') {
-  const node = document.createElement(tag);
-  setParts(node, text);
-  node.className = className;
 
-  return node;
-}
 
 function dateCopy(at) {
   return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
@@ -3888,111 +3824,15 @@ async function sendGhost(event) {
 
 // The legend follows the chosen layout; typed characters are never remapped. The optional finger
 // map shades each key by the finger that types it (data-hand, data-finger) and splits the hands.
-function buildKeyboard() {
-  const signature = `${learning.preferences.layout}:${learning.preferences.fingerMap}`;
 
-  if (signature === keyboardBuilt) return;
-  keyboardBuilt = signature;
-  const keyboard = $('keyboard');
-  keyboard.dataset.layout = learning.preferences.layout;
-  keyboard.dataset.fingers = String(learning.preferences.fingerMap);
-  keyboard.classList.remove("finger-map");
-  keyboard.removeAttribute("role");
-  keyboard.setAttribute("aria-label", "On-screen keyboard");
-  const fragment = document.createDocumentFragment();
-
-  for (const keys of keyboardRows(learning.preferences.layout)) {
-    const row = document.createElement('div');
-    row.className = 'key-row';
-
-    for (const { key: letter, hand, finger, column } of keys) {
-      const key = document.createElement('span');
-      key.className = `key${letter === ' ' ? ' space' : ''}`;
-      key.dataset.key = letter;
-      key.dataset.hand = hand;
-      key.dataset.finger = finger;
-      key.dataset.column = String(column);
-      const label = letter === ' ' ? 'space' : letter;
-
-      if (learning.preferences.fingerMap) {
-        // The initial and band are hidden from screen readers, so each key says its finger in words,
-        // as one phrase ("f, left index"); the printed cap is unchanged.
-        const cap = element('span', label);
-        cap.setAttribute('aria-hidden', 'true');
-        key.append(cap, element('span', `${label}, ${hand === 'both' ? 'thumbs' : `${hand} ${finger}`}`, 'sr-only'));
-      } else key.textContent = label;
-      row.append(key);
-    }
-
-    fragment.append(row);
-  }
-
-  if (learning.preferences.fingerMap) {
-    const legend = document.createElement('p');
-    legend.className = 'finger-legend';
-    legend.append(...FINGERS.map((finger) => {
-      const item = element('span', finger);
-      item.dataset.finger = finger;
-
-      return item;
-    }), element('span', 'space · thumbs'));
-    fragment.append(legend);
-  }
-
-  keyboard.replaceChildren(fragment);
-  markKeyboardTargets(keyboardTarget);
-}
 
 // A split keyboard where each column belongs to one finger, labelled underneath; thumbs take the space bar.
 // Keys learned before this lesson read in the text colour, this lesson's keys get the full green edge.
 
-function renderFingerMap(container, { known = [], fresh = [] } = {}) {
-  const key = (letter) => {
-    const node = element('span', letter === ' ' ? 'space' : letter, `key${letter === ' ' ? ' space' : ''}`);
-    node.dataset.key = letter;
-    node.classList.toggle('target', fresh.includes(letter));
-    node.classList.toggle('is-known', letter === ' ' || known.includes(letter));
 
-    return node;
-  };
-
-  const hands = ['left', 'right'].map((hand) => {
-    const grid = element('div', '', `finger-hand finger-hand-${hand}`);
-    FINGER_ROWS[hand].forEach((row, rowIndex) => [...row].forEach((letter, column) => {
-      const node = key(letter);
-      node.style.gridArea = `${rowIndex + 1} / ${column + 1}`;
-      grid.append(node);
-    }));
-
-    for (const [finger, column, span] of FINGER_COLUMNS[hand]) {
-      const label = element('span', '', 'finger-label');
-      label.style.gridArea = `4 / ${column} / 5 / ${column + span}`;
-      label.append(element('span', finger, 'finger-label-full'), element('span', finger[0], 'finger-label-short'));
-      grid.append(label);
-    }
-
-    return grid;
-  });
-
-  const thumbs = element('div', '', 'finger-thumbs');
-  thumbs.append(key(' '), element('span', 'thumbs', 'finger-label'));
-  // Narrow screens shorten the finger names to a letter; the legend says what each letter means.
-  const legend = element('span', 'p pinky · r ring · m middle · i index', 'finger-legend');
-  container.classList.add('finger-map');
-  container.setAttribute('role', 'img');
-  container.setAttribute('aria-label', fingerMapLabel(fresh));
-  container.replaceChildren(...hands, thumbs, legend);
-}
 
 // The typing keyboard shows the finger map for the whole of a lesson, whatever the keyboard setting.
-function renderKeyboard() {
-  const lesson = practice.sessionKind === 'lesson';
 
-  if (lesson) renderFingerMap($('keyboard'), { known: lessonKeys(lessonIndex - 1), fresh: LESSONS[lessonIndex].keys });
-  else { if ($('keyboard').classList.contains('finger-map')) keyboardBuilt = ''; buildKeyboard(); }
-
-  $('keyboard').hidden = !learning.preferences.keyboard && !lesson;
-}
 
 // A one-keyboard race is a quote under the current settings, whatever the practice test shape.
 function raceConditions() {
@@ -5049,11 +4889,11 @@ function bindEvents() {
     }
 
     if (quickRestart(event)) return;
-    document.querySelectorAll('.key').forEach((key) => key.classList.toggle('active', key.dataset.key === event.key.toLowerCase()));
+    practice.keyboard.key(event.key);
   }, { capture: true, signal: lifetime.signal });
-  document.addEventListener('keyup', () => document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active')), { signal: lifetime.signal });
+  document.addEventListener('keyup', () => practice.keyboard.key(null), { signal: lifetime.signal });
   window.addEventListener('blur', () => {
-    document.querySelectorAll('.key.active').forEach((key) => key.classList.remove('active'));
+    practice.keyboard.key(null);
     markInterrupted(NOTICES.focusLost);
     compose.interrupt(NOTICES.composeFocusLost);
     markRaceInterrupted();
@@ -5679,7 +5519,7 @@ $('quote-options').addEventListener('click', () => { $('mode-more').open = false
 $('book-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
 
 
-buildKeyboard();
+renderKeyboard();
 
 applyPreferences();
 

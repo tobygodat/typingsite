@@ -1,3 +1,4 @@
+import { createPracticeKeyboard } from './practice-keyboard.js';
 import { createReplayView } from './replay-view.js';
 import type { Attempt, Replay } from './typing.js';
 import type { Preferences } from './profile-types.js';
@@ -101,6 +102,7 @@ export function createPracticeSession() {
 
   return {
     result,
+    keyboard: createPracticeKeyboard(),
     replay: createReplayView(),
     attachPrimary(input: HTMLTextAreaElement) {
       detachNative?.();

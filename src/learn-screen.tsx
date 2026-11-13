@@ -1,10 +1,11 @@
 import { useSyncExternalStore } from 'react';
 import type { LearningStore } from './learning-store.js';
 import { Copy } from './results-card.js';
-import { FingerMap } from './finger-map.js';
+import { LessonKeyboard } from './practice-keyboard.js';
+import type { PracticeKeyboardController } from './practice-keyboard.js';
 import { unitText } from './units.js';
 
-export function LearnScreen({ learning }: { learning: LearningStore }) {
+export function LearnScreen({ learning, keyboard }: { learning: LearningStore; keyboard: PracticeKeyboardController }) {
   const view = useSyncExternalStore(learning.lessons.subscribe, learning.lessons.getSnapshot, learning.lessons.getSnapshot);
 
   return <section id="learn-screen" className="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
@@ -26,7 +27,7 @@ export function LearnScreen({ learning }: { learning: LearningStore }) {
         </div>
       </section>
       <figure className="finger-figure">
-        <FingerMap id="lesson-keyboard" known={view?.known ?? []} fresh={view?.fresh ?? []} />
+        <LessonKeyboard controller={keyboard} known={view?.known ?? []} fresh={view?.fresh ?? []} />
         <figcaption className="finger-caption"><span id="finger-caption-keys">{view?.caption}</span></figcaption>
       </figure>
     </div>
