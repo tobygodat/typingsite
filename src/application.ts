@@ -1,3 +1,4 @@
+import { createNavigation } from './navigation.js';
 import { createTrainingMemory } from './training-memory.js';
 import { createCustomLength } from './custom-length.js';
 import { createPracticeEditors } from './practice-editors.js';
@@ -33,6 +34,7 @@ export function createApplication() {
 
   return {
     accounts, learning, practice, sync,
+    navigation: createNavigation(),
     training: createTrainingMemory(),
     editors: createPracticeEditors(learning, sync),
     lengthEditor: createCustomLength(learning, practice, sync),

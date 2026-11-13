@@ -131,10 +131,10 @@ class TrainPath extends Component<{ view: TrainView | null; learning: LearningSt
   }
 }
 
-export function TrainScreen({ learning }: { learning: LearningStore }) {
+export function TrainScreen({ learning, visible = false }: { learning: LearningStore; visible?: boolean }) {
   const view = useSyncExternalStore(learning.train.subscribe, learning.train.getSnapshot, learning.train.getSnapshot);
 
-  return <section id="train-screen" className="screen train-screen" data-screen="train" aria-labelledby="train-heading" hidden>
+  return <section id="train-screen" className="screen train-screen" data-screen="train" aria-labelledby="train-heading" hidden={!visible}>
     <h1 id="train-heading" className="sr-only" tabIndex={-1}>{view?.path.current.title ?? 'General drill'}</h1>
     <TrainPath view={view} learning={learning} />
   </section>;

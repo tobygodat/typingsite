@@ -3,7 +3,7 @@ import { CustomLengthField, CustomLengthError } from './custom-length.js';
 import type { CustomLengthController } from './custom-length.js';
 import { QuoteFilters } from './quote-filters.js';
 import type { QuoteFiltersController } from './quote-filters.js';
-import { useSyncExternalStore } from 'react';
+import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { PracticeControlsView, PracticeSession } from './practice-session.js';
 import type { Preferences } from './profile-types.js';
 import { LENGTHS } from './lengths.js';
@@ -21,6 +21,17 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
   const spec = LENGTHS[view.lengthMode];
   const hasLength = view.mode === 'time' || view.mode === 'words';
   const current = view.lengthValue;
+  const more = useRef<HTMLDetailsElement>(null);
+  useLayoutEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      const menu = more.current;
+
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, []);
   const special = view.custom || view.composing;
   const moreLabel = view.composing ? 'compose' : view.custom ? 'custom' : ['code', 'standard', 'book'].includes(mode) ? mode : 'more';
 
@@ -32,7 +43,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
               <ModeButton mode="time" view={view} practice={practice} />
               <ModeButton mode="words" view={view} practice={practice} />
               <ModeButton mode="quote" view={view} practice={practice} />
-              <details id="mode-more" className="mode-more" data-active={moreLabel !== 'more' ? '' : undefined}>
+              <details ref={more} id="mode-more" onClick={(event) => { if (event.target instanceof Element && event.target.closest('button')) event.currentTarget.open = false; }} onToggle={(event) => { if (event.currentTarget.open) quoteFilters.dismiss(); }} className="mode-more" data-active={moreLabel !== 'more' ? '' : undefined}>
                 <summary id="mode-more-label">{moreLabel}</summary>
                 <div className="mode-more-menu" role="group" aria-label="More practice modes">
                   <ModeButton mode="code" view={view} practice={practice} />
@@ -41,7 +52,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
                   <button id="mode-compose" type="button" data-compose="" aria-pressed={view.composing} className={view.composing ? 'is-active' : ''} onClick={() => practice.choices.compose()}>compose</button>
                   <button id="mode-custom" type="button" aria-pressed={view.custom} aria-controls="custom-options" aria-expanded={view.customOpen} className={view.custom ? 'is-active' : ''} onClick={() => practice.choices.custom()}>custom</button>
                   <button id="mode-drill" type="button" aria-pressed="false" aria-controls="manual-target" aria-expanded={view.manualOpen} onClick={() => practice.choices.manual()}>drill</button>
-                  <button id="open-lessons" className="mode-more-lessons" type="button" data-action="open-lessons">learn to type</button>
+                  <button id="open-lessons" className="mode-more-lessons" type="button" data-action="open-lessons" onClick={() => practice.choices.lessons()}>learn to type</button>
                 </div>
               </details>
             </div>
@@ -54,10 +65,10 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
                 {spec.presets.map((length, index) => <button key={index} type="button" data-length={length} aria-pressed={length === current} aria-label={`${length} ${spec.unit}`} className={length === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(length)}>{length}</button>)}
                 <CustomLengthField controller={lengthEditor} mode={view.lengthMode} current={current} />
               </div>
-              <div id="quote-options" className="segmented quote-options" role="group" aria-label="Quote filters" hidden={special || view.mode !== 'quote'}>
+              <div id="quote-options" onClick={() => { if (more.current) more.current.open = false; }} className="segmented quote-options" role="group" aria-label="Quote filters" hidden={special || view.mode !== 'quote'}>
                 <QuoteFilters controller={quoteFilters} />
               </div>
-              <div id="book-options" className="segmented quote-options book-options" role="group" aria-label="Book" hidden={special || view.mode !== 'book'}>
+              <div id="book-options" onClick={() => { if (more.current) more.current.open = false; }} className="segmented quote-options book-options" role="group" aria-label="Book" hidden={special || view.mode !== 'book'}>
                 <QuoteFilters controller={quoteFilters} books />
                 <span id="book-page" className="book-page">page {view.bookPage}</span>
               </div>

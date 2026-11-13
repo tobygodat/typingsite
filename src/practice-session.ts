@@ -73,6 +73,7 @@ export interface PracticeCommands {
   compose(): void;
   custom(): void;
   manual(): void;
+  lessons(): void;
 }
 
 export interface ResultCommands {
@@ -97,7 +98,7 @@ export function createPracticeSession() {
   let displayed: SealedRun | null = null;
   const result = createStore<ResultView | null>(null);
   const controls = createStore<PracticeControlsView>({ visible: true, minimums: [], minimumVisible: false, bookPage: 1, mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, manualOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });
-  const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {}, manual() {} };
+  const choices: PracticeCommands = { chooseMode() {}, chooseLength() {}, chooseLanguage() {}, punctuation() {}, adaptive() {}, compose() {}, custom() {}, manual() {}, lessons() {} };
 
   const commands: ResultCommands = {
     runAgain() {}, drill() {}, practiceWords() {}, watchReplay() {},

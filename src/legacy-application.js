@@ -41,7 +41,7 @@ import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeS
 import { renderSpeedGraph } from './graph.js';
 import { showThemeOptions, wearColors } from './theme-editor.js';
 import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
-import { matchesBinding, bindingLabel, ariaShortcuts } from './keybindings.js';
+import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
@@ -62,7 +62,7 @@ import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM
 
 
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const setTimeout = lifetime.timeout;
@@ -840,18 +840,7 @@ function applyPreferences() {
   applySpeedUnit();
   selectSetting('repeat-quotes-toggle', learning.preferences.repeatQuotes);
   keybindingEditor?.refresh();
-  document.querySelectorAll('.restart-key-hint').forEach((key) => { key.textContent = bindingLabel(learning.preferences.keybindings.restart); });
-  $('restart-button').title = learning.preferences.keybindings.restart ? `Restart test (${bindingLabel(learning.preferences.keybindings.restart)})` : 'Restart test';
-  $('exit-focus-hint').textContent = bindingLabel(learning.preferences.keybindings.exitFocus);
-
-  for (const [id, action] of [['restart-button', 'restart'], ['palette-trigger', 'commands'], ['exit-focus', 'exitFocus']]) {
-    const shortcuts = ariaShortcuts(learning.preferences.keybindings[action]);
-
-    if (shortcuts) $(id).setAttribute('aria-keyshortcuts', shortcuts);
-    else $(id).removeAttribute('aria-keyshortcuts');
-  }
-
-  document.querySelectorAll('.command-key').forEach((key) => { key.textContent = bindingLabel(learning.preferences.keybindings.commands); });
+  navigation.bindings(learning.preferences.keybindings);
   selectSetting('layout-select', learning.preferences.layout);
   selectSetting('daily-goal', String(learning.preferences.dailyGoal));
   selectSetting('train-focus', learning.preferences.trainFocus);
@@ -1885,16 +1874,7 @@ function switchView(view) {
 
   // Progress opens on its overview whenever it is opened from elsewhere.
   if (view === 'progress' && document.body.dataset.view !== 'progress') Object.assign(progressState, { detail: '', moversOpen: false });
-  document.body.dataset.view = view;
-  const shown = view === 'results' ? 'practice' : view;
-  document.querySelectorAll('[data-screen]').forEach((screen) => { screen.hidden = screen.dataset.screen !== shown; });
-  document.querySelectorAll('[data-nav]').forEach((control) => {
-    const active = control.dataset.nav === shown;
-    control.classList.toggle('is-active', active);
-
-    if (active) control.setAttribute('aria-current', 'page');
-    else control.removeAttribute('aria-current');
-  });
+  navigation.show(view);
   setRunning(false);
   syncRules();
   // Pills in a hidden screen measured zero width; remeasure every group now it is visible.
@@ -3746,52 +3726,21 @@ function importSettings(result) {
 function openSuggest() { suggestion.open(); }
 
 function bindEvents() {
-  document.addEventListener('click', (event) => {
-    const skip = event.target.closest('.skip-link');
+  navigation.configure({ go: (view, keep) => navigate(view, { keep }), restart: () => resetSession(practice.sessionKind, { focus: true }),
+    skip() {
+      if (composeOpen) { switchView('practice'); compose.focus();
 
-    if (skip) {
-      event.preventDefault();
-
-      if (composeOpen) {
-        switchView('practice');
-        compose.focus();
-
-        return;
-      }
+ return; }
 
       if (!practice.attempt || practice.attempt.status === 'complete' || $('typing-input').disabled || staleRepeat()) resetSession('practice');
       else switchView('practice');
       $('typing-input').focus({ preventScroll: false });
+    },
+    exitFocus() { learning.preferences.focusMode = false; applyPreferences(); saveProfile(); focusPractice(); },
+  });
+  learning.commands.practice = () => { editors.customOpen = false; setModeControls(); resetSession('practice', { focus: true, leaveCompose: true }); };
 
-      return;
-    }
-
-    const nav = event.target.closest('[data-nav]');
-
-    if (nav) {
-      event.preventDefault();
-      navigate(nav.dataset.nav, { keep: true });
-
-      return;
-    }
-
-    // "Start practicing" begins a normal test, so it closes the custom editor as a mode button does.
-    const practice = event.target.closest('[data-action="go-practice"]');
-
-    if (practice) {
-      editors.customOpen = false;
-      setModeControls();
-      resetSession('practice', { focus: true, leaveCompose: true });
-    }
-
-    if (event.target.closest('[data-action="open-lessons"]')) openLessons();
-  }, { signal: lifetime.signal });
-  $('mode-more').addEventListener('click', (event) => {
-    if (event.target.closest('button')) $('mode-more').open = false;
-  }, { signal: lifetime.signal });
-  document.addEventListener('pointerdown', (event) => {
-    if ($('mode-more').open && !$('mode-more').contains(event.target)) $('mode-more').open = false;
-  }, { signal: lifetime.signal });
+  learning.commands.openLessons = openLessons;
   Object.assign(practice.choices, {
     chooseMode(mode) {
       editors.customOpen = false;
@@ -3817,6 +3766,7 @@ function bindEvents() {
     adaptive(on) { learning.preferences.adaptive = on; setModeControls(); saveProfile(); resetSession('practice', { focus: true }); },
     compose: openCompose,
     manual: toggleManualTarget,
+    lessons: openLessons,
     custom: () => openCustom(!editors.customOpen),
   });
   // Numbers sits beside the word list in settings and, like it, keeps a custom passage.
@@ -3859,7 +3809,6 @@ function bindEvents() {
   onSetting('wallpaper-style', wallpaper.style);
   detachWallpaper = wallpaper.attach({ layer: $('wallpaper'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll('.shortcut-row, .site-footer > *')] });
   settingsView.configure(() => keybindingEditor.stopRecording());
-  $('settings-trigger').addEventListener('click', () => settingsView.open(), { signal: lifetime.signal });
   onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
   onSetting('keyboard-toggle', (value) => { learning.preferences.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });
   onSetting('finger-toggle', (value) => { learning.preferences.fingerMap = value === 'true'; applyPreferences(); saveChoice('fingerMap'); });
@@ -3881,7 +3830,6 @@ function bindEvents() {
     generate: (vibe) => account.generateTheme(accounts.session, vibe),
     signIn: () => { settingsView.close(); openAccountDialog('signin'); },
   });
-  $('settings-dialog').addEventListener('close', () => themeEditor.close({ focus: false }), { signal: lifetime.signal });
   prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); }, { signal: lifetime.signal });
   onSetting('pace-select', (value) => setPaceCaret(value));
   $('pace-wpm').addEventListener('change', (event) => {
@@ -3897,12 +3845,7 @@ function bindEvents() {
   onSetting('sound-select', (value) => setSound(value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
   settingsView.onVolume((value) => setSoundVolume(value, { save: false }), () => saveChoice('soundVolume'));
-  $('exit-focus').addEventListener('click', () => {
-    learning.preferences.focusMode = false;
-    applyPreferences();
-    saveProfile();
-    focusPractice();
-  }, { signal: lifetime.signal });
+
 
   practice.connectNative(typingHost);
 
@@ -3932,7 +3875,6 @@ function bindEvents() {
   }, { capture: true, signal: lifetime.signal });
   // Anything typed, in the passage or a field, counts for a Race still loading (see raceContext).
   document.addEventListener('beforeinput', () => { typedCount += 1; }, { capture: true, signal: lifetime.signal });
-  $('restart-button').addEventListener('click', () => resetSession(practice.sessionKind, { focus: true }), { signal: lifetime.signal });
   practice.commands.watchReplay = () => practice.replay.open(practice.shownResult);
   practice.commands.runAgain = runAgain;
 
@@ -4559,7 +4501,6 @@ function paletteCommands(query) {
 }
 
 function bindPalette() {
-  $('palette-trigger').addEventListener('click', () => palette.open(), { signal: lifetime.signal });
   palette.configure({
     getCommands: paletteCommands,
     onOpen: () => {
@@ -4648,7 +4589,7 @@ lifetime.observeResize(() => {
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgentData?.platform || navigator.platform || '');
 
-document.querySelectorAll('.mod-key').forEach((key) => { key.textContent = isMac ? '⌘' : 'ctrl'; });
+navigation.platform(isMac);
 
 compose.configure({
   playKeySound: (outcome) => sounds.play(outcome),
@@ -4697,13 +4638,7 @@ quoteFilters.configure({
   },
 });
 
-$('mode-more').addEventListener('toggle', () => {
-  if ($('mode-more').open) quoteFilters.dismiss();
-}, { signal: lifetime.signal });
 
-$('quote-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
-
-$('book-options').addEventListener('click', () => { $('mode-more').open = false; }, { signal: lifetime.signal });
 
 
 renderKeyboard();

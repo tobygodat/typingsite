@@ -5,10 +5,10 @@ import { LessonKeyboard } from './practice-keyboard.js';
 import type { PracticeKeyboardController } from './practice-keyboard.js';
 import { unitText } from './units.js';
 
-export function LearnScreen({ learning, keyboard }: { learning: LearningStore; keyboard: PracticeKeyboardController }) {
+export function LearnScreen({ learning, keyboard, visible = false }: { learning: LearningStore; keyboard: PracticeKeyboardController; visible?: boolean }) {
   const view = useSyncExternalStore(learning.lessons.subscribe, learning.lessons.getSnapshot, learning.lessons.getSnapshot);
 
-  return <section id="learn-screen" className="screen" data-screen="learn" aria-labelledby="learn-heading" hidden>
+  return <section id="learn-screen" className="screen" data-screen="learn" aria-labelledby="learn-heading" hidden={!visible}>
     <header className="section-heading page-heading"><h1 id="learn-heading">Learn to type</h1></header>
     <div className="learn-layout">
       <section id="lesson-current" className="lesson-current" aria-labelledby="lesson-current-heading">

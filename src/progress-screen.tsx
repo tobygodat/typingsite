@@ -6,13 +6,13 @@ import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFi
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 
-export function ProgressScreen({ learning }: { learning: LearningStore }) {
+export function ProgressScreen({ learning, visible = false }: { learning: LearningStore; visible?: boolean }) {
   const detail = useSyncExternalStore(learning.progress.filters.detail.subscribe, learning.progress.filters.detail.getSnapshot, learning.progress.filters.detail.getSnapshot);
   const filtersInDetail = ['runs', 'trends', 'keys'].includes(detail);
   const periodInDetail = filtersInDetail || detail === 'calendar';
 
   return (
-<section id="progress-screen" className="screen progress-screen" data-screen="progress" data-detail="" aria-labelledby="progress-heading" hidden>
+<section id="progress-screen" className="screen progress-screen" data-screen="progress" data-detail="" aria-labelledby="progress-heading" hidden={!visible}>
         <h1 id="progress-heading" className="sr-only" tabIndex={-1}>Progress</h1>
 
         <div id="progress-overview" className="progress-overview">
@@ -33,10 +33,10 @@ export function ProgressScreen({ learning }: { learning: LearningStore }) {
               </div>
             </div>
             <div className="empty-actions">
-              <button className="btn btn-primary" type="button" data-action="go-practice">Take a test</button>
+              <button className="btn btn-primary" type="button" data-action="go-practice" onClick={() => learning.commands.practice()}>Take a test</button>
               <button id="empty-standard" className="btn btn-ghost" type="button">Take the standard test</button>
             </div>
-            <p className="first-run-learn">New to typing? <button className="quiet-link" type="button" data-action="open-lessons">Learn to type</button>.</p>
+            <p className="first-run-learn">New to typing? <button className="quiet-link" type="button" data-action="open-lessons" onClick={() => learning.commands.openLessons()}>Learn to type</button>.</p>
           </div>
 
           <div id="week-moved" className="week-moved" hidden>

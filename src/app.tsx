@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from 'react';
+import { bindingLabel, ariaShortcuts } from './keybindings.js';
 import { CustomTextEditor, ManualTargetEditor } from './practice-editors.js';
 import { PracticeKeyboard } from './practice-keyboard.js';
 import { HistoryClearDialog, HistoryToast } from './history-clear.js';
@@ -20,32 +22,36 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation }: Application) {
+  const view = useSyncExternalStore(navigation.view.subscribe, navigation.view.getSnapshot, navigation.view.getSnapshot);
+  const shown = view.screen === 'results' ? 'practice' : view.screen;
+  const restartLabel = bindingLabel(view.keys.restart);
+
   return <>
-  <a className="skip-link" href="#typing-input">Skip to typing</a>
+  <a className="skip-link" href="#typing-input" onClick={(event) => { event.preventDefault(); navigation.skip(); }}>Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
 
   <div className="app-shell">
     <header className="dock-zone">
       <nav className="dock" aria-label="Main navigation">
-        <a className="brand" href="#practice" data-nav="practice" aria-label="Stilltype practice"><span className="brand-word">stilltype</span><span className="brand-dot" aria-hidden="true">.</span></a>
+        <a className={shown === 'practice' ? 'brand is-active' : 'brand'} href="#practice" data-nav="practice" aria-label="Stilltype practice" aria-current={shown === 'practice' ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigation.go('practice'); }}><span className="brand-word">stilltype</span><span className="brand-dot" aria-hidden="true">.</span></a>
 
         <div className="dock-nav glide" data-glide="current">
           <span className="glide-pill" aria-hidden="true"></span>
-          <button className="nav-item is-active" type="button" data-nav="practice" aria-current="page"><span className="nav-label-short">type</span> <span className="nav-label-full">practice</span></button>
-          <button className="nav-item" type="button" data-nav="train">train</button>
-          <button className="nav-item" type="button" data-nav="progress"><span className="nav-label-short">track</span> <span className="nav-label-full">progress</span></button>
-          <button className="nav-item" type="button" data-nav="compete"><span className="nav-label-short">race</span> <span className="nav-label-full">challenge</span></button>
+          <button className={shown === 'practice' ? 'nav-item is-active' : 'nav-item'} type="button" data-nav="practice" aria-current={shown === 'practice' ? 'page' : undefined} onClick={() => navigation.go('practice')}><span className="nav-label-short">type</span> <span className="nav-label-full">practice</span></button>
+          <button className={shown === 'train' ? 'nav-item is-active' : 'nav-item'} type="button" data-nav="train" aria-current={shown === 'train' ? 'page' : undefined} onClick={() => navigation.go('train')}>train</button>
+          <button className={shown === 'progress' ? 'nav-item is-active' : 'nav-item'} type="button" data-nav="progress" aria-current={shown === 'progress' ? 'page' : undefined} onClick={() => navigation.go('progress')}><span className="nav-label-short">track</span> <span className="nav-label-full">progress</span></button>
+          <button className={shown === 'compete' ? 'nav-item is-active' : 'nav-item'} type="button" data-nav="compete" aria-current={shown === 'compete' ? 'page' : undefined} onClick={() => navigation.go('compete')}><span className="nav-label-short">race</span> <span className="nav-label-full">challenge</span></button>
         </div>
 
         <span className="dock-sep" aria-hidden="true"></span>
 
-        <button id="settings-trigger" className="dock-command dock-settings" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog">
+        <button id="settings-trigger" onClick={() => settings.open()} className="dock-command dock-settings" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog">
             <svg className="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>
             <span className="dock-label" aria-hidden="true">settings</span>
         </button>
 
-        <button id="palette-trigger" className="dock-command" type="button" aria-label="Commands" aria-haspopup="dialog" aria-controls="palette" aria-keyshortcuts="Control+K Meta+K">
+        <button id="palette-trigger" className="dock-command" type="button" aria-label="Commands" aria-haspopup="dialog" aria-controls="palette" aria-keyshortcuts={ariaShortcuts(view.keys.commands) || undefined} onClick={() => palette.open()}>
           <svg className="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
         </button>
       </nav>
@@ -57,7 +63,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </div>
 
     <main id="main-content">
-      <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title">
+      <section id="typing-screen" className="screen typing-screen" data-screen="practice" data-session="practice" aria-labelledby="session-title" hidden={shown !== 'practice'}>
         <PracticeControls practice={practice} quoteFilters={quoteFilters} lengthEditor={lengthEditor} />
 
         <CustomTextEditor controller={editors} />
@@ -104,7 +110,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
               <span id="input-help-reserve" aria-hidden="true"></span>
             </div>
             <div className="typing-actions">
-              <button id="restart-button" className="icon-control" type="button" title="Restart test (Escape)" aria-label="Restart test">
+              <button id="restart-button" className="icon-control" type="button" title={view.keys.restart ? `Restart test (${restartLabel})` : 'Restart test'} aria-label="Restart test" aria-keyshortcuts={ariaShortcuts(view.keys.restart) || undefined} onClick={() => navigation.restart()}>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg>
               </button>
             </div>
@@ -147,20 +153,20 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
         <ComposeSurface compose={compose} />
 
         <div className="shortcut-row key-hint" aria-hidden="true">
-          <span className="compose-shortcut"><kbd className="mod-key">ctrl</kbd><kbd>enter</kbd> done</span>
-          <span className="practice-shortcut"><kbd id="restart-key-hint" className="restart-key-hint">esc</kbd> restart</span>
-          <span className="compose-shortcut"><kbd className="restart-key-hint">esc</kbd> start over</span>
-          <span><kbd className="command-key">mod+k</kbd> commands</span>
+          <span className="compose-shortcut"><kbd className="mod-key">{view.mac ? '⌘' : 'ctrl'}</kbd><kbd>enter</kbd> done</span>
+          <span className="practice-shortcut"><kbd id="restart-key-hint" className="restart-key-hint">{restartLabel}</kbd> restart</span>
+          <span className="compose-shortcut"><kbd className="restart-key-hint">{restartLabel}</kbd> start over</span>
+          <span><kbd className="command-key">{bindingLabel(view.keys.commands)}</kbd> commands</span>
         </div>
       </section>
 
-      <TrainScreen learning={learning} />
+      <TrainScreen learning={learning} visible={shown === 'train'} />
 
-      <LearnScreen keyboard={practice.keyboard} learning={learning} />
+      <LearnScreen keyboard={practice.keyboard} learning={learning} visible={shown === 'learn'} />
 
-      <ProgressScreen learning={learning} />
+      <ProgressScreen learning={learning} visible={shown === 'progress'} />
 
-      <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} local={challenge.local} daily={challenge.daily} />
+      <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} local={challenge.local} daily={challenge.daily} visible={shown === 'compete'} />
     </main>
 
     <footer className="site-footer">
@@ -173,7 +179,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
     </footer>
   </div>
 
-  <button id="exit-focus" className="btn btn-secondary exit-focus" type="button"><kbd id="exit-focus-hint" className="key-hint">esc</kbd> exit focus</button>
+  <button id="exit-focus" className="btn btn-secondary exit-focus" type="button" onClick={() => navigation.exitFocus()} aria-keyshortcuts={ariaShortcuts(view.keys.exitFocus) || undefined}><kbd id="exit-focus-hint" className="key-hint">{bindingLabel(view.keys.exitFocus)}</kbd> exit focus</button>
 
   <Palette palette={palette} />
 

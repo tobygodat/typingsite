@@ -8,11 +8,11 @@ import { useSyncExternalStore } from 'react';
 import type { OnlineRaceController } from './online-race.js';
 import { OnlineRaceError, OnlineRacePeople, OnlineRaceAddFriend, OnlineRaceSetup, OnlineRaceRoom, OnlineRaceBack, preventChallengeRepeat } from './online-race-view.js';
 
-export function ChallengeScreen({ onlineRace, friendsBoard, local, daily }: { daily: DailyChallengeController; local: LocalRaceController; onlineRace: OnlineRaceController; friendsBoard: FriendsBoardController }) {
+export function ChallengeScreen({ onlineRace, friendsBoard, local, daily, visible = false }: { visible?: boolean; daily: DailyChallengeController; local: LocalRaceController; onlineRace: OnlineRaceController; friendsBoard: FriendsBoardController }) {
   const view = useSyncExternalStore(onlineRace.subscribeView, onlineRace.getSnapshot, onlineRace.getSnapshot);
 
   return (
-<section id="compete-screen" className="screen" data-screen="compete" aria-labelledby="compete-heading" hidden onKeyDown={preventChallengeRepeat}>
+<section id="compete-screen" className="screen" data-screen="compete" aria-labelledby="compete-heading" hidden={!visible} onKeyDown={preventChallengeRepeat}>
         <h1 id="compete-heading" className="sr-only" tabIndex={-1}>Challenge</h1>
         <OnlineRaceError controller={onlineRace} />
         <OnlineRacePeople controller={onlineRace} />
