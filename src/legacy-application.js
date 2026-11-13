@@ -1,3 +1,4 @@
+import { createHistorySelection } from './history-selection.js';
 import { createLoopHistory } from './loop-history.js';
 import { createSessionRules } from './session-rules.js';
 import { createProgressHistory } from './progress-history.js';
@@ -53,7 +54,7 @@ import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { listChallenges } from './ghost-race.js';
-import { DEFAULT_POLICY, FOCUSES, recommendFor } from './learner.js';
+import { FOCUSES } from './learner.js';
 import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
 import { formatSpeed, showSpeed, speedFigure } from './units.js';
 import {
@@ -281,6 +282,11 @@ const { restartKind, drillLength, sessionDurationMs, ruleLimits, ruleSession, se
   { conditions, daily: dailyConditions, custom: customConditions, lesson: lessonConditions, ghost: () => ghostConditions(), race: raceConditions });
 
 
+const historySelection = createHistorySelection(learning, practice, training, { running: () => runInProgress(), forgetTraining });
+const retainedBaseline = historySelection.retainedBaseline;
+const trainingRecommendation = historySelection.recommendation;
+const forgetClearedTraining = historySelection.forgetCleared;
+
 const trainingPolicy = createTrainingPolicy(learning, practice, training, sync, { conditions, inputLayout, retainedBaseline, recommendation: trainingRecommendation,
   reset: resetSession, controls: setModeControls, applyPreferences, manual: showManualTarget, unavailable: showUnavailableRetest,
   description: (text) => practice.presentIntro({ description: text }),
@@ -343,8 +349,8 @@ let typedCount = 0;
 
 // The history clears this tab had applied when its training state (baseline, results on show) was last
 // checked against them, and where an older build's clear left history starting (legacyClearedAt).
-let trainingClears = account.clearsApplied(learning.profile);
-let trainingLegacyAt = learning.profile.legacyClearedAt || '';
+
+
 
 
 
@@ -1820,16 +1826,7 @@ function dateCopy(at) {
 
 // The newest retained run that can anchor a fresh-text retest, at `source` conditions when given.
 // Older corpus or standard recipe versions need a new baseline; a code run is never one.
-function retainedBaseline(source = null) {
-  return [...learning.profile.attempts].reverse().find((a) => {
-    const wanted = source || a.conditions;
 
-    return a.status === 'complete' && !a.interrupted && ['test', 'retest', 'daily'].includes(a.kind) && a.fresh !== false
-      && a.conditions?.mode !== 'code'
-      && (!source || conditionKey(a.conditions) === conditionKey(source)) && wanted.corpus === CORPUS_VERSION
-      && (wanted.mode !== 'standard' || wanted.recipe === STANDARD_VERSION);
-  }) || null;
-}
 
 // A drill on a target picked from a list. Patterns across runs and the comparison's Next pass the recommendation
 // whose queue they show, so the loop records the policy and focus that queued it; a past loop's target was picked
@@ -1838,11 +1835,7 @@ function retainedBaseline(source = null) {
 
 // The recommender's pick for `source` conditions. The run just finished always counts toward its own
 // recommendation: its summary is saved even when its trace was too large to keep (the counting rule reads traces).
-function trainingRecommendation(source, current = null) {
-  const traces = current && !learning.profile.attempts.includes(current) ? [...learning.profile.attempts, current] : learning.profile.attempts;
 
-  return recommendFor(DEFAULT_POLICY, { runs: learning.profile.runs, loops: learning.profile.loops, traces, source, now: Date.now(), focus: learning.preferences.trainFocus });
-}
 
 // A drill's text: the target's words, or, for a general drill with units ranked for it, words leaning
 // toward them.
@@ -2077,29 +2070,7 @@ function wipeHistory() {
 // arrives (a new legacyClearedAt) took a run dated at or before it only if the merged history lacks it.
 // Never mid-run: flushDeferredSync checks again when the run ends, so a drill then stands alone and a
 // retest makes no comparison with the cleared run.
-function forgetClearedTraining() {
-  if (runInProgress()) return false;
-  const marker = learning.profile.historyClearedAt || null;
-  const arrived = marker && !trainingClears.has(marker) ? marker : null;
-  trainingClears = account.clearsApplied(learning.profile);
-  const legacyStart = learning.profile.legacyClearedAt || '';
-  const legacyAt = legacyStart !== trainingLegacyAt ? legacyStart : '';
-  trainingLegacyAt = legacyStart;
 
-  if (!training.baseline && !practice.shownResult) return false;
-  const named = account.clearedIds(learning.profile);
-
-  const takenByLegacy = (record) => Boolean(legacyAt) && (record.at || '') <= legacyAt
-    && !learning.profile.runs.some((run) => run.id === record.id);
-
-  const cleared = (record) => Boolean(record) && ((arrived && (record.at || '') <= arrived) || named.has(record.id)
-    || takenByLegacy(record));
-
-  if (!cleared(training.baseline) && !cleared(practice.shownResult)) return false;
-  forgetTraining();
-
-  return true;
-}
 
 // The one way a change to the history this tab holds reaches the screen: a merge from another tab or device, a clear
 // or its undo, made here or elsewhere. A clear that took the baseline or the run on show is forgotten first (so a
@@ -2298,7 +2269,7 @@ function bindAccount() {
   recording.configure(showBest);
   learning.progress.commands.clear = historyClear.open;
   historyClear.configure({ dismissFilters: () => quoteFilters.dismiss(), passageLabel: () => ({ fresh: passage?.fresh, exhausted: passage?.exhausted }), labelPassage,
-    forgetTraining() { trainingClears = account.clearsApplied(learning.profile); forgetTraining(); },
+    forgetTraining() { historySelection.appliedClears(); forgetTraining(); },
     afterClear() { renderHistory(); followHistory(); renderDaily(); followLessonProgress(); showBest(); armPace(); },
     afterUndo() { followStoredPreferences(); showBest(); armPace(); renderHistory(); followHistory(); renderDaily(); followLessonProgress(); },
   });
