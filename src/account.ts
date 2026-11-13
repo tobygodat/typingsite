@@ -39,7 +39,7 @@ import { conditionKey } from './typing.js';
 import { Schema } from 'effect';
 import { deadline, accountLifetime } from './async-runtime.js';
 import { request, AuthError, SUPABASE_URL, decodeReply, errorDetails, SessionSchema, AuthResponseSchema, UserSchema } from './network.js';
-import type { Session, AuthResponse } from './network.js';
+import type { Session, AuthResponse, RequestOptions } from './network.js';
 
 export { request, AuthError } from './network.js';
 
@@ -235,7 +235,7 @@ export async function completeRedirect(href: string) {
 
 // Returns a session with a usable access token, refreshing it if it is about to expire. signal lets
 // a caller with a deadline give up on the refresh.
-export async function freshSession(session: Session | null = loadSession(), { signal, timeoutMs }: { signal?: AbortSignal; timeoutMs?: number } = {}) {
+export async function freshSession(session: Session | null = loadSession(), { signal, timeoutMs, lifetime = accountLifetime() }: Pick<RequestOptions, 'signal' | 'timeoutMs' | 'lifetime'> = {}) {
   if (!session) return null;
   // Background polls (race, inbox) may already have rotated this user's refresh token; a stale
   // copy would be rejected and end the session, so the newest stored one wins. Two refreshes in
@@ -247,7 +247,7 @@ export async function freshSession(session: Session | null = loadSession(), { si
   if (session.expires_at - 60 > Date.now() / 1000) return session;
 
   try {
-    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal, timeoutMs, lifetime: accountLifetime() });
+    const data = await request('/auth/v1/token?grant_type=refresh_token', { method: 'POST', body: { refresh_token: session.refresh_token }, signal, timeoutMs, lifetime });
     // Stored only over the session it refreshed: another tab may have signed out, or in as someone else
     // (the same account included, whose new session that sign-out's logout didn't end), since this tab
     // read it. Either way it is still the sign-in it refreshed.
@@ -495,8 +495,8 @@ export function forgetAccount(session: Session | null) {
 // Keystroke recordings (attempts) stay on the device that made them: a row written before that still
 // holds some, and they are left out here. A row so old it has no run summaries keeps them, as they are
 // what normalizeProfile makes its summaries from.
-export async function fetchCloudProfile(session: Session) {
-  const rows = decodeReply(Schema.mutable(Schema.Array(ProfileRowSchema)), await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token }));
+export async function fetchCloudProfile(session: Session, { lifetime }: Pick<RequestOptions, 'lifetime'> = {}) {
+  const rows = decodeReply(Schema.mutable(Schema.Array(ProfileRowSchema)), await request(`/rest/v1/profiles?select=*&user_id=eq.${session.user.id}`, { token: session.access_token, lifetime }));
   const row = rows?.[0] || null;
 
   return row && isRecord(row.data) && Array.isArray(row.data.runs) ? { ...row, data: rowCopy(row.data) } : row;
@@ -543,12 +543,12 @@ async function withBoard<T>(board: BoardWriter | undefined, at: string, send: (c
 
 // Writes only if the row is still the version read at `seenAt` (owners may update their own row, see
 // supabase/migrations). Resolves to the new updated_at, or null when another writer got there first.
-export async function updateCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, seenAt: string | undefined, { board }: { board?: BoardWriter } = {}) {
+export async function updateCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, seenAt: string | undefined, { board, lifetime }: { board?: BoardWriter } & Pick<RequestOptions, 'lifetime'> = {}) {
   const at = stampAfter(seenAt);
 
   const rows = await withBoard(board, at, (column) => request(`/rest/v1/profiles?user_id=eq.${session.user.id}&updated_at=eq.${encodeURIComponent(String(seenAt))}&select=updated_at`, {
     method: 'PATCH',
-    token: session.access_token,
+    token: session.access_token, lifetime,
     headers: { Prefer: 'return=representation' },
     body: { data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
@@ -557,12 +557,12 @@ export async function updateCloudProfile(session: Session, data: Profile | Cloud
 }
 
 // Creates the row only if the account has none. Null means another writer created it first.
-export async function insertCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, { board }: { board?: BoardWriter } = {}) {
+export async function insertCloudProfile(session: Session, data: Profile | CloudProfileData | MergeProfile, { board, lifetime }: { board?: BoardWriter } & Pick<RequestOptions, 'lifetime'> = {}) {
   const at = new Date().toISOString();
 
   const rows = await withBoard(board, at, (column) => request('/rest/v1/profiles?select=updated_at', {
     method: 'POST',
-    token: session.access_token,
+    token: session.access_token, lifetime,
     headers: { Prefer: 'resolution=ignore-duplicates,return=representation' },
     body: { user_id: session.user.id, data: withConditionSets(rowCopy(data)), updated_at: at, ...column },
   }));
