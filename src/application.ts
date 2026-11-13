@@ -1,3 +1,4 @@
+import { createTrainingMemory } from './training-memory.js';
 import { createCustomLength } from './custom-length.js';
 import { createPracticeEditors } from './practice-editors.js';
 import { createOnlineRace } from './online-race.js';
@@ -32,6 +33,7 @@ export function createApplication() {
 
   return {
     accounts, learning, practice, sync,
+    training: createTrainingMemory(),
     editors: createPracticeEditors(learning, sync),
     lengthEditor: createCustomLength(learning, practice, sync),
     historyClear: createHistoryClear(learning, practice, sync),
