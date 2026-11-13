@@ -6,7 +6,7 @@ import { createStore } from './store.js';
 
 export type SessionKind = 'practice' | 'custom' | 'drill' | 'retest' | 'daily' | 'lesson' | 'challenge' | 'missed';
 
-export type SealedRun = Attempt & { summary: Replay };
+export type SealedRun = Omit<Attempt, 'status'> & { status: 'complete' | 'interrupted'; summary: Replay };
 
 export interface SpeedPart {
   kind: 'speed';

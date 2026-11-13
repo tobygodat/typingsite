@@ -8,7 +8,8 @@ import type { NativeCopy } from './native-copy.js';
 import { formatSpeed, speedFigure } from './units.js';
 import type { LearningStore, LessonFactView, LessonRowView } from './learning-store.js';
 import type { ProfileSync } from './profile-sync.js';
-import type { CompletedAttempt, Score } from './typing.js';
+import type { Score } from './typing.js';
+import type { SealedRun } from './practice-session.js';
 import type { LessonProgress } from './profile-types.js';
 
 type Lesson = typeof LESSONS[number];
@@ -18,7 +19,7 @@ type LessonOutcome = ReturnType<typeof lessonOutcome>;
 type LessonAction = [string, () => void];
 
 interface LessonResult {
-  failed: CompletedAttempt['failed']; index: number; score: Score; elapsedMs: number; errors: number;
+  failed: SealedRun['failed']; index: number; score: Score; elapsedMs: number; errors: number;
   outcome: LessonOutcome | null; firstPass: boolean; recorded: boolean; at: string; touch: boolean; saved: boolean; valid: boolean;
 }
 
@@ -99,7 +100,7 @@ export function createLessonController(learning: LearningStore, sync: ProfileSyn
     ports.reset('practice', { focus: true });
   }
 
-  function finishLesson(completed: CompletedAttempt, valid: boolean) {
+  function finishLesson(completed: SealedRun, valid: boolean) {
     const { score, elapsedMs, firstAttempts } = completed.summary;
     const touch = completed.conditions.inputClass === 'touch';
     let outcome: LessonOutcome | null = null;

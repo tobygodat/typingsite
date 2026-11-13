@@ -7,7 +7,7 @@ import type { ChallengeScore, CompactTrace, ghostPoints, challengeConditions } f
 import type { AccountSession } from './account-session.js';
 import type { InboxController } from './inbox.js';
 import type { PracticeSession } from './practice-session.js';
-import type { CompletedAttempt } from './typing.js';
+import type { SealedRun } from './practice-session.js';
 import { createStore } from './store.js';
 import { Copy } from './results-card.js';
 
@@ -15,7 +15,7 @@ type GhostState = 'ready' | 'interrupted' | 'other-input' | 'own' | 'sending' | 
 
 interface GhostRun {
   name: string; passage: string; conditions: NonNullable<ReturnType<typeof challengeConditions>>; duration: number | null;
-  points: ReturnType<typeof ghostPoints>; sender: ChallengeScore; result: ChallengeScore | null; run: CompletedAttempt | null;
+  points: ReturnType<typeof ghostPoints>; sender: ChallengeScore; result: ChallengeScore | null; run: SealedRun | null;
   state: GhostState; trace?: CompactTrace | null; error?: { message: string; status?: number };
 }
 
@@ -121,7 +121,7 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
     if (document.body.dataset.view === 'results') say();
   }
 
-  function finish(completed: CompletedAttempt, valid: boolean) {
+  function finish(completed: SealedRun, valid: boolean) {
     if (disposed) return;
 
     if (!race) throw new Error('A ghost finish requires its race');

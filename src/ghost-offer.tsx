@@ -7,7 +7,7 @@ import { listFriends } from './multiplayer.js';
 import type { Friend } from './network-race.js';
 import type { AccountSession } from './account-session.js';
 import type { OnlineRaceController } from './online-race.js';
-import type { CompletedAttempt } from './typing.js';
+import type { SealedRun } from './practice-session.js';
 import { createStore } from './store.js';
 
 interface OfferView {
@@ -19,17 +19,17 @@ export function createGhostOffer(accounts: AccountSession, onlineRace: OnlineRac
   const view = createStore<OfferView>({ visible: false, open: false, name: '', selected: '', friends: [], loading: false,
     empty: false, formVisible: true, selectDisabled: false, sendDisabled: false, status: '', error: '' });
 
-  let offerRun: CompletedAttempt | null = null;
+  let offerRun: SealedRun | null = null;
   let sentTo = new Set<string>();
   let requests = new Map<string, string>();
-  let sending: CompletedAttempt | null = null;
+  let sending: SealedRun | null = null;
   let friendsRequest: object | null = null;
   let friends: readonly Friend[] = [];
   let disposed = false;
   const busy = () => Boolean(offerRun) && sending === offerRun;
   const publish = (patch: Partial<OfferView>) => { if (!disposed) flushSync(() => view.publish({ ...view.getSnapshot(), ...patch })); };
 
-  function render(completed: CompletedAttempt | null = offerRun) {
+  function render(completed: SealedRun | null = offerRun) {
     if (completed !== offerRun) {
       offerRun = completed;
       sentTo = new Set();
