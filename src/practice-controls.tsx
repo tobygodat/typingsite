@@ -1,3 +1,4 @@
+import { Copy } from './results-card.js';
 import { CustomLengthField, CustomLengthError } from './custom-length.js';
 import type { CustomLengthController } from './custom-length.js';
 import { QuoteFilters } from './quote-filters.js';
@@ -75,7 +76,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
             </label>
           </div>
           <CustomLengthError controller={lengthEditor} />
-          <span id="minimum-note" className="minimum-note" hidden></span>
+          <span id="minimum-note" className="minimum-note" hidden={!view.minimumVisible}><Copy parts={view.minimums} /></span>
         </div>
 
   );

@@ -10,7 +10,7 @@ import { KeybindingEditor } from './keybinding-editor.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { wordListIds } from './words.js';
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { InputHTMLAttributes, MouseEvent } from 'react';
+import type { CSSProperties, InputHTMLAttributes, MouseEvent } from 'react';
 import { createSettings } from './settings.js';
 import type { SettingId, SettingsController } from './settings.js';
 
@@ -91,7 +91,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="word-highlight" {...radio('word-highlight', 'next')} /><span>next word</span></label>
             </fieldset>
           </div>
-          <div className="preference-row" hidden>
+          <div className="preference-row" hidden={!view.presentation.slide}>
             <div className="preference-copy"><strong id="word-highlight-slide-label">slide</strong></div>
             <fieldset className="setting-options" id="word-highlight-slide" aria-labelledby="word-highlight-label word-highlight-slide-label" disabled={view.disabled['word-highlight-slide'] ?? false} onClick={(event) => choose('word-highlight-slide', event)}>
               <label className="setting-option"><input type="radio" name="word-highlight-slide" {...radio('word-highlight-slide', 'false', true)} /><span>off</span></label>
@@ -124,10 +124,10 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
         <section id="settings-practice" className="settings-category" aria-labelledby="settings-practice-title" hidden={view.category !== 'practice'}>
           <div className="settings-intro"><h3 id="settings-practice-title">Practice</h3></div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" className="preference-lock" hidden>fixed for standard</small></div>
+            <div className="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" className="preference-lock" hidden={!view.presentation.standard}>{view.presentation.standard ? 'fixed for standard' : ''}</small></div>
             <fieldset className="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock" disabled={view.disabled['word-list'] ?? false} onClick={(event) => choose('word-list', event)}>
               {wordListIds.map((id) => <label key={id} className="setting-option"><input type="radio" name="word-list" {...radio('word-list', id, id === '200')} /><span>top {id}</span></label>)}
-              <label className="setting-option" hidden><input type="radio" name="word-list" disabled {...radio('word-list', 'standard')} /><span>1k–10k</span></label>
+              <label className="setting-option" hidden={!view.presentation.standard}><input type="radio" name="word-list" disabled {...radio('word-list', 'standard')} /><span>1k–10k</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
@@ -155,14 +155,14 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="strict-space-toggle-label">strict space</strong><small className="preference-note" id="rules-note" hidden></small></div>
+            <div className="preference-copy"><strong id="strict-space-toggle-label">strict space</strong><small className="preference-note" id="rules-note" hidden={!view.presentation.rules}>{view.presentation.rules}</small></div>
             <fieldset className="setting-options" id="strict-space-toggle" aria-labelledby="strict-space-toggle-label" aria-describedby="rules-note" disabled={view.disabled['strict-space-toggle'] ?? false} onClick={(event) => choose('strict-space-toggle', event)}>
               <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'false', true)} /><span>off</span></label>
               <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="quick-end-toggle-label">quick end</strong><small className="preference-note" id="quick-end-note" hidden></small></div>
+            <div className="preference-copy"><strong id="quick-end-toggle-label">quick end</strong><small className="preference-note" id="quick-end-note" hidden={!view.presentation.quickEnd}>{view.presentation.quickEnd}</small></div>
             <fieldset className="setting-options" id="quick-end-toggle" aria-labelledby="quick-end-toggle-label" aria-describedby="quick-end-note rules-note" disabled={view.disabled['quick-end-toggle'] ?? false} onClick={(event) => choose('quick-end-toggle', event)}>
               <label className="setting-option"><input type="radio" name="quick-end-toggle" {...radio('quick-end-toggle', 'false')} /><span>off</span></label>
               <label className="setting-option"><input type="radio" name="quick-end-toggle" {...radio('quick-end-toggle', 'true', true)} /><span>on</span></label>
@@ -297,13 +297,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="sound-select" {...radio('sound-select', 'clicks-errors')} /><span>clicks + error tick</span></label>
             </fieldset>
           </div>
-          <label className="preference-row" id="sound-volume-row" htmlFor="sound-volume">
-            <span className="preference-copy"><strong>volume</strong></span>
-            <span className="preference-range">
-              <span id="sound-volume-value" className="preference-value num" aria-hidden="true">50%</span>
-              <input className="range" id="sound-volume" type="range" min="0" max="100" step="5" defaultValue="50" aria-valuetext="50%" disabled />
-            </span>
-          </label>
+          <SoundVolume settings={settings} />
         </section>
         <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden={view.category !== 'shortcuts'}>
           <div className="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3></div>
@@ -319,4 +313,20 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
     </footer>
   </dialog>
   );
+}
+
+function SoundVolume({ settings }: { settings: SettingsController }) {
+  const view = useSyncExternalStore(settings.view.subscribe, settings.view.getSnapshot, settings.view.getSnapshot).presentation;
+  const input = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    const field = input.current;
+
+    if (!field) return;
+    field.addEventListener('change', settings.commitVolume);
+
+    return () => field.removeEventListener('change', settings.commitVolume);
+  }, [settings]);
+  const style: CSSProperties & { '--fill': string } = { '--fill': `${view.volume}%` };
+
+  return <label className="preference-row" id="sound-volume-row" htmlFor="sound-volume"><span className="preference-copy"><strong>volume</strong></span><span className="preference-range"><span id="sound-volume-value" className="preference-value num" aria-hidden="true">{view.volume}%</span><input ref={input} className="range" id="sound-volume" type="range" min="0" max="100" step="5" value={view.volume} aria-valuetext={`${view.volume}%`} disabled={view.soundOff} style={style} onInput={(event) => settings.editVolume(Number(event.currentTarget.value))} /></span></label>;
 }

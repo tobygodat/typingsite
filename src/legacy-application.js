@@ -807,7 +807,7 @@ function applyPreferences() {
   selectSetting('font-size', learning.preferences.fontSize);
   selectSetting('word-highlight', learning.preferences.wordHighlight);
   selectSetting('word-highlight-slide', learning.preferences.wordHighlightSlide);
-  $('word-highlight-slide').closest('.preference-row').hidden = learning.preferences.wordHighlight === 'off';
+  settingsView.present({ slide: learning.preferences.wordHighlight !== 'off' });
   placePreviewGlide();
   selectSetting('live-toggle', learning.preferences.liveMetrics);
   selectSetting('keyboard-toggle', learning.preferences.keyboard);
@@ -817,7 +817,6 @@ function applyPreferences() {
   selectSetting('correction-select', learning.preferences.correction);
   selectSetting('focus-toggle', learning.preferences.focusMode);
   selectSetting('tape-toggle', learning.preferences.tape);
-  $('keyboard').hidden = !learning.preferences.keyboard && practice.sessionKind !== 'lesson';
   renderKeyboard();
   applySoundPreferences();
   applyTheme();
@@ -854,13 +853,8 @@ function applyPreferences() {
 
 function applySoundPreferences() {
   sounds.sync();
-  const volume = $('sound-volume');
   selectSetting('sound-select', learning.preferences.sound);
-  volume.value = String(learning.preferences.soundVolume);
-  volume.disabled = learning.preferences.sound === 'off';
-  volume.setAttribute('aria-valuetext', `${learning.preferences.soundVolume}%`);
-  volume.style.setProperty('--fill', `${learning.preferences.soundVolume}%`);
-  $('sound-volume-value').textContent = `${learning.preferences.soundVolume}%`;
+  settingsView.present({ volume: learning.preferences.soundVolume, soundOff: learning.preferences.sound === 'off' });
 }
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
@@ -888,8 +882,7 @@ function applySpeedUnit() {
 // controls do, and while the standard test is selected (practiceMinimums).
 function showMinimumNote() {
   const minimums = describeMinimums(practiceMinimums());
-  setParts($('minimum-note'), minimums);
-  $('minimum-note').hidden = !minimums.length || editors.customOpen || composeOpen || practice.sessionKind === 'custom';
+  flushSync(() => practice.controls.publish({ ...practice.controls.getSnapshot(), minimums: copyParts(minimums), minimumVisible: Boolean(minimums.length) && !editors.customOpen && !composeOpen && practice.sessionKind !== 'custom' }));
 }
 
 // Why a rule switch can't change the session on hand, shown under it and read as its description.
@@ -917,10 +910,7 @@ function syncRules() {
   selectSetting('quick-end-toggle', learning.preferences.quickEnd);
   disableSetting('quick-end-toggle', Boolean(limits.quickEnd));
 
-  for (const [id, reason] of [['quick-end-note', limits.quickEnd], ['rules-note', limits.fixed]]) {
-    $(id).textContent = RULE_NOTES[reason] || '';
-    $(id).hidden = !reason;
-  }
+  settingsView.present({ quickEnd: RULE_NOTES[limits.quickEnd] || '', rules: RULE_NOTES[limits.fixed] || '' });
 }
 
 // The standard test fixes word list, punctuation, numbers and correction. Their controls show the
@@ -935,15 +925,12 @@ function syncLockedSettings() {
   disableSetting('numbers-toggle', fixed || standard);
   selectSetting('numbers-toggle', standard || Boolean(learning.preferences.numbers));
   disableSetting('word-list', fixed || standard);
-  $('word-list').querySelector('[value="standard"]').closest('label').hidden = !standard;
+  settingsView.present({ standard });
   selectSetting('word-list', standard ? 'standard' : learning.preferences.wordList);
   disableSetting('repeat-quotes-toggle', learning.preferences.mode !== 'quote');
   disableSetting('correction-select', standard);
   selectSetting('correction-select', standard ? 'mandatory' : learning.preferences.correction);
-  document.querySelectorAll('.preference-lock').forEach((note) => {
-    note.textContent = standard ? 'fixed for standard' : '';
-    note.hidden = !standard;
-  });
+
 }
 
 function setModeControls() {
@@ -956,6 +943,7 @@ function setModeControls() {
   if (custom || composeOpen || learning.preferences.mode === "standard") closeCustomLength();
   renderLengthOptions();
   flushSync(() => practice.controls.publish({
+    ...practice.controls.getSnapshot(),
     visible: practice.sessionKind === 'practice' || practice.sessionKind === 'custom', bookPage: bookPlace(learning.profile.runs, learning.preferences.book) + 1,
     mode: learning.preferences.mode, duration: learning.preferences.duration, count: learning.preferences.count,
     lengthMode: ['time', 'words'].includes(learning.preferences.mode) ? learning.preferences.mode : practice.controls.getSnapshot().lengthMode,
@@ -4008,8 +3996,7 @@ function bindEvents() {
   onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
   onSetting('sound-select', (value) => setSound(value));
   // Dragging updates the level as it goes; the profile is saved once the slider settles.
-  $('sound-volume').addEventListener('input', (event) => setSoundVolume(Number(event.target.value), { save: false }), { signal: lifetime.signal });
-  $('sound-volume').addEventListener('change', () => saveChoice('soundVolume'), { signal: lifetime.signal });
+  settingsView.onVolume((value) => setSoundVolume(value, { save: false }), () => saveChoice('soundVolume'));
   $('exit-focus').addEventListener('click', () => {
     learning.preferences.focusMode = false;
     applyPreferences();

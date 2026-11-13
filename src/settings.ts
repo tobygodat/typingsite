@@ -6,7 +6,10 @@ export type SettingsCategory = 'appearance' | 'practice' | 'keyboard' | 'sound' 
 
 export type SettingId = 'wallpaper-style' | 'numbers-toggle' | 'word-list' | 'repeat-quotes-toggle' | 'daily-goal' | 'train-focus' | 'drill-length' | 'retest-toggle' | 'font-size' | 'typing-font' | 'app-font' | 'speed-unit' | 'word-highlight' | 'word-highlight-slide' | 'live-toggle' | 'keyboard-toggle' | 'finger-toggle' | 'layout-select' | 'correction-select' | 'strict-space-toggle' | 'quick-end-toggle' | 'min-accuracy' | 'min-wpm' | 'theme-select' | 'dark-theme' | 'light-theme' | 'pace-select' | 'focus-toggle' | 'tape-toggle' | 'sound-select';
 
+interface SettingsPresentation { slide: boolean; standard: boolean; rules: string; quickEnd: string; volume: number; soundOff: boolean }
+
 interface SettingsView {
+  presentation: SettingsPresentation;
   category: SettingsCategory;
   selected: Partial<Record<SettingId, string>>;
   disabled: Partial<Record<SettingId, boolean>>;
@@ -21,8 +24,10 @@ interface SettingsHost {
 export function createSettings() {
   let host: SettingsHost | null = null;
   let stopRecording = () => {};
+  let volumeInput = (value: number) => { void value; };
+  let volumeCommit = () => {};
   const choices = new Map<SettingId, (value: string) => void>();
-  const view = createStore<SettingsView>({ category: 'appearance', selected: {}, disabled: {} });
+  const view = createStore<SettingsView>({ category: 'appearance', selected: {}, disabled: {}, presentation: { slide: false, standard: false, rules: '', quickEnd: '', volume: 50, soundOff: true } });
 
   function select(id: SettingId, value: string | number | boolean) {
     const current = view.getSnapshot();
@@ -40,6 +45,13 @@ export function createSettings() {
 
   return {
     view, select, category,
+    present(patch: Partial<SettingsPresentation>) { const current = view.getSnapshot();
+
+      flushSync(() => view.publish({ ...current, presentation: { ...current.presentation, ...patch } }));
+    },
+    onVolume(edit: (value: number) => void, commit: () => void) { volumeInput = edit; volumeCommit = commit; },
+    editVolume(value: number) { volumeInput(value); },
+    commitVolume() { volumeCommit(); },
     keybindings: createKeybindingEditor(),
     disable(id: SettingId, disabled: boolean) {
       const current = view.getSnapshot();
