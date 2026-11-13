@@ -5,6 +5,7 @@ import type { SettingsController } from './settings.js';
 import type { ThemeEditorController } from './theme-editor.js';
 import { showThemeOptions, wearColors } from './theme-editor.js';
 import { DARK_THEMES, LIGHT_THEMES } from './profile.js';
+import type { CustomTheme } from './custom-themes.js';
 import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 
 type ThemeMode = 'dark' | 'light';
@@ -88,7 +89,7 @@ export function createDisplayPreferences({ learning, practice, sync, settings, t
     sync.saveChoice(`${mode}Theme`);
   }
 
-  function saveCustomThemes(customThemes: string, saved?: string | null) {
+  function saveCustomThemes(customThemes: string | readonly CustomTheme[], saved?: string | null) {
     const mode = themeMode();
     keepPick();
     learning.preferences.customThemes = normalizeCustomThemes(customThemes);

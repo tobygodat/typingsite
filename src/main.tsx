@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { createApplication } from './application.js';
 import { App } from './app.js';
-import { attachApplication } from './legacy-application.js';
+import { attachApplication } from './application-host.js';
 
 const container = document.getElementById('app');
 
