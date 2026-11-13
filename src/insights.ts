@@ -720,7 +720,7 @@ export function minutesByDay(runs: readonly unknown[], practiceDays: Record<stri
 }
 
 // Whole minutes rounded down, so a day short of the goal never reads as meeting it.
-export const goalMinutes = (minutes: number) => (minutes > 0 && minutes < 1 ? '<1' : String(Math.floor(minutes || 0)));
+export const goalMinutes = (minutes: number | null | undefined) => (minutes != null && minutes > 0 && minutes < 1 ? '<1' : String(Math.floor(minutes || 0)));
 
 // Consecutive days meeting the goal (or with any practice when the goal is off), ending today.
 // An unfinished today does not break the streak until the day is over.
