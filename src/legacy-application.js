@@ -1,3 +1,5 @@
+import { createDisplayPreferences } from './display-preferences.js';
+import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
 import { createInputPresentation } from './input-presentation.js';
@@ -39,8 +41,7 @@ import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { renderSpeedGraph } from './graph.js';
-import { showThemeOptions, wearColors } from './theme-editor.js';
-import { normalizeCustomThemes, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
+import { readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -65,6 +66,9 @@ import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM
 export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
+const glides = createControlGlides(lifetime);
+const updateGlide = glides.update;
+const updateGlides = glides.all;
 const setTimeout = lifetime.timeout;
 const clearTimeout = lifetime.clearTimeout;
 const setInterval = lifetime.interval;
@@ -213,6 +217,26 @@ function placePreviewGlide({ instant = false, from = 0 } = {}) {
 // Key sounds read the current preferences on each key; the AudioContext waits for an audible choice or key.
 const sounds = createSounds({ settings: () => ({ mode: learning.preferences.sound, volume: learning.preferences.soundVolume }), running: () => runInProgress() });
 const prefersLight = matchMedia('(prefers-color-scheme: light)');
+
+const displayPreferences = createDisplayPreferences({ learning, practice, sync, settings: settingsView, themeEditor,
+  ports: { light: () => prefersLight.matches, restorePassage: () => primaryTextView?.restore(), typingRelayout: () => primaryFx.relayout(), relayout: relayoutText,
+    onlineRelayout: () => onlineRace.relayout(), syncSound: () => sounds.sync() },
+});
+
+const themeMode = displayPreferences.themeMode;
+const themeFor = displayPreferences.themeFor;
+const shownTheme = displayPreferences.shownTheme;
+const wearTheme = displayPreferences.wearTheme;
+const applyTheme = displayPreferences.applyTheme;
+const setThemeMode = displayPreferences.setThemeMode;
+const pickTheme = displayPreferences.pickTheme;
+const saveCustomThemes = displayPreferences.saveCustomThemes;
+const syncLayout = displayPreferences.syncLayout;
+const setSessionKind = displayPreferences.session;
+const measureTypingBaseline = displayPreferences.measureTypingBaseline;
+const applyFonts = displayPreferences.applyFonts;
+const applySoundPreferences = displayPreferences.applySound;
+
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 
 // The completed run the results view shows: its numbers, run card graph and Watch replay. Only
@@ -631,183 +655,55 @@ function showBest() {
 }
 
 // The mode a theme belongs to, a custom one's by its background; null for 'system' or a theme not saved.
-function modeOf(theme) {
-  if (DARK_THEMES.includes(theme)) return 'dark';
 
-  if (LIGHT_THEMES.includes(theme)) return 'light';
-  const custom = readCustomThemes(learning.preferences.customThemes).find((entry) => entry.id === theme);
 
-  return custom ? colorsMode(custom.colors) : null;
-}
 
-function themeMode() {
-  return modeOf(learning.preferences.theme) ?? 'system';
-}
 
 // A mode's pick: the theme shown, in that mode, else the one saved for it, else the mode's default.
-function themeFor(mode) {
-  if (themeMode() === mode) return learning.preferences.theme;
 
-  return modeOf(learning.preferences[`${mode}Theme`]) === mode ? learning.preferences[`${mode}Theme`] : mode;
-}
 
-function shownTheme() {
-  const mode = themeMode();
 
-  return mode === 'system' ? themeFor(prefersLight.matches ? 'light' : 'dark') : learning.preferences.theme;
-}
 
 // A custom theme (src/custom-themes.js) is worn over dark or light by its colours; without them the theme is built in.
-function wearTheme(colors, theme) {
-  const root = document.documentElement;
-  root.dataset.theme = wearColors(root, colors) ?? theme;
-  const ground = getComputedStyle(root).getPropertyValue('--ground').trim();
 
-  for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
-}
 
-function applyTheme() {
-  // While the editor is open its draft stays on show.
-  const themes = readCustomThemes(learning.preferences.customThemes);
-  const theme = shownTheme();
-  wearTheme(themeEditor?.draftColors() ?? themes.find((entry) => entry.id === theme)?.colors, theme);
-  showThemeOptions(themes, theme);
-  selectSetting('theme-select', themeMode());
-  selectSetting('dark-theme', themeFor('dark'));
-  selectSetting('light-theme', themeFor('light'));
-}
+
 
 // The theme left for another becomes its mode's pick.
-function keepPick() {
-  const left = themeMode();
 
-  if (left !== 'system') learning.preferences[`${left}Theme`] = learning.preferences.theme;
-}
 
 // Shows a theme, or 'system'.
-function showTheme(theme) {
-  themeEditor?.close({ focus: false });
-  keepPick();
-  learning.preferences.theme = theme;
-  applyTheme();
-  saveChoice('theme');
-}
 
-function setThemeMode(mode) {
-  showTheme(mode === 'system' ? 'system' : themeFor(mode));
-}
+
+
 
 // Outside system mode, a pick is shown at once, in its own mode.
-function pickTheme(mode, theme) {
-  if (themeMode() !== 'system') return showTheme(theme);
-  themeEditor?.close({ focus: false });
-  learning.preferences[`${mode}Theme`] = theme;
-  applyTheme();
-  saveChoice(`${mode}Theme`);
-}
+
 
 // After the editor saves or deletes a custom theme: a saved one is picked as pickTheme does; a pick whose
 // theme was deleted, or moved to the other mode, goes back to its mode's default.
-function saveCustomThemes(customThemes, saved) {
-  const mode = themeMode();
-  keepPick();
-  learning.preferences.customThemes = normalizeCustomThemes(customThemes);
 
-  if (learning.preferences.theme !== 'system' && !modeOf(learning.preferences.theme)) learning.preferences.theme = mode;
-
-  for (const pick of ['dark', 'light']) if (modeOf(learning.preferences[`${pick}Theme`]) !== pick) learning.preferences[`${pick}Theme`] = pick;
-
-  if (saved) {
-    if (themeMode() === 'system') learning.preferences[`${modeOf(saved)}Theme`] = saved;
-    else {
-      keepPick();
-      learning.preferences.theme = saved;
-    }
-  }
-
-  applyTheme();
-  saveChoice('customThemes', 'theme', 'darkTheme', 'lightTheme');
-}
 
 // Slides a group's pill under its selected control; used by the dock and the segmented controls.
-function updateGlide(container, { instant = false } = {}) {
-  let pill = container.querySelector(':scope > .glide-pill');
 
-  if (!pill) {
-    pill = document.createElement('span');
-    pill.className = 'glide-pill';
-    pill.setAttribute('aria-hidden', 'true');
-    container.prepend(pill);
-  }
 
-  // A mode chosen inside "more" leaves its summary marked, so the pill rests there.
-  const target = container.querySelector(container.dataset.glide === 'current' ? ':scope > [aria-current="page"]' : ':scope > [aria-pressed="true"]')
-    ?? container.querySelector(':scope > [data-active]');
 
-  if (!target || !target.offsetWidth) {
-    pill.style.setProperty('--pill-o', '0');
-
-    return;
-  }
-
-  if (instant) container.classList.add('no-anim');
-  pill.style.setProperty('--pill-x', `${target.offsetLeft}px`);
-  pill.style.setProperty('--pill-y', `${target.offsetTop}px`);
-  pill.style.setProperty('--pill-w', `${target.offsetWidth}px`);
-  pill.style.setProperty('--pill-h', `${target.offsetHeight}px`);
-  pill.style.setProperty('--pill-o', '1');
-
-  if (instant) requestAnimationFrame(() => requestAnimationFrame(() => container.classList.remove('no-anim')));
-}
-
-function updateGlides(options) {
-  document.querySelectorAll('.glide').forEach((container) => updateGlide(container, options));
-}
 
 // The tape is for solo practice. A ghost race keeps three lines, as the other races do, so the
 // friend's caret stays in view however far ahead or behind it is.
-const tapeLayout = () => String(learning.preferences.tape && practice.sessionKind !== 'challenge');
+
 
 // The one writer of the passage layout: the text size, and three lines or the tape.
-function syncLayout() {
-  if (document.body.dataset.tape !== tapeLayout() || document.body.dataset.fontSize !== String(learning.preferences.fontSize)) {
-    // Trimmed words leave a spacer shaped for one layout and text size; put them back first.
-    primaryTextView?.restore();
-  }
 
-  document.body.dataset.fontSize = learning.preferences.fontSize;
-  document.body.dataset.tape = tapeLayout();
-  primaryFx.relayout();
-}
 
-function setSessionKind(kind) {
-  practice.sessionKind = kind;
-  syncLayout();
-}
+
 
 // The typing font's baseline below the middle of its line, from the font's own metrics, so every caret
 // stands on the baseline exactly as it does on Literata's (--typing-baseline in src/styles.css).
-function measureTypingBaseline() {
-  const probe = document.createElement('canvas').getContext('2d');
-  probe.font = `1000px ${getComputedStyle(document.documentElement).getPropertyValue('--font-typing')}`;
-  const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = probe.measureText('H');
 
-  if (ascent) document.documentElement.style.setProperty('--typing-baseline', `${(ascent - descent) / 2000}em`);
-}
 
 // A new font changes letter widths, as a resize does, and again once its file arrives.
-function applyFonts() {
-  const root = document.documentElement.dataset;
-  selectSetting('typing-font', learning.preferences.typingFont);
-  selectSetting('app-font', learning.preferences.appFont);
 
-  if (root.typingFont === learning.preferences.typingFont && root.appFont === learning.preferences.appFont) return;
-  root.typingFont = learning.preferences.typingFont;
-  root.appFont = learning.preferences.appFont;
-  measureTypingBaseline();
-  relayoutText();
-  onlineRace?.relayout();
-}
 
 function applyPreferences() {
   syncLayout();
@@ -854,11 +750,7 @@ function applyPreferences() {
   showBest();
 }
 
-function applySoundPreferences() {
-  sounds.sync();
-  selectSetting('sound-select', learning.preferences.sound);
-  settingsView.present({ volume: learning.preferences.soundVolume, soundOff: learning.preferences.sound === 'off' });
-}
+
 
 // Display only: every speed and unit word on screen re-texts in place (src/units.js), so nothing restarts
 // and open rows and focus stay as they are. Only text re-texts: a speed placed in an attribute or drawn in
