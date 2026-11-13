@@ -2,11 +2,12 @@ import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { accountLifetime } from './async-runtime.js';
 import { sameSignIn } from './account.js';
-import { challengeOutcome, encodeTrace, finishChallenge, leadVerb, outcomeRule, resultText, sameScore, scoreTrace, traceTrouble } from './ghost-race.js';
+import { challengeTextId, challengeOutcome, encodeTrace, finishChallenge, leadVerb, outcomeRule, resultText, sameScore, scoreTrace, traceTrouble } from './ghost-race.js';
 import type { ChallengeScore, CompactTrace, ghostPoints, challengeConditions } from './ghost-race.js';
 import type { AccountSession } from './account-session.js';
 import type { InboxController } from './inbox.js';
 import type { PracticeSession } from './practice-session.js';
+import type { Conditions } from './typing.js';
 import type { SealedRun } from './practice-session.js';
 import { createStore } from './store.js';
 import { Copy } from './results-card.js';
@@ -26,6 +27,9 @@ interface ResultView {
 }
 
 interface GhostResultPorts { announce(message: string): void; repeat(): void }
+
+const CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbers', 'quoteLength', 'difficulty', 'wordList',
+  'correctionPolicy', 'language', 'corpus', 'metricVersion'] as const;
 
 const RACE_AGAIN: readonly GhostState[] = ['interrupted', 'unsendable', 'unreplayable', 'other-input', 'own'];
 const inputOf = (value: { inputClass?: unknown }) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
@@ -138,6 +142,18 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
 
   return {
     view, finish,
+    conditions(): Conditions {
+      if (!race) throw new TypeError('A ghost passage requires its race');
+      const source = race.conditions;
+
+      return { ...Object.fromEntries(CONDITION_KEYS.flatMap((key) => key in source ? [[key, source[key]]] : [])), inputClass: 'physical-keyboard' };
+    },
+    passage(seenIds: readonly string[]) {
+      if (!race) throw new TypeError('A ghost passage requires its race');
+      const id = challengeTextId(race.passage, race.conditions);
+
+      return { id, text: race.passage, fresh: !seenIds.includes(id) };
+    },
     get race() { return race; },
     set race(next: GhostRace | null) { race = next; },
     configure(next: GhostResultPorts) { ports = next; },

@@ -1,6 +1,10 @@
 import { accountLifetime } from './async-runtime.js';
 import { challengeConditions, getChallenge, ghostPoints, validTrace } from './ghost-race.js';
-import type { challengePayload } from './ghost-race.js';
+import { challengePayload } from './ghost-race.js';
+import { CORPUS_VERSION } from './typing.js';
+import { DEFAULT_WORD_LIST } from './words.js';
+import { isRecord } from './domain-values.js';
+import type { LearningStore } from './learning-store.js';
 import type { AccountSession } from './account-session.js';
 import type { InboxController } from './inbox.js';
 import type { OnlineRaceController } from './online-race.js';
@@ -14,11 +18,10 @@ interface LaunchPorts {
   reset(): void;
   practice(): void;
   notice(message: string): void;
-  ownBest(): ReturnType<typeof challengePayload>;
 }
 
 export function createGhostLaunch(accounts: AccountSession, online: OnlineRaceController, inbox: InboxController,
-  training: TrainingMemory, result: ReturnType<typeof createGhostResult>, ports: LaunchPorts) {
+  training: TrainingMemory, result: ReturnType<typeof createGhostResult>, learning: LearningStore, ports: LaunchPorts) {
   let request: object | null = null;
   let heldError = '';
   let disposed = false;
@@ -84,9 +87,26 @@ export function createGhostLaunch(accounts: AccountSession, online: OnlineRaceCo
     ports.reset();
   }
 
+  function ownBest() {
+    let best: ReturnType<typeof challengePayload> = null;
+
+    for (const run of learning.profile.attempts) {
+      const conditions = run.conditions;
+
+      if (!isRecord(conditions) || run.adaptive || conditions.mode !== 'time' || conditions.duration !== 30 || conditions.punctuation || conditions.numbers
+        || (conditions.wordList || DEFAULT_WORD_LIST) !== '200' || (conditions.inputClass === 'touch' ? 'touch' : 'physical-keyboard') !== 'physical-keyboard'
+        || (conditions.corpus || CORPUS_VERSION) !== CORPUS_VERSION) continue;
+      const payload = challengePayload(run);
+
+      if (payload && (!best || payload.score.wpm > best.score.wpm)) best = payload;
+    }
+
+    return best;
+  }
+
   function own() {
     if (disposed) return;
-    const best = ports.ownBest();
+    const best = ownBest();
 
     if (!best || onlineRoomFirst()) return;
     ports.beforeStart();
@@ -101,7 +121,7 @@ export function createGhostLaunch(accounts: AccountSession, online: OnlineRaceCo
   }
 
   return {
-    start, own,
+    start, own, ownBest,
     runChanged() {
       if (disposed || !heldError || ports.running()) return;
       const message = heldError;

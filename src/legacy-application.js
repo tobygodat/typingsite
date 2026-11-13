@@ -36,7 +36,7 @@ import {
   characterBreakdown,
   wordHistory,
 } from './typing.js';
-import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
+import { wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
 import { BOOKS, BOOK_VERSION, bookPage, bookPlace, openBook } from './books.js';
 import { LENGTHS, isPresetLength } from './lengths.js';
@@ -52,8 +52,7 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
-import { challengePayload, challengeTextId,
-  listChallenges } from './ghost-race.js';
+import { listChallenges } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
 import { formatSpeed, showSpeed, speedFigure } from './units.js';
@@ -279,7 +278,7 @@ const { conditions, customConditions, practiceMinimums, inputLayout, lessonCondi
 
 const { restartKind, drillLength, sessionDurationMs, ruleLimits, ruleSession, sessionConditions, raceUnderWay } = createSessionRules(
   learning, practice, training, challenge.local, onlineRace, ghostResult, navigation,
-  { conditions, daily: dailyConditions, custom: customConditions, lesson: lessonConditions, ghost: ghostConditions, race: raceConditions });
+  { conditions, daily: dailyConditions, custom: customConditions, lesson: lessonConditions, ghost: () => ghostConditions(), race: raceConditions });
 
 
 const trainingPolicy = createTrainingPolicy(learning, practice, training, sync, { conditions, inputLayout, retainedBaseline, recommendation: trainingRecommendation,
@@ -310,16 +309,19 @@ const renderTrain = trainingResults.render;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 ghostResult.configure({ announce, repeat: () => resetSession('challenge', { focus: true }) });
 
-const ghostLaunch = createGhostLaunch(accounts, onlineRace, inbox, training, ghostResult, {
+const ghostLaunch = createGhostLaunch(accounts, onlineRace, inbox, training, ghostResult, learning, {
   context: raceContext, running: () => runInProgress(), beforeStart() {
     if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
     if (race.attempt?.status === 'running') markRaceInterrupted();
-  }, reset: () => resetSession('challenge', { focus: true }), practice: () => navigate('practice'), notice: showAccountToast, ownBest: ownBestRun,
+  }, reset: () => resetSession('challenge', { focus: true }), practice: () => navigate('practice'), notice: showAccountToast,
 });
 
 const startGhostRace = ghostLaunch.start;
 const startOwnGhost = ghostLaunch.own;
+const ownBestRun = ghostLaunch.ownBest;
+const ghostConditions = ghostResult.conditions;
+const ghostPassage = () => ghostResult.passage(learning.profile.seenTextIds);
 
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
 // A Race carries where it was clicked (raceContext); a later Race replaces it.
@@ -1970,28 +1972,18 @@ function startDaily() {
 // keystrokes (src/ghost-race.js). The run is kind 'challenge', non-comparable like custom text: only its
 // summary is kept, and it is never a best.
 
-const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbers', 'quoteLength', 'difficulty', 'wordList',
-  'correctionPolicy', 'language', 'corpus', 'metricVersion'];
 
-const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
+
+
 
 // A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
-function ghostConditions() {
-  const source = ghostResult.race.conditions || {};
 
-  return { ...Object.fromEntries(GHOST_CONDITION_KEYS.flatMap((key) => (key in source ? [[key, source[key]]] : []))),
-    inputClass: 'physical-keyboard' };
-}
 
 // A quote or daily passage keeps its own text id, worked out from the text, so a quote raced here
 // can't later count as fresh. Word and timed text gets the id of exactly that text.
-function ghostPassage() {
-  const id = challengeTextId(ghostResult.race.passage, ghostResult.race.conditions);
 
-  return { id, text: ghostResult.race.passage, fresh: !learning.profile.seenTextIds.includes(id) };
-}
 
 // An open online room keeps the surface: a ghost race never starts over it.
 // Where the person is, as a Race sees it: the view, the session set up on the practice surface and its run's
@@ -2009,22 +2001,7 @@ function raceContext() {
 // When nobody is waiting for a quick match: the fastest recorded run of yours on its setup (30 seconds of the
 // 200 words, no punctuation or numbers, a physical keyboard) that this device still keeps the keystrokes of.
 // Only your own recording is ever used; other people's stay on their devices (ADR 0006).
-function ownBestRun() {
-  let best = null;
 
-  for (const run of learning.profile.attempts) {
-    const c = run.conditions || {};
-
-    if (run.adaptive || c.mode !== 'time' || c.duration !== 30 || c.punctuation || c.numbers || (c.wordList || DEFAULT_WORD_LIST) !== '200'
-      || inputOf(c) !== 'physical-keyboard' || (c.corpus || CORPUS_VERSION) !== CORPUS_VERSION) continue;
-    // The same run a friend would get: its trace, its passage cut past the furthest key, its checked conditions.
-    const payload = challengePayload(run);
-
-    if (payload && (!best || payload.score.wpm > best.score.wpm)) best = payload;
-  }
-
-  return best;
-}
 
 const renderGhostOffer = ghostOffer.render;
 
