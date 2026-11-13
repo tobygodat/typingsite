@@ -11,7 +11,6 @@ import type { Attempt, AttemptEvent, Conditions } from './typing.js';
 import { TraceSchema, ChallengeSchema, ConditionsSchema } from './network-race.js';
 import type { CompactTrace, ChallengeScore, GhostChallenge, RaceConditions } from './network-race.js';
 import { at, isRecord } from './domain-values.js';
-import { isAttemptEvent } from './domain-history.js';
 import type { HistoricalRecord } from './profile-types.js';
 
 export type { CompactTrace, ChallengeScore, GhostChallenge } from './network-race.js';
@@ -20,9 +19,9 @@ import { METRIC_VERSION, quoteCorpus, replayAttempt, textId } from './typing.js'
 import { wordListIds } from './words.js';
 import { comparableKind } from './insights.js';
 
-export type TraceSource = Partial<Pick<Attempt, 'startedAt' | 'endedAt'>> & {
-  text?: Attempt['text'] | null; events?: AttemptEvent[] | null; interrupted?: unknown; unsupportedInput?: unknown;
-};
+export interface TraceSource {
+  text?: Attempt['text'] | null; events?: unknown; startedAt?: unknown; endedAt?: unknown; interrupted?: unknown; unsupportedInput?: unknown;
+}
 
 export interface ChallengePayloadSource extends TraceSource {
   status?: unknown; kind?: unknown; conditions?: Conditions | HistoricalRecord; textId?: unknown;
@@ -32,9 +31,6 @@ export function isChallengePayloadSource(value: unknown): value is ChallengePayl
   if (!isRecord(value)) return false;
 
   return (value.text == null || typeof value.text === 'string')
-    && (value.events == null || (Array.isArray(value.events) && value.events.every(isAttemptEvent)))
-    && (value.startedAt == null || typeof value.startedAt === 'number')
-    && (value.endedAt == null || typeof value.endedAt === 'number')
     && (value.conditions === undefined || isRecord(value.conditions));
 }
 
@@ -61,6 +57,30 @@ export const standIn = (expected: string | undefined) => (expected === '~' ? '^'
 // An emoji or other astral character fills two places in the replay, which one key can't stand for.
 const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 
+function traceEvents(value: unknown): Iterable<unknown> {
+  if (!value) return [];
+
+  if (Array.isArray(value) || typeof value === 'string') return value;
+  throw new TypeError('Recorded events are not iterable');
+}
+
+function eventRecord(value: unknown) {
+  if (value === null || value === undefined) throw new TypeError('A recorded event is missing');
+
+  return isRecord(value) ? value : null;
+}
+
+function insertedLength(typed: number, value: unknown) {
+  if (value === null || value === undefined) throw new TypeError('An insertion has no text');
+  let length: unknown;
+
+  if (typeof value === 'string' || Array.isArray(value)) length = value.length;
+  else if (isRecord(value)) length = value.length;
+  const primitive = length !== null && typeof length === 'object' ? String(length) : length;
+
+  return typeof primitive === 'string' ? Number(`${typed}${primitive}`) : typed + Number(primitive);
+}
+
 // {v, k, t, e}: k is one printable character per insertion and U+0008 per deletion, t the whole
 // milliseconds since the previous key, e the end of the run. The clock starts at the first key.
 // Blocked keys change nothing, so they are left out. A run that lost focus or used IME is not sent.
@@ -73,17 +93,21 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
   let last = 0;
   let typed = 0;
 
-  for (const event of attempt.events || []) {
+  for (const value of traceEvents(attempt.events)) {
+    const event = eventRecord(value);
+
+    if (!event) continue;
+
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
     let chars;
 
-    if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, event.count || 1));
+    if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));
     else if (event.type === 'insert') {
       // The compact form has no way to say "counted but not kept", so such a run is not encoded.
       if (event.accepted === false || typeof event.text !== 'string' || !event.text || /[\r\n]/.test(event.text) || ASTRAL.test(event.text)) return null;
       chars = event.text;
     } else continue;
-    const at = Math.max(last, Math.round(event.offsetMs - origin));
+    const at = Math.max(last, Math.round(Number(event.offsetMs) - Number(origin)));
 
     for (const char of chars) {
       let key = char;
@@ -105,14 +129,25 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
   }
 
   if (!keys.length || keys.length > MAX_TRACE_KEYS) return null;
-  const trace = { v: TRACE_VERSION, k: keys, t: steps, e: Math.max(last, Math.round((attempt.endedAt ?? last) - origin)) };
+  const trace = { v: TRACE_VERSION, k: keys, t: steps, e: Math.max(last, Math.round(Number(attempt.endedAt ?? last) - Number(origin))) };
 
   return traceBytes(trace) <= MAX_TRACE_BYTES ? trace : null;
 }
 
 // Why a finished, uninterrupted run has no trace: a character it can't stand in for, or its size.
-export const traceTrouble = (attempt: TraceSource | null | undefined) => ((attempt?.events || []).some((event) => event.type === 'insert' && ASTRAL.test(event.text || ''))
-  ? 'character' : 'length');
+export function traceTrouble(attempt: TraceSource | null | undefined) {
+  const events = attempt?.events || [];
+
+  if (!Array.isArray(events)) throw new TypeError('Recorded events have no some method');
+
+  const astral = events.some((value: unknown) => {
+    const event = eventRecord(value);
+
+    return event?.type === 'insert' && ASTRAL.test(String(event.text || ''));
+  });
+
+  return astral ? 'character' : 'length';
+}
 
 export function traceBytes(trace: CompactTrace) {
   return JSON.stringify(trace).length + trace.t.length + 8;
@@ -227,9 +262,13 @@ function furthestTyped(attempt: TraceSource, text: string) {
   let typed = 0;
   let furthest = 0;
 
-  for (const event of attempt.events || []) {
-    if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, event.count || 1));
-    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(text.length, typed + event.text.length);
+  for (const value of traceEvents(attempt.events)) {
+    const event = eventRecord(value);
+
+    if (!event) continue;
+
+    if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, Number(event.count || 1)));
+    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(text.length, insertedLength(typed, event.text));
     furthest = Math.max(furthest, typed);
   }
 
