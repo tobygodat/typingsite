@@ -32,12 +32,12 @@ Stilltype is a static web app built with React, strict TypeScript and Effect. Vi
 
 In `src/`:
 
-- `main.tsx`, `app.tsx`: application mounting and the React screen tree.
+- `main.tsx`, `application.ts`, `app.tsx`: stable owner construction, application mounting and the React screen tree.
 - `store.ts`, `practice-session.ts`, `learning-store.ts`, `challenge-store.ts`: cached view subscriptions and long-lived session, profile and Challenge ownership.
-- `typing-host.ts`, `passage-view.ts`, `typing-surface.tsx`: synchronous native input and passage hosts. Input records timestamps and paints before publishing a React view.
-- `settings-dialog.tsx`, `release-dialog.tsx`, `results-card.tsx`, `practice-controls.tsx`: actual dialog, result and control markup.
+- `input.ts`, `typing-host.ts`, `passage-view.ts`, `typing-surface.tsx`: synchronous scored input, composition and passage hosts. Input records timestamps and paints before publishing a React view. `practice-run.ts` owns the primary clock and sealing; `practice-recording.ts` saves run summaries and bests.
+- `settings-dialog.tsx`, `release-dialog.tsx`, `results-card.tsx`, `practice-controls.tsx`: actual dialog, result and control markup. `practice-editors.tsx` and `custom-length.tsx` own the custom text, manual target and length forms. `practice-keyboard.tsx` and `finger-map.tsx` render keyboard feedback.
 - `async-runtime.ts`, `network.ts`, `network-race.ts`: scoped Effect execution, cancellable HTTP and decoded RPC contracts.
-- `profile-copy.ts`, `profile-types.ts`, `domain-history.ts`: raw storage codecs, current versus hydrated profile contracts, and historical-record guards.
+- `profile-copy.ts`, `profile-types.ts`, `domain-history.ts`: raw storage codecs, current versus hydrated profile contracts, and historical-record guards. `profile-sync.ts` owns the serial push queue, conditional writes, pulls and cache reconciliation.
 - `typing.ts`: the engine: passages, replay, metrics, correction rules, `conditionKey`, and the metric versions.
 - `corpus.ts`, `words.ts`: original quotes and drill words; the word lists.
 - `code-snippets.ts`: code mode's snippets.
@@ -50,7 +50,7 @@ In `src/`:
 - `learner.ts`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, the training focus, and the recommendation policies, the person's own miss cost and letting go of drilled targets (`letGo`, a sequential test on the evidence since a drill) among the named variants ([ADR 0013](adr/0013-learning-core.md), [ADR 0015](adr/0015-learner-2.md), [ADR 0019](adr/0019-learner-lets-go.md)).
 - `run-counts.ts`: runs started and finished.
 - `week-change.ts`: Progress's overview: the week against the week before, what moved it and the practice row, as one value. Train's `isFixed` decides "fixed" on both pages.
-- `progress-screen.tsx`, `progress-sections.tsx`, `progress-keys.tsx`, `progress-calendar.tsx`, `progress-filters.tsx`: Progress markup and interactions. `progress-view.ts` owns leased chart hosts.
+- `progress-screen.tsx`, `progress-sections.tsx`, `progress-keys.tsx`, `progress-calendar.tsx`, `progress-filters.tsx`: Progress markup and interactions. `progress-view.ts` owns leased chart hosts. `progress-practice.ts` projects calendar, streak, run-count, standard-score and composing figures.
 - `graph.ts`: the speed graph.
 - `replay-view.tsx`: watch replay.
 - `motion.ts`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
@@ -69,10 +69,10 @@ In `src/`:
 - `compose.ts`, `compose-view.tsx`, `compose-caret.ts`: composing practice.
 - `profile.ts`: profile defaults and `normalizeProfile`.
 - `account.ts`: auth, the profile row, `mergeSynced`, `HISTORY`. `account-session.ts` owns session identity and epoch; `account-view.tsx` owns authentication controls.
-- `online-race.js`, `multiplayer.ts`: Challenge's views, online races and their RPCs. `challenge-people.ts`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.tsx`: draws it, keeping rows that don't change and keyboard focus. `quick-match.ts`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.tsx`: the quick match control. `rank-card.tsx`: the rated result card, its colours and its wind. Presentational only. `race-review.tsx`: a finished race's graph and two-caret replay. `race-options.ts`: what a race is set up as, and its passage.
+- `online-race.ts`, `online-race-view.tsx`, `multiplayer.ts`: online race state, React controls and their RPCs. `local-race.tsx` owns the one-keyboard race; `daily-challenge.tsx` owns the daily passage controls. `challenge-people.ts`: the people list as one pure function of the race records and `now` (rows, their states, the order, each line's copy). `challenge-people-view.tsx`: draws it, keeping rows that don't change and keyboard focus. `quick-match.ts`: quick match's standard setup, rating maths, the rank ladder, the result card's model (`ratingResult`), pairing gap, trace check and queue states, shared with the e2e fake. `quick-match-view.tsx`: the quick match control. `rank-card.tsx`: the rated result card, its colours and its wind. Presentational only. `race-review.tsx`: a finished race's graph and two-caret replay. `race-options.ts`: what a race is set up as, and its passage.
 - `ghost-race.ts`: ghost challenges.
-- `inbox.js`, `race-result.ts`: the inbox, toast and race results.
-- `friends-board.js`: the friends board and sharing.
+- `inbox.ts`, `inbox-view.tsx`, `race-result.ts`: the scoped inbox controller, React inbox and toast, and race results.
+- `friends-board.ts`, `friends-board-view.tsx`: sharing state, scoped board requests and React board controls.
 - `egg.ts`: ↑↑↓↓←→←→ b a.
 - `styles.css`, `fonts/`: theme tokens, then layout; the self-hosted fonts.
 
