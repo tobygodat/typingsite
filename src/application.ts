@@ -1,3 +1,4 @@
+import { createGhostResult } from './ghost-result.js';
 import { createGhostOffer } from './ghost-offer.js';
 import { createNavigation } from './navigation.js';
 import { createTrainingMemory } from './training-memory.js';
@@ -33,6 +34,7 @@ export function createApplication() {
   const practice = createPracticeSession();
   const sync = createProfileSync(learning, accounts);
   const onlineRace = createOnlineRace();
+  const inbox = createInbox();
 
   return {
     accounts, learning, practice, sync,
@@ -45,7 +47,8 @@ export function createApplication() {
     practiceRun: createPracticeRun(practice, learning, sync),
     onlineRace,
     ghostOffer: createGhostOffer(accounts, onlineRace),
-    inbox: createInbox(),
+    inbox,
+    ghostResult: createGhostResult(accounts, practice, inbox),
     friendsBoard: createFriendsBoard(),
     deletion: createAccountDeletion(accounts),
     themeEditor: createThemeEditor(),

@@ -1,3 +1,4 @@
+import { GhostResult } from './ghost-result.js';
 import { GhostOffer } from './ghost-offer.js';
 import { useSyncExternalStore } from 'react';
 import { bindingLabel, ariaShortcuts } from './keybindings.js';
@@ -23,7 +24,7 @@ import { PracticeControls } from './practice-controls.js';
 import { TypingSurface } from './typing-surface.js';
 import { ResultsCard } from './results-card.js';
 
-export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation, ghostOffer }: Application) {
+export function App({ practice, learning, palette, settings, compose, quoteFilters, themeEditor, wallpaper, accounts, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, onlineRace, editors, lengthEditor, challenge, navigation, ghostOffer, ghostResult }: Application) {
   const view = useSyncExternalStore(navigation.view.subscribe, navigation.view.getSnapshot, navigation.view.getSnapshot);
   const shown = view.screen === 'results' ? 'practice' : view.screen;
   const restartLabel = bindingLabel(view.keys.restart);
@@ -122,13 +123,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
           <ResultsCard practice={practice} />
 
           <div id="result-more" className="result-more">
-            <article id="ghost-result" className="comparison-panel ghost-result" aria-labelledby="ghost-result-heading" hidden>
-              <h2 id="ghost-result-heading">Ghost race</h2>
-              <div id="ghost-result-rows" className="race-results"></div>
-              <p id="ghost-result-rule" className="ghost-result-rule"></p>
-              <p id="ghost-result-status"></p>
-              <button id="ghost-result-action" className="btn btn-secondary" type="button" hidden>Race again</button>
-            </article>
+            <GhostResult controller={ghostResult} />
             <GhostOffer controller={ghostOffer} />
           </div>
         </div>

@@ -8,7 +8,7 @@ import { createTrainingResults } from './training-results.js';
 import { createInputPresentation } from './input-presentation.js';
 import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
-import { copyParts, setParts, plain, element } from './native-copy.js';
+import { copyParts, setParts, plain } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -50,8 +50,8 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
-import { challengeConditions, challengeOutcome, challengePayload, challengeTextId, encodeTrace, finishChallenge, getChallenge,
-  ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, traceTrouble, validTrace } from './ghost-race.js';
+import { challengeConditions, challengePayload, challengeTextId, getChallenge,
+  ghostPoints, listChallenges, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
 import { missedCopy } from './train-path.js';
 import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
@@ -66,7 +66,7 @@ import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM
 
 
 
-export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer }) {
+export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer, ghostResult }) {
 startPageWork();
 const lifetime = createApplicationLifetime();
 const glides = createControlGlides(lifetime);
@@ -304,7 +304,7 @@ const renderTrain = trainingResults.render;
 
 
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
-let ghostRace = null;
+ghostResult.configure({ announce, repeat: () => resetSession('challenge', { focus: true }) });
 
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
 // A Race carries where it was clicked (raceContext); a later Race replaces it.
@@ -953,7 +953,7 @@ const drillLength = () => training.context?.drill?.duration
 
 // Daily and missed-word passages run to the end of their text, whatever the practice shape is.
 function sessionDurationMs(kind = practice.sessionKind) {
-  if (kind === 'challenge') return ghostRace?.duration ? ghostRace.duration * 1000 : null;
+  if (kind === 'challenge') return ghostResult.race?.duration ? ghostResult.race.duration * 1000 : null;
 
   if (['daily', 'lesson', 'missed', 'race'].includes(kind)) return null;
 
@@ -1032,8 +1032,8 @@ function configureSessionCopy() {
     missed: ['missed words', training.words?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
     daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
     lesson: ['lesson', `Lesson ${lessons.index + 1} · ${keysLabel(LESSONS[lessons.index].keys)}`, lessonCopy(lessons.index, passage)],
-    challenge: ghostRace?.own ? ['ghost race', 'Race your best run', 'The ghost is your own recording. Not counted toward your best.']
-      : ['ghost race', `Race ${ghostRace?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
+    challenge: ghostResult.race?.own ? ['ghost race', 'Race your best run', 'The ghost is your own recording. Not counted toward your best.']
+      : ['ghost race', `Race ${ghostResult.race?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
   }[practice.sessionKind];
 
   $('session-kicker').textContent = copy[0];
@@ -1079,7 +1079,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
   // a redraw for a synced profile doesn't count.
   if (!keepRace) sessionCount += 1;
 
-  if (kind === 'challenge' && !ghostRace) kind = 'practice';
+  if (kind === 'challenge' && !ghostResult.race) kind = 'practice';
 
   // Word practice whose words were cleared with history falls back to a normal test.
   if (kind === 'missed' && !training.words) kind = 'practice';
@@ -1146,7 +1146,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
     conditions: { ...sessionConditions(kind, runConditions), inputClass: activationInput },
   });
 
-  if (kind === 'challenge') practice.attempt.challengeId = ghostRace.id;
+  if (kind === 'challenge') practice.attempt.challengeId = ghostResult.race.id;
 
   if (kind === 'daily') {
     practice.attempt.challengeDate = passage.day;
@@ -1180,7 +1180,7 @@ function resetSession(kind = practice.sessionKind, { focus = false, selectedPass
   primaryFx.reset(primaryCharacters);
 
   // In a ghost race the ghost caret replays the friend's run; armPace leaves it to that.
-  if (kind === 'challenge') primaryFx.ghost.replay(ghostRace.points);
+  if (kind === 'challenge') primaryFx.ghost.replay(ghostResult.race.points);
   armPace();
   renderKeyboard();
 
@@ -1513,19 +1513,7 @@ function finishPrimary(forcedElapsed = null, { replacing = false, stop = null } 
     return;
   }
 
-  if (practice.sessionKind === 'challenge') {
-    // Touch and physical-keyboard runs are never compared, so only the sender's kind of input is sent.
-    const sameInput = inputOf(completed.conditions) === inputOf(ghostRace.conditions);
-    ghostRace.run = completed;
-    ghostRace.trace = valid && sameInput ? encodeTrace(completed) : null;
-    ghostRace.state = !valid ? 'interrupted' : !sameInput ? 'other-input' : ghostRace.own && ghostRace.trace ? 'own' : ghostRace.trace ? 'sending'
-      : traceTrouble(completed) === 'character' ? 'unreplayable' : 'unsendable';
-    renderGhostResult();
-
-    // Your own recording goes nowhere: the result is this replay.
-    if (ghostRace.trace && !ghostRace.own) submitGhostRun();
-    else announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
-  }
+  if (practice.sessionKind === 'challenge') ghostResult.finish(completed, valid);
 
   switchView('results');
   renderCard(completed);
@@ -1653,7 +1641,7 @@ function renderResults(completed, saved) {
   renderResultDrill(completed);
   renderDaily();
   const failure = completed.failed ? (completed.kind === 'drill' ? 'Drill' : 'Run') + ' failed, ' + completed.failed + '. ' : stopped ? plain(stopped) + '. ' : '';
-  $('ghost-result').hidden = completed.kind !== 'challenge';
+  ghostResult.show(completed.kind === 'challenge');
   renderGhostOffer(completed);
   announce([failure + speed + ', ' + replay.score.accuracy + '% accuracy.',
     repeated ? 'Repeated text, not counted toward your best.' : '',
@@ -2317,12 +2305,10 @@ const GHOST_CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbe
 const inputOf = (value = {}) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
 
 // A run that wasn't sent for these reasons can be raced again; a failed send is retried as is.
-const RACE_AGAIN = ['interrupted', 'unsendable', 'unreplayable', 'other-input', 'own'];
-const ghostInputLabel = (value) => inputOf(value) === 'touch' ? 'touch input' : 'a physical keyboard';
 
 // The sender's test conditions, so the same finish rule applies; the input class is this device's.
 function ghostConditions() {
-  const source = ghostRace.conditions || {};
+  const source = ghostResult.race.conditions || {};
 
   return { ...Object.fromEntries(GHOST_CONDITION_KEYS.flatMap((key) => (key in source ? [[key, source[key]]] : []))),
     inputClass: 'physical-keyboard' };
@@ -2331,9 +2317,9 @@ function ghostConditions() {
 // A quote or daily passage keeps its own text id, worked out from the text, so a quote raced here
 // can't later count as fresh. Word and timed text gets the id of exactly that text.
 function ghostPassage() {
-  const id = challengeTextId(ghostRace.passage, ghostRace.conditions);
+  const id = challengeTextId(ghostResult.race.passage, ghostResult.race.conditions);
 
-  return { id, text: ghostRace.passage, fresh: !learning.profile.seenTextIds.includes(id) };
+  return { id, text: ghostResult.race.passage, fresh: !learning.profile.seenTextIds.includes(id) };
 }
 
 // An open online room keeps the surface: a ghost race never starts over it.
@@ -2412,7 +2398,7 @@ async function startGhostRace(id) {
   if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
-  ghostRace = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
+  ghostResult.race = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
     points: ghostPoints(view.trace, view.passage.length), sender: view.sender, result: null, run: null, state: 'ready' };
   // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
   training.baseline = null;
@@ -2449,99 +2435,12 @@ function startOwnGhost() {
   if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
 
   if (race.attempt?.status === 'running') markRaceInterrupted();
-  ghostRace = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
+  ghostResult.race = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
     points: ghostPoints(best.trace, best.passage.length), sender: best.score, result: null, run: null, state: 'ready' };
   training.baseline = null;
   training.context = null;
   navigate('practice');
   resetSession('challenge', { focus: true });
-}
-
-function renderGhostResult() {
-  const ghost = ghostRace;
-  const panel = $('ghost-result');
-  panel.hidden = !ghost?.run;
-
-  if (!ghost?.run) return;
-  // Until the service replies, the result is the same replay of the same trace, done here.
-  const mine = ghost.result || (ghost.trace ? scoreTrace(ghost.trace, ghost.passage, { relaxed: ghost.run.conditions.correctionPolicy === 'relaxed' }) : null);
-  const match = { duration: ghost.duration, sender: ghost.sender, result: mine };
-  const leader = mine ? challengeOutcome(match) : null;
-  // Your own recording goes nowhere, so a run that can't be scored against it is not compared, never "not sent".
-  const kept = ghost.own ? 'compared' : 'sent';
-  $('ghost-result-heading').textContent = ghost.state === 'interrupted' ? (ghost.own ? 'Interrupted.' : 'Interrupted, so not sent.')
-    : ghost.state === 'other-input' ? `A different kind of input, so not ${kept}.`
-      : ghost.state === 'unreplayable' ? `A character a ghost race can’t replay, so not ${kept}.` : !mine ? (ghost.own ? 'Too long to replay.' : 'Too long to send.')
-        : leader === 'tie' ? 'A tie.' : `${leader === 'recipient' ? 'You' : ghost.name} ${leadVerb(match, leader)}.`;
-  const rows = [...(mine ? [{ name: 'You', score: mine }] : []), { name: ghost.name, score: ghost.sender }];
-
-  if (leader === 'sender') rows.reverse();
-  $('ghost-result-rows').replaceChildren(...rows.map(({ name, score }) => {
-    const row = element('article', '', 'race-result-row');
-    row.append(element('strong', name));
-
-    for (const value of [speedFigure(score.wpm), `${score.accuracy}% accuracy`, `${(score.elapsedMs / 1000).toFixed(1)} s`]) row.append(element('span', value, 'num'));
-
-    return row;
-  }));
-  $('ghost-result-rule').textContent = outcomeRule(ghost);
-  const retry = ghost.state === 'failed' && (!ghost.error?.status || ghost.error.status >= 500);
-  $('ghost-result-status').textContent = {
-    sending: `Sending your run to ${ghost.name}…`,
-    sent: `Sent to ${ghost.name}.`,
-    kept: 'Your first finish stands, so this run wasn’t sent.',
-    failed: `Not sent. ${ghost.error?.message || ''}`,
-    unsendable: 'Race again with fewer corrections.',
-    unreplayable: 'Race again without emoji.',
-    'other-input': `Race again on ${ghostInputLabel(ghost.conditions)} to ${ghost.own ? 'compare' : 'send a run'}.`,
-    own: 'The ghost was your own recording.',
-  }[ghost.state] || '';
-  const again = RACE_AGAIN.includes(ghost.state);
-  const action = $('ghost-result-action');
-  action.hidden = !(again || retry);
-  action.textContent = again ? 'Race again' : 'Send again';
-}
-
-async function submitGhostRun() {
-  const ghost = ghostRace;
-
-  if (!ghost?.trace || !accounts.session) return;
-  // The run this request finishes. The service records it either way, and its result reaches the inbox.
-  const { run, trace } = ghost;
-  ghost.state = 'sending';
-  renderGhostResult();
-  let view = null;
-  let failure = null;
-
-  try {
-    view = await finishChallenge(accounts.session, ghost.id, trace);
-    const id = `challenge:${ghost.id}`;
-    inbox?.notify({ id, kind: 'challenge-result', challengeId: ghost.id, closed: false, until: null, completedAt: view.completedAt, text: resultText(view) });
-    inbox?.deliver(id);
-  } catch (error) {
-    failure = error;
-  }
-
-  // The panel shows the reply only while the results on screen are still this run's: once a later run
-  // has finished (after Run again, a restart or another race), its result never gains this panel.
-  if (ghostRace !== ghost || ghost.run !== run || practice.shownResult !== run) return;
-
-  if (failure) {
-    ghost.state = 'failed';
-    ghost.error = failure;
-  } else {
-    // The service's stored result is the one that counts. A retry after a lost reply gets this run's
-    // back; a finish already sent from another try or device stands instead of this one.
-    const local = scoreTrace(trace, ghost.passage, { relaxed: run.conditions.correctionPolicy === 'relaxed' });
-    ghost.result = view.result;
-    ghost.sender = view.sender || ghost.sender;
-    ghost.state = sameScore(view.result, local) ? 'sent' : 'kept';
-  }
-
-  renderGhostResult();
-
-  // Spoken only on the results view: a run started meanwhile is not interrupted.
-  if (document.body.dataset.view === 'results') announce(`${$('ghost-result-heading').textContent} ${$('ghost-result-status').textContent}`);
 }
 
 const renderGhostOffer = ghostOffer.render;
@@ -2591,7 +2490,7 @@ function forgetTraining() {
   training.words = null;
   showResult(null);
   $('speed-graph').replaceChildren();
-  $('ghost-result').hidden = true;
+  ghostResult.show(false);
   renderGhostOffer(null);
   training.after = null;
 
@@ -3180,10 +3079,7 @@ function bindEvents() {
   };
 
 
-  $('ghost-result-action').addEventListener('click', () => {
-    if (ghostRace?.state === 'failed') submitGhostRun();
-    else if (RACE_AGAIN.includes(ghostRace?.state)) { ghostRace.run = null; resetSession('challenge', { focus: true }); }
-  }, { signal: lifetime.signal });
+
 
   // Focus goes back to the version in the same task that closes the panel. The close event comes a task
   // later, when focus may already be back in the passage, and would take it from the keys being typed.
@@ -4010,6 +3906,7 @@ return {
     detachWallpaper?.();
     wallpaper.dispose();
     themeEditor.dispose();
+    ghostResult.dispose();
     ghostOffer.dispose();
     accounts.dispose();
     sync.dispose();
