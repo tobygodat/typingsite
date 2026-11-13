@@ -35,7 +35,7 @@ export interface Attempt {
   id: string; eventVersion: string; metricVersion: string; kind: AttemptKind; text: string; textId: string | null;
   conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
   typed: string; startedAt: number | null; endedAt: number | null; interrupted: boolean; unsupportedInput: boolean;
-  summary?: Replay; fresh?: boolean; at?: string | null; stopped?: NonNullable<ReturnType<typeof minimumStop>>; failed?: string | null; lesson?: { id: string; index: number; pairs: number; words: number }; challengeId?: string; trainFocus?: string; dailyDate?: string; dailyFirst?: boolean;
+  summary?: Replay; fresh?: boolean; at?: string | null; stopped?: NonNullable<ReturnType<typeof minimumStop>>; failed?: string | null; lesson?: { id: string; index: number; pairs: number; words: number }; challengeId?: string | null; trainFocus?: string; dailyDate?: string; dailyFirst?: boolean;
   textVersion?: string; target?: string | null; minimums?: Minimums | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
 }
 
@@ -53,7 +53,7 @@ export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: number; v
 
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
 
-export interface PassageOptions { mode?: unknown; count?: unknown; duration?: unknown; punctuation?: unknown; numbers?: unknown; quoteLength?: unknown; difficulty?: unknown; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: unknown }
+export interface PassageOptions { mode?: unknown; count?: unknown; duration?: unknown; punctuation?: unknown; numbers?: unknown; quoteLength?: unknown; difficulty?: unknown; seenIds?: readonly unknown[]; allowRepeats?: boolean; random?: () => number; wordList?: unknown }
 
 interface PatternPair { pair: string; observations: number; errors: number; timings: number[] }
 

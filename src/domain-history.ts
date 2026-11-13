@@ -88,8 +88,8 @@ export function isAttempt(value: unknown): value is Attempt {
     && (value.startedAt === null || typeof value.startedAt === 'number') && (value.endedAt === null || typeof value.endedAt === 'number')
     && typeof value.interrupted === 'boolean' && typeof value.unsupportedInput === 'boolean' && optional(value, ['summary'], isReplay)
     && optional(value, ['fresh', 'dailyFirst', 'firstDailyAttempt', 'adaptive'], boolean)
-    && optional(value, ['at', 'failed', 'target', 'challengeDate'], nullableString)
-    && optional(value, ['challengeId', 'trainFocus', 'dailyDate', 'textVersion'], string) && optional(value, ['drillSeconds'], number)
+    && optional(value, ['at', 'failed', 'target', 'challengeDate', 'challengeId'], nullableString)
+    && optional(value, ['trainFocus', 'dailyDate', 'textVersion'], string) && optional(value, ['drillSeconds'], number)
     && optional(value, ['lesson'], (lesson) => isRecord(lesson) && typeof lesson.id === 'string' && typeof lesson.index === 'number' && typeof lesson.pairs === 'number' && typeof lesson.words === 'number')
     && runtimeMetadata(value);
 }

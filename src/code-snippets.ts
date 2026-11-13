@@ -1244,7 +1244,7 @@ function textId(text: string) {
   return (hash >>> 0).toString(36);
 }
 
-export function codePassage(language: unknown = DEFAULT_CODE_LANGUAGE, { seenIds = [], random = Math.random }: { seenIds?: string[]; random?: () => number } = {}) {
+export function codePassage(language: unknown = DEFAULT_CODE_LANGUAGE, { seenIds = [], random = Math.random }: { seenIds?: readonly unknown[]; random?: () => number } = {}) {
   const lang = typeof language === 'string' && CODE_LANGUAGES.includes(language) ? language : DEFAULT_CODE_LANGUAGE;
   const seen = new Set(seenIds);
 
