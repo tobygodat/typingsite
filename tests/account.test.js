@@ -741,11 +741,11 @@ const hangs = (path, init) => answerAfter(init);
 const expiredAt = (now) => ({ ...liveSession(), expires_at: Math.floor(now / 1000) - 120 });
 const liveAt = (now) => ({ ...liveSession(), expires_at: Math.floor(now / 1000) + 3600 });
 
-test('a deletion where every request hangs gives up 30 seconds after it began, not later', async (t) => {
-  // An expired token, so the refresh hangs first and nothing reaches the function.
+test('a deletion with a hung refresh gives up at the 15-second request deadline', async (t) => {
+  // The refresh has its own request limit inside the deletion's 30-second total deadline.
   const { outcome, calls, advance, unchanged } = await timedDeletion(t, hangs, expiredAt);
-  await advance(29999);
-  assert.equal(outcome.settled, false, 'still waiting before the deadline');
+  await advance(14999);
+  assert.equal(outcome.settled, false, 'still waiting before the request deadline');
   await advance(1);
   assert.equal(outcome.settled, true, 'settled at the deadline');
   assert.equal(outcome.error?.message, DELETE_COPY.offline);
