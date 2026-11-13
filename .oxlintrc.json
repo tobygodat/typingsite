@@ -56,7 +56,9 @@
       "files": ["src/run-copy.ts"],
       "rules": {
         // Run labels consume raw retained custom-order, minimum and speed fields at their presentation boundary.
-        "anti-slop/no-unknown-parameters": "off"
+        "anti-slop/no-unknown-parameters": "off",
+        // Custom-order labels preserve the original prototype-bearing lookup before display coercion.
+        "anti-slop/no-reflect-get": "off"
       }
     },
     {
