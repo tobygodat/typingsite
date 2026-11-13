@@ -1099,7 +1099,15 @@ export function conditionKey(conditions: Conditions | HistoricalRecord = {}) {
   return isDefaultLayout(conditions.layout) ? recipeKey : `${recipeKey}:layout-${conditions.layout}`;
 }
 
-export function comparable(before: Attempt | null | undefined, after: Attempt | null | undefined) {
+export interface ComparisonMetadata {
+  status?: unknown; kind?: unknown; conditions?: Conditions | HistoricalRecord;
+  metricVersion?: unknown; textId?: unknown; fresh?: unknown; interrupted?: unknown; stopped?: unknown;
+}
+
+export type ComparisonSource = ComparisonMetadata & { summary?: Partial<Pick<Replay, 'score'>> }
+  & (ReplaySource | { summary: Pick<Replay, 'score'> });
+
+export function comparable(before: ComparisonMetadata | null | undefined, after: ComparisonMetadata | null | undefined) {
   if (!before || !after) return false;
 
   return before.status === 'complete'
@@ -1122,13 +1130,13 @@ export function comparable(before: Attempt | null | undefined, after: Attempt | 
 
 export type AttemptComparison = { comparable: false; state: 'not-comparable'; reason: string } | { comparable: true; state: 'mixed' | 'improved' | 'regressed' | 'steady'; wpmDelta: number; accuracyDelta: number; before: Score; after: Score; reason: string };
 
-export function compareAttempts(before: Attempt, after: Attempt): AttemptComparison {
+export function compareAttempts(before: ComparisonSource | null | undefined, after: ComparisonSource | null | undefined): AttemptComparison {
   // A retest stopped under its baseline's minimums is stored as interrupted; say why it isn't compared.
   if (after?.stopped) return { comparable: false, state: 'not-comparable', reason: 'The retest fell under the baseline’s minimums, so no comparison is made.' };
 
-  if (!comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'Different conditions or repeated text, so no comparison is made.' };
-  const beforeScore = before.summary?.score || replayAttempt(before).score;
-  const afterScore = after.summary?.score || replayAttempt(after).score;
+  if (!before || !after || !comparable(before, after)) return { comparable: false, state: 'not-comparable', reason: 'Different conditions or repeated text, so no comparison is made.' };
+  const beforeScore = comparisonScore(before);
+  const afterScore = comparisonScore(after);
   const wpmDelta = afterScore.wpm - beforeScore.wpm;
   const accuracyDelta = afterScore.accuracy - beforeScore.accuracy;
   const directions = [Math.sign(wpmDelta), Math.sign(accuracyDelta)].filter(Boolean);
@@ -1157,6 +1165,13 @@ export function compareAttempts(before: Attempt, after: Attempt): AttemptCompari
           ? 'One attempt can vary. Your best is untouched.'
           : 'Held steady on fresh text.',
   };
+}
+
+function comparisonScore(attempt: ComparisonSource) {
+  if (attempt.summary?.score) return attempt.summary.score;
+
+  if ('text' in attempt) return replayAttempt(attempt).score;
+  throw new TypeError('A comparison needs a score or a replay source.');
 }
 
 // Secondary run-card stats, derived from the event log only. Presentational: they never feed

@@ -1,5 +1,6 @@
 import { lookup } from './domain-values.js';
 import { analysisRuns, analysisLoops, isScoredRun } from './domain-history.js';
+import type { PatternAttempt } from './domain-history.js';
 import type { AnalysisRun, ScoredRun, HistoricalRecord } from './profile-types.js';
 import { at as indexed, entry, isRecord } from './domain-values.js';
 
@@ -63,7 +64,7 @@ function keyCounts(replay: Replay) {
 }
 
 // A pair's or a letter's first tries in one run, { errors, observations }, or null when the run holds none.
-export function firstTriesAt(attempt: Attempt, target: string | null) {
+export function firstTriesAt(attempt: PatternAttempt, target: string | null) {
   if (/^[a-z]$/.test(target || '')) {
     const counts = keyCounts(attempt.summary || replayAttempt(attempt)).find(([key]) => key === target);
 

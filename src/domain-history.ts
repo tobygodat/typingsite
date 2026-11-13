@@ -1,5 +1,5 @@
 import { isRecord } from './domain-values.js';
-import type { Attempt, AttemptEvent, Conditions, Replay, Score } from './typing.js';
+import type { Attempt, AttemptEvent, Conditions, Replay, ReplaySource, ComparisonSource, Score } from './typing.js';
 import type { RunRecord, TrainingLoop, HistoricalRecord, AnalysisRun } from './profile-types.js';
 
 export function isScore(value: unknown): value is Score {
@@ -26,6 +26,18 @@ export function isAttemptEvent(value: unknown): value is AttemptEvent {
   if (value.type === 'delete') return value.count === undefined || typeof value.count === 'number';
 
   return value.type === 'focus-lost' || value.type === 'focus' || value.type === 'focus-returned' || value.type === 'composition' || value.type === 'submit';
+}
+
+export function isReplaySource(value: unknown): value is ReplaySource {
+  return isRecord(value) && typeof value.text === 'string'
+    && optional(value, ['startedAt', 'endedAt'], nullableNumber)
+    && optional(value, ['events'], (events) => Array.isArray(events) && events.every(isAttemptEvent));
+}
+
+export function isComparisonSource(value: unknown): value is ComparisonSource {
+  return isRecord(value) && optional(value, ['conditions'], isRecord)
+    && optional(value, ['summary'], (summary) => isRecord(summary) && optional(summary, ['score'], isScore))
+    && ((isRecord(value.summary) && isScore(value.summary.score)) || isReplaySource(value));
 }
 
 export function replaySource(value: unknown) {
