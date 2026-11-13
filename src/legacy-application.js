@@ -1,3 +1,4 @@
+import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
 import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
@@ -7,7 +8,7 @@ import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
 import { copyParts, setParts, plain, setText, element } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
-import { startPageWork, disposePageWork, pageLifetime } from './async-runtime.js';
+import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
 import { createInputController } from './input.js';
 import { NOTICES } from './input-notices.js';
@@ -125,7 +126,7 @@ const customOrderLabel = (order) => ({ shuffled: 'shuffled words', random: 'rand
 // No session means guest mode: default settings, and nothing leaves this tab.
 
 await accounts.replaceIdentity(accounts.session);
-const { loadProfile, saveProfile, storeLocally, commitPreferences, saveChoice, absorbCache, pushProfile, pullProfile, syncOnLoad } = sync;
+const { loadProfile, saveProfile, storeLocally, commitPreferences, saveChoice, absorbCache, pullProfile, syncOnLoad } = sync;
 sync.configure({ running: () => runInProgress(), showMerged, resetListedRuns() { progressState.allRuns = false; }, boardFor: (data) => boardFor(data),
   boardPushed() { friendsBoard?.pushed(); }, boardResume() { friendsBoard?.resume(); }, repairBoard, adoptProfile,
   legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences); }, clearCountsUnsaved() { runSession.markCountsSaved(); } });
@@ -362,6 +363,10 @@ const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes',
   ...TRAINING_PREFERENCES];
 
 const runInProgress = () => runActive || localRaceRunning();
+
+const { enterAccount, signOutAccount, followSessionElsewhere, finishFollow } = createAccountTransitions(
+  accounts, sync, onlineRace, inbox, friendsBoard, { running: runInProgress, reload: () => location.reload() });
+
 const attemptPrepared = () => Boolean(practice.attempt) && !['complete', 'interrupted'].includes(practice.attempt.status);
 
 // A practice passage nobody has started typing. Newer test conditions from elsewhere replace it, as a
@@ -3312,81 +3317,6 @@ async function repairBoardNow() {
 
 // Puts the account's profile in the device cache, then starts over as that user. A device copy kept
 // at sign-out (edits that hadn't synced) is merged with the row rather than replaced.
-async function enterAccount(newSession) {
-  await accounts.replaceIdentity(newSession);
-  account.clearSignedOut(newSession.user.id);
-
-  try {
-    const cloud = await account.fetchCloudProfile(newSession);
-    const cached = account.loadCachedProfile(newSession.user.id);
-
-    if (cloud?.data?.version === 2) {
-      account.cacheProfile(newSession.user.id, cached?.version === 2
-        ? account.mergeSynced(normalizeProfile(cached), normalizeProfile(cloud.data))
-        : cloud.data);
-    }
-  } catch {}
-
-  location.reload();
-}
-
-async function signOutAccount() {
-  closeAccountMenu();
-  const userId = accounts.session.user.id;
-  // What this ends is the account's sign-in on the device as it stands now. That may be newer than this
-  // tab's: a guest tab may have signed in to the account since, with no sign-out between. Every tab of the
-  // account then signs out, as tabs that share one sign-in do.
-  const stored = account.loadSession();
-
-  if (!sync.state.signedOutElsewhere && stored?.user.id === userId) accounts.session = stored;
-  const ending = accounts.session;
-
-  // Another tab signed out, or in as someone else, before this sign-out (this tab has followed:
-  // followSessionElsewhere), or signed out or in as anyone (the same account included) while it waits on
-  // the network: this sign-out stops here, and the tab starts again as the device now is. Whatever the
-  // device holds (another session included) stays.
-  // Checked again after every wait; account.signOut checks the stored session once more.
-  const overtaken = () => {
-    const now = account.loadSession();
-
-    if (!sync.state.signedOutElsewhere && (!now || account.sameSignIn(now, ending))) return false;
-
-    // Followed: after hearing the cache removed, for a sign-out elsewhere that sent everything (finishFollow).
-    if (sync.state.pendingSignOut === null) location.reload();
-
-    return true;
-  };
-
-  if (overtaken()) return;
-  await onlineRace?.leave();
-
-  if (overtaken()) return;
-  inbox?.forget();
-  friendsBoard?.signOut();
-  // Every tab signed in here shares the device cache, and another tab's latest save may not have reached
-  // the account yet (its push still waiting, or failing). So the cache is merged and pushed before it
-  // goes; the push reads the row and writes only what the row lacks. A second round covers a save that
-  // lands during the first. If the account can't be reached, or the cache changes again, the cache stays
-  // and goes up the next time this account signs in here.
-  let synced = false;
-
-  for (let round = 0; round < 2 && !synced; round += 1) {
-    absorbCache();
-    sync.state.unsynced = true;
-    synced = await pushProfile({ lifetime: pageLifetime() });
-
-    if (overtaken()) return;
-
-    // Unreachable (requests time out, see account.request) or refused: another round would only wait again.
-    if (!synced && $('account').dataset.sync !== 'syncing') break;
-  }
-
-  // The cache goes only if it still holds what the last push sent, checked as it is removed.
-  await account.signOut(accounts.session, { sentText: synced ? sync.state.sentText : null });
-  await accounts.replaceIdentity(null);
-  location.reload();
-}
-
 function closeAccountMenu() {
   $('account').open = false;
 }
@@ -3525,62 +3455,6 @@ function bindAccount() {
 // with no sign-out between (a guest tab signing in): the account and its cache are the same, and this tab
 // takes up the newer sign-in before its next request (account.freshSession) and as it signs out
 // (signOutAccount). Returns whether it followed.
-function followSessionElsewhere(event) {
-  const userId = accounts.session.user.id;
-  const current = account.loadSession()?.user.id;
-
-  const signedOut = event.key === null
-    || (event.key === account.signedOutKey(userId) && event.newValue !== null)
-    || (event.key === account.profileKey(userId) && event.newValue === null)
-    || (event.key === account.SESSION_KEY && (current ? current !== userId : account.signedOut(userId)));
-
-  if (!signedOut) return false;
-  sync.state.signedOutElsewhere = true;
-  void accounts.replaceIdentity(null);
-  // What this device knew of the account's board sharing goes with the sign-out, as in the tab that signed out.
-  friendsBoard?.signOut();
-  clearTimeout(sync.state.syncTimer);
-  sync.state.syncTimer = 0;
-  // A sign-out that sent everything removes the cache next: this tab waits to hear it (finishFollow).
-  const sent = event.key === account.signedOutKey(userId) ? sentStamp(event.newValue) : null;
-
-  if (sent !== null) sync.state.pendingSignOut = sent;
-  else if (!runInProgress()) location.reload();
-
-  return true;
-}
-
-function sentStamp(markerText) {
-  try {
-    const sent = JSON.parse(markerText)?.sent;
-
-    return typeof sent === 'string' ? sent : null;
-  } catch {
-    return null;
-  }
-}
-
-// The rest of following a sign-out that sent everything (pendingSignOut). The signing-out tab can't yet
-// see a save made here, or in another tab, just before it removed the cache: the removal names the copy
-// it removed (oldValue), and one that isn't the copy sent goes back for the next sign-in
-// (account.restoreUnsent), together with what this tab last saved, or took in holding all it saved
-// (cacheText; see absorbCache). Never this tab's memory: a run finished after hearing of the sign-out,
-// or still in progress, stays out. Only storage changes, so this happens mid-run too; the tab then starts
-// again as the device now is once no run is in progress. A cleared storage, or the marker removed
-// without the cache, finishes with nothing to put back.
-function finishFollow(event) {
-  const userId = accounts.session.user.id;
-  const cacheRemoved = event.key === account.profileKey(userId) && event.newValue === null;
-  const finished = cacheRemoved || event.key === null || (event.key === account.signedOutKey(userId) && event.newValue === null);
-
-  if (!finished) return;
-
-  if (cacheRemoved) account.restoreUnsent(userId, event.oldValue, sync.state.pendingSignOut, sync.state.cacheText);
-  sync.state.pendingSignOut = null;
-
-  if (!runInProgress()) location.reload();
-}
-
 // Finishes a Google or email-confirmation return; the page reloads as the signed-in user.
 async function completeAuthRedirect() {
   try {
