@@ -2422,7 +2422,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   updateGlides({ instant: true });
 
-  document.fonts?.ready.then(() => { if (!lifetime.signal.aborted) { primaryFx.relayout(); updateGlides({ instant: true }); } });
+  document.fonts?.ready.then(() => { if (!lifetime.signal.aborted) { measureTypingBaseline(); primaryFx.relayout(); updateGlides({ instant: true }); } });
 
   console.info('stilltype · ↑ ↑ ↓ ↓ ← → ← → b a');
 

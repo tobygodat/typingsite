@@ -88,7 +88,7 @@ export function entryReply(value: unknown): RaceEntry {
 
 export const ChallengeSchema = open({
   id: Schema.String, role: Schema.Literals(['sent', 'received']), name: Schema.String, status: Schema.Literals(['open', 'done', 'expired']),
-  conditions: ConditionsSchema, duration: Schema.NullOr(Schema.Number), sender: ChallengeScoreSchema, result: Schema.NullOr(ChallengeScoreSchema),
+  conditions: Schema.Unknown, duration: Schema.NullOr(Schema.Number), sender: ChallengeScoreSchema, result: Schema.NullOr(ChallengeScoreSchema),
   createdAt: Schema.String, expiresAt: Schema.String, completedAt: Schema.NullOr(Schema.String),
   passage: Schema.optional(Schema.String), trace: Schema.optional(TraceSchema),
 });

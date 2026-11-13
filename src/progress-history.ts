@@ -89,7 +89,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
   let progressWeek: ReturnType<typeof weekChange> | null = null;
   const focusShown = ports.focusShown;
 
-  const landProgressFocus = (options?: { scroll?: boolean }) => focusShown(progressState.detail ? $('progress-detail-heading')
+  const landProgressFocus = (options?: { scroll?: boolean }) => focusShown(learning.progress.navigation.view.getSnapshot().detail ? $('progress-detail-heading')
     : learning.profile.runs.some(practiceRun) || learning.profile.loops.length ? $('lead-figure') : $('progress-empty-title'), options);
 
   function renderKeys(runs: readonly unknown[]) { heatRuns = runs; learning.progress.keys.show(runs, coarsePointer.matches); }
