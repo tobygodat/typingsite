@@ -32,9 +32,9 @@ Stilltype is a static web app built with React, strict TypeScript and Effect. Vi
 
 In `src/`:
 
-- `main.tsx`, `application.ts`, `app.tsx`: stable owner construction, application mounting and the React screen tree.
+- `main.tsx`, `application.ts`, `app.tsx`: stable owner construction, application mounting and the React screen tree. `navigation.ts` owns the current screen and shortcut labels; native typing hosts remain mounted when a screen is hidden.
 - `store.ts`, `practice-session.ts`, `learning-store.ts`, `challenge-store.ts`: cached view subscriptions and long-lived session, profile and Challenge ownership.
-- `input.ts`, `typing-host.ts`, `passage-view.ts`, `typing-surface.tsx`: synchronous scored input, composition and passage hosts. Input records timestamps and paints before publishing a React view. `practice-run.ts` owns the primary clock and sealing; `practice-recording.ts` saves run summaries and bests.
+- `input.ts`, `typing-host.ts`, `passage-view.ts`, `typing-surface.tsx`: synchronous scored input, composition and passage hosts. Input records timestamps and paints before publishing a React view. `practice-run.ts` owns the primary clock and sealing; `practice-recording.ts` saves run summaries and bests. `input-presentation.ts` projects live scored text, timers and notices.
 - `settings-dialog.tsx`, `release-dialog.tsx`, `results-card.tsx`, `practice-controls.tsx`: actual dialog, result and control markup. `practice-editors.tsx` and `custom-length.tsx` own the custom text, manual target and length forms. `practice-keyboard.tsx` and `finger-map.tsx` render keyboard feedback.
 - `async-runtime.ts`, `network.ts`, `network-race.ts`: scoped Effect execution, cancellable HTTP and decoded RPC contracts.
 - `profile-copy.ts`, `profile-types.ts`, `domain-history.ts`: raw storage codecs, current versus hydrated profile contracts, and historical-record guards. `profile-sync.ts` owns the serial push queue, conditional writes, pulls and cache reconciliation.
@@ -46,6 +46,7 @@ In `src/`:
 - `quote-filters.tsx`: quote and book dropdowns.
 - `lessons.ts`: the beginner path.
 - `insights.ts`: run summaries (with their timed corrections), retention, patterns, filters, the counting rule's recurring targets, daily text.
+- `training-memory.ts`, `training-policy.ts`, `training-results.ts`: the retained historical baseline, drill/retest transitions and Train comparison projections.
 - `train-path.ts`: Train's path: the steps behind you, open and ahead from the recommendation and the saved loops, the rule for "fixed", and each step's evidence copy.
 - `learner.ts`: the learning core: evidence from run summaries, per-unit miss rates pulled toward the person's pooled rate, per-pair slowdowns pulled toward none, decay, ranking by time lost, the one naming rule, the training focus, and the recommendation policies, the person's own miss cost and letting go of drilled targets (`letGo`, a sequential test on the evidence since a drill) among the named variants ([ADR 0013](adr/0013-learning-core.md), [ADR 0015](adr/0015-learner-2.md), [ADR 0019](adr/0019-learner-lets-go.md)).
 - `run-counts.ts`: runs started and finished.
@@ -56,6 +57,7 @@ In `src/`:
 - `motion.ts`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
 - `tape.ts`: one-line tape geometry.
 - `word-highlight.ts`: word highlight.
+- `display-preferences.ts`, `control-glide.ts`: synchronous appearance application and geometry for explicit native control hosts.
 - `fonts.ts`: typing and app font choices. `prepaint.ts` applies an account's fonts before first paint.
 - `wallpaper.ts`, `wallpaper-image.ts`, `wallpaper-layer.ts`, `wallpaper-settings.tsx`: background-image state, scoped device codecs, native geometry/halo and React settings controls.
 - `units.ts`: wpm and cpm display.
