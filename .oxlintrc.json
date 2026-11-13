@@ -53,6 +53,14 @@
   },
   "overrides": [
     {
+      "files": ["src/recorded-text.ts"],
+      "rules": {
+        // Retained text fields are read lazily so malformed historical values keep their original return or error behavior.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off"
+      }
+    },
+    {
       "files": ["src/history-selection.ts"],
       "rules": {
         // Historical property and date readers preserve raw stored values until selection consumes them.

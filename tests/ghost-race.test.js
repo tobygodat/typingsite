@@ -303,3 +303,19 @@ test('retained condition copies keep every own JSON key for whitelist validation
   assert.equal(challengePayload({ ...completed, conditions }), null);
   assert.equal(JSON.stringify(conditions), original);
 });
+
+test('malformed retained quote text reaches the original unfinished result', () => {
+  const retained = { status: 'complete', kind: 'test', textId: 'quote-retained',
+    conditions: { mode: 'quote', quoteLength: 'medium', difficulty: 'any' },
+    startedAt: 0, endedAt: 1000, events: [{ type: 'insert', text: 'alpha beta', offsetMs: 0 }] };
+
+  for (const text of [123, {}, { length: '10' }]) {
+    const source = { ...retained, text };
+    const original = JSON.stringify(source);
+    assert.equal(challengePayload(source), null);
+    assert.equal(JSON.stringify(source), original);
+  }
+
+  const trace = { v: 1, k: 'alpha beta', t: Array(10).fill(0), e: 1000 };
+  assert.deepEqual(scoreTrace(trace, 123), { wpm: 0, accuracy: 0, elapsedMs: 1000, correct: 0, finished: false });
+});

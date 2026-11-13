@@ -1,3 +1,4 @@
+import { recordedField, recordedSlice } from './recorded-text.js';
 import type { HistoricalRecord } from './profile-types.js';
 import { isPatternAttempt } from './domain-history.js';
 import { at, isRecord } from './domain-values.js';
@@ -71,8 +72,8 @@ const MAX_PAIR_PAUSE_MS = 2000;
 // The standard word for speed: five characters, spaces and punctuation included.
 export const CHARS_PER_WORD = 5;
 
-export function metrics(target: string | readonly unknown[], typed: string, attempts: number, mistakes: number, elapsedMs: number) {
-  const correct = [...typed].reduce((sum, char, i) => sum + (char === target[i] ? 1 : 0), 0);
+export function metrics(target: unknown, typed: string, attempts: number, mistakes: number, elapsedMs: number) {
+  const correct = [...typed].reduce((sum, char, i) => sum + (char === (typeof target === 'string' ? target[i] : recordedField(target, String(i))) ? 1 : 0), 0);
 
   return {
     wpm: elapsedMs > 0 ? Math.round(correct / CHARS_PER_WORD / (elapsedMs / 60000)) : 0,
@@ -726,7 +727,7 @@ export type ReplaySource = Pick<Attempt, 'text'> & Partial<Pick<Attempt, 'events
 
 export type ReplayTarget = string | readonly unknown[];
 
-export type RetainedReplaySource = Omit<ReplaySource, 'text'> & { text: ReplayTarget };
+export type RetainedReplaySource = Omit<ReplaySource, 'text'> & { text: unknown };
 
 type RetainedFirstAttempt = Omit<FirstAttempt, 'expected'> & { expected: unknown };
 
@@ -768,8 +769,8 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
     for (const char of event.text) {
       const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : typed.length;
 
-      if (position >= attempt.text.length) break;
-      const expected = attempt.text[position];
+      if (position >= (typeof attempt.text === 'string' ? attempt.text.length : Number(recordedField(attempt.text, 'length')))) break;
+      const expected = typeof attempt.text === 'string' ? attempt.text[position] : recordedField(attempt.text, String(position));
       const correct = char === expected;
       insertions += 1;
 
@@ -782,7 +783,7 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
         if (correct && previousCorrect && previousCorrect.position === position - 1 && !interruptionSinceCorrect) {
           const durationMs = event.offsetMs - previousCorrect.offsetMs;
 
-          if (durationMs >= 0 && durationMs <= MAX_PAIR_PAUSE_MS) pairTimings.push({ pair: attempt.text.slice(position - 1, position + 1), durationMs, position });
+          if (durationMs >= 0 && durationMs <= MAX_PAIR_PAUSE_MS) pairTimings.push({ pair: recordedSlice(attempt.text, position - 1, position + 1), durationMs, position });
         }
       }
 

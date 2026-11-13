@@ -2,6 +2,7 @@
 // ghost caret replaying the sender's keystrokes. The compact trace below is what the race service
 // stores and scores (supabase/migrations/20261009100000_ghost_challenges.sql). The ghost is
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
+import { recordedField as rawField } from './recorded-text.js';
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { Schema } from 'effect';
 import { accountLifetime } from './async-runtime.js';
@@ -56,21 +57,6 @@ const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
 
 function isReplayTarget(value: unknown): value is ReplayTarget {
   return typeof value === 'string' || Array.isArray(value);
-}
-
-function rawField(value: unknown, key: string): unknown {
-  if (value === null || value === undefined) throw new TypeError('A recorded value is missing');
-
-  if (isRecord(value)) return value[key];
-
-  if (isReplayTarget(value)) {
-    if (key === 'length') return value.length;
-    const index = Number(key);
-
-    return String(index) === key ? value[index] : undefined;
-  }
-
-  return undefined;
 }
 
 function copyConditions(value: unknown): HistoricalRecord {
@@ -183,7 +169,7 @@ export function validTrace(trace: unknown): trace is CompactTrace {
 }
 
 // The trace as an attempt the shared replay can score: exactly what the service computes.
-export function traceAttempt<T extends ReplayTarget>(trace: CompactTrace, text: T) {
+export function traceAttempt<T>(trace: CompactTrace, text: T) {
   const events: AttemptEvent[] = [];
   let at = 0;
   let typed = 0;
@@ -200,22 +186,22 @@ export function traceAttempt<T extends ReplayTarget>(trace: CompactTrace, text: 
     // Where the key landed, as a recorded run keeps it: the speed graph reads it to tell hits from misses.
     events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs: at });
 
-    if (typed < text.length) typed += 1;
+    if (typed < Number(rawField(text, 'length'))) typed += 1;
   });
 
   return { text, events, startedAt: 0, endedAt: trace.e, conditions: {} };
 }
 
-export function scoreTrace(trace: CompactTrace, text: ReplayTarget, { relaxed = false } = {}) {
+export function scoreTrace(trace: CompactTrace, text: unknown, { relaxed = false } = {}) {
   const replay = replayAttempt(traceAttempt(trace, text));
-  const correct = [...replay.typed].filter((char, index) => char === text[index]).length;
+  const correct = [...replay.typed].filter((char, index) => char === rawField(text, String(index))).length;
 
   return {
     wpm: replay.score.wpm,
     accuracy: replay.score.accuracy,
     elapsedMs: replay.elapsedMs,
     correct,
-    finished: replay.typed.length === text.length && (relaxed || replay.typed === text),
+    finished: replay.typed.length === rawField(text, 'length') && (relaxed || replay.typed === text),
   };
 }
 
@@ -344,7 +330,6 @@ export function challengePayload(attempt: ChallengePayloadSource | null | undefi
 
   if (!conditions) return null;
 
-  if (!isReplayTarget(passage)) throw new TypeError('Recorded text is not replayable');
   const relaxed = rawField(attempt.conditions, 'correctionPolicy') === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
 
@@ -440,7 +425,7 @@ export function resultParts<T>(text: string, figure: (wpm: number) => T) {
   return match && [at(match, 1), figure(Number(at(match, 3))), `, ${at(match, 2)} `, figure(Number(at(match, 4))), '.'];
 }
 
-async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: ReplayTarget; duration: number | null; conditions: RaceConditions; trace: CompactTrace }, signal?: AbortSignal): Promise<unknown> {
+async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: unknown; duration: number | null; conditions: RaceConditions; trace: CompactTrace }, signal?: AbortSignal): Promise<unknown> {
   if (!session?.user?.id) throw new AuthError('Sign in to send or race a ghost challenge.');
   // A background poll may have rotated the refresh token; the newest stored session wins.
   const lifetime = accountLifetime();
