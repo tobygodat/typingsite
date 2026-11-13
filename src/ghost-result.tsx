@@ -84,7 +84,7 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
     const ghost = race;
     const session = accounts.session;
 
-    if (!ghost?.trace || !ghost.run || ghost.own || !session) return;
+    if (disposed || !ghost?.trace || !ghost.run || ghost.own || !session) return;
     const owner = accountLifetime();
     const { run, trace } = ghost;
     ghost.state = 'sending';
@@ -122,6 +122,8 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
   }
 
   function finish(completed: CompletedAttempt, valid: boolean) {
+    if (disposed) return;
+
     if (!race) throw new Error('A ghost finish requires its race');
     const sameInput = inputOf(completed.conditions) === inputOf(race.conditions);
     race.run = completed;
@@ -141,6 +143,8 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
     configure(next: GhostResultPorts) { ports = next; },
     show(visible: boolean) { publish({ visible }); },
     action() {
+      if (disposed) return;
+
       if (race?.state === 'failed') void submit();
       else if (race && RACE_AGAIN.includes(race.state)) { race.run = null; ports?.repeat(); }
     },

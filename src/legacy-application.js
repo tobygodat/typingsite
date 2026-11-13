@@ -1,3 +1,4 @@
+import { createGhostLaunch } from './ghost-launch.js';
 import { createProgressFigures } from './progress-figures.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
@@ -50,8 +51,8 @@ import { listenForSequence } from './egg.js';
 import * as account from './account.js';
 import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
-import { challengeConditions, challengePayload, challengeTextId, getChallenge,
-  ghostPoints, listChallenges, validTrace } from './ghost-race.js';
+import { challengePayload, challengeTextId,
+  listChallenges } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, paceShift, recommendFor } from './learner.js';
 import { missedCopy } from './train-path.js';
 import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, minutesByDay, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
@@ -306,10 +307,21 @@ const renderTrain = trainingResults.render;
 // The friend's recorded run being raced (sessionKind 'challenge'), and the run offered to friends.
 ghostResult.configure({ announce, repeat: () => resetSession('challenge', { focus: true }) });
 
+const ghostLaunch = createGhostLaunch(accounts, onlineRace, inbox, training, ghostResult, {
+  context: raceContext, running: () => runInProgress(), beforeStart() {
+    if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
+
+    if (race.attempt?.status === 'running') markRaceInterrupted();
+  }, reset: () => resetSession('challenge', { focus: true }), practice: () => navigate('practice'), notice: showAccountToast, ownBest: ownBestRun,
+});
+
+const startGhostRace = ghostLaunch.start;
+const startOwnGhost = ghostLaunch.own;
+
 // The Race still waiting for its challenge, and the offer's friend list still loading (see startGhostRace).
 // A Race carries where it was clicked (raceContext); a later Race replaces it.
 // The friend list belongs to the offer on screen: renderGhostOffer drops it when another run replaces it.
-let ghostRequest = null;
+
 
 
 // Counts the sessions set up on the practice surface, and everything typed anywhere (a passage or a form
@@ -318,7 +330,7 @@ let sessionCount = 0;
 let typedCount = 0;
 
 // A Race's error that lands beside a run the person went on typing waits for the run to end (see runChanged).
-let heldRaceError = '';
+
 // For each clear still in force here, the copies merged here that it removed history from, as they were
 // before it, so its Undo from any tab brings all of it back (account.mergeAndHold): { [marker]: [copy, …] }.
 // A list goes back only with its own clear's undo. In memory only.
@@ -599,9 +611,7 @@ function runChanged() {
 
   if (!runInProgress()) sounds.rest();
 
-  if (!heldRaceError || runInProgress()) return;
-  showAccountToast(heldRaceError);
-  heldRaceError = '';
+  ghostLaunch.runChanged();
 }
 
 // Changes from other tabs and devices held back while a run was in progress, taken in as soon as none
@@ -2323,13 +2333,6 @@ function ghostPassage() {
 }
 
 // An open online room keeps the surface: a ghost race never starts over it.
-function onlineRoomFirst() {
-  if (!onlineRace?.liveRoomId) return false;
-  showAccountToast('Leave your online race before starting a ghost race.');
-
-  return true;
-}
-
 // Where the person is, as a Race sees it: the view, the session set up on the practice surface and its run's
 // status, anything typed since (in the passage or any field), the custom editor, a local race player, an
 // online room open or on its way, and any dialog.
@@ -2342,71 +2345,6 @@ function raceContext() {
 // (ghostRequest), the finished run still on screen (submitGhostRun), the offered run (sendGhost) or the
 // friend list (friendsRequest). A late one changes nothing here; what the service did stands, and its
 // result still reaches the inbox.
-async function startGhostRace(id) {
-  if (onlineRoomFirst()) return;
-  heldRaceError = '';
-  const request = ghostRequest = { id, context: raceContext() };
-  let view = null;
-  let failure = null;
-
-  try { view = await getChallenge(accounts.session, id); } catch (error) { failure = error; }
-
-  // A later Race replaces this one.
-  if (ghostRequest !== request) return;
-  ghostRequest = null;
-  // The race opens only where it was asked for. Whatever the person has done since (another view, a new
-  // session, a run begun or ended, typing in the passage or a field, the custom editor, a local race, an
-  // online room, a dialog) stays theirs, and the race is offered instead; nor does it open while a room is
-  // on its way, which would open over it.
-  const here = raceContext() === request.context && !onlineRace?.pending;
-  let conditions;
-
-  try {
-    if (failure) throw failure;
-
-    if (view.role !== 'received' || view.status !== 'open' || typeof view.passage !== 'string' || !validTrace(view.trace)) {
-      throw new Error(view.status === 'done' ? 'You have already raced this run.'
-        : view.status === 'expired' ? 'This ghost race has expired.' : 'That ghost race is unavailable.');
-    }
-
-    // The conditions come from the sender's browser and are copied into this run, so they are never
-    // taken on trust: a run this app can't set up the same way would not be a fair race.
-    conditions = challengeConditions(view.conditions, view.duration ?? null);
-
-    if (!conditions) throw new Error('This ghost race was recorded with settings this app can’t reproduce, so it can’t be raced fairly.');
-  } catch (error) {
-    // Saying why changes nothing on screen. Said away from where Race was clicked, it names the race; beside
-    // a run the person went on typing, it waits for the run to end.
-    if (here) showAccountToast(error.message);
-    else {
-      const message = `${view?.name ? `${view.name}’s race` : 'The ghost race'} didn’t start. ${error.message}`;
-
-      if (runInProgress()) heldRaceError = message;
-      else showAccountToast(message);
-    }
-
-    return;
-  }
-
-  // The offer is the inbox toast, held until a run ends; taking it asks again from where the person is then.
-  if (!here) {
-    inbox?.offer(`challenge:${id}`, `${view.name}’s race is ready.`);
-
-    return;
-  }
-
-  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
-
-  if (race.attempt?.status === 'running') markRaceInterrupted();
-  ghostResult.race = { id, name: view.name, passage: view.passage, conditions, duration: view.duration ?? null,
-    points: ghostPoints(view.trace, view.passage.length), sender: view.sender, result: null, run: null, state: 'ready' };
-  // As with the daily: someone else's text ends any drill-and-retest cycle in progress.
-  training.baseline = null;
-  training.context = null;
-  inbox?.settle(`challenge:${id}`);
-  resetSession('challenge', { focus: true });
-}
-
 // When nobody is waiting for a quick match: the fastest recorded run of yours on its setup (30 seconds of the
 // 200 words, no punctuation or numbers, a physical keyboard) that this device still keeps the keystrokes of.
 // Only your own recording is ever used; other people's stay on their devices (ADR 0006).
@@ -2425,22 +2363,6 @@ function ownBestRun() {
   }
 
   return best;
-}
-
-function startOwnGhost() {
-  const best = ownBestRun();
-
-  if (!best || onlineRoomFirst()) return;
-
-  if (practice.attempt?.status === 'running') { markInterrupted(NOTICES.leftSurface); finishPrimary(null, { replacing: true }); }
-
-  if (race.attempt?.status === 'running') markRaceInterrupted();
-  ghostResult.race = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
-    points: ghostPoints(best.trace, best.passage.length), sender: best.score, result: null, run: null, state: 'ready' };
-  training.baseline = null;
-  training.context = null;
-  navigate('practice');
-  resetSession('challenge', { focus: true });
 }
 
 const renderGhostOffer = ghostOffer.render;
@@ -3906,6 +3828,7 @@ return {
     detachWallpaper?.();
     wallpaper.dispose();
     themeEditor.dispose();
+    ghostLaunch.dispose();
     ghostResult.dispose();
     ghostOffer.dispose();
     accounts.dispose();
