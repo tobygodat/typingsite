@@ -9,7 +9,7 @@ interface CalendarView { days: CalendarDay[]; months: string[]; weeks: number; c
 interface Figure { label: string; value: string; unit: string; note?: string }
 
 export function createProgressCalendar() {
-  return { view: createStore<CalendarView>({ days: [], months: [], weeks: 26, coarse: false, label: '', today: '' }), figures: createStore<Figure[]>([]) };
+  return { visible: createStore(false), view: createStore<CalendarView>({ days: [], months: [], weeks: 26, coarse: false, label: '', today: '' }), figures: createStore<Figure[]>([]) };
 }
 
 export type CalendarController = ReturnType<typeof createProgressCalendar>;
@@ -76,4 +76,10 @@ export function ProgressPracticeFigures({ controller }: { controller: CalendarCo
   const figures = useSyncExternalStore(controller.figures.subscribe, controller.figures.getSnapshot, controller.figures.getSnapshot);
 
   return <dl id="practice-stats" className="progress-stats practice-stats">{figures.map((figure) => <div key={figure.label} className="progress-figure"><dt>{figure.label}</dt><dd className="num figure-value"><span>{figure.value}</span> <span className="figure-unit">{figure.unit}</span></dd>{figure.note && <dd className="figure-note">{figure.note}</dd>}</div>)}</dl>;
+}
+
+export function PracticeProgress({ controller }: { controller: CalendarController }) {
+  const visible = useSyncExternalStore(controller.visible.subscribe, controller.visible.getSnapshot, controller.visible.getSnapshot);
+
+  return <div id="practice-goal" className="practice-goal" hidden={!visible}><div className="practice-layout"><ProgressCalendar controller={controller} /><ProgressPracticeFigures controller={controller} /></div><div id="practice-runs" className="practice-runs"></div></div>;
 }

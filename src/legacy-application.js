@@ -1,3 +1,4 @@
+import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
 import { copyParts, setParts, plain, setText, element } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
@@ -56,16 +57,14 @@ import { CHALLENGE_DAYS, challengeConditions, challengeOutcome, challengePayload
   ghostPoints, leadVerb, listChallenges, outcomeRule, resultText, sameScore, scoreTrace, sendChallenge, traceTrouble, validTrace } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, keyboardOf, paceShift, recommendFor } from './learner.js';
 import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
-import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, practiceLevel, practiceStreak, recordPracticeTime, MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, comparableKind, firstTriesAt, evidenceRun, filterRuns, missedAndSlowWords, periodDays, periodStats, periodWindow, practiceRun, practiceStats, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, standardInputClass, standardScore, trendRun, validRun } from './insights.js';
-import { monthLabels, renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
+import { CORRECTION_LABELS, conditionLabels, conditionParts, correctionLabel, dayKey, goalMinutes, minutesByDay, recordPracticeTime, comparableKind, firstTriesAt, evidenceRun, filterRuns, missedAndSlowWords, periodStats, periodWindow, practiceRun, shapeOf, testShapes, practiceTextConditions, practiceWordsPassage, recurringMissedWords, runDay, trendRun, validRun } from './insights.js';
+import { renderRunsPerDay, renderSpread, renderTrend, renderWeekChart } from './progress-view.js';
 import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange } from './week-change.js';
 import { formatSpeed, showSpeed, showSpeedUnit, signedNumber, speedFigure, speedValue, unitLabel, unitText, wpmFromSpeed } from './units.js';
-import { promptText } from './compose.js';
 import {
   LESSONS, LESSON_ACCURACY, fingerFor, keysLabel, lessonKeys, lessonOutcome, lessonPassage, lessonUnlocked, lessonsComplete,
   lessonsStarted, makeupCopy, makeupShort, nextLessonIndex, recordLessonRun,
 } from './lessons.js';
-import { runCountTotals } from './run-counts.js';
 import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 
@@ -2492,36 +2491,7 @@ const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 // Progress headline: the current standard recipe at one input class (standardInputClass decides), so
 // one touch run can't replace a keyboard score. The other class's best is named in the note.
-function renderStandardScore() {
-  const scoreFor = (inputClass) => {
-    const key = conditionKey({ ...standardConditions(inputClass), layout: inputLayout(inputClass) });
 
-    return standardScore(learning.profile.runs, key, learning.profile.bests[key]?.wpm ?? null);
-  };
-
-  const keyboard = scoreFor('physical-keyboard');
-  const touch = scoreFor('touch');
-  const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
-  const source = { ...standardConditions(sourceInput), layout: inputLayout(sourceInput) };
-  const score = onTouch ? touch : keyboard;
-  const other = onTouch ? keyboard : touch;
-  // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
-  // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
-  const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
-  const keptBest = standardScore(learning.profile.runs, conditionKey(source)).best;
-  const olderBest = score.total && score.best > keptBest ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
-  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
-
-  if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
-  else if (!score.total) note = 'No standard runs yet.';
-  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
-  // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
-  const empty = !score.total && score.best === null;
-  flushSync(() => learning.progress.standard.publish({ best: score.best, median: score.median,
-    medianLabel: score.settled ? 'median of last ' + plural(score.recent, 'run') : 'median', conditions: recipeSummary(source) + ' · ' + conditionTail(source), empty,
-    note: copyParts([note, other.best === null ? '' : [' Your ' + (onTouch ? 'physical keyboard' : 'touch') + ' best is ', speedFigure(other.best), '.']]) }));
-}
 
 // Static heatmap: coral steps by first-attempt miss rate; thin evidence stays neutral.
 // One tab stop: arrow keys move between keys as drawn, and focus or a click shows that key's numbers
@@ -2540,37 +2510,21 @@ function renderKeys(runs) { heatRuns = runs; learning.progress.keys.show(runs, c
 // The calendar is one tab stop: each day is a labelled cell, and the arrow keys move between them as drawn.
 // Goal-met days carry a dot as well as the green step, and the caption under the calendar repeats the
 // focused or hovered day's label for sighted users (it is aria-hidden; the cell's own label is announced).
-let goalDay = '';
+
 
 // The day the Progress page was last drawn for (renderHistory).
 let historyDay = '';
 
 const narrowColumn = window.matchMedia('(max-width: 760px)');
-const calendarWeeks = () => (narrowColumn.matches ? 17 : 26);
 
-function renderGoal(date = new Date()) {
-  goalDay = dayKey(date);
-  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
-  const coarse = matchMedia('(any-pointer: coarse)').matches;
-  $('practice-goal').hidden = Object.keys(byDay).length === 0;
-  const goal = learning.preferences.dailyGoal;
-  const weeks = calendarWeeks();
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
-  const days = [];
+const practiceProgress = createPracticeProgress(learning, { inputLayout, recipeSummary, conditionTail, dateCopy,
+  calendarWeeks: () => narrowColumn.matches ? 17 : 26, coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
 
-  for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
-    const minutes = byDay[dayKey(day)] || 0;
-    const met = goal > 0 && minutes >= goal;
-    days.push({ day: dayKey(day), level: String(practiceLevel(minutes, goal)), met,
-      label: day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ': ' + goalMinutes(minutes) + ' min' + (met ? ', goal met' : ''),
-      caption: [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), goalMinutes(minutes) + ' min', met && 'goal met'].filter(Boolean).join(' · ') });
-  }
+const renderStandardScore = practiceProgress.standard;
+const renderGoal = practiceProgress.goal;
+const renderComposeHistory = practiceProgress.composing;
 
-  const practised = days.filter((day) => day.level !== '0').length;
-  flushSync(() => learning.progress.calendar.view.publish({ days, months: monthLabels(days.map((day) => day.day)), weeks, coarse, today: goalDay,
-    label: 'Practice minutes per day, last ' + weeks + ' weeks: ' + plural(practised, 'day') + ' with practice. Arrow keys move between days.' }));
-  renderPracticeStats(progressState.period, date);
-}
+
 
 // Progress filters and view. Plain state, kept for the session: a guest writes nothing to storage.
 const progressState = { period: '30', key: '', view: 'speed', allRuns: false, detail: '', moversOpen: false };
@@ -2606,7 +2560,7 @@ let progressWindow = null;
 
 // The overview's week (weekChange), kept so a unit change can redraw the lead without closing anything.
 let progressWeek = null;
-let practicePerDay = [];
+
 
 const shapeLabel = (shape) => {
   if (shape.mode === 'words') return { text: `${shape.size} words` };
@@ -2924,29 +2878,7 @@ function renderLoops(loops) {
 
 // Practice over the period, whatever the test: days practised, the longest and current streaks (days meeting
 // the goal, or with any practice when it's off) and minutes typed, from the same minutes the calendar draws.
-function renderPracticeStats(period, date = new Date()) {
-  const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
-  const first = Object.keys(byDay).sort()[0] || null;
-  const days = periodDays(period, date, first);
-  const goal = learning.preferences.dailyGoal;
-  const stats = practiceStats(byDay, learning.profile.runs, days, goal);
-  practicePerDay = stats.runsPerDay;
-  const runs = stats.runsPerDay.reduce((sum, d) => sum + d.runs, 0);
-  const current = practiceStreak(byDay, goal, date);
 
-  const figure = (label, value, unit, note) => ({ label, value, unit, note });
-
-  const daysWord = (n) => (n === 1 ? 'day' : 'days');
-  const runDays = stats.runsPerDay.filter((d) => d.runs).length;
-  const counted = runCountTotals(learning.profile.runCounts, { from: period === 'all' ? null : days[0], to: days.at(-1) });
-  flushSync(() => learning.progress.calendar.figures.publish([
-    figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${plural(Number((runs / runDays).toFixed(1)), 'run')} a day when you practise` : 'no runs in this period'),
-    figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
-    figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
-    figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
-    figure('Runs started', String(counted.started), `${counted.finished} finished`),
-  ]));
-}
 
 // Everything the overview doesn't show sits one step away in a detail view, each with a way back. The conditions
 // and the period move into a view that reads them, and back to the overview after.
@@ -3003,7 +2935,7 @@ function drawProgressView() {
     'progress-trend': () => renderTrend($('progress-trend'), progressRuns, openHistoryRun, 'wpm', { period: progressWindow }),
     'accuracy-trend': () => renderTrend($('accuracy-trend'), progressRuns, openHistoryRun, 'accuracy', { period: progressWindow }),
     'progress-spread': () => renderSpread($('progress-spread'), progressRuns),
-    'practice-runs': () => renderRunsPerDay($('practice-runs'), practicePerDay),
+    'practice-runs': () => renderRunsPerDay($('practice-runs'), practiceProgress.runsPerDay),
   };
 
   const shown = { 'week-speed': overview, 'week-accuracy': overview, 'progress-trend': view === 'speed', 'accuracy-trend': view === 'accuracy',
@@ -3063,20 +2995,7 @@ function hasAnyHistory() {
 }
 
 // Composing numbers get their own list: no chart, no trend, no best, nothing shared with copy tests.
-function renderComposeHistory() {
-  const list = learning.profile.compositions;
-  $('compose-history').hidden = !list.length;
-  const shown = [...list].reverse().slice(0, 10);
 
-  const rows = shown.map((item) => {
-    const prompt = promptText(item.promptId);
-
-    return { id: item.id, wpm: item.wpm, backspaceRate: item.backspaceRate, prompt: prompt ? '“' + prompt + '”' : 'A prompt no longer offered',
-      detail: dateCopy(item.at) + ' · ' + item.characters + ' characters · ' + item.backspaces + ' ' + (item.backspaces === 1 ? 'backspace' : 'backspaces') + ' in ' + item.keystrokes + ' keystrokes · ' + (item.activeMs / 1000).toFixed(1) + ' s active of ' + (item.elapsedMs / 1000).toFixed(1) + ' s · ' + (item.inputClass === 'touch' ? 'touch input' : 'physical keyboard') };
-  });
-
-  flushSync(() => learning.progress.composing.publish({ rows, note: list.length > shown.length ? 'newest ' + shown.length + ' of ' + list.length : '' }));
-}
 
 // Everyone types the daily passage under the same rules, whatever their practice settings.
 
@@ -5266,7 +5185,7 @@ const refreshGoalDay = () => {
   const today = dayKey(new Date());
 
   if (document.body.dataset.view === 'progress' && today !== historyDay) renderHistory();
-  else if (today !== goalDay) renderGoal();
+  else if (today !== practiceProgress.day) renderGoal();
 };
 
 setInterval(() => {
