@@ -77,6 +77,7 @@ export function createGhostOffer(accounts: AccountSession, onlineRace: OnlineRac
   }
 
   async function send(focusName: () => void) {
+    if (disposed) return;
     const payload = challengePayload(offerRun);
     const current = view.getSnapshot();
     const friend = friends.find((value) => value.id === current.selected);
@@ -125,13 +126,14 @@ export function createGhostOffer(accounts: AccountSession, onlineRace: OnlineRac
   return {
     view, render, send,
     toggle(open: boolean) {
+      if (disposed) return;
       publish({ open });
 
       if (open && accounts.session) void loadFriends();
     },
     name(name: string) { publish({ name }); },
     select(selected: string) { publish({ selected }); },
-    addFriend() { onlineRace.openAdd(); },
+    addFriend() { if (!disposed) onlineRace.openAdd(); },
     dispose() { disposed = true; friendsRequest = null; },
   };
 }
