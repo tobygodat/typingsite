@@ -1027,7 +1027,7 @@ function leanSeed(lean: WeightedUnit[]) {
 
 // A drill on one target, or a general drill. A general drill given `lean` ([{ unit, weight }], the units the
 // learner ranks highest) draws half its words from words holding them, by weight, and the rest from the list.
-export function makeDrill(target: string | null = null, list = DEFAULT_WORD_LIST, lean: WeightedUnit[] = []) {
+export function makeDrill(target: string | null = null, list: unknown = DEFAULT_WORD_LIST, lean: WeightedUnit[] = []) {
   const safeTarget = normalizeManualTarget(target);
   const bank = wordList(list);
   const corpusWords = drillVocabulary(bank);
