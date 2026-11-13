@@ -894,7 +894,7 @@ function median(values: number[]) {
   return Math.round(sorted.length % 2 ? at(sorted, middle) : (at(sorted, middle - 1) + at(sorted, middle)) / 2);
 }
 
-export function summarizePatterns(attempts: readonly unknown[], limit = 20, compatibleConditions: Conditions | null = null) {
+export function summarizePatterns(attempts: readonly unknown[], limit = 20, compatibleConditions: Conditions | HistoricalRecord | null = null) {
   const key = compatibleConditions ? conditionKey(compatibleConditions) : null;
 
   const recent = attempts.filter(isPatternAttempt).filter((attempt) => attempt.status === 'complete'
@@ -957,7 +957,7 @@ function errorCount({ errors, observations }: { errors: number; observations: nu
   return `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${observations} ${observations === 1 ? 'try' : 'tries'}`;
 }
 
-export function recommendTarget(attempts: readonly unknown[], compatibleConditions: Conditions | null = null) {
+export function recommendTarget(attempts: readonly unknown[], compatibleConditions: Conditions | HistoricalRecord | null = null) {
   const evidence = summarizePatterns(attempts, 20, compatibleConditions);
   const errorCandidates = evidence.pairs.filter((pair) => pair.observations >= 10 && pair.errors > 0).sort((a, b) => b.errorRate - a.errorRate || b.observations - a.observations || a.pair.localeCompare(b.pair));
   const timingCandidates = evidence.pairs.filter((pair) => pair.timings.length >= 10 && (pair.slowdownMs ?? 0) > 0).sort((a, b) => (b.slowdownMs ?? 0) - (a.slowdownMs ?? 0) || b.timings.length - a.timings.length || a.pair.localeCompare(b.pair));

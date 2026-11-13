@@ -583,7 +583,7 @@ export function standardInputClass(keyboard: ReturnType<typeof standardScore>, t
   return touch.settled && touch.total > keyboard.total ? 'touch' : 'physical-keyboard';
 }
 
-export function recurringTargets(inputRuns: readonly unknown[], inputLoops: readonly unknown[], compatibleConditions: Conditions) {
+export function recurringTargets(inputRuns: readonly unknown[], inputLoops: readonly unknown[], compatibleConditions?: Conditions | HistoricalRecord) {
   const runs = analysisRuns(inputRuns);
   const loops = analysisLoops(inputLoops);
   const key = conditionKey(compatibleConditions);

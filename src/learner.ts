@@ -575,7 +575,7 @@ export function learnerRecommendation(model: LearnerModel): Recommendation {
 // The baseline policy, the counting rule this replaced: the recurring pair with the highest first-try error
 // rate across recent matching runs (10 tries, errors or slowness in two runs), else the newest traces' target,
 // else a general drill.
-export function countingRecommendation(runs: readonly unknown[], loops: readonly unknown[], traces: readonly unknown[], source: Conditions): Recommendation {
+export function countingRecommendation(runs: readonly unknown[], loops: readonly unknown[], traces: readonly unknown[], source?: Conditions | HistoricalRecord): Recommendation {
   const recommendation = recommendTarget(traces, source);
   const recurring = recurringTargets(runs, loops, source)[0];
 
@@ -596,7 +596,7 @@ export function countingRecommendation(runs: readonly unknown[], loops: readonly
 }
 
 // A recurring pair's counts, as the counting rule shows them and the comparison reads them back.
-export function countingEvidence(runs: readonly unknown[], loops: readonly unknown[], pair: string, source: Conditions) {
+export function countingEvidence(runs: readonly unknown[], loops: readonly unknown[], pair: string, source?: Conditions | HistoricalRecord) {
   const recurring = recurringTargets(runs, loops, source).find((item) => item.pair === pair);
 
   return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
@@ -605,7 +605,7 @@ export function countingEvidence(runs: readonly unknown[], loops: readonly unkno
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
 // keyboard `source` is typed on, and the let-go variants its drilled targets there; the counting rule reads only runs
 // at its exact conditions.
-export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: readonly unknown[]; loops?: readonly unknown[]; traces: readonly unknown[]; source: Conditions; now: number; focus?: string }) {
+export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: readonly unknown[]; loops?: readonly unknown[]; traces: readonly unknown[]; source?: Conditions | HistoricalRecord; now: number; focus?: string }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
   const keyboard = keyboardOf(source);
