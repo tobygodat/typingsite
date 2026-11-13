@@ -7,7 +7,7 @@ import { Schema } from 'effect';
 import { accountLifetime } from './async-runtime.js';
 import { decodeReply, errorDetails } from './network.js';
 import type { Session } from './network.js';
-import type { Attempt, AttemptEvent, Conditions } from './typing.js';
+import type { AttemptEvent, ReplayTarget } from './typing.js';
 import { TraceSchema, ChallengeSchema, ConditionsSchema } from './network-race.js';
 import type { CompactTrace, ChallengeScore, GhostChallenge, RaceConditions } from './network-race.js';
 import { at, isRecord } from './domain-values.js';
@@ -20,18 +20,15 @@ import { wordListIds } from './words.js';
 import { comparableKind } from './insights.js';
 
 export interface TraceSource {
-  text?: Attempt['text'] | null; events?: unknown; startedAt?: unknown; endedAt?: unknown; interrupted?: unknown; unsupportedInput?: unknown;
+  text?: unknown; events?: unknown; startedAt?: unknown; endedAt?: unknown; interrupted?: unknown; unsupportedInput?: unknown;
 }
 
 export interface ChallengePayloadSource extends TraceSource {
-  status?: unknown; kind?: unknown; conditions?: Conditions | HistoricalRecord; textId?: unknown;
+  status?: unknown; kind?: unknown; conditions?: unknown; textId?: unknown;
 }
 
 export function isChallengePayloadSource(value: unknown): value is ChallengePayloadSource {
-  if (!isRecord(value)) return false;
-
-  return (value.text == null || typeof value.text === 'string')
-    && (value.conditions === undefined || isRecord(value.conditions));
+  return isRecord(value);
 }
 
 const TRACE_VERSION = 1;
@@ -52,10 +49,39 @@ const CHARS_PER_SECOND = 400 * 5 / 60;
 
 // A character outside printable ASCII never matches a challenge passage, so it is sent as an ASCII
 // stand-in that differs from the letter expected there: the replay keeps the same length and errors.
-export const standIn = (expected: string | undefined) => (expected === '~' ? '^' : '~');
+export const standIn = (expected: unknown) => (expected === '~' ? '^' : '~');
 
 // An emoji or other astral character fills two places in the replay, which one key can't stand for.
 const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
+
+function isReplayTarget(value: unknown): value is ReplayTarget {
+  return typeof value === 'string' || Array.isArray(value);
+}
+
+function rawField(value: unknown, key: string): unknown {
+  if (value === null || value === undefined) throw new TypeError('A recorded value is missing');
+
+  if (isRecord(value)) return value[key];
+
+  if (isReplayTarget(value)) {
+    if (key === 'length') return value.length;
+    const index = Number(key);
+
+    return String(index) === key ? value[index] : undefined;
+  }
+
+  return undefined;
+}
+
+function copyConditions(value: unknown): HistoricalRecord {
+  const copy: HistoricalRecord = {};
+
+  if (isRecord(value) || isReplayTarget(value)) {
+    for (const key of Object.keys(value)) copy[key] = rawField(value, key);
+  }
+
+  return copy;
+}
 
 function traceEvents(value: unknown): Iterable<unknown> {
   if (!value) return [];
@@ -115,11 +141,11 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
       if (event.type === 'delete') typed = Math.max(0, typed - 1);
       else {
         if (!/^[ -~]$/.test(char)) {
-          if (char === text[typed]) return null;
-          key = standIn(text[typed]);
+          if (char === rawField(text, String(typed))) return null;
+          key = standIn(rawField(text, String(typed)));
         }
 
-        if (typed < text.length) typed += 1;
+        if (typed < Number(rawField(text, 'length'))) typed += 1;
       }
 
       keys += key;
@@ -161,7 +187,7 @@ export function validTrace(trace: unknown): trace is CompactTrace {
 }
 
 // The trace as an attempt the shared replay can score: exactly what the service computes.
-export function traceAttempt(trace: CompactTrace, text: string) {
+export function traceAttempt<T extends ReplayTarget>(trace: CompactTrace, text: T) {
   const events: AttemptEvent[] = [];
   let at = 0;
   let typed = 0;
@@ -184,7 +210,7 @@ export function traceAttempt(trace: CompactTrace, text: string) {
   return { text, events, startedAt: 0, endedAt: trace.e, conditions: {} };
 }
 
-export function scoreTrace(trace: CompactTrace, text: string, { relaxed = false } = {}) {
+export function scoreTrace(trace: CompactTrace, text: ReplayTarget, { relaxed = false } = {}) {
   const replay = replayAttempt(traceAttempt(trace, text));
   const correct = [...replay.typed].filter((char, index) => char === text[index]).length;
 
@@ -213,7 +239,12 @@ export function ghostPoints(trace: CompactTrace, textLength: number) {
   return points;
 }
 
-const challengeDuration = (conditions: Conditions | HistoricalRecord = {}) => conditions.mode === 'time' && typeof conditions.duration === 'number' && TIMED.includes(conditions.duration || 0) ? conditions.duration : null;
+const challengeDuration = (conditions: unknown = {}) => {
+  if (rawField(conditions, 'mode') !== 'time') return null;
+  const duration = rawField(conditions, 'duration');
+
+  return typeof duration === 'number' && TIMED.includes(duration || 0) ? duration : null;
+};
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
 // service refuses any other (supabase/migrations/20261009100000_ghost_challenges.sql); a received row is
@@ -258,7 +289,7 @@ export function challengeConditions(conditions: unknown, duration: number | null
   return decodeReply(ConditionsSchema, conditions);
 }
 
-function furthestTyped(attempt: TraceSource, text: string) {
+function furthestTyped(attempt: TraceSource, text: unknown) {
   let typed = 0;
   let furthest = 0;
 
@@ -268,7 +299,7 @@ function furthestTyped(attempt: TraceSource, text: string) {
     if (!event) continue;
 
     if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, Number(event.count || 1)));
-    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(text.length, insertedLength(typed, event.text));
+    else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(Number(rawField(text, 'length')), insertedLength(typed, event.text));
     furthest = Math.max(furthest, typed);
   }
 
@@ -283,8 +314,9 @@ export function challengeText(attempt: ChallengePayloadSource) {
   if (!duration) return attempt.text;
   const text = attempt.text;
 
-  if (typeof text !== 'string') throw new TypeError('A timed challenge needs its recorded text');
   const limit = Math.max(furthestTyped(attempt, text), Math.min(Math.ceil(duration * CHARS_PER_SECOND), MAX_CHALLENGE_TEXT - 50));
+
+  if (!isReplayTarget(text)) throw new TypeError('Recorded text has no indexOf method');
   const end = text.indexOf(' ', limit);
 
   return end < 0 ? text : text.slice(0, end);
@@ -300,12 +332,12 @@ export function challengePayload(attempt: ChallengePayloadSource | null | undefi
   if (!trace) return null;
   const passage = challengeText(attempt);
 
-  if (typeof passage !== 'string') throw new TypeError('A challenge needs its recorded text');
+  const length = rawField(passage, 'length');
 
-  if (passage.length < 10 || passage.length > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(passage)) return null;
+  if (Number(length) < 10 || Number(length) > MAX_CHALLENGE_TEXT || !/^[ -~]+$/.test(String(passage))) return null;
   const duration = challengeDuration(attempt.conditions);
   // Only conditions the service accepts and a friend's app can set up again.
-  const source = { ...attempt.conditions, textId: attempt.textId, sourceKind: attempt.kind };
+  const source = { ...copyConditions(attempt.conditions), textId: attempt.textId, sourceKind: attempt.kind };
 
   if ('strictSpace' in source && source.strictSpace === false) delete source.strictSpace;
 
@@ -315,7 +347,9 @@ export function challengePayload(attempt: ChallengePayloadSource | null | undefi
   const conditions = challengeConditions(source, duration);
 
   if (!conditions) return null;
-  const relaxed = attempt.conditions?.correctionPolicy === 'relaxed';
+
+  if (!isReplayTarget(passage)) throw new TypeError('Recorded text is not replayable');
+  const relaxed = rawField(attempt.conditions, 'correctionPolicy') === 'relaxed';
   const score = scoreTrace(trace, passage, { relaxed });
 
   if (!duration && !score.finished) return null;
@@ -410,7 +444,7 @@ export function resultParts<T>(text: string, figure: (wpm: number) => T) {
   return match && [at(match, 1), figure(Number(at(match, 3))), `, ${at(match, 2)} `, figure(Number(at(match, 4))), '.'];
 }
 
-async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: string; duration: number | null; conditions: RaceConditions; trace: CompactTrace }, signal?: AbortSignal): Promise<unknown> {
+async function call(session: Session | null, action: string, id: string | null = null, data?: { trace: CompactTrace } | { requestId: string; friendId: string; displayName: string; passage: ReplayTarget; duration: number | null; conditions: RaceConditions; trace: CompactTrace }, signal?: AbortSignal): Promise<unknown> {
   if (!session?.user?.id) throw new AuthError('Sign in to send or race a ghost challenge.');
   // A background poll may have rotated the refresh token; the newest stored session wins.
   const lifetime = accountLifetime();

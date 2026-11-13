@@ -28,7 +28,7 @@ function nameTag(caret: Element | null, name: string) {
   if (tag.firstElementChild) tag.firstElementChild.textContent = name;
 }
 
-interface RaceReviewData { text: string; name: string; attempts: [ReturnType<typeof traceAttempt>, ReturnType<typeof traceAttempt>]; points: ReturnType<typeof ghostPoints>; length: number; cursors: ReturnType<typeof replayCursor>[] }
+interface RaceReviewData { text: string; name: string; attempts: [ReturnType<typeof traceAttempt<string>>, ReturnType<typeof traceAttempt<string>>]; points: ReturnType<typeof ghostPoints>; length: number; cursors: ReturnType<typeof replayCursor>[] }
 
 interface ReviewHost { graph: HTMLDivElement; display: HTMLDivElement; wrap: HTMLDivElement }
 

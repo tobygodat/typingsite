@@ -90,6 +90,8 @@ export function createGhostLaunch(accounts: AccountSession, online: OnlineRaceCo
 
     if (!best || onlineRoomFirst()) return;
     ports.beforeStart();
+
+    if (typeof best.passage !== 'string') throw new TypeError('A native ghost race requires recorded text');
     result.race = { id: null, own: true, name: 'Your best run', passage: best.passage, conditions: best.conditions, duration: best.duration,
       points: ghostPoints(best.trace, best.passage.length), sender: best.score, result: null, run: null, state: 'ready' };
     training.baseline = null;

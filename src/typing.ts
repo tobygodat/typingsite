@@ -71,7 +71,7 @@ const MAX_PAIR_PAUSE_MS = 2000;
 // The standard word for speed: five characters, spaces and punctuation included.
 export const CHARS_PER_WORD = 5;
 
-export function metrics(target: string, typed: string, attempts: number, mistakes: number, elapsedMs: number) {
+export function metrics(target: string | readonly unknown[], typed: string, attempts: number, mistakes: number, elapsedMs: number) {
   const correct = [...typed].reduce((sum, char, i) => sum + (char === target[i] ? 1 : 0), 0);
 
   return {
@@ -724,7 +724,21 @@ export function customTextProblem(text: string): CustomTextProblem | null {
 
 export type ReplaySource = Pick<Attempt, 'text'> & Partial<Pick<Attempt, 'events' | 'startedAt' | 'endedAt'>>;
 
-export function replayAttempt(attempt: ReplaySource): Replay {
+export type ReplayTarget = string | readonly unknown[];
+
+export type RetainedReplaySource = Omit<ReplaySource, 'text'> & { text: ReplayTarget };
+
+type RetainedFirstAttempt = Omit<FirstAttempt, 'expected'> & { expected: unknown };
+
+type RetainedPairTiming = Omit<PairTiming, 'pair'> & { pair: ReplayTarget };
+
+export interface RetainedReplay extends Omit<Replay, 'firstAttempts' | 'pairTimings'> {
+  firstAttempts: RetainedFirstAttempt[]; pairTimings: RetainedPairTiming[];
+}
+
+export function replayAttempt(attempt: ReplaySource): Replay;
+export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay;
+export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
   let typed = '';
   let insertions = 0;
   let correctInsertions = 0;
@@ -732,8 +746,8 @@ export function replayAttempt(attempt: ReplaySource): Replay {
   let previousCorrect: { position: number; offsetMs: number } | null = null;
   let startedAt: number | null = null;
   let endedAt: number | null = null;
-  const firstAttempts = new Map<number, FirstAttempt>();
-  const pairTimings: PairTiming[] = [];
+  const firstAttempts = new Map<number, RetainedFirstAttempt>();
+  const pairTimings: RetainedPairTiming[] = [];
 
   for (const event of attempt.events || []) {
     if (event.type === 'focus-lost' || event.type === 'composition') {

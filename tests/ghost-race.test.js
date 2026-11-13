@@ -285,3 +285,10 @@ test('retained traces ignore future events without requiring current Attempt sta
   assert.deepEqual(challengePayload(retained), expected);
   assert.equal(JSON.stringify(retained), original);
 });
+
+
+test('a retained source with no keys returns before malformed text is consumed', () => {
+  const retained = { status: 'complete', kind: 'test', conditions: { mode: 'time', duration: 30, wordList: '200' }, text: 123, events: [] };
+  assert.equal(isChallengePayloadSource(retained), true);
+  assert.equal(challengePayload(retained), null);
+});
