@@ -1,3 +1,4 @@
+import { createInputPresentation } from './input-presentation.js';
 import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
 import { copyParts, setParts, plain, setText, element } from './native-copy.js';
@@ -10,8 +11,6 @@ import { renderText, updateCharacterStates } from './passage-view.js';
 import {
   CHARS_PER_WORD,
   CORPUS_VERSION,
-  atRunEnd,
-  awaitingSubmit,
   RATE_FLOOR_MS,
   STANDARD_SECONDS,
   STANDARD_VERSION,
@@ -22,12 +21,9 @@ import {
   makeAdaptive,
   DRILL_SECONDS,
   makeDrill,
-  minimumStop,
   normalizeCustomText,
   orderCustomText,
-  passageComplete,
   correctionPreference,
-  replayAttempt,
   selectPassage,
   standardConditions,
   summarizePatterns,
@@ -162,7 +158,6 @@ let historyWaiting = false;
 // absorbCache moves cacheText, never this, so another tab's save taken in since never looks sent.
 
 const saveRunCounts = runSession.saveCounts;
-const runPosition = runSession.position;
 const initialProfile = loadProfile();
 learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences));
 
@@ -178,8 +173,8 @@ let passage = null;
 
 let primaryCharacters = [];
 let primaryTextView = null;
-let primaryNotice = '';
-let liveSecond = -1;
+
+
 
 // The time of the last key since a minimum stopped the run; see the Run again key guard.
 let stopHold = null;
@@ -196,8 +191,6 @@ const primaryFx = createTypingFx($('typing-wrap'), $('text-display'), { ensureCh
 const race = challenge.local.state;
 const raceFx = challenge.local.fx;
 const setupRacePlayer = challenge.local.prepare;
-const showRaceRestartHint = challenge.local.restartHint;
-const updateRaceProgress = challenge.local.progress;
 const finishRacePlayer = challenge.local.finish;
 
 // The settings preview's sliding highlight: on "little" for this word, "room" for next word. It is placed
@@ -1060,7 +1053,7 @@ function repeatedTextNotice() {
 // The passage's own notice. Its hidden twin holds the footer at the notice's height, so a shorter hint
 // that replaces it mid-run (a blocked letter) never moves restart or the passage.
 function setPassageNotice(text) {
-  primaryNotice = text;
+  inputPresentation.noticeText = text;
   $('input-help').textContent = text;
   $('input-help-reserve').textContent = text;
 }
@@ -1393,20 +1386,7 @@ function focusPractice() {
   else $('typing-input').focus({ preventScroll: true });
 }
 
-function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
-  if (type === 'primary') {
-    runSession.start(stamp);
-  } else if (type === 'online') {
-    // The race clock started at the shared start.
-    targetAttempt.status = 'running';
-  } else {
-    if (race.startTime !== null) return;
-    race.startTime = stamp;
-    race.attempt.status = 'running';
-    race.attempt.startedAt = 0;
-    raceRunChanged();
-  }
-}
+
 
 // carried: a later key of an accent commit (the h of "h). One the passage has no place left for was pressed
 // while its last letter was still to come, so it is a mistake against that letter, or nothing if it is that
@@ -1442,107 +1422,38 @@ function startAttempt(targetAttempt, type = 'primary', stamp = now()) {
 // typed characters; only IME text (any composition no accent key opened) is refused.
 
 
-function showInputNotice(type, message, { sticky = false, speak = true } = {}) {
-  if (learning.preferences.keybindings.restart !== 'Escape') {
-    const hint = learning.preferences.keybindings.restart ? `${bindingLabel(learning.preferences.keybindings.restart)} to restart` : 'Restart shortcut is disabled';
-    message = message.replace('Esc to restart', hint);
-  }
 
-  if (type === 'primary') {
-    $('input-help').textContent = message;
-
-    if (sticky) primaryNotice = message;
-  } else if (type === 'online') typingHost.online.notice(message);
-  else {
-    challenge.local.message(message);
-
-    if (sticky) race.notice = message;
-  }
-
-  if (speak) announce(message);
-}
 
 // A strict space or quick end notice never hides why a run won't count; it follows that notice.
-function withRule(sticky, rule) {
-  return sticky ? `${sticky} ${rule}` : rule;
-}
+
 
 // at is when the key was typed, so a commit scored after a timed run's limit can't end the run between
 // its mark and its letter (scoreCommit ends it once both are in).
-function refreshAfterInput(type, previousLength, blocked = false, at = now()) {
-  const isPrimary = type === 'primary';
-  const targetAttempt = inputAttempt(type);
-  const replay = replayAttempt(targetAttempt);
 
-  const view = type === 'online' ? typingHost.online?.view
-    : isPrimary ? { input: $('typing-input'), characters: primaryCharacters, textView: primaryTextView, fx: primaryFx }
-      : { input: $('race-input'), characters: race.characters, textView: race.textView, fx: raceFx };
-
-  if (!view) return;
-  const { input, characters, textView, fx } = view;
-
-  input.value = replay.typed;
-  input.setSelectionRange(replay.typed.length, replay.typed.length);
-  textView.ensureAhead(replay.typed.length);
-  updateCharacterStates(characters, replay.typed, targetAttempt.text, previousLength);
-  const length = replay.typed.length;
-  const lastCorrect = length > 0 && replay.typed[length - 1] === targetAttempt.text[length - 1];
-  let outcome = 'delete';
-
-  if (blocked) outcome = 'blocked';
-  else if (length > previousLength) outcome = lastCorrect ? 'correct' : 'wrong';
-
-  // A refused space is a miss at the letter it skipped: that letter is tinted until the next key,
-  // so the coral caret always sits beside a tinted letter.
-  if (blocked === 'space') characters[length].className = 'char wrong';
-  fx.update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
-  textView.trimBehind(length);
-  const waiting = awaitingSubmit(targetAttempt, replay.typed);
-  const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
-
-  // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
-  if (blocked === 'space' || (waiting && (length > previousLength || blocked === 'submit'))) announce(rule);
-
-  if (isPrimary) {
-    // A backspace before the first letter starts nothing. Once the run has started, every key marks it as
-    // under way, which restores the mark after leaving the screen mid-run.
-    if (practice.startTime !== null) setRunning(true);
-    $('input-help').textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
-    updateLive(false, at);
-
-    if (sessionDurationMs() === null && passageComplete(targetAttempt, replay.typed)) finishPrimary();
-  } else if (type === 'online') {
-    typingHost.online.notice(rule || (blocked ? NOTICES.onlineBlocked : ''));
-    typingHost.online.changed();
-
-    if (passageComplete(targetAttempt, replay.typed)) typingHost.online.finish();
-  } else {
-    const help = challenge.local.view.getSnapshot().help;
-
-    if (rule) challenge.local.message(withRule(race.notice, rule));
-    else if ([NOTICES.strictSpace, NOTICES.submit].some((notice) => help.endsWith(notice))) {
-      if (race.notice) challenge.local.message(race.notice);
-      else showRaceRestartHint();
-    }
-
-    updateRaceProgress(replay);
-
-    if (passageComplete(targetAttempt, replay.typed)) finishRacePlayer();
-  }
-}
 
 const typingHost = createInputController({
   attempt: (type) => type === 'primary' ? practice.attempt : race.attempt,
   origin: (type) => type === 'primary' ? practice.startTime : race.startTime,
-  durationMs: sessionDurationMs, start: startAttempt,
+  durationMs: sessionDurationMs, start: (...args) => inputPresentation.start(...args),
   finish: (type, elapsed) => type === 'primary' ? finishPrimary(elapsed) : type === 'online' ? typingHost.online?.finish() : finishRacePlayer(),
-  refresh: refreshAfterInput, notice: showInputNotice, play: (outcome) => sounds.play(outcome),
+  refresh: (...args) => inputPresentation.refresh(...args), notice: (...args) => inputPresentation.notice(...args), play: (outcome) => sounds.play(outcome),
 });
 
-const inputAttempt = typingHost.attempt;
 const offsetFor = typingHost.offsetFor;
 const finishIfTimeUp = typingHost.finishIfTimeUp;
 const wireOnlineTyping = typingHost.wireOnlineTyping;
+
+const inputPresentation = createInputPresentation({ practice, learning, run: runSession, local: challenge.local, input: typingHost,
+  elements: { help: $('input-help'), wpm: $('live-wpm'), accuracy: $('live-accuracy'), timer: $('timer'), timerUnit: $('timer-unit'), timerLabel: $('timer-label'), progressBar: $('progress-bar'), progressTrack: $('progress-track') },
+  ports: { durationMs: sessionDurationMs, setRunning, announce, finishPrimary,
+    surface: (type) => type === 'primary' ? { input: $('typing-input'), characters: primaryCharacters, textView: primaryTextView, fx: primaryFx }
+      : { input: $('race-input'), characters: race.characters, textView: race.textView, fx: raceFx },
+  },
+});
+
+const showInputNotice = inputPresentation.notice;
+const updateLive = inputPresentation.live;
+
 
 // The pace caret is presentational and never scored. It runs at the personal best, the average of
 // the last 10 comparable runs, the last comparable run, or a custom pace; with no runs, a gentle 60 wpm.
@@ -1638,61 +1549,7 @@ const rateShown = (completed) => comparableKind(completed.kind) || completed.sum
 // caller states the end conditions by hand.
 
 
-function updateLive(reset = false, at = now()) {
-  if (!practice.attempt) return;
-  const replay = replayAttempt(practice.attempt);
-  const elapsed = practice.startTime === null ? 0 : now() - practice.startTime;
-  const duration = sessionDurationMs();
-  const boundedElapsed = duration ? Math.min(elapsed, duration) : elapsed;
-  // A rate over the first second is mostly noise (one key in 5 ms reads as thousands of wpm),
-  // and a number that changes every keystroke pulls the eye off the text: update once a second.
-  const second = practice.startTime === null ? -1 : Math.floor(boundedElapsed / 1000);
 
-  if (reset || second !== liveSecond) {
-    liveSecond = second;
-    const live = second >= 0 && boundedElapsed >= RATE_FLOOR_MS ? replayAttempt({ ...practice.attempt, endedAt: boundedElapsed }) : null;
-    const score = live?.score;
-    showSpeed($('live-wpm'), score ? score.wpm : null);
-    setText($('live-accuracy'), score ? score.accuracy : '—');
-
-    // Minimums are judged on this once-a-second tick, after the grace period, never per keystroke.
-    // At the run's end (its duration, or its last character) this live check stands aside: the
-    // end-of-run check in finishPrimary judges it.
-    if (!reset && live && practice.attempt.minimums && practice.attempt.status === 'running' && !practice.attempt.interrupted && !practice.attempt.unsupportedInput) {
-      const position = runPosition(live, boundedElapsed);
-      const stop = atRunEnd(position) ? null : minimumStop(practice.attempt.minimums, live, position);
-
-      if (stop) {
-        finishPrimary(boundedElapsed, { stop });
-
-        return;
-      }
-    }
-  }
-
-  let progress;
-
-  if (duration) {
-    const remaining = Math.max(0, Math.ceil((duration - boundedElapsed) / 1000));
-    setText($('timer'), remaining);
-    setText($('timer-unit'), 's');
-    setText($('timer-label'), 'remaining');
-    progress = boundedElapsed / duration;
-  } else {
-    const wordTotal = practice.attempt.text.split(' ').length;
-    const wordCount = replay.typed.length === practice.attempt.text.length ? wordTotal : (replay.typed.match(/ /g) || []).length;
-    setText($('timer'), wordCount);
-    setText($('timer-unit'), `/${wordTotal}`);
-    setText($('timer-label'), 'words');
-    progress = replay.typed.length / practice.attempt.text.length;
-  }
-
-  const percent = Math.max(0, Math.min(100, progress * 100));
-  $('progress-bar').style.setProperty('--progress', String(percent / 100));
-  $('progress-track').setAttribute('aria-valuenow', String(Math.round(percent)));
-  $('progress-track').setAttribute('aria-valuetext', reset ? 'Not started' : `${Math.round(percent)} percent complete`);
-  finishIfTimeUp(at);
-}
 
 function storeAttempt(completed) { return recording.store(completed); }
 

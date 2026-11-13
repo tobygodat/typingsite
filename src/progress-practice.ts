@@ -97,7 +97,7 @@ function renderPracticeStats(period: ProgressPeriod, date = new Date()) {
   flushSync(() => learning.progress.calendar.figures.publish([
     figure('Active days', String(stats.active), `of ${days.length}`, runDays ? `${plural(Number((runs / runDays).toFixed(1)), 'run')} a day when you practise` : 'no runs in this period'),
     figure('Longest streak', String(stats.longest), daysWord(stats.longest), goal ? `at ${goal} min a day` : 'in this period'),
-    figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)] || 0)}${goal ? ` of ${goal}` : ''} min`),
+    figure('Current streak', String(current), daysWord(current), `today ${goalMinutes(byDay[dayKey(date)])}${goal ? ` of ${goal}` : ''} min`),
     figure('Time typing', goalMinutes(stats.minutes), 'min', period === 'all' ? `since ${new Date(`${days[0]}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : `in the last ${days.length} days`),
     figure('Runs started', String(counted.started), `${counted.finished} finished`),
   ]));

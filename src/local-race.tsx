@@ -19,7 +19,7 @@ interface LocalState {
   passage: NonNullable<ReturnType<typeof selectPassage>> | null;
   conditions: Conditions | null; names: [string, string]; player: 0 | 1;
   attempt: Attempt | null; startTime: number | null; results: LocalResult[];
-  characters: HTMLElement[]; textView: ReturnType<typeof renderText> | null; notice: string;
+  characters: HTMLSpanElement[]; textView: ReturnType<typeof renderText> | null; notice: string;
 }
 
 interface LocalView {
@@ -131,6 +131,16 @@ export function createLocalRace() {
       publish({ ...view.getSnapshot(), setup: false, leaderboard: false, handoff: false });
       ports?.rules();
       prepare();
+    },
+    startTyping(stamp: number) {
+      if (state.startTime !== null) return;
+      const attempt = state.attempt;
+
+      if (!attempt) throw new Error('No local race attempt');
+      state.startTime = stamp;
+      attempt.status = 'running';
+      attempt.startedAt = 0;
+      ports?.changed();
     },
     message(help: string) { publish({ ...view.getSnapshot(), help, hint: false }); },
     finish() {
