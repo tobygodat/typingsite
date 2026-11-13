@@ -53,6 +53,14 @@
   },
   "overrides": [
     {
+      "files": ["src/loop-history.ts"],
+      "rules": {
+        // Historical comparison and timing fields stay raw until their display readers consume them.
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-unknown-returns": "off"
+      }
+    },
+    {
       "files": ["src/training-patterns.tsx"],
       "rules": {
         // Selected conditions and loop dates stay raw historical values until presentation consumes them.
