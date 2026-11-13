@@ -11,7 +11,7 @@ import { createTrainingResults } from './training-results.js';
 import { createInputPresentation } from './input-presentation.js';
 import { createPracticeProgress } from './progress-practice.js';
 import { createPracticeConditions } from './practice-conditions.js';
-import { copyParts, setParts, plain } from './native-copy.js';
+import { copyParts, plain } from './native-copy.js';
 import { createApplicationLifetime } from './application-lifetime.js';
 import { startPageWork, disposePageWork } from './async-runtime.js';
 import { flushSync } from 'react-dom';
@@ -56,12 +56,12 @@ import { challengePayload, challengeTextId,
   listChallenges } from './ghost-race.js';
 import { DEFAULT_POLICY, FOCUSES, recommendFor } from './learner.js';
 import { CORRECTION_LABELS, conditionParts, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
-import { formatSpeed, showSpeed, speedFigure, speedValue, wpmFromSpeed } from './units.js';
+import { formatSpeed, showSpeed, speedFigure } from './units.js';
 import {
   LESSONS, LESSON_ACCURACY, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
   makeupShort, nextLessonIndex,
 } from './lessons.js';
-import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, PACE_MAX_WPM, PACE_MIN_WPM, clampPace, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
 
 
 
@@ -1326,29 +1326,11 @@ function ghostPace(mode = learning.preferences.paceCaret) {
 function showPace() {
   const on = ghostOn();
   const pace = ghostPace();
-  // A ghost race's caret is the friend's run, not the pacer, so the pace isn't labelled there.
   const shown = on && practice.sessionKind !== 'challenge';
   practice.presentIntro({ paceVisible: shown, pace: copyParts(shown ? ['pace ', speedFigure(pace.wpm)] : '') });
   selectSetting('pace-select', learning.preferences.paceCaret);
-  // The custom pace field holds its speed in its own unit (data-unit), with its range beside it in that unit.
-  // A speed being typed in (focused, and not what was last written here, data-shown) stays as typed, in the
-  // unit it was typed in, when this redraws (another tab's save taken in, say): setting the field would drop
-  // the edit without a change event. Leaving the field redraws it.
-  const field = $('pace-wpm');
-
-  if (document.activeElement !== field || field.value === field.dataset.shown) {
-    const unit = learning.preferences.speedUnit;
-    field.dataset.unit = unit;
-    field.dataset.shown = speedValue(learning.preferences.paceWpm, unit);
-    field.value = field.dataset.shown;
-    field.min = speedValue(PACE_MIN_WPM, unit);
-    field.max = speedValue(PACE_MAX_WPM, unit);
-    field.step = speedValue(1, unit);
-  }
-
-  $('pace-range').textContent = `${formatSpeed(PACE_MIN_WPM, { bare: true }, field.dataset.unit)}–${formatSpeed(PACE_MAX_WPM, {}, field.dataset.unit)}`;
-  $('pace-custom').hidden = learning.preferences.paceCaret !== 'custom';
-  setParts($('pace-note'), on && learning.preferences.paceCaret !== 'custom' ? [pace.fallback ? 'no runs yet — ' : '', speedFigure(pace.wpm)] : '');
+  settingsView.pace.sync({ on, custom: learning.preferences.paceCaret === 'custom', wpm: pace.wpm, fallback: pace.fallback,
+    unit: learning.preferences.speedUnit, valueWpm: learning.preferences.paceWpm });
   document.body.dataset.ghost = on ? 'on' : 'off';
 }
 
@@ -2571,14 +2553,7 @@ function bindEvents() {
   });
   prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); }, { signal: lifetime.signal });
   onSetting('pace-select', (value) => setPaceCaret(value));
-  $('pace-wpm').addEventListener('change', (event) => {
-    const field = event.target;
-    learning.preferences.paceWpm = clampPace(wpmFromSpeed(field.value, field.dataset.unit));
-    field.dataset.shown = field.value;
-    setPaceCaret('custom', { speed: true });
-  }, { signal: lifetime.signal });
-  // Left unsaved, it shows any speed or unit that arrived while it was being typed in (see showPace).
-  $('pace-wpm').addEventListener('blur', showPace, { signal: lifetime.signal });
+  settingsView.pace.configure({ changed(wpm) { learning.preferences.paceWpm = wpm; setPaceCaret('custom', { speed: true }); }, refresh: showPace });
   onSetting('focus-toggle', (value) => { learning.preferences.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
   onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
   onSetting('sound-select', (value) => setSound(value));
@@ -3499,6 +3474,7 @@ return {
     detachWallpaper?.();
     wallpaper.dispose();
     themeEditor.dispose();
+    settingsView.pace.dispose();
     ghostLaunch.dispose();
     ghostResult.dispose();
     ghostOffer.dispose();

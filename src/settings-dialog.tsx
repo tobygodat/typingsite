@@ -1,3 +1,4 @@
+import { PaceNote, PaceCustom } from './pace-controls.js';
 import { formatSpeed, unitText } from './units.js';
 import { MIN_WPM_OPTIONS } from './profile.js';
 import type { SettingsImport } from './import-dialog.js';
@@ -188,7 +189,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="pace-select-label">pace caret</strong><small id="pace-note" className="pace-note"></small></div>
+            <div className="preference-copy"><strong id="pace-select-label">pace caret</strong><PaceNote controller={settings.pace} /></div>
             <fieldset className="setting-options" id="pace-select" aria-labelledby="pace-select-label" aria-describedby="pace-note" disabled={view.disabled['pace-select'] ?? false} onClick={(event) => choose('pace-select', event)}>
               <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'off', true)} /><span>off</span></label>
               <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'best')} /><span>personal best</span></label>
@@ -197,10 +198,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="pace-select" {...radio('pace-select', 'custom')} /><span>custom</span></label>
             </fieldset>
           </div>
-          <label id="pace-custom" className="preference-row" htmlFor="pace-wpm" hidden>
-            <span className="preference-copy"><strong>custom pace</strong><small id="pace-range" className="pace-note">10–300 wpm</small></span>
-            <input className="input pace-wpm num" id="pace-wpm" type="number" min="10" max="300" step="1" defaultValue="80" inputMode="numeric" data-unit="wpm" aria-describedby="pace-range" />
-          </label>
+          <PaceCustom controller={settings.pace} />
           <div className="preference-row">
             <div className="preference-copy"><strong id="speed-unit-label">speed unit</strong></div>
             <fieldset className="setting-options" id="speed-unit" aria-labelledby="speed-unit-label" disabled={view.disabled['speed-unit'] ?? false} onClick={(event) => choose('speed-unit', event)}>

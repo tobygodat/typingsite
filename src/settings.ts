@@ -1,3 +1,4 @@
+import { createPaceControls } from './pace-controls.js';
 import { createKeybindingEditor } from './keybinding-editor.js';
 import { flushSync } from 'react-dom';
 import { createStore } from './store.js';
@@ -44,6 +45,7 @@ export function createSettings() {
   }
 
   return {
+    pace: createPaceControls(),
     view, select, category,
     present(patch: Partial<SettingsPresentation>) { const current = view.getSnapshot();
 
