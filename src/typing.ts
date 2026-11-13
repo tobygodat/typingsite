@@ -1,6 +1,6 @@
 import type { HistoricalRecord } from './profile-types.js';
 import { isPatternAttempt } from './domain-history.js';
-import { at } from './domain-values.js';
+import { at, isRecord } from './domain-values.js';
 
 export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
 
@@ -36,7 +36,7 @@ export interface Attempt {
   conditions: Conditions; status: 'ready' | 'running' | 'complete' | 'interrupted'; events: AttemptEvent[];
   typed: string; startedAt: number | null; endedAt: number | null; interrupted: boolean; unsupportedInput: boolean;
   summary?: Replay; fresh?: boolean; at?: string | null; stopped?: NonNullable<ReturnType<typeof minimumStop>>; failed?: string | null; lesson?: { id: string; index: number; pairs: number; words: number }; challengeId?: string | null; trainFocus?: string; dailyDate?: string; dailyFirst?: boolean;
-  textVersion?: string; target?: string | null; minimums?: Minimums | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
+  textVersion?: string; target?: string | null; minimums?: unknown; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
 }
 
 export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
@@ -49,7 +49,7 @@ export interface WeightedUnit { unit: string; weight: number }
 
 export interface Minimums { accuracy?: number; wpm?: number }
 
-export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: number; value: number; atEnd?: true }
+export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: unknown; value: number; atEnd?: true }
 
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
 
@@ -442,21 +442,23 @@ export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', c
 export const MINIMUM_GRACE_MS = 5000;
 export const MINIMUM_GRACE_CHARACTERS = 20;
 
-export function accuracyGraceCharacters(minimum: number) {
-  return Math.max(MINIMUM_GRACE_CHARACTERS, Math.ceil(200 / (100 - minimum)));
+export function accuracyGraceCharacters(minimum: unknown) {
+  return Math.max(MINIMUM_GRACE_CHARACTERS, Math.ceil(200 / (100 - Number(minimum))));
 }
 
 // The first minimum the score is under, against the same rounded numbers the run shows. Pass the
 // live replay while the run is going, so each minimum waits out its grace.
-export function minimumMissed(minimums: Minimums | null, score: Score | null, running: Pick<Replay, 'elapsedMs' | 'insertions'> | null = null): MinimumFailure | null {
+export function minimumMissed(minimums: unknown, score: Score | null, running: Pick<Replay, 'elapsedMs' | 'insertions'> | null = null): MinimumFailure | null {
   if (!minimums || !score) return null;
+  const accuracy = isRecord(minimums) ? minimums.accuracy : undefined;
+  const wpm = isRecord(minimums) ? minimums.wpm : undefined;
   const judged = (characters: number) => !running || (running.elapsedMs >= MINIMUM_GRACE_MS && running.insertions >= characters);
 
-  if (minimums.accuracy && score.accuracy < minimums.accuracy && judged(accuracyGraceCharacters(minimums.accuracy))) {
-    return { metric: 'accuracy', minimum: minimums.accuracy, value: score.accuracy };
+  if (accuracy && score.accuracy < Number(accuracy) && judged(accuracyGraceCharacters(accuracy))) {
+    return { metric: 'accuracy', minimum: accuracy, value: score.accuracy };
   }
 
-  if (minimums.wpm && score.wpm < minimums.wpm && judged(MINIMUM_GRACE_CHARACTERS)) return { metric: 'wpm', minimum: minimums.wpm, value: score.wpm };
+  if (wpm && score.wpm < Number(wpm) && judged(MINIMUM_GRACE_CHARACTERS)) return { metric: 'wpm', minimum: wpm, value: score.wpm };
 
   return null;
 }
@@ -469,7 +471,7 @@ export function atRunEnd({ elapsedMs, durationMs = null, finished = false }: Run
 // The one judgement behind both checks, so they can't drift apart. A run at its end is judged on its
 // final score with no grace, and a miss there is an end-of-run failure (atEnd). Before the end it is
 // the live check, with the grace.
-export function minimumStop(minimums: Minimums | null, replay: Replay, position: RunPosition): MinimumFailure | null {
+export function minimumStop(minimums: unknown, replay: Replay, position: RunPosition): MinimumFailure | null {
   const atEnd = atRunEnd(position);
   const missed = minimumMissed(minimums, replay.score, atEnd ? null : replay);
 

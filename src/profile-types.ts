@@ -1,4 +1,4 @@
-import type { Attempt, Conditions, InputClass, Minimums, Score } from './typing.js';
+import type { Attempt, Conditions, InputClass, Score } from './typing.js';
 
 export type RunCounts = Record<string, Record<string, [started: number, finished: number]>>;
 
@@ -16,7 +16,7 @@ export interface RunRecord {
   id: string; at: string | null; kind: Attempt['kind']; status: Attempt['status']; conditions: Conditions; textId: Attempt['textId'];
   day?: string | null; fresh?: boolean; interrupted: boolean; score: Score; elapsedMs: number; errors: number;
   target: string | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
-  minimums?: Minimums | null; stopped?: NonNullable<ReturnType<typeof import('./typing.js').minimumStop>>; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
+  minimums?: unknown; stopped?: NonNullable<ReturnType<typeof import('./typing.js').minimumStop>>; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
   corrections?: [number, number | null]; missedWords?: string[];
 }
 
@@ -47,7 +47,7 @@ export interface TrainingLoop {
   targetMisses?: { target?: string; was: TargetCounts; now: TargetCounts } | null;
   targetPace?: { target?: string; was: TargetPace; now: TargetPace } | null;
   comparison?: import('./typing.js').AttemptComparison;
-  minimums?: Minimums; inputClass?: InputClass;
+  minimums?: unknown; inputClass?: InputClass;
 }
 
 export type Profile = {

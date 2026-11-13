@@ -68,17 +68,14 @@ function isStatus(value: unknown) {
   return value === 'ready' || value === 'running' || value === 'complete' || value === 'interrupted';
 }
 
-function isMinimums(value: unknown) {
-  return isRecord(value) && optional(value, ['accuracy', 'wpm'], number);
-}
 
 function isStop(value: unknown) {
-  return isRecord(value) && (value.metric === 'accuracy' || value.metric === 'wpm') && typeof value.minimum === 'number'
+  return isRecord(value) && (value.metric === 'accuracy' || value.metric === 'wpm') && Object.hasOwn(value, 'minimum')
     && typeof value.value === 'number' && (value.atEnd === undefined || value.atEnd === true);
 }
 
 function runtimeMetadata(value: HistoricalRecord) {
-  return optional(value, ['minimums'], (minimums) => minimums === null || isMinimums(minimums)) && optional(value, ['stopped'], isStop);
+  return optional(value, ['stopped'], isStop);
 }
 
 export function isAttempt(value: unknown): value is Attempt {
@@ -105,7 +102,7 @@ export function isTrainingLoop(value: unknown): value is TrainingLoop {
   return isRecord(value) && isAnalysisLoop(value) && typeof value.id === 'string' && typeof value.at === 'string' && isConditions(value.conditions)
     && (value.target === null || typeof value.target === 'string') && typeof value.beforeAttemptId === 'string' && typeof value.afterAttemptId === 'string'
     && optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
-    && optional(value, ['minimums'], isMinimums) && optional(value, ['comparison'], isComparison);
+    && optional(value, ['comparison'], isComparison);
 }
 
 function isComparison(value: unknown) {
