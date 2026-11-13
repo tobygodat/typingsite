@@ -705,7 +705,9 @@ export const CUSTOM_MIN_CHARS = 10;
 
 // Why a normalised custom text can't be used yet, or null. Pass normalizeCustomText(value, Infinity), so an
 // over-long text is reported rather than cut.
-export function customTextProblem(text: string) {
+export type CustomTextProblem = { kind: 'empty' } | { kind: 'short' } | { kind: 'untypable'; char: string } | { kind: 'long'; length: number };
+
+export function customTextProblem(text: string): CustomTextProblem | null {
   if (!text) return { kind: 'empty' };
   const char = untypableCharacter(text);
 

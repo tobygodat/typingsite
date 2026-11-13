@@ -24,7 +24,9 @@ export function isValidLength(mode: string, value: unknown): value is number {
 
 // What someone typed into the custom field: { ok: true, value } or { ok: false, message }.
 // Whole numbers only; a trailing unit ("45 s", "75 words") is forgiven.
-export function parseCustomLength(mode: string, raw: unknown) {
+export type CustomLengthResult = { ok: false; message: string } | { ok: true; value: number };
+
+export function parseCustomLength(mode: string, raw: unknown): CustomLengthResult {
   const spec = lookup(LENGTHS, mode);
 
   if (!spec) return { ok: false, message: 'Quotes have no custom length.' };
