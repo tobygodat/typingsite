@@ -64,16 +64,9 @@ export function createLoopHistory(learning: LearningStore, ports: LoopPorts) {
   }
 
   function render(loops: readonly (HistoricalLoop & AnalysisRun)[]) {
-    learning.commands.loopTarget = (id) => {
-      const loop = learning.profile.loops.find((item) => item.id === id);
-
-      if (!loop?.target) return;
-
-      if (typeof loop.target !== 'string' || !isRecord(loop.conditions)) throw new TypeError('A loop action requires its target and conditions');
-      ports.practice(loop.target, loop.conditions);
-    };
-
     const rows: LoopView[] = loops.map((loop) => {
+      const target = loop.target || null;
+      const source = loop.conditions;
       const drilled = loop.drillCompleted || Boolean(field(loop, 'drill'));
       let conditions = ports.describe(loop.conditions);
       const pace = field(loop, 'targetPace');
@@ -112,7 +105,13 @@ export function createLoopHistory(learning: LearningStore, ports: LoopPorts) {
           { label: 'before', parts: copyParts(before ? [speed(field(before, 'wpm')), ` · ${field(before, 'accuracy')}%`] : 'Not retained in this older comparison') },
           { label: 'after', parts: copyParts(after ? [speed(field(after, 'wpm')), ` · ${field(after, 'accuracy')}%`] : 'Not retained in this older comparison') },
           { label: 'drill', parts: copyParts(loop.drillCompleted ? `${optionalField(field(loop, 'drill'), 'duration') || 60} s · ${loop.target || 'general'}` : drilled ? `interrupted · ${loop.target || 'general'}` : 'Skipped') },
-        ], notes, target: loop.target || null,
+        ], notes, target,
+        practice() {
+          if (!target) return;
+
+          if (typeof target !== 'string' || !isRecord(source)) throw new TypeError('A loop action requires its target and conditions');
+          ports.practice(target, source);
+        },
       };
     });
 

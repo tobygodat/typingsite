@@ -979,3 +979,22 @@ test('retained loop comparisons keep absent speed and raw timing-count arithmeti
   await expect(counts).toContainText('“qu” clean intervals: 2 before / 1 after. +5 ms median timing change.');
   await expect(rows.filter({ hasText: 'Negative concatenated timing count.' }).locator('.history-conditions')).not.toContainText('before');
 });
+
+test('each id-less retained loop practices the target of its own row', async ({ page, supabase }) => {
+  const loops = [
+    { at: NOW.toISOString(), conditions: conditions(), target: 'qu', comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'First retained loop.' } },
+    { at: NOW.toISOString(), conditions: conditions(), target: 'ex', comparison: { state: 'steady', wpmDelta: 0, accuracyDelta: 0, reason: 'Second retained loop.' } },
+  ];
+
+  await openProgress(page, supabase, runs, { extra: { loops } });
+
+  for (const [index, target] of ['qu', 'ex'].entries()) {
+    if (index) await openView(page, 'Progress');
+    await openProgressDetail(page, 'runs');
+    const name = target === 'qu' ? 'First retained loop.' : 'Second retained loop.';
+    const row = page.locator('#history-list > details').filter({ hasText: name });
+    await row.locator('summary').click();
+    await row.getByRole('button', { name: `Practice “${target}” again` }).click();
+    await expect(page.locator('#session-title')).toHaveText(`Practice “${target}”`);
+  }
+});

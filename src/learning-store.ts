@@ -32,6 +32,7 @@ export interface LoopView {
   facts: { label: string; parts: CopyPart[] }[];
   notes: CopyPart[][];
   target: string | null;
+  practice(): void;
 }
 
 export interface LessonFactView { label: string; speedUnit?: boolean; value: CopyPart[]; need: CopyPart[]; met: boolean | null }
@@ -73,7 +74,7 @@ export function createLearningStore() {
   const comparison = createStore<ComparisonView>({ heading: 'Retest complete.', outcome: 'insufficient', unit: '', compared: true, target: null, accuracy: null, accuracyDelta: '—', wpm: null, wpmDelta: null, conditions: '', caveat: '' });
   const loops = createStore<LoopView[]>([]);
   const lessons = createStore<LessonView | null>(null);
-  const commands = { practice() {}, openLessons() {}, start() {}, next() {}, target(unit: string) { void unit; }, loopTarget(id: string | undefined) { void id; }, back() {}, lessonPrimary() {}, lessonSecondary() {}, lesson(index: number) { void index; } };
+  const commands = { practice() {}, openLessons() {}, start() {}, next() {}, target(unit: string) { void unit; }, back() {}, lessonPrimary() {}, lessonSecondary() {}, lesson(index: number) { void index; } };
 
   function current() {
     if (!state) throw new Error('Learning was read before initialization');
