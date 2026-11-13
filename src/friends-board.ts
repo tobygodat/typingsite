@@ -286,7 +286,7 @@ export function boardShapes(rows: readonly BoardRow[]) {
 
     return conditions ? [{ key, conditions }] : [];
   }).sort((a, b) => SHAPE_MODES.indexOf(String(a.conditions.mode ?? '')) - SHAPE_MODES.indexOf(String(b.conditions.mode ?? ''))
-    || length(a.conditions) - length(b.conditions) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
+    || Number(length(a.conditions)) - Number(length(b.conditions)) || Number(a.conditions.numbers) - Number(b.conditions.numbers)
     || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 

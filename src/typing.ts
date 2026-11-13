@@ -11,10 +11,10 @@ export type InputClass = 'physical-keyboard' | 'touch';
 export type CorrectionPolicy = 'relaxed' | 'mandatory' | 'no-backspace' | 'fail-word' | 'fail-any';
 
 export interface Conditions {
-  mode?: unknown; duration?: number | null; count?: number | null; punctuation?: unknown; numbers?: unknown;
-  quoteLength?: unknown; difficulty?: unknown; wordList?: string | null;
+  mode?: unknown; duration?: unknown; count?: unknown; punctuation?: unknown; numbers?: unknown;
+  quoteLength?: unknown; difficulty?: unknown; wordList?: unknown;
   inputClass?: InputClass; correctionPolicy?: CorrectionPolicy; language?: string; corpus?: string;
-  metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: string; book?: string;
+  metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: unknown; book?: unknown;
   strictSpace?: boolean; quickEnd?: boolean; customOrder?: string; lesson?: string; onlineRace?: boolean;
 }
 
@@ -41,7 +41,7 @@ export interface Attempt {
 
 export interface CompletedAttempt extends Attempt { status: 'complete'; summary: Replay }
 
-export interface CurrentConditions extends Conditions { mode: TestMode; punctuation?: boolean; numbers?: boolean; quoteLength?: string | null; difficulty?: string | null; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
+export interface CurrentConditions extends Conditions { mode: TestMode; duration?: number | null; count?: number | null; wordList?: string | null; codeLanguage?: string; book?: string; punctuation?: boolean; numbers?: boolean; quoteLength?: string | null; difficulty?: string | null; inputClass: InputClass; correctionPolicy: CorrectionPolicy; corpus: string; metricVersion: string }
 
 export type HistoricalAttempt = Partial<Omit<Attempt, 'text' | 'events'>> & Pick<Attempt, 'text' | 'events'>;
 
@@ -53,7 +53,7 @@ export interface MinimumFailure { metric: 'accuracy' | 'wpm'; minimum: number; v
 
 export interface RunPosition { elapsedMs: number; durationMs?: number | null; finished?: boolean }
 
-export interface PassageOptions { mode?: unknown; count?: number | null; duration?: number | null; punctuation?: unknown; numbers?: unknown; quoteLength?: unknown; difficulty?: unknown; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: string }
+export interface PassageOptions { mode?: unknown; count?: unknown; duration?: unknown; punctuation?: unknown; numbers?: unknown; quoteLength?: unknown; difficulty?: unknown; seenIds?: string[]; allowRepeats?: boolean; random?: () => number; wordList?: unknown }
 
 interface PatternPair { pair: string; observations: number; errors: number; timings: number[] }
 
@@ -168,11 +168,11 @@ function number(random: () => number) {
 
 // A timed passage holds enough text for a 300 WPM typist until the clock runs out: 300 five-character
 // words a minute, or 25 characters a second.
-export function timedCharacterSupply(seconds: number | null = 0) {
+export function timedCharacterSupply(seconds: unknown = 0) {
   return Math.ceil(((Number(seconds) || 0) * 300 * 5) / 60);
 }
 
-export function makePassage(mode: unknown, count: number | null, punctuation: unknown, random = Math.random, list = DEFAULT_WORD_LIST, numbers: unknown = false, seconds: number | null = 0) {
+export function makePassage(mode: unknown, count: unknown, punctuation: unknown, random = Math.random, list: unknown = DEFAULT_WORD_LIST, numbers: unknown = false, seconds: unknown = 0) {
   if (mode === 'quote') return at(quoteCorpus, Math.floor(random() * quoteCorpus.length)).text;
   const bank = wordList(list);
 
@@ -183,7 +183,7 @@ export function makePassage(mode: unknown, count: number | null, punctuation: un
 // punctuation, which only appears as "I". Monkeytype compares against the finished words; comparing the
 // drawn ones means a contraction or a number can't hide a repeat. Then punctuation, then 1 word in 10
 // becomes a number.
-function drawnPassage(draw: () => string, mode: unknown, count: number | null, punctuation: unknown, random: () => number, numbers: unknown, seconds: number | null) {
+function drawnPassage(draw: () => string, mode: unknown, count: unknown, punctuation: unknown, random: () => number, numbers: unknown, seconds: unknown) {
   const end = mode === 'time' ? Infinity : Number(count);
   const drawn: string[] = [];
   const words: string[] = [];

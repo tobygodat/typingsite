@@ -11,9 +11,7 @@ export function isConditions(value: unknown): value is Conditions {
 
   return optional(value, ['inputClass'], (input) => input === 'physical-keyboard' || input === 'touch')
     && optional(value, ['correctionPolicy'], (policy) => typeof policy === 'string' && ['relaxed', 'mandatory', 'no-backspace', 'fail-word', 'fail-any'].includes(policy))
-    && optional(value, ['wordList'], nullableString)
-    && optional(value, ['language', 'corpus', 'metricVersion', 'recipe', 'layout', 'codeLanguage', 'book', 'customOrder', 'lesson'], string)
-    && optional(value, ['duration', 'count'], nullableNumber)
+    && optional(value, ['language', 'corpus', 'metricVersion', 'recipe', 'layout', 'customOrder', 'lesson'], string)
     && optional(value, ['strictSpace', 'quickEnd', 'onlineRace'], boolean);
 }
 

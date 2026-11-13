@@ -4,7 +4,7 @@ import type { HydratedProfile, HistoricalRecord, PreferencesInUse } from './prof
 
 export { isAttempt, isRunRecord, isTrainingLoop };
 
-export type { HydratedProfile, PreferencesInUse } from './profile-types.js';
+export type { HydratedProfile, PreferencesInUse, ActivePreferences } from './profile-types.js';
 
 function includes<T>(values: readonly T[], value: unknown): value is T { return values.some((known) => known === value); }
 

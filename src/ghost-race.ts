@@ -158,7 +158,7 @@ export function ghostPoints(trace: CompactTrace, textLength: number) {
   return points;
 }
 
-const challengeDuration = (conditions: Conditions = {}) => conditions.mode === 'time' && TIMED.includes(conditions.duration || 0) ? conditions.duration : null;
+const challengeDuration = (conditions: Conditions = {}) => conditions.mode === 'time' && typeof conditions.duration === 'number' && TIMED.includes(conditions.duration || 0) ? conditions.duration : null;
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
 // service refuses any other (supabase/migrations/20261009100000_ghost_challenges.sql); a received row is

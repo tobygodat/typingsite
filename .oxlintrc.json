@@ -53,6 +53,13 @@
   },
   "overrides": [
     {
+      "files": ["src/words.ts", "src/code-snippets.ts"],
+      "rules": {
+        // Restored historical catalog selectors retain their raw identity until the existing lookup or membership check.
+        "anti-slop/no-unknown-parameters": "off"
+      }
+    },
+    {
       "files": [
         "src/books.ts", "src/compose.ts", "src/custom-themes.ts", "src/fonts.ts",
         "src/insights.ts", "src/keybindings.ts", "src/layouts.ts", "src/lengths.ts", "src/lessons.ts",

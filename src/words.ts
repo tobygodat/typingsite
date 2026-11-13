@@ -1272,12 +1272,12 @@ const sources = {
 
 export const wordListIds = Object.keys(sources);
 
-const cache = new Map<string, string[]>();
+const cache = new Map<unknown, string[]>();
 
-export function wordList(id: string = DEFAULT_WORD_LIST): string[] {
-  const key = Object.hasOwn(sources, id) ? id : DEFAULT_WORD_LIST;
+export function wordList(id: unknown = DEFAULT_WORD_LIST): string[] {
+  const key = Object.hasOwn(sources, String(id)) ? id : DEFAULT_WORD_LIST;
 
-  if (!cache.has(key)) cache.set(key, (lookup(sources, key) ?? at(Object.values(sources), 0)).trim().split(/\s+/));
+  if (!cache.has(key)) cache.set(key, (lookup(sources, String(key)) ?? at(Object.values(sources), 0)).trim().split(/\s+/));
 
   const result = cache.get(key);
 

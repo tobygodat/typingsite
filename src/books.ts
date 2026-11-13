@@ -2,7 +2,7 @@ import { lookup } from './domain-values.js';
 import { at } from './domain-values.js';
 import { analysisRuns } from './domain-history.js';
 
-export interface BookPage { id: string; book: string; text: string; page: number }
+export interface BookPage { id: string; book: unknown; text: string; page: number }
 
 // Book mode: the opening sections of four public-domain books, typed a page at a time.
 // The text is in book-texts.js (generated); pagination and the place in each book live here.
@@ -92,12 +92,12 @@ export function paginate(paragraphs: string[], { min, target, max } = PAGE_WORDS
   return pages;
 }
 
-const opened = new Map<string, BookPage[]>();
+const opened = new Map<unknown, BookPage[]>();
 
 // Every page of a book, in order. Each section starts on a new page. A page's id carries a hash of
 // its text, so a change to the text or the pagination gives new ids.
-export function openBook(id: string) {
-  const sections = lookup(BOOK_TEXTS, id);
+export function openBook(id: unknown) {
+  const sections = lookup(BOOK_TEXTS, String(id));
 
   if (!sections) return null;
 
@@ -117,7 +117,7 @@ export function openBook(id: string) {
 // book, from the run history (so it syncs and clears with it). A drill at book conditions types no
 // page, and a page from another text version isn't found, so neither counts. After the last page
 // the book starts again at page 1.
-export function bookPlace(inputRuns: readonly unknown[], id: string) {
+export function bookPlace(inputRuns: readonly unknown[], id: unknown) {
   const runs = analysisRuns(inputRuns);
   const pages = openBook(id);
 

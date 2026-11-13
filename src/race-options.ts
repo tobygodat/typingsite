@@ -1,7 +1,7 @@
 import { lookup } from './domain-values.js';
 import type { Conditions, PassageOptions } from './typing.js';
 
-export interface RaceOptions { mode: 'time' | 'words' | 'quote'; duration?: number; count?: number; punctuation?: boolean; numbers?: boolean; wordList?: string; quoteLength?: unknown; difficulty?: unknown }
+export interface RaceOptions { mode: 'time' | 'words' | 'quote'; duration?: number; count?: number; punctuation?: boolean; numbers?: boolean; wordList?: unknown; quoteLength?: unknown; difficulty?: unknown }
 
 export interface RaceConditions extends Conditions { mode: 'time' | 'words' | 'quote'; duration: number; onlineRace: true; correctionPolicy: 'mandatory'; inputClass: 'physical-keyboard' }
 

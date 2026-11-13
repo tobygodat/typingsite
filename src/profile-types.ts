@@ -78,6 +78,8 @@ type UnvalidatedPreferenceKey = 'mode' | 'punctuation' | 'numbers' | 'quoteLengt
 
 export type PreferencesInUse = HistoricalRecord & Omit<Preferences, UnvalidatedPreferenceKey>;
 
+export type ActivePreferences = HistoricalRecord & Omit<Preferences, UnvalidatedPreferenceKey | 'duration' | 'count' | 'wordList' | 'codeLanguage' | 'book'>;
+
 
 export type HistoricalTrace = Attempt | HistoricalRecord;
 
