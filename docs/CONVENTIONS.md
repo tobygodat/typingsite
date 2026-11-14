@@ -30,6 +30,17 @@ npm run test:e2e          # all of Chromium; CI runs this at every PR head, so r
 - **Debugging.** Inspect the failing case and its trace. After diagnosis, allow at most one targeted rerun with `--trace=on` by default. Classify retries as product failures, test flakes or infrastructure failures. A retry does not justify rerunning green CI or starting a repeated 20-, 100- or 200-run campaign.
 - **Screenshots.** For a quick screenshot or a one-off flow, `.claude/skills/verify-stilltype/scripts/verify.mjs` drives the app in headless Chromium against the fake Supabase.
 
+### Dagger CI (local OSS, staged migration)
+
+`./scripts/ci-dagger.sh` runs the credential-free Dagger checks on this machine's Docker engine. It explicitly selects the local engine, even if `DAGGER_ENGINE=cloud` is set. No Dagger account, subscription, or new hosted minutes are required. The desktop must be running and have Docker access.
+
+- CLI: **1.0.0-beta.27**, installed from the official Dagger installer. SDK: **typescript v1.0.6**, pinned in `dagger.toml` and `dagger.lock`; newer SDK releases currently fail with this engine. Do not silently upgrade either.
+- Checks: lint, strict typechecking, unit tests, production build, all six Chromium shards, and the selected Firefox/WebKit compatibility cases. WebKit stays at one worker; Chromium/Firefox use two per shard. The wrapper limits concurrent checks to two to avoid overwhelming the desktop.
+- Select a bounded check: `./scripts/ci-dagger.sh unit`, `chromium1` through `chromium6`, `firefox-compat`, or `webkit-compat`. Inspect discovery with `dagger check -l` and refresh generated SDK files with `dagger generate -y` after editing the module.
+- Checks never receive Cloudflare credentials and never deploy. Source loading excludes local credentials, Git metadata, dependencies and generated output. A failed browser check retains its execution trace in the local Dagger engine; keep the command output when reporting failures.
+- **Not yet continuous:** no automatic Entire trigger or required Trail Gate is configured. Native hosted Dagger Gates require Dagger Cloud; no paid plan is approved. A separate approved self-hosted event trigger would be needed for automatic runs while preserving the no-paid-plan requirement. Running this script is not evidence that Entire push-triggered CI is active.
+- **Production fallback:** the GitHub workflow below is retained unchanged. `origin` now points to Entire, so an Entire push does not start GitHub Actions or deployment. A deliberately authorized `master` push to the preserved `gh` remote triggers checks and deployment; GitHub pull requests trigger checks only; never mirror or deploy automatically from a Trail check.
+
 ### CI
 
 `.github/workflows/ci.yml` runs every job on GitHub's hosted `ubuntu-latest` runners ([ADR 0018](adr/0018-ci-on-hosted-runners.md)).

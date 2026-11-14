@@ -1,0 +1,12 @@
+[modules.typescript-sdk]
+source = "dagger.io/sdk/typescript@v1.0.6"
+
+[sdks.typescript]
+module = "typescript-sdk"
+
+[modules.stilltype-ci]
+source = ".dagger/modules/stilltype-ci"
+
+[sdks.typescript.scopes.".dagger/modules/stilltype-ci"]
+is-module = true
+name = "stilltype-ci"

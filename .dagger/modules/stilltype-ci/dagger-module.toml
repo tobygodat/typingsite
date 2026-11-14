@@ -1,0 +1,5 @@
+name = "stilltype-ci"
+
+[entrypoint]
+  kind = "dang"
+  source = "./entrypoint"
