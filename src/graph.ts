@@ -160,8 +160,12 @@ function line({ svg, x, y, left }: Plot, points: DrawnPoint[], className: string
     const from = indexed(coords, index - 1);
     const before = coords[index - 2] || from;
     const after = coords[index + 1] || point;
+    // Each control point's x stays between the segment's ends, so a short last step can't swing the curve past them.
+    const across = (value: number) => Math.min(Math.max(value, indexed(from, 0)), indexed(point, 0));
     const out = [0, 1].map((axis) => indexed(from, axis) + (indexed(point, axis) - indexed(before, axis)) / 6);
     const into = [0, 1].map((axis) => indexed(point, axis) - (indexed(after, axis) - indexed(from, axis)) / 6);
+    out[0] = across(indexed(out, 0));
+    into[0] = across(indexed(into, 0));
 
     return `C${at(out)} ${at(into)} ${at(point)}`;
   }).join(' ');
