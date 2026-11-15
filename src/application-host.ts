@@ -65,7 +65,7 @@ import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
-import { renderSpeedGraph } from './graph.js';
+import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
 import { readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
@@ -74,8 +74,7 @@ import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { listChallenges } from './ghost-race.js';
 import { FOCUSES } from './learner.js';
-import { isScoredRun } from './domain-history.js';
-import { CORRECTION_LABELS, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
+import { CORRECTION_LABELS, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, missedAndSlowWords, practiceTextConditions, recentAverage, recurringMissedWords, trendRun } from './insights.js';
 import { formatSpeed, showSpeed, speedFigure } from './units.js';
 import {
   LESSONS, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
@@ -420,14 +419,16 @@ export async function attachApplication({ practice, learning, palette, settings:
   function showBest() {
     const key = currentBestKey();
 
+    const average = key ? recentAverage(learning.profile.runs, key)?.wpm ?? null : null;
+
     if (key && (practice.attempt?.conditions || conditions()).mode === 'code') {
-      practice.presentIntro({ best: ['Code runs aren’t ranked'] });
+      practice.presentIntro({ best: ['Code runs aren’t ranked'], standing: { average, best: null } });
 
       return;
     }
 
     const best = key && learning.profile.bests[key];
-    practice.presentIntro({ best: copyParts(!key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet') });
+    practice.presentIntro({ best: copyParts(!key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet'), standing: { average, best: best ? best.wpm : null } });
   }
 
   function applyPreferences() {
@@ -883,12 +884,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (mode === 'custom') wpm = learning.preferences.paceWpm;
     else if (mode === 'best') wpm = learning.profile.bests[key]?.wpm || null;
-    else if (mode === 'average' || mode === 'last') {
-    
-      const recent = trendRunsAt(key).slice(mode === 'last' ? -1 : -10);
-
-      if (recent.length) wpm = meanWpm(recent);
-    }
+    else if (mode === 'average' || mode === 'last') wpm = recentAverage(learning.profile.runs, key, { last: mode === 'last' ? 1 : 10 })?.wpm ?? null;
 
     const fromBest = mode === 'best' && Boolean(wpm);
     const fallback = !wpm;
@@ -1072,8 +1068,10 @@ export async function attachApplication({ practice, learning, palette, settings:
     const unsaved = saved || practice.sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
     const chars = characterBreakdown(completed, replay);
     const errors = replay.firstAttempts.filter((item) => !item.correct).length;
-    const recent = trendRun(completed) ? trendRunsAt(conditionKey(completed.conditions)).slice(-10) : [];
-    const best = learning.profile.bests[conditionKey(completed.conditions)]?.wpm;
+    const key = conditionKey(completed.conditions);
+    const recent = trendRun(completed) ? recentAverage(learning.profile.runs, key) : null;
+    const before = trendRun(completed) && rateShown(completed) ? recentAverage(learning.profile.runs, key, { excluding: completed.id }) : null;
+    const best = learning.profile.bests[key]?.wpm;
     const mined = evidenceRun(completed);
     const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
     const words = [...missed, ...slow.map((item) => item.word)];
@@ -1084,7 +1082,9 @@ export async function attachApplication({ practice, learning, palette, settings:
       accuracy: replay.score.accuracy, seconds: (replay.elapsedMs / 1000).toFixed(1),
       consistency: consistency(completed, replay) ?? null,
       accuracyTitle: plural(errors, 'first-try error') + ' · final c/i/e/m ' + chars.correct + '/' + chars.incorrect + '/' + chars.extra + '/' + chars.missed,
-      standing: recent.length < 2 || !best ? [] : copyParts(['average ', speedFigure(meanWpm(recent), { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]),
+      standing: !recent || recent.runs < 2 || !best ? [] : copyParts(['average ', speedFigure(recent.wpm, { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]),
+      versus: before && { change: replay.score.wpm - before.wpm, average: before.wpm },
+      range: rateShown(completed) ? speedRange(speedSeries(completed)) : null,
       headline: copyParts(resultHeadline(completed)), conditions: copyParts(describeRun(completed)),
       note: copyParts([uncounted, uncounted && unsaved ? ' ' : '', unsaved]),
       words: wordHistory(completed, replay).map((item) => ({ ...item, wpm: rateShown(completed) ? item.wpm : null })),
@@ -1216,14 +1216,6 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   function localRaceRunning() {
     return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
-  }
-
-  function trendRunsAt(key: string) {
-    return filterRuns(learning.profile.runs.filter(trendRun), key).filter((run): run is typeof run & import('./profile-types.js').ScoredRun => isScoredRun(run) && Boolean(run.score.wpm));
-  }
-
-  function meanWpm(runs: readonly import('./profile-types.js').ScoredRun[]) {
-    return Math.round(runs.reduce((sum, run) => sum + run.score.wpm, 0) / runs.length);
   }
 
   function labelWords() {

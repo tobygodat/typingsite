@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeSeries, speedSeries } from '../src/graph.js';
+import { describeSeries, speedRange, speedSeries } from '../src/graph.js';
 
 test('speed graph buckets correct keystrokes per second and marks misses', () => {
   const text = 'abcdefghij';
@@ -50,4 +50,11 @@ test('a run ending between whole seconds still averages its last point over thre
   const { points } = speedSeries({ text: 'a'.repeat(10), events, startedAt: 0, endedAt: 4001 });
   // The window (1001, 4001] holds all ten keys: 10 / 5 words over 3 s is 40 wpm.
   assert.deepEqual(points.at(-1), { t: 4.001, wpm: 40, misses: 0 });
+});
+
+test('the trace\'s range is its slowest and fastest point, and nothing under three points', () => {
+  const at = (wpm) => ({ t: 0, wpm, misses: 0 });
+  assert.deepEqual(speedRange({ points: [at(118), at(164), at(140)], durationS: 3 }), { low: 118, high: 164 });
+  assert.equal(speedRange({ points: [at(118), at(164)], durationS: 2 }), null);
+  assert.equal(speedRange({ points: [], durationS: 0 }), null);
 });

@@ -1,7 +1,7 @@
 import { isAnalysisRun, isAttempt, isRunRecord } from '../src/domain-history.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recentAverage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
@@ -217,6 +217,21 @@ test('trends never mix correction rules, word lists, drills, interruptions, or d
     run('d', { kind: 'drill' }), run('e', { kind: 'daily' }), run('f', { interrupted: true })];
 
   assert.deepEqual(filterRuns(runs.filter(trendRun), conditionKey(conditions)).map((r) => r.id), ['a']);
+});
+
+test('the recent average is the last ten trend runs at one key, and can leave out the run just finished', () => {
+  const key = conditionKey(conditions);
+  const earlier = Array.from({ length: 11 }, (_, index) => run(`r${index}`, { score: { wpm: index ? 100 : 10, accuracy: 98 } }));
+  const others = [run('drill', { kind: 'drill', score: { wpm: 300, accuracy: 98 } }), run('other', { conditions: { ...conditions, wordList: '5k' }, score: { wpm: 300, accuracy: 98 } }), run('repeat', { fresh: false, score: { wpm: 300, accuracy: 98 } })];
+  const latest = run('latest', { score: { wpm: 121, accuracy: 98 } });
+  const runs = [...earlier, ...others, latest];
+
+  // The oldest of the eleven earlier runs falls outside the ten; drills, other keys and repeated text never count.
+  assert.deepEqual(recentAverage(runs, key, { excluding: 'latest' }), { wpm: 100, runs: 10 });
+  assert.deepEqual(recentAverage(runs, key), { wpm: Math.round((9 * 100 + 121) / 10), runs: 10 });
+  assert.deepEqual(recentAverage(runs, key, { last: 1 }), { wpm: 121, runs: 1 });
+  assert.equal(recentAverage([latest], key, { excluding: 'latest' }), null);
+  assert.equal(recentAverage(runs, conditionKey({ ...conditions, count: 50 })), null);
 });
 
 test('a code run is a trend run but never sets a best', () => {

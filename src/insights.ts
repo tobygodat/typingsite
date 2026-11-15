@@ -268,6 +268,15 @@ export const practiceRun = <T>(run: T): run is T & HistoricalRecord & { status: 
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
 export const trendRun = <T>(run: T): run is T & HistoricalRecord & { status: 'complete'; kind: 'test' | 'retest' } => isRecord(run) && practiceRun(run) && run.fresh !== false;
 
+// The average a run is set against: the mean wpm of the last ten trend runs at one condition key, to the whole
+// wpm, with how many runs it holds; null with none. Leaving out the run just finished gives the average it is
+// compared with. Practice's readout, the run card and the pace caret read it here, so they never disagree.
+export function recentAverage(runs: readonly unknown[], key: string, { excluding = null, last = 10 }: { excluding?: string | null; last?: number } = {}) {
+  const recent = filterRuns(runs.filter(trendRun), key).filter((run): run is typeof run & ScoredRun => run.id !== excluding && isScoredRun(run) && Boolean(run.score.wpm)).slice(-last);
+
+  return recent.length ? { wpm: Math.round(recent.reduce((sum, run) => sum + run.score.wpm, 0) / recent.length), runs: recent.length } : null;
+}
+
 // A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
 // never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
 export const bestRun = (run: unknown) => isRecord(run) && trendRun(run) && (!isRecord(run.conditions) || run.conditions.mode !== 'code');
