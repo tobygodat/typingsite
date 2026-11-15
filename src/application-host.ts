@@ -1213,9 +1213,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
   }
 
-  const renderTraining = learning.progress.patterns.refresh;
-  learning.progress.patterns.configure({ learning, conditions, describe: describeConditions, recommendation: trainingRecommendation, practice: practiceTarget, date: dateCopy });
-
   const plural = (count: number | undefined, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
   const narrowColumn = window.matchMedia('(max-width: 760px)');
@@ -1698,7 +1695,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     learning.progress.commands.standard = () => setTestShape('standard');
     learning.progress.commands.movers = progressHistory.movers;
 
-    matchMedia('(pointer: coarse)').addEventListener('change', progressHistory.refreshKeys, { signal: lifetime.signal });
   
     learning.commands.back = () => {
       if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
@@ -1994,8 +1990,6 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (view === 'train') renderTrain();
 
-    renderTraining();
-
     if (view === 'progress') renderWeek();
 
     if (view === 'practice' && staleAdaptive()) resetSession('practice');
@@ -2154,7 +2148,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       ...([['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']] as const).map(([view, label]) => ({
         group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
       })),
-      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['keys', 'keys and pairs', 'heatmap patterns across runs'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'your standard score', 'standard test best median']] as const).map(([detail, label, keywords]) => ({
+      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'your standard score', 'standard test best median']] as const).map(([detail, label, keywords]) => ({
         group: 'go to', label, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
         run: () => { navigate('progress'); openProgressDetail(detail); },
       })),
@@ -2380,8 +2374,6 @@ export async function attachApplication({ practice, learning, palette, settings:
   setRunning(false);
 
   renderHistory();
-
-  renderTraining();
 
   renderDaily();
 

@@ -1,8 +1,6 @@
-import { TrainingPatterns } from './training-patterns.js';
 import { PROGRESS_DETAILS } from './progress-navigation.js';
 import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
-import { ProgressKeys } from './progress-keys.js';
 import { PracticeProgress } from './progress-calendar.js';
 import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
@@ -16,7 +14,7 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
   const lead = useSyncExternalStore(progress.lead.subscribe, progress.lead.getSnapshot, progress.lead.getSnapshot);
   const movers = useSyncExternalStore(progress.movers.subscribe, progress.movers.getSnapshot, progress.movers.getSnapshot);
   const charts = useSyncExternalStore(progress.charts.subscribe, progress.charts.getSnapshot, progress.charts.getSnapshot);
-  const filtersInDetail = ['runs', 'trends', 'keys'].includes(detail);
+  const filtersInDetail = ['runs', 'trends'].includes(detail);
   const periodInDetail = filtersInDetail || detail === 'calendar';
 
   return (
@@ -97,11 +95,6 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
             </div>
             <ProgressTrendFigures progress={progress} />
             <ProgressTrendNote progress={progress} />
-          </section>
-
-          <section id="detail-keys" className="detail-panel" data-panel="keys" aria-labelledby="progress-detail-heading" hidden={detail !== 'keys'}>
-            <ProgressKeys controller={learning.progress.keys} />
-            <TrainingPatterns controller={progress.patterns} />
           </section>
 
           <section id="detail-calendar" className="detail-panel" data-panel="calendar" aria-labelledby="progress-detail-heading" hidden={detail !== 'calendar'}>

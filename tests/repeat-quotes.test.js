@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeProfile } from '../src/profile.js';
 import { CORPUS_VERSION, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, selectPassage, summarizePatterns } from '../src/typing.js';
-import { KEY_COUNTS_VERSION, NON_COMPARABLE_KINDS, evidenceRun, filterRuns, keyAnalysis, passageBest, practiceRun, recurringMissedWords, recurringTargets, standardScore, trendRun, weeklyChange } from '../src/insights.js';
+import { KEY_COUNTS_VERSION, NON_COMPARABLE_KINDS, evidenceRun, filterRuns, passageBest, practiceRun, recurringMissedWords, recurringTargets, standardScore, trendRun, weeklyChange } from '../src/insights.js';
 
 const bucket = quoteCorpus.filter((q) => q.difficulty === 'gentle' && q.text.split(/\s+/).length <= 30).map((q) => q.id);
 const quote = (overrides) => selectPassage({ mode: 'quote', quoteLength: 'short', difficulty: 'gentle', ...overrides });
@@ -154,11 +154,8 @@ test('custom text is excluded by kind as well as by freshness: never listed, tre
   assert.equal(trendRun(fresh), true);
 });
 
-test('repeated text adds nothing to the key heatmap, missed words or the standard score', () => {
+test('repeated text adds nothing to missed words or the standard score', () => {
   const keys = (id, fresh) => summary(id, { fresh, keys: [['t', 12, 3]], keysVersion: KEY_COUNTS_VERSION, missedWords: ['the'] });
-  // Runs an exhausted pool saved before repeat quotes may still carry counts; they are not read.
-  assert.equal(keyAnalysis([keys('fresh', true), keys('repeat', false)]).runs, 1);
-  assert.equal(keyAnalysis([keys('repeat', false), keys('repeat-2', false)]).runs, 0);
   assert.equal(evidenceRun(keys('repeat', false)), false);
   assert.equal(evidenceRun(keys('legacy', undefined)), true, 'runs saved before the flag still count');
   assert.deepEqual(recurringMissedWords([keys('a', false), keys('b', false)]).words, []);

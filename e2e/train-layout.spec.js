@@ -3,7 +3,7 @@
 // step and the next three the learner queues, each with what it costs, the drilled steps folded under them, and the
 // chosen step's detail beside them; a retest's comparison is the newest step drilled.
 import { DEFAULT_POLICY } from '../src/learner.js';
-import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, chooseNavigation, phone } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, chooseNavigation, phone } from './fixtures.js';
 import { withHistory, units, behindUnits } from './train-fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
@@ -330,13 +330,6 @@ test('with history the queue opens on the learner’s target with its figures, t
   expect(ol[0]).toBe('6 of 22 → 1 of 12 missed');
   expect(ol.length).toBeLessThanOrEqual(2);
   expect(ol.slice(1).every((line) => /^1 of \d+ missed since the drill$/.test(line)), ol.join(' / ')).toBe(true);
-
-  // Progress's Patterns across runs lists the same queue: its first row is open here, the next three ahead.
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
-  const rows = await page.locator('#training-targets .training-target h3').allTextContents();
-  expect(rows.slice(0, 4)).toEqual(['th', ...ahead].map((unit) => `Practice “${unit}”`));
-  expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
 test('in cpm every cost and what was won back read five times their wpm, and nothing is redrawn but the figures', async ({ page, supabase }) => {

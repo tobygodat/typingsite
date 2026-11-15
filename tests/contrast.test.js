@@ -151,8 +151,6 @@ function pairs(tokens) {
   // A pressed challenge-mode button under the pointer.
   text('--accent on --raised-2 over ground', colour('--accent'), washOverGround);
   text('--accent-ink on --accent (primary button)', colour('--accent-ink'), colour('--accent'));
-  // A key's letter on the hottest heatmap fill.
-  text('--text on --heat-3 over ground', colour('--text'), over(colour('--heat-3'), ground));
   // Placeholders as the stylesheet paints them: the rule's colour, faded by the rule's opacity. Fields
   // are raised stock, and the palette's search field sits on the raised palette box.
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');

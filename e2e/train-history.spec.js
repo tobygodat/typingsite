@@ -119,7 +119,7 @@ test('a clear in another tab and its undo redraw Train here, each time as the st
   expect(errors).toEqual([]);
 });
 
-test('a run typed in another tab redraws the steps ahead here, and Patterns across runs on Progress', async ({ page, context, supabase }) => {
+test('a run typed in another tab redraws the steps ahead here', async ({ page, context, supabase }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // A random ten words can miss every pair the path shows (th, an, er, in and the drilled ones), and then nothing on
   // it changes. The other tab's passages are fixed, and the first holds "th".
@@ -131,14 +131,6 @@ test('a run typed in another tab redraws the steps ahead here, and Patterns acro
   expect(await runWithMisses(other)).toContain('th');
   await expect.poll(async () => JSON.stringify((await stored(page)).path), { timeout: 10_000 }).not.toBe(JSON.stringify(before));
   await expectStoredPath(page);
-
-  await openView(page, 'Progress');
-  await runWithMisses(other);
-  await expect.poll(async () => {
-    const rows = await page.locator('#training-targets .training-target h3').allTextContents();
-
-    return JSON.stringify(rows) === JSON.stringify((await stored(page)).queue.slice(0, 8).map((unit) => `Practice “${unit}”`));
-  }, { timeout: 10_000 }).toBe(true);
   expect(errors).toEqual([]);
 });
 

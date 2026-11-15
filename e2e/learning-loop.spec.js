@@ -185,10 +185,9 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await openApp(page);
   await signInWithEmail(page, user.email);
   // The summaries arrive, so the learner's target does too; the recordings stay where they were made.
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
-  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await openView(page, 'Train');
+  await expect(page.locator('#train-current')).toContainText('50 of 50 missed in 2 runs');
+  await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
   await openView(page, 'Progress');
@@ -212,19 +211,18 @@ test('a drill started from saved history, left once, is retested against that hi
   await recordedHere(page, user.id, data);
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-targets')).toContainText('50 of 50 missed in 2 runs');
+  await openView(page, 'Train');
+  await expect(page.locator('#train-current')).toContainText('50 of 50 missed in 2 runs');
 
   // A recurring target, left mid-drill for Progress.
-  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await typeInto(page, (await passageText(page)).slice(0, 8));
   await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
   await expect.poll(() => profile()?.runs?.map((run) => `${run.kind} ${run.status}`)).toEqual(['test complete', 'test complete', 'drill interrupted']);
   // The same pattern again finds the saved baseline: its drill runs its 30 seconds, then the retest.
-  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await openView(page, 'Train');
+  await page.locator('#start-drill').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await expect(page.locator('#session-description')).toHaveText('Doesn’t count toward your best.');
   await finishDrill(page);

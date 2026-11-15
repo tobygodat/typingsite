@@ -136,11 +136,9 @@ export async function openProgressDetail(page, name) {
 }
 
 // The trends' tabs (Speed, Accuracy, Consistency), opened from the small speed chart; and the views that were tabs
-// before the overview (Practice, the calendar; Keys).
+// before the overview (Practice, the calendar).
 export async function openProgressView(page, name) {
   if (name === 'Practice') return openProgressDetail(page, 'calendar');
-
-  if (name === 'Keys') return openProgressDetail(page, 'keys');
 
   if ((await page.locator('#progress-screen').getAttribute('data-detail')) !== 'trends') {
     if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();

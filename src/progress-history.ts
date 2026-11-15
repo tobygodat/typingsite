@@ -79,8 +79,6 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
   const openTrend = learning.progress.navigation.openTrend;
   const shownProgressView = () => progressState.view;
   const RECENT_RUNS = 10;
-  const coarsePointer = matchMedia('(pointer: coarse)');
-  let heatRuns: readonly unknown[] = [];
   let listedRuns: ListedRun[] = [];
   let historyDay = '';
   let progressRuns: ReturnType<typeof weekChange>['charts']['runs'] = [];
@@ -91,8 +89,6 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
 
   const landProgressFocus = (options?: { scroll?: boolean }) => focusShown(learning.progress.navigation.view.getSnapshot().detail ? $('progress-detail-heading')
     : learning.profile.runs.some(practiceRun) || learning.profile.loops.length ? $('lead-figure') : $('progress-empty-title'), options);
-
-  function renderKeys(runs: readonly unknown[]) { heatRuns = runs; learning.progress.keys.show(runs, coarsePointer.matches); }
 
   learning.progress.navigation.configure({ history: renderHistory, draw: drawProgressView, focusShown, landFocus: landProgressFocus });
 
@@ -156,11 +152,9 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
   function renderHistory() {
     // One moment for the whole page, so the week, every figure, chart and list read the same days.
     const date = new Date();
-    const { source, key, span, runRows, loops } = renderOverview(date);
+    const { runRows, loops } = renderOverview(date);
     practiceProgress.standard();
-    learning.progress.patterns.refresh();
     practiceProgress.goal(date);
-    renderKeys(source ? filterRuns(learning.profile.runs, key, span) : []);
     listedRuns = [...runRows].reverse();
     renderRunRows();
     ports.loops(loops);
@@ -215,7 +209,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     // Everything else, one step away.
     const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
     const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
-    const links = { runs: hasProgress, keys: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
+    const links = { runs: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
 
     flushSync(() => learning.progress.overview.publish({ hasHistory, hasProgress, links,
       runsLabel: runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs' }));
@@ -223,7 +217,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     // The full charts are opened from a small chart, not a link, and stay open through their own filters.
     if (progressState.detail && !{ ...links, trends: hasProgress }[progressState.detail]) progressState.detail = '';
 
-    return { source, key, span, runRows, loops };
+    return { runRows, loops };
   }
 
   function renderWeek() {
@@ -295,6 +289,5 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     get day() { return historyDay; },
     relabelLead() { if (progressWeek) renderLead(progressWeek.lead); },
     movers() { if (progressWeek) { progressState.moversOpen = !progressState.moversOpen; renderMovers(progressWeek); } },
-    refreshKeys() { renderKeys(heatRuns); },
   };
 }

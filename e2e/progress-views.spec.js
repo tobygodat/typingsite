@@ -172,7 +172,7 @@ test('the conditions line is the control: lengths and condition sets change the 
   await expect(page.locator('#run-history')).toContainText('100 wpm');
 });
 
-test('what moved it: the fixed pairs with their evidence, three at a time, then practice; a named pair still drills from Keys', async ({ page, supabase }) => {
+test('what moved it: the fixed pairs with their evidence, three at a time, then practice', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
   const rows = page.locator('#week-movers > li');
   await expect(page.locator('#week-movers')).toHaveAccessibleName('What changed since last week');
@@ -195,17 +195,6 @@ test('what moved it: the fixed pairs with their evidence, three at a time, then 
   await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'ox', 'ux', 'practice']);
   await page.locator('#more-movers').click();
   await expect(rows.filter({ visible: true })).toHaveCount(4);
-
-  // Drilling a named pair stays one step away: Patterns across runs in Keys starts the drill Train would.
-  await openProgressDetail(page, 'keys');
-  const target = page.locator('#training-targets .training-target').first();
-  const name = (await target.locator('h3').textContent()).match(/“(.+)”/)[1];
-  await target.getByRole('button', { name: `Practice “${name}” again` }).click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#session-title')).toHaveText(`Practice “${name}”`);
-  // Coming back from another screen, Progress opens on its overview.
-  await openView(page, 'Progress');
-  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', '');
 });
 
 // The list holds only what there is: no "more" under a short list, a practice row alone, and no list at all.
@@ -459,10 +448,10 @@ test('undoing a clear comes back to the conditions that were showing', async ({ 
 
 test('every quiet link opens its view, named and focused, and Progress goes back; the palette opens them too', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
-  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs', 'Keys', 'Practice calendar', 'Standard score']);
+  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs', 'Practice calendar', 'Standard score']);
   await expect(page.locator('#clear-history')).toBeVisible();
 
-  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['keys', 'Keys', '#key-heatmap'], ['calendar', 'Practice', '#practice-goal'], ['standard', 'Standard score', '#standard-score']]) {
+  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['calendar', 'Practice', '#practice-goal'], ['standard', 'Standard score', '#standard-score']]) {
     const link = page.locator(`[data-progress-open="${name}"]`);
     await link.click();
     await expect(page.locator('#progress-detail-heading')).toHaveText(heading);
@@ -473,18 +462,13 @@ test('every quiet link opens its view, named and focused, and Progress goes back
     await expect(link).toBeFocused();
   }
 
-  for (const [label, name] of [['runs and drills', 'runs'], ['keys and pairs', 'keys'], ['practice calendar', 'calendar'], ['your standard score', 'standard']]) {
+  for (const [label, name] of [['runs and drills', 'runs'], ['practice calendar', 'calendar'], ['your standard score', 'standard']]) {
     await page.keyboard.press('Control+k');
     await page.keyboard.type(label);
     await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText(label);
     await page.keyboard.press('Enter');
     await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
   }
-
-  // Keys keeps Patterns across runs, the learner's queue, each unit with its drill.
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-targets .training-target').first()).toContainText('Practice “');
-  await expect(page.locator('#training-targets').getByRole('button', { name: /^Practice “.+” again$/ }).first()).toBeVisible();
 });
 
 test('the run list opens on the newest ten, and one button lists every run', async ({ page, supabase }) => {
@@ -628,7 +612,6 @@ const HOLDERS = {
   'a period pill': async (page) => page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }),
   'the more control': async (page) => page.locator('#more-movers'),
   'the runs link': async (page) => page.locator('#open-runs'),
-  'the Keys link': async (page) => page.locator('#progress-more [data-progress-open="keys"]'),
   'Clear history': async (page) => page.locator('#clear-history'),
 };
 
@@ -901,7 +884,7 @@ for (const [width, height] of [[1440, 900], [1280, 800], [390, 844], [320, 640]]
 test('the palette’s progress shows the overview from a detail view', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
 
-  for (const name of ['runs', 'keys', 'trends']) {
+  for (const name of ['runs', 'trends']) {
     if (name === 'trends') await page.locator('#week-speed button').click();
     else await openProgressDetail(page, name);
     await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
