@@ -74,6 +74,11 @@
   --frame-inset: 10px;
   --frame-glyph: 17px;
   --side-toggle: 32px;
+  /* Panels and cells (the Instrument building blocks): the inset of their contents, the label size and a cell's
+     figure. */
+  --panel-inset: 14px;
+  --text-caption: 11px;
+  --text-figure: 26px;
   --disabled-opacity: 0.38;
   --settings-height: 704px;
   --settings-body-height: 520px;
@@ -1183,6 +1188,69 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .dock-zone .footer-links { flex-wrap: wrap; gap: 0 var(--space-4); margin-top: var(--space-1); }
   :root[data-navigation="side"] .dock-zone .footer-link { white-space: nowrap; }
   :root[data-navigation="side"] .challenge-toast { top: var(--space-4); }
+}
+
+/* ── Panels and cells ───────────────────────────────────────────────────── */
+
+/* The Instrument look's two building blocks, for the screens to use (TOB-470). A panel is a titled block with a
+   hairline border: .panel > .panel-head (.panel-title, then any controls) and its body. A cell is one measure: a
+   .cell-label, a .cell-value with a large .cell-figure and a small .cell-unit, and an optional .cell-note. Cells sit
+   side by side in .cells, a bordered row split by hairlines.
+
+   <section class="panel"><header class="panel-head"><h2 class="panel-title">speed</h2></header>…</section>
+   <div class="cells"><div class="cell"><span class="cell-label">wpm</span>
+     <p class="cell-value"><b class="cell-figure">154</b><i class="cell-unit">wpm</i></p><span class="cell-note">+8 vs last week</span></div></div> */
+.panel {
+  min-width: 0;
+  padding: 0 var(--panel-inset) var(--panel-inset);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--ground-2);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  min-height: var(--space-10);
+  margin: 0 calc(var(--panel-inset) * -1) var(--panel-inset);
+  padding: var(--space-1) var(--panel-inset);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.panel-title,
+.cell-label {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--text-caption)/1.4 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.cells {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--ground-2);
+  overflow: hidden;
+}
+
+.cell { min-width: 0; padding: var(--space-3) var(--panel-inset); border-left: 1px solid var(--hairline); }
+.cell:first-child { border-left: 0; }
+.cell-value { margin: var(--space-1) 0 0; }
+.cell-figure { font: 500 var(--text-figure)/1.15 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.cell-unit { margin-left: 6px; color: var(--muted); font: 400 var(--text-mono)/1 var(--font-mono); font-style: normal; }
+.cell-note { display: block; margin-top: var(--space-1); color: var(--muted); font-size: var(--text-fine); }
+
+/* Two cells a row on a phone, the hairlines following. */
+@media (max-width: 760px) {
+  .cells { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cell:nth-child(odd) { border-left: 0; }
+  .cell:nth-child(n + 3) { border-top: 1px solid var(--hairline); }
 }
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
