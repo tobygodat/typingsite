@@ -4,16 +4,17 @@ import { test, expect, openApp, passageText, typeInto, chooseWords, chooseSettin
 
 const number = (text) => Number(text.replace('−', '-').replace(/[^\d.-]/g, ''));
 
-// A 10-word run at a person's pace (over 3 s), with one letter missed and fixed when asked.
+// A 10-word run at a person's pace, with one letter missed and fixed when asked. Ten words can be under 40
+// characters, so 90 ms a key keeps every run past the 3 s that consistency and the range need.
 async function run(page, { miss = false } = {}) {
   const text = await passageText(page);
   const at = text.indexOf(' ') + 1;
 
   if (miss) {
-    await typeInto(page, text.slice(0, at) + (text[at] === 'x' ? 'z' : 'x'), '#typing-input', { delay: 60 });
+    await typeInto(page, text.slice(0, at) + (text[at] === 'x' ? 'z' : 'x'), '#typing-input', { delay: 90 });
     await page.keyboard.press('Backspace');
-    await page.keyboard.type(text.slice(at), { delay: 60 });
-  } else await typeInto(page, text, '#typing-input', { delay: 60 });
+    await page.keyboard.type(text.slice(at), { delay: 90 });
+  } else await typeInto(page, text, '#typing-input', { delay: 90 });
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
 }
 
