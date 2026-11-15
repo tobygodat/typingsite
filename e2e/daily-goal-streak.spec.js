@@ -384,6 +384,11 @@ test.describe('calendar on a touch device', () => {
     await expect(page.locator('#goal-calendar')).toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('#goal-calendar [tabindex]')).toHaveCount(0);
     const first = await picker.locator('option').first().getAttribute('value');
+    // A tap on a day shows its tip, as a hover does.
+    await page.locator('#goal-calendar .goal-day').last().tap();
+    await expect(page.locator('.calendar-tip .tip-runs')).toHaveText(/^1 run · best \d+ wpm$/);
+    await page.locator('#calendar-title').tap();
+    await expect(page.locator('.calendar-tip')).toBeHidden();
     await picker.focus();
     await picker.selectOption(first);
     await expect(page.locator('#goal-caption')).toHaveText(/^Sun, [A-Z][a-z]{2} \d{1,2} · 0 min$/);

@@ -494,6 +494,71 @@ test('every quiet link and the fixed cell open their views, named and focused, a
   }
 });
 
+test('the runs table lists the newest runs at these conditions, speed first, with a crown on each that was a best when typed', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(6, 60, 95), run(5, 58, 95), run(4, 64, 96), run(3, 64, 97), { ...run(2, 99, 99), fresh: false },
+    { ...run(1, 70, 98.25), kind: 'retest' }, run(0, 90, 99, { punctuation: true })]);
+  const panel = page.locator('#progress-runs');
+  const rows = panel.locator('#runs-table tbody tr');
+  await expect(panel.locator('.panel-head')).toContainText('runs');
+  await expect(panel.locator('#clear-history')).toBeVisible();
+  await expect(panel.locator('#runs-table th')).toHaveText(['wpm', 'accuracy', 'when', 'kind']);
+  // Newest first. A tie with the best so far and repeated text are no new best; the punctuation set keeps its own.
+  await expect(rows.locator('td:first-child data')).toHaveText(['70', '99', '64', '64', '58', '60']);
+  await expect(rows.locator('td:nth-child(4)')).toHaveText(['retest', 'repeated', 'test', 'test', 'test', 'test']);
+  await expect(rows.first().locator('td')).toHaveText(['70, personal best', '98.3%', 'Oct 16', 'retest']);
+  const crowned = await rows.evaluateAll((list) => list.map((row) => Boolean(row.querySelector('.pb'))));
+  expect(crowned).toEqual([true, false, false, true, false, true]);
+  await expect(rows.first().locator('.pb')).toHaveAttribute('title', 'A personal best when you typed it');
+  await expect(rows.first().locator('.pb .sr-only')).toHaveText(', personal best');
+
+  // The table follows the speed unit.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect(panel.locator('#runs-table th').first()).toHaveText('cpm');
+  await expect(rows.first().locator('td:first-child data')).toHaveText('350');
+});
+
+test('the calendar shows a year of weeks, and its tip names a day’s runs and best by hover and by keyboard, at once', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [...weekRuns(), run(0, 84, 95, { mode: 'time', count: null, duration: 15 })]);
+  const days = page.locator('#goal-calendar .goal-day');
+  const tip = page.locator('.calendar-tip');
+  // A Saturday: 53 full week columns, Sunday first, a month name over each column that starts a month.
+  await expect(days).toHaveCount(53 * 7);
+  await expect(page.locator('#goal-months > span')).toHaveCount(53);
+  await expect(days.first()).toHaveAttribute('aria-label', /^Sunday, /);
+  await expect(page.locator('#calendar-summary')).toHaveText('14 runs · 13 days');
+  await expect(tip).toBeHidden();
+
+  await days.last().hover();
+  await expect(tip).toBeVisible();
+  await expect(tip.locator('.tip-runs')).toHaveText('2 runs · best 84 wpm');
+  await expect(page.locator('#goal-caption')).toHaveText('Sat, Oct 17 · <1 min');
+  // A day before the oldest kept run has its minutes only.
+  await days.nth((await days.count()) - 1 - 20).hover();
+  await expect(tip.locator('.tip-runs')).toHaveCount(0);
+  await expect(page.locator('#goal-caption')).toHaveText('Sun, Sep 27 · 0 min');
+  await page.mouse.move(5, 5);
+  await expect(tip).toBeHidden();
+
+  // From the keyboard: one tab stop, arrows move a week; the tip follows focus and never animates.
+  await days.last().focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(days.nth((await days.count()) - 8)).toBeFocused();
+  await expect(tip.locator('.tip-runs')).toHaveText('1 run · best 74 wpm');
+  await expect(page.locator('#goal-caption')).toHaveText('Sat, Oct 10 · <1 min');
+  expect(await tip.evaluate((node) => ({ animations: node.getAnimations().length, transition: getComputedStyle(node).transitionDuration }))).toEqual({ animations: 0, transition: '0s' });
+  const [cell, box] = await Promise.all([days.nth((await days.count()) - 8).boundingBox(), tip.boundingBox()]);
+  expect(box.y + box.height, 'the tip stands over its day').toBeLessThanOrEqual(cell.y);
+
+  // The best is in the unit the person reads speeds in.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await days.last().hover();
+  await expect(tip.locator('.tip-runs')).toHaveText('2 runs · best 420 cpm');
+});
+
 test('the run list opens on the newest ten, and one button lists every run', async ({ page, supabase }) => {
   const many = Array.from({ length: 14 }, (_, i) => run(14 - i, 50 + i, 95));
   await openProgress(page, supabase, many);
