@@ -2,7 +2,7 @@ import { createRunCopy } from './run-copy.js';
 import { createHistorySelection } from './history-selection.js';
 import { createLoopHistory } from './loop-history.js';
 import type { PaletteCommand } from './palette.js';
-import type { AppView } from './navigation.js';
+import type { AppView, NavigationPlacement } from './navigation.js';
 import type { InputClass, MinimumFailure } from './typing.js';
 import type { SealedRun, SessionKind } from './practice-session.js';
 import type { HistoricalRecord, ActivePreferences } from './profile-types.js';
@@ -282,7 +282,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
 
-  const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
+  const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
     ...TRAINING_PREFERENCES];
 
   const runInProgress = () => runActive || localRaceRunning();
@@ -438,6 +438,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     document.body.dataset.liveMetrics = String(learning.preferences.liveMetrics);
     document.body.dataset.keyboard = String(learning.preferences.keyboard);
     document.body.dataset.focusMode = String(learning.preferences.focusMode);
+
+    if (navigation.placement(learning.preferences.navigation)) updateGlides({ instant: true });
     selectSetting('font-size', String(learning.preferences.fontSize));
     selectSetting('word-highlight', learning.preferences.wordHighlight);
     selectSetting('word-highlight-slide', learning.preferences.wordHighlightSlide);
@@ -451,6 +453,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     selectSetting('correction-select', learning.preferences.correction);
     selectSetting('focus-toggle', String(learning.preferences.focusMode));
     selectSetting('tape-toggle', learning.preferences.tape);
+    selectSetting('navigation-select', learning.preferences.navigation);
     renderKeyboard();
     applySoundPreferences();
     applyTheme();
@@ -1651,6 +1654,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     settingsView.pace.configure({ changed(wpm) { learning.preferences.paceWpm = wpm; setPaceCaret('custom', { speed: true }); }, refresh: showPace });
     onSetting('focus-toggle', (value) => { learning.preferences.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
     onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
+    onSetting('navigation-select', (value) => setNavigation(value === 'top' ? 'top' : 'side'));
     onSetting('sound-select', (value) => setSound(value));
   
     settingsView.onVolume((value) => setSoundVolume(value, { save: false }), () => saveChoice('soundVolume'));
@@ -1852,6 +1856,12 @@ export async function attachApplication({ practice, learning, palette, settings:
     setModeControls();
     saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
     resetSession('practice', { focus: true, leaveCompose: true });
+  }
+
+  function setNavigation(placement: NavigationPlacement) {
+    learning.preferences.navigation = placement;
+    applyPreferences();
+    saveChoice('navigation');
   }
 
   function togglePreference(key: 'keyboard' | 'liveMetrics' | 'focusMode' | 'tape') {
@@ -2178,6 +2188,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     
       ...([['off', 'off'], ['current', 'this word'], ['next', 'next word']] as const).map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: learning.preferences.wordHighlight === mode ? 'current' : '', on: learning.preferences.wordHighlight === mode, run: () => setWordHighlight(mode) })),
       { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(Boolean(learning.preferences.wordHighlightSlide)), on: learning.preferences.wordHighlightSlide, disabled: learning.preferences.wordHighlight === 'off', run: () => setWordHighlightSlide(!learning.preferences.wordHighlightSlide) },
+      ...(['side', 'top'] as const).map((placement) => ({ group: 'display', label: `navigation · ${placement} bar`, keywords: 'sidebar topbar menu screens layout position move', hint: learning.preferences.navigation === placement ? 'current' : '', on: learning.preferences.navigation === placement, run: () => setNavigation(placement) })),
       { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(Boolean(learning.preferences.tape)), on: learning.preferences.tape, run: () => togglePreference('tape') },
       ...([['wpm', 'words'], ['cpm', 'characters']] as const).map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: learning.preferences.speedUnit === unit ? 'current' : '', on: learning.preferences.speedUnit === unit, run: () => setSpeedUnit(unit) })),
       { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(Boolean(learning.preferences.liveMetrics)), on: Boolean(learning.preferences.liveMetrics), run: () => togglePreference('liveMetrics') },

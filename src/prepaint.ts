@@ -65,6 +65,8 @@ try {
     root.dataset.custom = '';
   }
 
+  if (preferences?.navigation === 'top') root.dataset.navigation = 'top';
+
   if (typeof preferences?.typingFont === 'string' && TYPING_FONTS.includes(preferences.typingFont)) root.dataset.typingFont = preferences.typingFont;
 
   if (typeof preferences?.appFont === 'string' && APP_FONTS.includes(preferences.appFont)) root.dataset.appFont = preferences.appFont;

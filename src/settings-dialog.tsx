@@ -79,6 +79,13 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
           <ThemeSettings controller={themeEditor} settings={settings} />
           <WallpaperSettings controller={wallpaper} settings={settings} />
           <div className="preference-row">
+            <div className="preference-copy"><strong id="navigation-select-label">navigation</strong></div>
+            <fieldset className="setting-options" id="navigation-select" aria-labelledby="navigation-select-label" disabled={view.disabled['navigation-select'] ?? false} onClick={(event) => choose('navigation-select', event)}>
+              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'side', true)} /><span>side bar</span></label>
+              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'top')} /><span>top bar</span></label>
+            </fieldset>
+          </div>
+          <div className="preference-row">
             <div className="preference-copy"><strong id="font-size-label">text size</strong></div>
             <fieldset className="setting-options" id="font-size" aria-labelledby="font-size-label" disabled={view.disabled['font-size'] ?? false} onClick={(event) => choose('font-size', event)}>
               <label className="setting-option"><input type="radio" name="font-size" {...radio('font-size', '22')} /><span>small</span></label>
