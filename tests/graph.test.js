@@ -52,9 +52,9 @@ test('a run ending between whole seconds still averages its last point over thre
   assert.deepEqual(points.at(-1), { t: 4.001, wpm: 40, misses: 0 });
 });
 
-test('the trace\'s range is its slowest and fastest point, and nothing under three points', () => {
+test('the trace\'s range is its slowest and fastest point, and nothing under three seconds', () => {
   const at = (wpm) => ({ t: 0, wpm, misses: 0 });
   assert.deepEqual(speedRange({ points: [at(118), at(164), at(140)], durationS: 3 }), { low: 118, high: 164 });
-  assert.equal(speedRange({ points: [at(118), at(164)], durationS: 2 }), null);
+  assert.equal(speedRange({ points: [at(118), at(164), at(140)], durationS: 2.8 }), null);
   assert.equal(speedRange({ points: [], durationS: 0 }), null);
 });
