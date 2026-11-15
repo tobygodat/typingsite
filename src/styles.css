@@ -3149,7 +3149,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 /* The period: three choices in one quiet box, the chosen one raised. */
 .period-row { display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ground-2); }
 .period-option { min-height: calc(var(--progress-control) - 6px); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-cell); background: none; color: var(--muted); font-size: var(--text-label); white-space: nowrap; cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out); }
+  transition: transform var(--dur-quick) var(--ease-out); }
 .period-option[aria-pressed="true"] { background: var(--raised-2); color: var(--text); }
 .period-option:active, .quiet-action:active { transform: scale(0.97); }
 
@@ -3164,8 +3164,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .lead-cell[data-tone="gain"] .lead-change { color: var(--accent); }
 .lead-cell[data-tone="drop"] .lead-change { color: var(--danger); }
 .lead-dash { color: var(--muted); }
-.cell-link { width: 100%; border-block: 0; border-right: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out); }
+.cell-link { width: 100%; border-block: 0; border-right: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
 .cell-link:first-child { border-left: 0; }
 .cell-link:active { background: var(--raised-2); }
 @media (hover: hover) and (pointer: fine) {
@@ -3220,7 +3219,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .progress-more:not(:has(> :not([hidden]))) { display: none; }
 /* A quiet text action: the runs panel's links and Clear history. */
 .quiet-action { min-height: var(--progress-control); padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--text-label); cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out); }
+  transition: transform var(--dur-quick) var(--ease-out); }
 @media (hover: hover) and (pointer: fine) {
   .quiet-action:hover { color: var(--text); }
 }
