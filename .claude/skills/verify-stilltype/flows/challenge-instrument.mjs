@@ -1,7 +1,7 @@
 // Challenge in the Instrument look (TOB-470), every state its panels and tiles take: a guest; signed in with nobody
 // on the list and no rated race; a provisional rating part-way to a rank; a ranked rating; looking for a race; the
 // friends panel's invited, ghost and friend rows; the four views a control opens; and a race room before the start.
-// NAV=top runs it in the top bar (the setting is ignored under 960px, where the bars are the phone's).
+// NAV=top runs it in the top bar and SIDE=hidden with the side bar hidden (both mean nothing on a phone).
 const PASSAGE = 'The quick brown fox jumps over the lazy dog.';
 const DAY = 24 * 3600000;
 
@@ -28,20 +28,33 @@ export default async ({ page, h, shot, check, note, fake }) => {
 
   const top = process.env.NAV === 'top';
   const wide = page.viewportSize().width >= 960;
-  const placement = async () => {
-    if (!top) return;
+  const command = async (name) => {
     await page.keyboard.press('Control+k');
     await page.locator('#palette-input').waitFor();
-    await page.keyboard.type('navigation · top bar');
+    await page.keyboard.type(name);
     await page.keyboard.press('Enter');
+  };
+  const placement = async () => {
+    if (!top) return;
+    await command('navigation · top bar');
     await page.locator('html[data-navigation="top"]').waitFor({ state: 'attached' });
   };
+  const hideSide = process.env.SIDE === 'hidden' && wide && !top;
+  const reveal = async () => {
+    if (hideSide && await page.locator('html[data-side-bar="hidden"]').count()) await command('show side bar');
+  };
   const challenge = async () => {
+    await reveal();
     await h.openView('Challenge');
+    if (hideSide) {
+      await command('hide side bar');
+      await page.locator('html[data-side-bar="hidden"]').waitFor({ state: 'attached' });
+    }
     await page.mouse.move(1, 1);
     await h.settle();
   };
   const switchTo = async (email) => {
+    await reveal();
     await page.locator('#account-trigger').click();
     await Promise.all([page.waitForEvent('load'), page.locator('#account-signout').click()]);
     await page.locator('#account[data-state="guest"]').waitFor({ state: 'attached' });
@@ -57,6 +70,7 @@ export default async ({ page, h, shot, check, note, fake }) => {
   await noSideScroll('guest');
   await shot('guest');
 
+  await reveal();
   await h.signIn('new@stilltype.test');
   await placement();
   await challenge();

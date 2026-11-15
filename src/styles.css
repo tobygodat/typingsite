@@ -3544,7 +3544,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .people-tally { grid-column: 3; margin: 0; color: var(--muted); font: 400 var(--text-label)/1 var(--font-mono); white-space: nowrap; }
 .people-actions { grid-column: 4; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
 .people-actions .btn { height: 34px; padding: 0 var(--space-3); font-size: var(--text-label); }
-.people-actions .btn-secondary:first-child:only-child, .people-action { min-width: 64px; }
+.people-action { min-width: 64px; }
 .people-detail { color: var(--muted); font-size: var(--text-label); font-weight: 400; overflow-wrap: anywhere; }
 .people-signin { justify-self: start; }
 /* Touch reaches the panel head's two quiet controls as it does a button. */
@@ -3582,7 +3582,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .challenge-view { display: grid; gap: var(--space-3); align-content: start; }
 .challenge-view h2[tabindex="-1"]:focus { outline: 0; }
 .challenge-back { justify-self: start; margin-left: calc(var(--space-3) * -1); }
-.challenge-view .online-actions { margin-top: var(--space-6); }
 .challenge-view :is(.daily-challenge, .friends-board) { padding: 0 var(--panel-inset) var(--panel-inset); border-top: 1px solid var(--hairline-strong); }
 .challenge-view .panel-title { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.02em; }
 .challenge-view .daily-heading { justify-content: flex-start; align-items: baseline; }
