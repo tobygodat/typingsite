@@ -51,7 +51,7 @@ Preconditions:
   cleanly, then checks Train names it on its timing and the comparison and Progress read its pace back.
 - **Training settings.** `flows/train-settings.mjs` (`--signed-in --delay 40`, about two minutes) shoots the
   settings dialog's train focus, drill length and retest rows, types three 50-word passages slow at "th" and
-  missing "an" and "in", then shoots Train and Patterns across runs in each focus and checks they agree, that
+  missing "an" and "in", then shoots Train in each focus and checks that
   accuracy and speed name different targets, a 15-second drill and its retest, Train's two lines after it, the
   retest off ending on the drill's own result, and a 120-second drill.
 - **The focus followed.** `flows/train-focus-follows.mjs` (`--signed-in --delay 40`, about a minute) types the same
