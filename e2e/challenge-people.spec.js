@@ -136,7 +136,9 @@ test('a guest sees quick match, sign-in, the daily passage and One keyboard, and
   await expect(page.getByRole('heading', { name: 'Quick match' })).toBeVisible();
   await expect(page.locator('[data-guest]').first()).toHaveText('Sign in to be matched.');
   await expect(page.locator('#people-list')).toBeHidden();
-  await expect(page.locator('.people-foot button:visible')).toHaveText(['Sign in to keep friends', 'Daily passage', 'One keyboard']);
+  // The friends panel offers only sign-in; the tiles are the daily passage and One keyboard (Race by link needs an account).
+  await expect(page.locator('.people-panel button:visible')).toHaveText(['Sign in to keep friends']);
+  await expect(page.locator('.challenge-tiles .tile:visible .tile-name')).toHaveText(['Daily passage', 'One keyboard']);
   await expect(page.getByRole('button', { name: 'Find a race' })).toBeVisible();
   await page.getByRole('button', { name: 'Sign in to keep friends' }).click();
   await expect(page.locator('#account-dialog')).toBeVisible();
