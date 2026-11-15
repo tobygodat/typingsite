@@ -186,7 +186,7 @@ test('runs recorded on another device are no baseline: their drill stands alone,
   await signInWithEmail(page, user.email);
   // The summaries arrive, so the learner's target does too; the recordings stay where they were made.
   await openView(page, 'Train');
-  await expect(page.locator('#train-current')).toContainText('50 of 50 missed in 2 runs');
+  await expect(page.locator('#train-evidence')).toContainText('50 of 50 missed in 2 runs');
   await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
@@ -212,7 +212,7 @@ test('a drill started from saved history, left once, is retested against that hi
   // Signing in reloads the page, so no run has been shown in this tab: only the saved runs can be the baseline.
   await signInWithEmail(page, user.email);
   await openView(page, 'Train');
-  await expect(page.locator('#train-current')).toContainText('50 of 50 missed in 2 runs');
+  await expect(page.locator('#train-evidence')).toContainText('50 of 50 missed in 2 runs');
 
   // A recurring target, left mid-drill for Progress.
   await page.locator('#start-drill').click();
