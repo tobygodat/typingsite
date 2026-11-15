@@ -211,18 +211,25 @@ export function learnerEvidence(runs: readonly unknown[], keyboard: string) {
   });
 }
 
+// A pattern row's timing as the learner reads it: the pair's median clean interval and the run's, in ms, or null when
+// the row timed nothing or the run went faster than MIN_PACE_MS a key.
+export function measuredInterval(timed: number, pairMs: number | null, slowdownMs: number | null) {
+  const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
+
+  return timed > 0 && runMs !== null && pairMs !== null && runMs >= MIN_PACE_MS && pairMs > 0 ? { pairMs, runMs } : null;
+}
+
 function evidenceRecord(run: AnalysisRun) {
   const units: EvidenceUnit[] = [];
   let pace: number | null = null;
 
   for (const [pair, seen, errors, timed, pairMs, slowdownMs] of run.patterns || []) {
     if (!PAIR.test(pair) || !(seen >= 0)) continue;
-    const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
-    const measured = timed > 0 && runMs !== null && pairMs !== null && runMs >= MIN_PACE_MS && pairMs > 0;
+    const measured = measuredInterval(timed, pairMs, slowdownMs);
 
-    if (measured) pace ??= runMs;
-    units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? pairMs > runMs : null,
-      ratio: measured ? Math.log(pairMs / runMs) : null, slowMs: measured ? pairMs - runMs : null });
+    if (measured) pace ??= measured.runMs;
+    units.push({ unit: pair, seen, errors: Math.min(errors, seen), timed: measured ? timed : 0, slow: measured ? measured.pairMs > measured.runMs : null,
+      ratio: measured ? Math.log(measured.pairMs / measured.runMs) : null, slowMs: measured ? measured.pairMs - measured.runMs : null });
   }
 
   // Older summaries have no letter counts; a pair's first try is a try at its second letter.
