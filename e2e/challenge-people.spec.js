@@ -221,7 +221,7 @@ test.describe('on a phone', () => {
       expect(small).toEqual([]);
 
       if (width === 390) {
-        const dock = await page.locator('.dock-zone').boundingBox();
+        const dock = await page.locator('nav.dock').boundingBox();
 
         for (const control of [page.locator('#quick-match [data-quick="toggle"]'), page.getByRole('button', { name: /^Join Maya/ })]) {
           const box = await control.boundingBox();

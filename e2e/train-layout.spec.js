@@ -3,7 +3,7 @@
 // targets drilled behind you, the open one, and the next three the learner queues; a retest's comparison is the
 // newest step behind you.
 import { DEFAULT_POLICY } from '../src/learner.js';
-import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, chooseNavigation, phone } from './fixtures.js';
 import { withHistory, units, behindUnits } from './train-fixtures.js';
 
 const box = (page, selector) => page.locator(selector).boundingBox();
@@ -75,10 +75,12 @@ test('at 1440px the facts share the score\'s row, the trace spans the card and t
   await page.screenshot({ path: testInfo.outputPath('train-1440.png'), fullPage: true });
 });
 
-// 700px tall, so Run again's focus scrolls the page and the trace lies above it.
+// 700px tall, so Run again's focus scrolls the page and the trace lies above it. The top bar covers the top of
+// the page; the side bar covers none of it.
 test('at 1440px tabbing from Run again back into the trace stops below the dock', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 700 });
   await openApp(page);
+  await chooseNavigation(page, 'top');
   await chooseWords(page, 10);
   await completePassage(page);
   const word = await tabIntoTrace(page);

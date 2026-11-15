@@ -147,7 +147,8 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     await quotes(page);
     const middle = await page.locator('#quote-options').boundingBox();
 
-    if (width >= 1000) {
+    // The rail is one row with wider gaps where the page column is 952px or more (1000px under the top bar).
+    if ((await page.locator('#main-content').boundingBox()).width >= 952) {
       const modes = await page.locator('.practice-rail .mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
       expect(Math.abs(middle.x - modes.x - modes.width - 24)).toBeLessThan(1);

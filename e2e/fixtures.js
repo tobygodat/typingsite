@@ -184,6 +184,13 @@ export async function chooseSetting(page, id, value) {
   await option.locator('..').click();
 }
 
+// Where navigation sits (settings → appearance): a side bar from 960px, the default, or a top bar.
+export async function chooseNavigation(page, placement) {
+  await chooseSetting(page, 'navigation-select', placement);
+  await closeSettings(page);
+  await expect(page.locator('html')).toHaveAttribute('data-navigation', placement);
+}
+
 export async function signInWithEmail(page, email, password = 'correct horse battery') {
   await closeSettings(page);
   await page.locator('#account-trigger').click();

@@ -703,7 +703,7 @@ test('a friend list that failed to load, then loads empty, says so and then offe
   await expect(page.locator('#people-list')).toContainText('anyone with the link joins');
 });
 
-test('the inbox sits beside the account button without touching the dock', async ({ page, supabase }) => {
+test('the inbox sits by the account button without touching the dock', async ({ page, supabase }) => {
   supabase.addUser('host@stilltype.test');
   await openApp(page);
   await expect(page.locator('#inbox')).toBeHidden();
@@ -721,12 +721,19 @@ test('the inbox sits beside the account button without touching the dock', async
       const inbox = await page.locator('#inbox-trigger').boundingBox();
       const account = await page.locator('#account-trigger').boundingBox();
       const dock = await page.locator('.dock').boundingBox();
-      // Beside the person where there is room, under it where the dock would be in the way.
-      const beside = inbox.x + inbox.width <= account.x + 1 && Math.abs(inbox.y - account.y) < 1;
-      const under = inbox.y >= account.y + account.height && Math.abs(inbox.x + inbox.width - account.x - account.width) < 1;
-      expect(beside || under, `inbox placed by the account at ${width}`).toBe(true);
+      const sideBar = await page.locator('.dock-zone').boundingBox();
 
-      if (width > 760) expect(inbox.x, `inbox clears the dock at ${width}`).toBeGreaterThanOrEqual(dock.x + dock.width);
+      if (sideBar) {
+        // At the foot of the side bar: a row over the person's, under the navigation.
+        expect(Math.abs(inbox.x - account.x) < 1 && inbox.y + inbox.height <= account.y + 1, `inbox over the account at ${width}`).toBe(true);
+        expect(inbox.y, `inbox clears the dock at ${width}`).toBeGreaterThanOrEqual(dock.y + dock.height);
+        expect(account.y + account.height).toBeLessThanOrEqual(sideBar.y + sideBar.height);
+      } else {
+        // Beside the person, at the end of the top bar or the top right of a phone.
+        expect(inbox.x + inbox.width <= account.x + 1 && Math.abs(inbox.y - account.y) < 1, `inbox beside the account at ${width}`).toBe(true);
+
+        if (width > 760) expect(inbox.x, `inbox clears the dock at ${width}`).toBeGreaterThanOrEqual(dock.x + dock.width);
+      }
     }
 
     await page.locator('#inbox-trigger').click();

@@ -113,8 +113,9 @@ for (const [name, viewport, touch] of [['a 1440x900 desktop', { width: 1440, hei
       const seen = await page.evaluate(() => {
         const edges = (node) => node.getBoundingClientRect();
         const dock = edges(document.querySelector('.dock'));
-        // The dock floats over the page at the top on a desktop and at the bottom on a phone.
-        const [ceiling, floor] = dock.top < innerHeight / 2 ? [dock.bottom, innerHeight] : [0, dock.top];
+        // The side bar runs beside the page on a desktop; a top bar sits over it, and on a phone a bar under it.
+        const beside = edges(document.querySelector('.dock-zone')).height > 0;
+        const [ceiling, floor] = beside ? [0, innerHeight] : dock.top < innerHeight / 2 ? [dock.bottom, innerHeight] : [0, dock.top];
         const actions = [...document.querySelectorAll('.result-buttons .btn:not([hidden])')].map(edges);
 
         return {
@@ -247,10 +248,13 @@ test.describe('lesson on a 320x568 phone', () => {
   });
 });
 
-test('desktop keeps the dock at the top and the passage at three lines', async ({ page }) => {
+test('desktop sets the side bar beside the page and the passage at three lines', async ({ page }) => {
   await openApp(page);
-  const dock = await page.locator('nav.dock').boundingBox();
-  expect(dock.y).toBeLessThan(100);
+  const bar = await page.locator('.dock-zone').boundingBox();
+  const viewport = page.viewportSize();
+  expect(bar.x).toBe(0);
+  expect(bar.height).toBe(viewport.height);
+  expect((await page.locator('#typing-wrap').boundingBox()).x).toBeGreaterThanOrEqual(bar.width);
   const wrap = await page.locator('#typing-wrap').boundingBox();
   const lineHeight = await page.locator('#text-display').evaluate((node) => parseFloat(getComputedStyle(node).lineHeight));
   expect(Math.round(wrap.height)).toBe(Math.round(lineHeight * 3));

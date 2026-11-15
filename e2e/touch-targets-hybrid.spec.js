@@ -66,3 +66,13 @@ test('a fine primary pointer with a touchscreen beside it still gets 44px target
   expect(point, 'chart point hit radius').toBe('24px');
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
 });
+
+test('with a finger in reach, every row of the side bar and its toggle is a 44px target', async ({ page }) => {
+  await openApp(page);
+  await expect(page.locator('#side-bar')).toBeVisible();
+
+  for (const control of await page.locator('#side-bar :is(.brand, .side-toggle, .nav-item, .dock-command, .corner-trigger)').filter({ visible: true }).all()) {
+    const [, height] = await hitArea(control);
+    expect(height, await control.evaluate((node) => node.id || node.textContent.trim())).toBeGreaterThanOrEqual(MIN);
+  }
+});
