@@ -147,12 +147,12 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     await quotes(page);
     const middle = await page.locator('#quote-options').boundingBox();
 
-    // The rail is one row with wider gaps where the page column is 952px or more (1000px under the top bar).
+    // The rail is one strip where the page column is 952px or more (1000px under the top bar): the groups meet.
     if ((await page.locator('#main-content').boundingBox()).width >= 952) {
       const modes = await page.locator('.practice-rail .mode-options').boundingBox();
       const punctuation = await page.locator('#punctuation-switch').boundingBox();
-      expect(Math.abs(middle.x - modes.x - modes.width - 24)).toBeLessThan(1);
-      expect(Math.abs(punctuation.x - middle.x - middle.width - 24)).toBeLessThan(1);
+      expect(Math.abs(middle.x - modes.x - modes.width)).toBeLessThan(1);
+      expect(Math.abs(punctuation.x - middle.x - middle.width)).toBeLessThan(1);
     }
 
     const passage = await page.locator('#text-display').boundingBox();
@@ -160,7 +160,8 @@ for (const width of [1280, 1000, 901, 900, 390, 320]) {
     for (const name of ['length', 'difficulty']) {
       const trigger = combo(page, name);
       const target = await trigger.boundingBox();
-      expect(target.height).toBeGreaterThanOrEqual(36);
+      // In the strip a trigger matches the mode buttons; a phone's stacked groups keep the taller one.
+      expect(target.height).toBeGreaterThanOrEqual(width > 760 ? 32 : 36);
       await trigger.click();
       const popup = await list(page, name).boundingBox();
       expect(popup.x).toBeGreaterThanOrEqual(0);

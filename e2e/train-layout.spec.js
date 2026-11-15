@@ -1,5 +1,5 @@
-// A run's result on Practice is one card: the score with its facts beside it (under it on a phone), the
-// speed trace, the words typed, then Run again and the drill under a hairline. Train is a path (TOB-420): the
+// A run's result on Practice is one card: the score with its facts beside it (two to a row on a phone), the
+// speed trace, the words typed, then Run again and the drill. Train is a path (TOB-420): the
 // targets drilled behind you, the open one, and the next three the learner queues; a retest's comparison is the
 // newest step behind you.
 import { DEFAULT_POLICY } from '../src/learner.js';
@@ -40,7 +40,7 @@ for (const width of [901, 800]) {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     const card = await box(page, '#run-card');
     const wpm = await box(page, '#result-wpm');
-    const facts = await box(page, '.run-card-facts');
+    const facts = await box(page, '#result-accuracy');
     const trace = await box(page, '#speed-graph');
     const words = await box(page, '#result-words');
     const actions = await box(page, '.result-actions');
@@ -62,7 +62,7 @@ test('at 1440px the facts share the score\'s row, the trace spans the card and t
 
   const card = await box(page, '#run-card');
   const wpm = await box(page, '#result-wpm');
-  const facts = await box(page, '.run-card-facts');
+  const facts = await box(page, '#result-accuracy');
   expect(facts.x).toBeGreaterThan(wpm.x + wpm.width);
   expect(facts.y + facts.height).toBeLessThanOrEqual(wpm.y + wpm.height + 4);
   const trace = await box(page, '#speed-graph');
@@ -75,10 +75,10 @@ test('at 1440px the facts share the score\'s row, the trace spans the card and t
   await page.screenshot({ path: testInfo.outputPath('train-1440.png'), fullPage: true });
 });
 
-// 700px tall, so Run again's focus scrolls the page and the trace lies above it. The top bar covers the top of
+// 600px tall, so Run again's focus scrolls the page and the trace lies above it. The top bar covers the top of
 // the page; the side bar covers none of it.
 test('at 1440px tabbing from Run again back into the trace stops below the dock', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.setViewportSize({ width: 1440, height: 600 });
   await openApp(page);
   await chooseNavigation(page, 'top');
   await chooseWords(page, 10);
@@ -86,7 +86,7 @@ test('at 1440px tabbing from Run again back into the trace stops below the dock'
   const word = await tabIntoTrace(page);
   const dock = await box(page, 'nav.dock');
   expect(word.top).toBeGreaterThanOrEqual(dock.y + dock.height);
-  expect(word.bottom).toBeLessThanOrEqual(700);
+  expect(word.bottom).toBeLessThanOrEqual(600);
 });
 
 // Focus goes to the next step only when it fits on screen with the score; otherwise to the result heading,
@@ -135,17 +135,19 @@ test.describe('phone', () => {
     await expect(page.locator('#result-wpm')).toBeInViewport({ ratio: 1 });
   });
 
-  test('at 390px the card stacks: score, facts, speed graph, words, then the drill', async ({ page }, testInfo) => {
+  test('at 390px the card stacks: score and accuracy, the other facts, speed graph, words, then the drill', async ({ page }, testInfo) => {
     await openApp(page);
     await chooseWords(page, 10);
     await completePassage(page, atPace);
     await expect(page.locator('#speed-graph svg')).toBeVisible();
 
     const wpm = await box(page, '#result-wpm');
-    const facts = await box(page, '.run-card-facts');
+    const accuracy = await box(page, '#result-accuracy');
+    const facts = await box(page, '#result-consistency');
     const graph = await box(page, '#speed-graph');
     const words = await box(page, '#result-words');
     const drill = await box(page, '#result-drill');
+    expect(accuracy.x).toBeGreaterThan(wpm.x + wpm.width);
     expect(wpm.y + wpm.height).toBeLessThan(facts.y);
     expect(facts.y + facts.height).toBeLessThan(graph.y);
     expect(graph.y + graph.height).toBeLessThan(words.y);

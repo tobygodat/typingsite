@@ -59,7 +59,7 @@ test('the run card shows consistency, the counts behind accuracy and the words t
 });
 
 test('the words list is one tab stop whose words show their pace by keyboard', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1000, height: 800 });
   await openApp(page);
   // Enough words to run past the list's four lines in the wide trace.
   await chooseWords(page, 100);
