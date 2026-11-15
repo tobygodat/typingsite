@@ -15,6 +15,8 @@ let root;
 let lifecycle;
 let application;
 const controls=document.createElement('div');
+// Above the fixed side bar, which would otherwise cover these top-left controls.
+controls.style.cssText='position:relative;z-index:100';
 const status=document.createElement('output');
 status.id='fixture-lifetime-status';
 controls.append(status);
