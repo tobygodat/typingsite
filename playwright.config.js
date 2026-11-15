@@ -36,7 +36,8 @@ export default defineConfig({
   workers: workersFor(os.availableParallelism(), os.loadavg()[0]),
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  // CI also writes each job's results, with per-test durations, for scripts/e2e-shards.mjs --refresh.
+  reporter: process.env.CI ? [['github'], ['json', { outputFile: 'e2e-timings/results.json' }]] : 'list',
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: process.env.CI ? 'on-first-retry' : 'off',
