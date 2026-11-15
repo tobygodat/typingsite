@@ -225,6 +225,23 @@ test('on a short window the side bar scrolls inside itself, its foot in reach', 
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
+test('hiding the side bar in one tab hides it in the same person\'s other tabs', async ({ page, context, supabase }) => {
+  supabase.addUser('ada@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const other = await context.newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+
+  await toggle(page).click();
+  await expect(html(other)).toHaveAttribute('data-side-bar', 'hidden');
+  await expect(toggle(other)).toHaveAccessibleName('Show side bar');
+  await toggle(other).click();
+  await expect(html(page)).toHaveAttribute('data-side-bar', 'shown');
+  await other.close();
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 320, height: 568 }, ...phone });
 

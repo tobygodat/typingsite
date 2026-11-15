@@ -26,7 +26,7 @@ import { createGhostLaunch } from './ghost-launch.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
-import { SIDE_BAR_MEDIA, storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
+import { SIDE_BAR_KEY, SIDE_BAR_MEDIA, storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
 import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
@@ -1838,18 +1838,22 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   // The bar slides on its own layer; the page jumps to its new place and glides in from the old one with the bar's
   // own transform transition (none under reduced motion), so nothing reflows mid-slide.
-  function toggleSideBar() {
+  function slideSideBar(hidden: boolean) {
     const page = $('main-content');
     const before = page.getBoundingClientRect().left;
-    const hidden = !navigation.view.getSnapshot().sideHidden;
     navigation.sideBar(hidden);
-    storeSideBarHidden(sideBarOwner ?? null, hidden);
     const shift = before - page.getBoundingClientRect().left;
     const slide = getComputedStyle($('side-bar'));
     const duration = parseFloat(slide.transitionDuration) * 1000;
 
     if (shift && duration > 1) page.animate([{ transform: `translateX(${shift}px)` }, { transform: 'none' }], { duration, easing: slide.transitionTimingFunction.split(/,(?![^(]*\))/)[0] ?? 'ease' });
     updateGlides({ instant: true });
+  }
+
+  function toggleSideBar() {
+    const hidden = !navigation.view.getSnapshot().sideHidden;
+    slideSideBar(hidden);
+    storeSideBarHidden(sideBarOwner ?? null, hidden);
   }
 
   function toggleSideBarCommand() {
@@ -2272,6 +2276,14 @@ export async function attachApplication({ practice, learning, palette, settings:
   const sideBarWidth = matchMedia(SIDE_BAR_MEDIA);
   navigation.wide(sideBarWidth.matches);
   sideBarWidth.addEventListener('change', () => navigation.wide(sideBarWidth.matches), { signal: lifetime.signal });
+
+  // The same person hiding or showing the side bar in another tab; a guest's state is the tab's own.
+  addEventListener('storage', (event) => {
+    if (!sideBarOwner || (event.key !== null && event.key !== SIDE_BAR_KEY + sideBarOwner)) return;
+    const hidden = storedSideBarHidden(sideBarOwner);
+
+    if (hidden !== navigation.view.getSnapshot().sideHidden) slideSideBar(hidden);
+  }, { signal: lifetime.signal });
 
   document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); }, { signal: lifetime.signal });
 
