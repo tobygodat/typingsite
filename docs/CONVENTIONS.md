@@ -10,13 +10,15 @@ npm test              # build, then unit tests in tests/ through tsx
 npm run typecheck     # strict client and worker checks
 npm run lint          # oxlint with the anti-slop plugin, warnings fail
 npm run build         # strict typecheck, then compile and precache dist/
+npm run build:dist    # compile and precache dist/ without the typecheck (CI, Playwright)
+npm run test:unit     # unit tests against the dist/ already built (CI)
 npm run test:e2e:quick    # the core practice loop, layout and chrome specs, in a few minutes
 npm run test:e2e:changed  # the specs your branch changed against origin/master
 npm run test:e2e:compat   # selected Firefox and WebKit input/rendering cases
 npm run test:e2e          # all of Chromium; CI runs this at every PR head, so run it only when CI can't
 ```
 
-`npm run dev` builds once before starting the server. After changing source, restart it to rebuild. `npm start` serves an existing build. Playwright builds its own artifact before starting its server.
+`npm run dev` builds once before starting the server. After changing source, restart it to rebuild. `npm start` serves an existing build. Playwright compiles its own `dist/` (`npm run build:dist`, no typecheck) before starting its server, unless `E2E_PREBUILT=1` tells it to serve the `dist/` already there, as CI does.
 
 ### Browser tests
 
@@ -34,7 +36,7 @@ npm run test:e2e          # all of Chromium; CI runs this at every PR head, so r
 
 `.github/workflows/ci.yml` runs every job on GitHub's hosted `ubuntu-latest` runners ([ADR 0018](adr/0018-ci-on-hosted-runners.md)).
 
-- **Unit job.** Every PR gets "Unit and build checks" (`npm ci`, `npm run lint`, `npm test`, `npm run build`).
+- **Unit job.** Every PR gets "Unit and build checks" (`npm ci`, `npm run lint`, `npm run typecheck`, `npm run build:dist`, `npm run test:unit`). It typechecks and builds once, then uploads `dist/` as the run's `dist` artifact. The e2e jobs and the deploy download that artifact instead of building, so the deploy ships the bytes the run tested.
 - **e2e job.** Then it gets "Browser e2e": all of Chromium, split into six shards, "Browser e2e (chromium 1/6)" to "(chromium 6/6)", each on its own runner with Playwright's bundled browser. The unit job and every shard must be green at the PR head before the independent final proof can approve it. That run is the full-suite evidence for the author and for whoever checks the PR: read it with `gh run list --workflow=ci.yml --commit <sha>` and don't repeat it.
 - **On master.** After the deploy, six full Chromium shards and one selected compatibility job per alternate engine run without gating the deploy. WebKit keeps one worker, as recorded in ADR 0018. A new push cancels each job of the ref's older e2e run, but never a deploy.
 - **On request.** Manual runs default to `browsers=compat`, which runs only two browser jobs, Firefox and WebKit. `browsers=chromium` runs six full Chromium shards. `browsers=all` explicitly runs the full 18-job diagnostic matrix with `E2E_FULL=1`. Every manual request also runs the unit job and never deploys. It tests the branch as it is, not merged with master as a PR run is. [ADR 0020](adr/0020-selected-browser-compatibility.md) supersedes only ADR 0018's alternate-engine selection.

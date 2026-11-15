@@ -35,8 +35,20 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      # One build per run, without npm test's and npm run build's repeat typecheck. The unit tests read it,
+      # and the e2e jobs and the deploy reuse it from this run instead of building their own.
+      - run: npm run build:dist
+      - run: npm run test:unit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          # dist/.serve-manifest.json lists what server.mjs and the deploy may serve.
+          include-hidden-files: true
+          if-no-files-found: error
+          # A re-run of this job replaces its dist/ rather than failing on the name.
+          overwrite: true
+          retention-days: 7
 
   deploy:
     name: Deploy to Cloudflare
@@ -54,7 +66,11 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run build
+      # The dist/ the unit job built and tested at this commit.
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
       - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -121,6 +137,8 @@ jobs:
     env:
       E2E_BROWSERS: ${{ matrix.engine }}
       E2E_FULL: ${{ inputs.browsers == 'all' && '1' || '0' }}
+      # Serve the unit job's dist/ instead of building one per job (playwright.config.js).
+      E2E_PREBUILT: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -128,6 +146,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
       - run: npx playwright install --with-deps ${{ matrix.engine }}
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
       - run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total }}${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
