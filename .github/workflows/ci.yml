@@ -151,8 +151,11 @@ jobs:
           name: dist
           path: dist/
       - run: npx playwright install --with-deps ${{ matrix.engine }}
+      # This job's share of the tests by recorded duration (scripts/e2e-durations.json), not Playwright's
+      # equal counts in file order. It stops the job if the list could drop or repeat a test.
+      - run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
-      - run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total }}${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
+      - run: npx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
       # Per-test durations, whether the tests passed or not; scripts/e2e-shards.mjs --refresh reads them.
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
