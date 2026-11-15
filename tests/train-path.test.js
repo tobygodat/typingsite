@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
-import { AHEAD_STEPS, FIXED_OBSERVATIONS, FIXED_RUNS, aheadCopy, behindCopy, evidenceCopy, isFixed, sinceCopy, sinceDrilled, trainPath } from '../src/train-path.js';
+import { AHEAD_STEPS, FIXED_OBSERVATIONS, FIXED_RUNS, aheadCopy, behindCopy, evidenceCopy, isFixed, readsSince, sinceCopy, sinceDrilled, trainPath } from '../src/train-path.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
@@ -107,12 +107,15 @@ test('one retest makes a target drilled; it is fixed only once later runs hold 2
   // The retest alone, even 25 clean tries, is one run: drilled. The learner lets go of "qu" here, so it is behind.
   assert.equal(stepFor([before, retest]).state, 'drilled');
   assert.deepEqual(behindCopy(stepFor([before, retest])), ['2 of 12 → 0 of 25 missed']);
+  // Its cells read the retest itself until a run after it holds the pair.
+  assert.equal(readsSince(stepFor([before, retest])), false);
 
   // A clean run after it: two runs, 35 tries, no miss, and the learner doesn't queue it: fixed.
   const clean = summary('c', day(3), noisy([['qu', 10, 0, 10, 200, 0]]));
   const fixed = stepFor([before, retest, clean]);
   assert.equal(fixed.state, 'fixed');
   assert.deepEqual(behindCopy(fixed), ['2 of 12 → 0 of 25 missed', '0 of 35 missed since the drill']);
+  assert.equal(readsSince(fixed), true);
 
   // The same evidence, while the learner still queues it, or with one miss since, or under 20 tries: drilled.
   const since = sinceDrilled(drilled[0], [before, retest, clean]);
@@ -216,6 +219,8 @@ test('a loop saved before the read-back existed shows its before and since figur
   const old = { ...loop('l', 'qu', retest), targetBasis: undefined, targetMisses: null };
   const step = trainPath({ recommendation: { queue: [], target: null }, loops: [old], runs, keyboard: KEYBOARD }).behind[0];
   assert.deepEqual(behindCopy(step), ['40% → 10% missed since the drill']);
+  // With no read-back, the runs since are all there is to read.
+  assert.equal(readsSince(step), true);
 });
 
 // Whether a stored pattern row holds an observation of a kind: a clean interval measured against a pace of at least

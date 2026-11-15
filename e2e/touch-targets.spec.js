@@ -322,14 +322,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await chooseWords(page, 25);
       await openView(page, 'Train');
       await expect(page.locator('#train-heading')).toHaveText(/^Practice “/);
-      await expect(page.locator('#train-evidence')).toBeVisible();
+      await expect(page.locator('#train-evidence')).not.toBeEmpty();
       small.push(...await sweep(page, 'train'));
-      // The patterns across runs moved to Progress, with their "Practice … again" buttons.
-      await openView(page, 'Progress');
-      await openProgressDetail(page, 'keys');
-      await expect(page.locator('#training-targets')).toContainText(/missed in 2 runs|than your pace/);
-      await expect(page.locator('#training-targets button').first()).toBeVisible();
-      small.push(...await sweep(page, 'progress, patterns across runs'));
 
       await openView(page, 'Practice');
       await freshTextCheck(page);
@@ -339,7 +333,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'progress'));
 
       // Every view's own controls, one panel at a time.
-      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Keys', 'Speed']) {
+      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Speed']) {
         await openProgressView(page, view);
         small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
       }

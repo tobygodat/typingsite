@@ -12,6 +12,7 @@ runs, a speed-over-time trace, the words typed, the actions and the conditions l
 - `run-typing` starts on the first key; correct letters fill, mistyped letters turn coral with a tint.
 - `run-chrome-fade` fades the dock and rail while `body[data-running]` is set; pointer movement brings them back.
 - `run-results` switches to `body[data-view=results]`: one run card holding the score, the speed trace, the typed words and, under a hairline, `Run again` / `Drill “<pair>”` / `Watch replay` with the conditions line, renders on Practice in place of the passage (`#practice-result`). A retest's result is the comparison on Train instead (`body[data-view=train]`, `#comparison-panel`).
+- `run-instrument` is the Instrument layout (TOB-470): `flows/practice-instrument.mjs` shoots idle as a guest and with history, the "more" menu, mid-run with live metrics off and on, the first card, a card with history, a drill and the tape (`NAV=top` for the top bar); `flows/practice-surfaces.mjs` shoots custom text and length, quote and book filters, the keyboard, focus, compose, Learn and a lesson.
 - `run-restart` restarts with Escape or the restart button (`#restart-button`) and draws a new passage.
 
 ## How to get to it (user POV)
@@ -50,7 +51,7 @@ Preconditions:
   cleanly, then checks Train names it on its timing and the comparison and Progress read its pace back.
 - **Training settings.** `flows/train-settings.mjs` (`--signed-in --delay 40`, about two minutes) shoots the
   settings dialog's train focus, drill length and retest rows, types three 50-word passages slow at "th" and
-  missing "an" and "in", then shoots Train and Patterns across runs in each focus and checks they agree, that
+  missing "an" and "in", then shoots Train in each focus and checks that
   accuracy and speed name different targets, a 15-second drill and its retest, Train's two lines after it, the
   retest off ending on the drill's own result, and a 120-second drill.
 - **The focus followed.** `flows/train-focus-follows.mjs` (`--signed-in --delay 40`, about a minute) types the same

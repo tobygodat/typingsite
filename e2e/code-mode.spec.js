@@ -1,6 +1,6 @@
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openApp, openView, openProgressDetail, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, signInWithEmail, chooseMore, chooseSetting } from './fixtures.js';
 
 const codeConditions = { mode: 'code', codeLanguage: 'js', duration: null, count: null, punctuation: true, numbers: false,
   quoteLength: null, difficulty: null, wordList: null, inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -96,10 +96,10 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
 
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-conditions')).toContainText('code · js');
-  await page.locator('#training-targets').getByRole('button', { name: 'Practice “th” again' }).click();
+  await chooseMore(page, 'mode-code');
+  await openView(page, 'Train');
+  await expect(page.locator('#train-current')).toContainText('th');
+  await page.locator('#start-drill').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “th”');
   await expect(page.locator('#session-description')).toHaveText('A standalone drill. Code runs have no fresh-text retest.');
 

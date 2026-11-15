@@ -45,6 +45,7 @@
   --text-numeral: 132px;
   --text-numeral-mobile: 112px;
   --text-numeral-narrow: 80px;
+  --text-score: 64px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -65,6 +66,26 @@
   --radius-full: 999px;
 
   --control: 44px;
+  /* Where every screen's first block starts below the frame: the page column's top inset, and a phone's. */
+  --screen-top: var(--space-8);
+  --screen-top-phone: var(--space-6);
+  /* The frame (src/navigation.ts): the side bar's width, the top and phone bars' heights, a side bar row and its
+     icons. */
+  --side-bar: 216px;
+  --top-bar: 56px;
+  --bottom-bar: 62px;
+  --frame-item: 34px;
+  --frame-inset: 10px;
+  --frame-glyph: 17px;
+  --side-toggle: 32px;
+  /* Panels and cells (the Instrument building blocks): the inset of their contents, the label size and a cell's
+     figure. */
+  --panel-inset: 14px;
+  --text-caption: 11px;
+  --text-figure: 26px;
+  /* Progress (TOB-470): its compact controls on a fine pointer, and a calendar day. */
+  --progress-control: 34px;
+  --calendar-cell: 14px;
   --disabled-opacity: 0.38;
   --settings-height: 704px;
   --settings-body-height: 520px;
@@ -80,16 +101,11 @@
   --settings-preview-large: 36px;
   --sound-range-width: 104px;
   --sound-range-height: 36px;
-  --heat-key: 52px;
-  --heat-gap: 6px;
   --content-max: 1080px;
-  /* The run card: its width, the speed trace's height (time labels included), and the narrowest the
-     conditions line gets beside the actions before it drops under them. */
-  --result-card: 900px;
+  /* The run card: the speed trace's height (time labels included), and the narrowest the conditions line gets
+     beside the actions before it drops under them. */
   --result-trace: 144px;
   --result-conditions: 240px;
-  /* Open practice from the rail to the shortcut row at the default text size: the practice screen's anchor. */
-  --practice-block: 510px;
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
   --chart-height: 400px;
   --chart-height-min: 240px;
@@ -118,6 +134,9 @@
   --dur-develop: calc(450ms * var(--motion-scale));
   --dur-settle: calc(700ms * var(--motion-scale));
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
+  --dur-drawer: calc(280ms * var(--motion-scale));
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
   /* The rated result card (src/rank-card.js): its width, the emblem, the rank name and the bar. Its colours live
      in that module, not here: they are the ranks' own and don't follow the theme's accent. */
@@ -158,9 +177,6 @@
   --practice-level-3: rgba(143, 209, 138, 0.8);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
-  --heat-1: rgba(255, 138, 107, 0.18);
-  --heat-2: rgba(255, 138, 107, 0.36);
-  --heat-3: rgba(255, 138, 107, 0.56);
   --warning: #e0b565;
   --selection: #34322e;
   /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
@@ -194,9 +210,6 @@
   --practice-level-3: rgba(46, 125, 79, 0.8);
   --danger: #ad3d26;
   --danger-soft: rgba(180, 67, 44, 0.12);
-  --heat-1: rgba(180, 67, 44, 0.08);
-  --heat-2: rgba(180, 67, 44, 0.24);
-  --heat-3: rgba(180, 67, 44, 0.44);
   --warning: #8a5a00;
   --selection: #e3dccf;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -230,9 +243,6 @@
   --practice-level-3: rgba(31, 107, 69, 0.8);
   --danger: #a8321c;
   --danger-soft: rgba(168, 50, 28, 0.12);
-  --heat-1: rgba(168, 50, 28, 0.08);
-  --heat-2: rgba(168, 50, 28, 0.24);
-  --heat-3: rgba(168, 50, 28, 0.44);
   --warning: #7a4f00;
   --selection: #e8dfcc;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -264,9 +274,6 @@
   --practice-level-3: rgba(22, 101, 52, 0.8);
   --danger: #b91c1c;
   --danger-soft: rgba(220, 38, 38, 0.1);
-  --heat-1: rgba(220, 38, 38, 0.08);
-  --heat-2: rgba(220, 38, 38, 0.22);
-  --heat-3: rgba(220, 38, 38, 0.4);
   --warning: #a16207;
   --selection: #e4e4e7;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -298,9 +305,6 @@
   --practice-level-3: rgba(79, 232, 107, 0.8);
   --danger: #ff8a6b;
   --danger-soft: rgba(255, 138, 107, 0.16);
-  --heat-1: rgba(255, 138, 107, 0.18);
-  --heat-2: rgba(255, 138, 107, 0.36);
-  --heat-3: rgba(255, 138, 107, 0.5);
   --warning: #e0c065;
   --selection: #233522;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -332,9 +336,6 @@
   --practice-level-3: rgba(91, 75, 214, 0.8);
   --danger: #b43628;
   --danger-soft: rgba(180, 54, 40, 0.12);
-  --heat-1: rgba(180, 54, 40, 0.08);
-  --heat-2: rgba(180, 54, 40, 0.24);
-  --heat-3: rgba(180, 54, 40, 0.44);
   --warning: #8a5a00;
   --selection: #e2ddf7;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -366,9 +367,6 @@
   --practice-level-3: rgba(224, 165, 74, 0.8);
   --danger: #f07d63;
   --danger-soft: rgba(240, 125, 99, 0.15);
-  --heat-1: rgba(240, 125, 99, 0.18);
-  --heat-2: rgba(240, 125, 99, 0.36);
-  --heat-3: rgba(240, 125, 99, 0.48);
   --warning: #cdbf7a;
   --selection: #24221e;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -400,9 +398,6 @@
   --practice-level-3: rgba(0, 0, 0, 0.8);
   --danger: #d30612;
   --danger-soft: rgba(211, 6, 18, 0.1);
-  --heat-1: rgba(211, 6, 18, 0.08);
-  --heat-2: rgba(211, 6, 18, 0.22);
-  --heat-3: rgba(211, 6, 18, 0.4);
   --warning: #8a5a00;
   --selection: #e6e6e6;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -434,9 +429,6 @@
   --practice-level-3: rgba(0, 0, 0, 0.6);
   --danger: #333333;
   --danger-soft: rgba(0, 0, 0, 0.14);
-  --heat-1: rgba(0, 0, 0, 0.06);
-  --heat-2: rgba(0, 0, 0, 0.16);
-  --heat-3: rgba(0, 0, 0, 0.3);
   --warning: #4a4a4a;
   --selection: #d6d6d2;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -468,9 +460,6 @@
   --practice-level-3: rgba(163, 190, 140, 0.8);
   --danger: #f5b4a1;
   --danger-soft: rgba(208, 135, 112, 0.16);
-  --heat-1: rgba(208, 135, 112, 0.18);
-  --heat-2: rgba(208, 135, 112, 0.36);
-  --heat-3: rgba(208, 135, 112, 0.56);
   --warning: #ebcb8b;
   --selection: #434c5e;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
@@ -501,9 +490,6 @@
   --hairline-strong: color-mix(in srgb, var(--text) 15%, transparent);
   --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
   --danger-soft: color-mix(in srgb, var(--danger) 16%, transparent);
-  --heat-1: color-mix(in srgb, var(--danger) 18%, transparent);
-  --heat-2: color-mix(in srgb, var(--danger) 36%, transparent);
-  --heat-3: color-mix(in srgb, var(--danger) 56%, transparent);
   --finger-band: color-mix(in srgb, var(--text) 10%, transparent);
 }
 :root[data-theme="light"][data-custom] {
@@ -518,9 +504,6 @@
   --hairline-strong: color-mix(in srgb, var(--text) 20%, transparent);
   --accent-soft: color-mix(in srgb, var(--accent) 11%, transparent);
   --danger-soft: color-mix(in srgb, var(--danger) 12%, transparent);
-  --heat-1: color-mix(in srgb, var(--danger) 8%, transparent);
-  --heat-2: color-mix(in srgb, var(--danger) 24%, transparent);
-  --heat-3: color-mix(in srgb, var(--danger) 44%, transparent);
   --finger-band: color-mix(in srgb, var(--text) 5%, transparent);
 }
 
@@ -543,8 +526,8 @@ html {
   min-width: 320px;
   background: var(--ground);
   scrollbar-color: var(--hairline-strong) var(--ground);
-  /* Focus and scrollIntoView stop clear of the opaque dock: sticky at the top here, fixed to the bottom under 761px. */
-  scroll-padding-top: calc(var(--space-4) + 58px + var(--space-6));
+  /* Focus and scrollIntoView stop clear of the opaque frame: the top bar here, the bottom bar under 761px. */
+  scroll-padding-top: calc(var(--top-bar) + var(--space-6));
 }
 
 body {
@@ -630,52 +613,57 @@ kbd {
 .skip-link:focus { transform: translateY(0); }
 
 
-/* ── Shell ──────────────────────────────────────────────────────────────── */
+/* ── Frame ──────────────────────────────────────────────────────────────── */
 
+/* One set of elements makes three frames. html[data-navigation] is the person's choice (src/navigation.ts); CSS
+   alone turns it and the width into a layout: a side bar from 960px when the choice is 'side', otherwise a bar
+   across the top, and a bar fixed to the bottom of a phone. .dock-zone holds the navigation (nav.dock), the corner
+   (inbox and account) and, with the side bar chosen, the footer. Outside the side bar it has no box of its own: its
+   children are cells of the .app-shell grid. */
 .app-shell {
-  width: min(var(--content-max), calc(100% - 48px));
   min-height: 100vh;
   min-height: 100svh;
-  margin-inline: auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto 1fr auto;
 }
 
-.dock-zone {
+.dock-zone { display: contents; }
+
+#main-content,
+.site-footer { grid-column: 1 / -1; justify-self: center; width: min(var(--content-max), calc(100% - 48px)); }
+#main-content { grid-row: 2; container: page / inline-size; }
+.site-footer { grid-row: 3; }
+
+/* The top bar: flat, full width, a hairline under it. The navigation fills the row and the corner ends it. */
+.dock,
+.corner {
   position: sticky;
   top: 0;
   z-index: 40;
-  display: flex;
-  justify-content: center;
-  padding-top: var(--space-4);
-  pointer-events: none;
-}
-
-.dock {
-  position: relative;
-  pointer-events: auto;
-  height: 58px;
-  padding: 6px 6px 6px 20px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-  box-shadow: var(--shadow-float);
+  grid-row: 1;
+  height: var(--top-bar);
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  background: var(--ground-2);
+  border-bottom: 1px solid var(--hairline-strong);
 }
+
+.dock { grid-column: 1; min-width: 0; padding: 0 var(--space-1) 0 var(--space-6); }
+.corner { grid-column: 2; padding-right: var(--space-4); }
 
 .brand {
   margin-right: var(--space-4);
   padding: 4px 2px;
   color: var(--text);
   text-decoration: none;
-  font-size: 21px;
+  font-size: var(--text-lead);
   line-height: 1;
   white-space: nowrap;
 }
 
-.brand-word { font-style: italic; font-weight: 500; letter-spacing: -0.01em; }
+.brand-word { font-style: italic; font-weight: 600; letter-spacing: -0.01em; }
 .brand-dot { color: var(--accent); font-weight: 700; }
 
 /* Gliding indicator shared by the dock, the mode segments and the length segments. */
@@ -698,15 +686,17 @@ kbd {
 .glide.no-anim .glide-pill { transition: none; }
 
 .dock-nav { display: flex; align-items: center; gap: 2px; }
+/* The list runs across or down, so its pill moves on both axes, by transform alone. */
+.dock-nav .glide-pill { top: 0; border-radius: var(--radius-sm); transform: translate(var(--pill-x, 0), var(--pill-y, 0)); }
 
 .nav-item {
   height: var(--control);
-  padding: 0 18px;
+  padding: 0 14px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  font-size: 16px;
+  font-size: var(--text-small);
   white-space: nowrap;
   transition: color var(--dur-quick) var(--ease-out);
 }
@@ -719,31 +709,46 @@ kbd {
 .dock-sep {
   width: 1px;
   height: 24px;
-  margin: 0 var(--space-1);
+  margin: 0 var(--space-2) 0 auto;
   background: var(--hairline-strong);
   flex: none;
 }
 
-.dock-command {
+.dock-command,
+.corner-trigger {
+  position: relative;
   width: var(--control);
   height: var(--control);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-3);
+  font-size: var(--text-label);
+  white-space: nowrap;
+  cursor: pointer;
   transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
 }
 
-.dock-command:hover { color: var(--text); background: var(--raised-2); }
-.dock-command .search-glyph { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.dock-command:hover,
+.corner-trigger:hover,
+.corner details[open] > .corner-trigger { color: var(--text); background: var(--raised-2); }
 
-/* Settings is a labelled dock control so it is findable from every screen. */
-.dock-settings { width: auto; padding: 0 14px 0 12px; gap: var(--space-2); cursor: pointer; }
-.dock-settings .settings-glyph { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.dock-command svg,
+.corner-trigger svg { width: var(--frame-glyph); height: var(--frame-glyph); flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.dock-label,
+.dock-key,
+.corner-label,
+.side-toggle { display: none; }
+
+/* Settings is labelled in the top bar so it is findable from every screen. */
+.dock-settings { width: auto; padding: 0 14px 0 12px; }
+.dock-settings .dock-label { display: inline; }
 
 .icon-control {
   width: var(--control);
@@ -936,58 +941,21 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 .personal-best { color: var(--muted); }
 
-/* Corner: the inbox and the person button, top right, level with the dock, on the same raised surface. */
-.corner {
-  position: fixed;
-  z-index: 40;
-  top: var(--space-4);
-  right: var(--space-4);
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
+/* Corner: the inbox and the person, at the right end of the top bar or the foot of the side bar. */
 .account,
 .inbox { position: relative; }
 
 .corner summary { list-style: none; }
 .corner summary::-webkit-details-marker { display: none; }
 
-.corner-trigger {
-  width: 58px;
-  height: 58px;
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-  box-shadow: var(--shadow-float);
-  color: var(--muted);
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out);
-}
-
-.corner-trigger:hover,
-.corner details[open] > .corner-trigger,
 .account[data-state="member"] .account-trigger { color: var(--text); }
 
-.corner-trigger svg {
-  width: 21px;
-  height: 21px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* Signed in: a small green mark on the person, the current state. */
-.account[data-state="member"] .account-trigger { position: relative; }
 .account[data-state="member"] .account-trigger::after {
   content: "";
   position: absolute;
-  top: 15px;
-  right: 15px;
+  top: 9px;
+  right: 9px;
   width: 7px;
   height: 7px;
   border-radius: var(--radius-full);
@@ -1010,12 +978,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
    the week's ghost race results, then the newest thirty others. */
-.corner-trigger { position: relative; }
 
 .inbox-count {
   position: absolute;
-  top: 9px;
-  right: 7px;
+  top: 2px;
+  right: 1px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
@@ -1094,6 +1061,167 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 .footer-link:hover { color: var(--text); text-decoration-color: currentColor; }
 .footer-links { display: flex; gap: var(--space-6); }
+
+/* The side bar: from 960px, when it is the choice. A fixed column with a hairline edge: the wordmark, the screens as
+   a list, commands and settings, then at its foot the inbox, the account and the footer. The page sits to its
+   right. */
+@media (min-width: 960px) {
+  :root[data-navigation="side"] { scroll-padding-top: var(--space-6); }
+  :root[data-navigation="side"] .app-shell { padding-left: var(--side-bar); }
+
+  :root[data-navigation="side"] .dock-zone {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    width: var(--side-bar);
+    display: flex;
+    flex-direction: column;
+    padding: var(--space-6) var(--space-3) var(--space-4) max(var(--space-3), env(safe-area-inset-left));
+    background: var(--ground-2);
+    border-right: 1px solid var(--hairline-strong);
+    transition: transform var(--dur-drawer) var(--ease-drawer), opacity var(--dur-base) var(--ease-out), visibility 0s;
+  }
+
+  /* Hidden, the bar leaves by its own width on its own layer, and only then leaves the tab order and the
+     accessibility tree. Its toggle stays, and moves to the top left of the page. */
+  :root[data-navigation="side"][data-side-bar="hidden"] .app-shell { padding-left: 0; }
+  :root[data-navigation="side"][data-side-bar="hidden"] .dock-zone {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--dur-drawer) var(--ease-drawer), opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-drawer);
+  }
+
+  :root[data-navigation="side"] .side-toggle {
+    position: absolute;
+    top: calc(var(--space-6) + 10px - var(--side-toggle) / 2);
+    right: var(--space-3);
+    width: var(--side-toggle);
+    height: var(--side-toggle);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    display: grid;
+    place-items: center;
+    transition: transform var(--dur-drawer) var(--ease-drawer), color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  }
+  :root[data-navigation="side"] .side-toggle:hover { color: var(--text); background: var(--raised-2); }
+  :root[data-navigation="side"] .side-toggle svg { width: var(--frame-glyph); height: var(--frame-glyph); fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+  :root[data-navigation="side"][data-side-bar="hidden"] .side-toggle { transform: translateX(calc(var(--side-toggle) + 2 * var(--space-3))); }
+  :root[data-navigation="side"][data-side-bar="hidden"] body:not([data-focus-mode="true"]) .side-toggle { visibility: visible; }
+
+  :root[data-navigation="side"] :is(.dock, .corner) {
+    position: static;
+    height: auto;
+    padding: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    background: none;
+    border: 0;
+  }
+
+  /* A short window scrolls the screens and commands inside the bar, so its foot stays in reach; the padding keeps focus
+     rings clear of the scroll edge. */
+  :root[data-navigation="side"] .dock { min-height: 0; margin: calc(var(--space-2) * -1); padding: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
+  :root[data-navigation="side"] .brand { align-self: flex-start; margin: 0; padding: 0 var(--frame-inset) var(--space-6); font-size: 19px; }
+  :root[data-navigation="side"] .dock-nav { display: grid; }
+  :root[data-navigation="side"] :is(.nav-item, .dock-command, .corner-trigger) {
+    width: 100%;
+    height: auto;
+    min-height: var(--frame-item);
+    padding: 0 var(--frame-inset);
+    justify-content: flex-start;
+    text-align: left;
+    font-size: var(--text-label);
+  }
+  :root[data-navigation="side"] .dock-sep { width: auto; height: 1px; margin: var(--space-4) 0 var(--space-3); }
+  :root[data-navigation="side"] :is(.dock-label, .corner-label) { display: block; flex: 1; text-align: left; }
+  :root[data-navigation="side"] .dock-key { display: inline-grid; }
+
+  :root[data-navigation="side"] .corner { margin-top: auto; padding-top: var(--space-4); }
+  :root[data-navigation="side"] .inbox-count { position: static; margin-left: auto; }
+  :root[data-navigation="side"] .account-trigger { margin-top: var(--space-2); padding-block: var(--space-2); border: 1px solid var(--hairline); }
+  :root[data-navigation="side"] .account[data-state="member"] .account-trigger::after { display: none; }
+  :root[data-navigation="side"] .corner-label small { display: block; color: var(--muted); font-size: var(--text-fine); line-height: 1.4; }
+  /* Its menus open to the right of the bar, level with their row's foot, so they stay on screen. */
+  :root[data-navigation="side"] .corner-popover { top: auto; bottom: 0; right: auto; left: calc(100% + var(--space-6)); }
+
+  :root[data-navigation="side"] .dock-zone .site-footer {
+    width: auto;
+    padding: var(--space-3) var(--frame-inset) 0;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  :root[data-navigation="side"] .dock-zone .footer-links { flex-wrap: wrap; gap: 0 var(--space-4); margin-top: var(--space-1); }
+  :root[data-navigation="side"] .dock-zone .footer-link { white-space: nowrap; }
+  :root[data-navigation="side"] .challenge-toast { top: var(--space-4); }
+}
+
+/* ── Panels and cells ───────────────────────────────────────────────────── */
+
+/* The Instrument look's two building blocks, for the screens to use (TOB-470). A panel is a titled block with a
+   hairline border: .panel > .panel-head (.panel-title, then any controls) and its body. A cell is one measure: a
+   .cell-label, a .cell-value with a large .cell-figure and a small .cell-unit, and an optional .cell-note. Cells sit
+   side by side in .cells, a bordered row split by hairlines.
+
+   <section class="panel"><header class="panel-head"><h2 class="panel-title">speed</h2></header>…</section>
+   <div class="cells"><div class="cell"><span class="cell-label">wpm</span>
+     <p class="cell-value"><b class="cell-figure">154</b><i class="cell-unit">wpm</i></p><span class="cell-note">+8 vs last week</span></div></div> */
+.panel {
+  min-width: 0;
+  padding: 0 var(--panel-inset) var(--panel-inset);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--ground-2);
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  min-height: var(--space-10);
+  margin: 0 calc(var(--panel-inset) * -1) var(--panel-inset);
+  padding: var(--space-1) var(--panel-inset);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.panel-title,
+.cell-label {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  font: 400 var(--text-caption)/1.4 var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+.cells {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--ground-2);
+  overflow: hidden;
+}
+
+.cell { min-width: 0; padding: var(--space-3) var(--panel-inset); border-left: 1px solid var(--hairline); }
+.cell:first-child { border-left: 0; }
+.cell-value { margin: var(--space-1) 0 0; }
+.cell-figure { font: 500 var(--text-figure)/1.15 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.cell-unit { margin-left: 6px; color: var(--muted); font: 400 var(--text-mono)/1 var(--font-mono); font-style: normal; }
+.cell-note { display: block; margin-top: var(--space-1); color: var(--muted); font-size: var(--text-fine); }
+
+/* Two cells a row on a phone, the hairlines following. */
+@media (max-width: 760px) {
+  .cells { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cell:nth-child(odd) { border-left: 0; }
+  .cell:nth-child(n + 3) { border-top: 1px solid var(--hairline); }
+}
 
 /* ── Controls ───────────────────────────────────────────────────────────── */
 
@@ -1196,6 +1324,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .switch:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .field-error { min-height: 1.4em; margin: var(--space-2) 0 0; color: var(--danger); font-size: 14px; }
+/* Empty, Challenge's alert line keeps its place in the accessibility tree but takes no room above the first panel. */
+#online-error:empty { min-height: 0; margin: 0; }
 
 /* Status words: a dot and a word, coloured by meaning. app.js sets badge-* for the meaning. */
 .status,
@@ -1244,7 +1374,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .screen {
   min-width: 0;
   width: 100%;
-  padding: var(--space-14) 0 var(--space-10);
+  padding: var(--screen-top) 0 var(--space-10);
 }
 
 /* Practice appears instantly so a restart is never taxed; other screens fade in. */
@@ -1252,13 +1382,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* ── Practice ───────────────────────────────────────────────────────────── */
 
-/* The screen sits where open practice's block, centred under the dock, would start, and every mode
-   and session keeps that top: what a mode puts under the rail never moves the rail or the passage. */
+/* The screen starts at the top of the page, and every mode and session keeps that top: what a mode puts under
+   the strip never moves the strip or the passage. */
 .typing-screen {
   display: grid;
   align-content: start;
-  min-height: calc(100svh - 170px);
-  padding-top: max(var(--space-10), calc((100svh - 170px - var(--practice-block)) / 2));
 }
 
 /* The row paints above what follows it: the "more" menu over the passage, and its controls over the
@@ -1317,11 +1445,13 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 /* Lengths, quote filters, code languages and the standard recipe take turns in one place. */
 .practice-options { display: contents; }
 
-@media (min-width: 1000px) {
+/* By the page column's width, not the window's: beside the side bar the column is narrower than the window
+   suggests. 952px and 852px are the column at a 1000px and a 900px window under the top bar. */
+@container page (min-width: 952px) {
   .practice-rail { gap: var(--space-6); }
 }
 
-@media (max-width: 900px) {
+@container page (max-width: 852px) {
   .practice-rail { display: contents; }
 }
 
@@ -1596,13 +1726,9 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 .measure-row {
   position: relative;
-  padding-bottom: var(--space-6);
-  margin-bottom: var(--space-6);
-  border-bottom: 1px solid var(--hairline);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+  display: grid;
+  gap: var(--space-6);
 }
 
 .session-intro { min-width: 0; display: grid; gap: var(--space-2); }
@@ -1641,8 +1767,6 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 /* Open practice shows only the numbers; drills and retests keep kicker, title and description. */
 body[data-session="practice"] .session-intro { display: none; }
-body[data-session="practice"] .measure-row,
-body[data-session="practice"] .live-stats { justify-content: flex-start; }
 
 body[data-session="drill"] .practice-controls,
 body[data-session="drill"] .quote-options,
@@ -1653,51 +1777,40 @@ body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options,
 body[data-session="retest"] .standard-options { display: none; }
 
-.live-stats {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-10);
-}
-
-/* Number and unit share one baseline. */
-.live-stat {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  color: var(--muted);
-  font: var(--text-body)/1.2 var(--font-app);
-}
-
-.live-stat strong {
-  color: var(--text);
-  font-family: var(--font-app);
-  font-size: 48px;
-  font-weight: 300;
-  line-height: 1;
-  letter-spacing: -0.035em;
-}
-
-.timer-stat strong { color: var(--accent); }
+/* The readouts: time or words, wpm, accuracy, then the average and best the run is set against, as four cells.
+   The pace label hangs under the row, so the row clips nothing. */
+.live-stats { position: relative; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
+.live-stats .cell-figure { font-size: var(--text-title); }
+.live-stats .cell-value { display: flex; align-items: baseline; white-space: nowrap; }
+#live-wpm:not([data-wpm]),
+.standing-stat [data-empty],
+.standing-stat .cell-figure { color: var(--muted); }
+body[data-running="true"] .timer-stat .cell-figure { color: var(--accent); }
+/* Composing's clock reads like the readouts. */
+.compose-side .live-stat { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-mono)/1 var(--font-mono); }
+.compose-side .live-stat strong { color: var(--accent); font: 500 var(--text-title)/1.15 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
 
 /* Pace caret label: positioned out of flow so showing it never moves the passage. */
 .pace-label {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
   color: var(--muted);
   font: var(--text-mono)/1 var(--font-mono);
   white-space: nowrap;
 }
 .pace-label[hidden] { display: none; }
 
-body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden; }
+/* With live metrics off (the default) wpm and accuracy keep their cells and show a dash, before and during a run. */
+body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value > * { display: none; }
+body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { content: "—"; color: var(--muted); font: 500 var(--text-title)/1.15 var(--font-mono); }
 
 /* While a run is in progress everything but the passage and the numbers steps back.
-   app.js sets data-running; keyboard focus brings a control back. */
+   app.js sets data-running; keyboard focus brings a control back. The side bar fades as one box; the top and
+   bottom bars are the navigation and the corner. */
 .dock-zone,
+.dock,
 .corner,
 .practice-controls,
 .quote-options,
@@ -1707,7 +1820,7 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden
 .site-footer,
 .compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock-zone, .dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
 body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* The background image. The layer fades it out and dims it mid-run; only its opacity changes, so a run never
@@ -1784,6 +1897,61 @@ body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim)
 
 /* Next to the passage mid-run, the warning appears and leaves instantly. */
 body[data-running="true"] .caps-warning { transition: none; }
+
+/* The Instrument strip (TOB-470): the setup controls as one bordered row of groups split by hairlines, on the
+   page's left edge. On a phone the groups wrap as before, each in its own box. */
+@media (min-width: 761px) {
+  .practice-controls { justify-content: flex-start; margin: 0 0 var(--space-3); }
+  .practice-rail {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius);
+    background: var(--ground-2);
+  }
+  @container page (max-width: 852px) { .practice-rail { display: flex; } }
+  .practice-rail :is(.segmented, .compact-switch) { border: 0; border-radius: 0; background: none; }
+  .practice-rail .segmented { padding: 5px var(--space-2) 5px 5px; }
+  .practice-rail .practice-options > :not([hidden]),
+  .practice-rail #punctuation-switch { border-left: 1px solid var(--hairline); }
+  .practice-rail :is(.segmented button, .mode-more > summary) { height: var(--space-8); font-size: var(--text-label); }
+  .practice-rail .segmented.compact button { min-width: 0; padding: 0 var(--space-3); }
+  .practice-rail .segmented.compact #custom-length { font: var(--text-label)/1 var(--font-app); }
+  .practice-rail .quote-filter-trigger { min-height: var(--space-8); }
+  .practice-rail .compact-switch { height: auto; padding: 0 var(--space-3); gap: var(--space-2); font-size: var(--text-label); }
+  .practice-rail .compact-switch + .compact-switch { padding-left: var(--space-1); }
+  .practice-rail .compact-switch .switch { width: 10px; height: 10px; border: 1.5px solid var(--outline); border-radius: 3px; background: none; }
+  .practice-rail .compact-switch .switch::before { display: none; }
+  .practice-rail .compact-switch .switch:checked { border-color: var(--accent); background: var(--accent); }
+  .practice-rail .compact-switch:has(.switch:checked) { color: var(--text); }
+  .practice-rail .mode-more-menu { left: 0; transform: none; }
+  /* The custom text panel sits under the strip, across the page. */
+  .custom-options { width: 100%; margin: 0 0 var(--space-6); }
+}
+
+/* The key hints share the row under the track with the restart button: they rise into the left of the typing
+   footer, where a passage notice takes their place while it shows, so the notice still never changes a height.
+   Composing has no typing footer, so there they keep their own row. */
+@media (min-width: 761px) {
+  #typing-form .typing-footer { margin-top: var(--space-2); }
+  body:not([data-compose="true"]) .shortcut-row { min-height: var(--control); margin-top: calc(var(--control) * -1); align-items: center; pointer-events: none; }
+  #typing-form:has(#input-help:not(:empty)) ~ .shortcut-row { visibility: hidden; }
+}
+
+/* A phone keeps the three live readouts in one short row, so the passage stays above the bottom bar; the best
+   stays in the footer. */
+@media (max-width: 760px) {
+  .measure-row { margin-bottom: var(--space-4); gap: var(--space-3); }
+  .live-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .live-stats .cell { padding: var(--space-2) var(--space-3); border-top: 0; }
+  .live-stats .cell:nth-child(odd) { border-left: 1px solid var(--hairline); }
+  .live-stats .cell:first-child { border-left: 0; }
+  .live-stats .cell-figure,
+  body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { font-size: var(--text-lead); }
+  .standing-stat { display: none; }
+}
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
@@ -2046,9 +2214,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 /* ── Progress line ──────────────────────────────────────────────────────── */
 
 .progress-line {
-  height: 2px;
+  height: 3px;
   border-radius: var(--radius-full);
-  background: var(--hairline);
+  background: var(--raised-2);
   overflow: hidden;
 }
 
@@ -2102,9 +2270,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 #input-help-reserve { visibility: hidden; }
 
 .shortcut-row {
-  margin-top: var(--space-6);
+  margin-top: var(--space-2);
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-6);
   color: var(--muted);
@@ -2421,10 +2589,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 body[data-view="results"] .practice-result { display: grid; }
 body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
-/* One card, centred under the rail; what follows it (a ghost race, its offer) keeps the card's width. */
+/* The run fills the page column under the strip; what follows it (a ghost race, its offer) keeps its width. */
 .results-layout {
-  grid-template-columns: minmax(0, var(--result-card));
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-8);
   align-items: start;
 }
@@ -2433,23 +2600,67 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-heading:has(> h2.sr-only):has(> .result-note:empty) { display: contents; }
 .result-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; }
 
-/* A static print on card stock: the score and its facts, the trace, the words, then the actions. */
+/* The run as figures, then its speed and the words typed in panels, then the actions. A static print: nothing
+   counts up or draws in but the trace. */
 .run-card {
   min-width: 0;
-  padding: var(--space-8);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
   display: grid;
-  gap: var(--space-8);
-  /* A finished run scrolls the card clear of the bottom edge (focusResult in src/app.js). */
+  gap: var(--space-3);
+  /* A finished run scrolls the card clear of the bottom edge (focusResult in src/application-host.ts). */
   scroll-margin-bottom: var(--space-6);
 }
 
-/* The actions under a hairline, the conditions line set against them on the right. */
+.run-card-facts { margin: 0; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); }
+.run-card-facts dd { margin: 0; }
+.run-card-facts .cell-figure { font-size: var(--text-title); font-weight: 500; }
+#result-time .cell-unit { margin-left: 0; }
+#result-wpm { font-size: var(--text-score); line-height: 1; letter-spacing: -0.05em; }
+#result-versus .is-up { color: var(--accent); }
+#result-versus .is-down { color: var(--danger); }
+
+.run-card-trace { padding-inline: 0; }
+.run-card-trace .panel-head { margin-inline: 0; }
+.run-card-graph { margin: 0; padding-inline: var(--panel-inset); }
+.trace-legend { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); }
+.trace-legend i { display: inline-block; flex: none; }
+.legend-average { width: var(--space-4); border-top: 1px dashed var(--muted); }
+.legend-miss { width: 6px; height: 6px; margin-left: var(--space-2); border-radius: var(--radius-full); background: var(--danger); }
+
+/* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it scrolls. One
+   word at a time is the tab stop; the chosen word is underlined and its pace shows in the line below. The
+   padding (offset by the margin) keeps a focused word's ring inside the scroller. */
+.run-card-words {
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  max-height: calc(var(--text-small) * 1.75 * 4 + var(--space-1) * 2);
+  overflow-y: auto;
+  color: var(--muted);
+  font: var(--text-small)/1.75 var(--font-app);
+}
+.run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
+.run-card-words .word-miss { padding-inline: var(--space-1); color: var(--danger); background: var(--danger-soft); }
+.run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
+.word-detail { margin: var(--space-2) 0 0; color: var(--muted); font: var(--text-label)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+.word-detail:empty { display: none; }
+
+/* The way into word practice: a quiet action in the panel's head, with a full-height target under touch. */
+.run-card-practice {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: var(--text-label)/1.35 var(--font-app);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .run-card-practice:hover { color: var(--text); } }
+@media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
+
+/* The actions, the average and best and the conditions line set against them on the right. */
 .result-actions {
-  padding-top: var(--space-8);
-  border-top: 1px solid var(--hairline);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2459,255 +2670,185 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   scroll-margin-bottom: calc(var(--space-8) + var(--space-4));
 }
 .result-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.result-buttons .btn { font-size: var(--text-body); font-weight: 400; }
+.result-buttons .btn { font-size: var(--text-small); font-weight: 400; }
 .result-buttons .btn-primary { font-weight: 500; }
-.result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-6); }
-.result-actions .condition-copy { flex: 1 1 var(--result-conditions); text-align: end; letter-spacing: 0.02em; }
+.result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-4); }
+.result-context { flex: 1 1 var(--result-conditions); display: grid; gap: var(--space-1); text-align: end; }
+.result-context .condition-copy { letter-spacing: 0.02em; }
+
+/* Two figures to a row on a phone, and a shorter trace, so the score and the actions fit one screen. */
+@media (max-width: 760px) {
+  .run-card { gap: var(--space-2); }
+  .run-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .run-card-facts .cell { padding-block: var(--space-2); }
+  #result-wpm { font-size: var(--text-display); }
+  .run-card-trace .speed-graph { height: calc(var(--result-trace) * 0.75); }
+}
 
 .result-more { min-width: 0; display: grid; gap: var(--space-8); }
 .result-more:not(:has(> :not([hidden]))) { display: none; }
 
-/* ── Train: the path ───────────────────────────────────────────────────── */
+/* ── Train: the queue and the step ──────────────────────────────────────── */
 
-/* One line of steps: behind you (accent, a ring, or a disc once fixed, with its status word), the open step (a larger
-   ring holding a dot, its target at display size) and the steps ahead (a smaller outline ring on a dashed line).
-   Position, node shape, the status word and the line's dash tell them apart without colour. From 901px the steps sit
-   in columns, six to a screen, with a gutter between them, and the line scrolls back through every step behind you.
-   The six leave room at the start for the tail of the step before them, so a line that holds more shows a part of
-   the next step behind you there, faded, while the first whole step stays clear; the end fades the same way while
-   more lies past it. app.js sets --columns, --open (the open step's column) and data-more-behind and data-more-ahead. */
-.train-path {
-  --columns: 6;
-  --open: 1;
-  --fade-behind: 0px;
-  --fade-ahead: 0px;
-  margin: 0 calc(var(--space-2) * -1);
-  padding: var(--space-10) var(--space-2) var(--space-2);
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(var(--columns), calc((100% - var(--space-8)) / 6));
-  align-items: start;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
-}
-.train-path[data-more-behind] { --fade-behind: var(--space-8); }
-.train-path[data-more-ahead] { --fade-ahead: var(--space-8); }
-/* Focused for its arrow keys, the line drops the fade so its focus ring shows whole. */
-.train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
-}
+/* Two parts (TOB-470): the queue panel, one row per step still to do with what it costs and the drilled steps folded
+   under it with what each won back, and the chosen step's detail beside it (under it up to 900px). A row says what it
+   is in words and figures: its number, or a check once fixed and a ring while drilled, and its state word. Nothing
+   animates as the page opens or a step is chosen: it is opened many times a day. */
+.train-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-3); align-items: start; }
 
-.path-step { grid-row: 1; min-width: 0; padding: 0 var(--space-4) var(--space-2) 0; display: grid; align-content: start; gap: var(--space-1); }
-.path-step.is-just { grid-column: span 2; }
-/* The open step lays its head on the line and its details under it, from its column to the end. */
-#train-current { display: contents; }
-#train-current > .path-head { grid-row: 1; grid-column: var(--open); margin-right: var(--space-4); }
-
-.path-head { position: relative; display: grid; justify-items: start; row-gap: var(--space-6); }
-/* Each step draws the line to the next one: travelled behind you, dashed from the open step on. */
-.path-head::before {
-  content: "";
-  position: absolute;
-  top: calc(var(--space-4) / 2 - 1px);
-  left: 0;
-  right: calc(var(--space-4) * -1);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-:is(#train-current, .is-ahead) .path-head::before {
-  background: repeating-linear-gradient(90deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
-}
-.train-path > :last-child .path-head::before { display: none; }
-
-.path-node {
-  position: relative;
-  z-index: 1;
-  width: var(--space-4);
-  height: var(--space-4);
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-full);
-  background: var(--ground);
-}
-.is-fixed .path-node { background: var(--accent); }
-#train-current .path-node {
-  width: var(--space-6);
-  height: var(--space-6);
-  margin: calc((var(--space-4) - var(--space-6)) / 2);
-  box-shadow: inset 0 0 0 var(--space-1) var(--ground), inset 0 0 0 var(--space-6) var(--accent);
-}
-.is-ahead .path-node {
-  width: var(--space-3);
-  height: var(--space-3);
-  margin: calc((var(--space-4) - var(--space-3)) / 2);
-  border-color: var(--outline);
-}
-
-.path-unit { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; overflow-wrap: anywhere; }
-/* "drilled" or "fixed" beside the target, a status word whose dot is the step's own node. */
-.path-status { margin-left: var(--space-2); }
-/* A number stays with its unit, and each half of a before → after pair stays whole. */
-.path-figure { white-space: nowrap; }
-#train-unit { font-size: var(--text-display); line-height: 1; letter-spacing: -0.025em; white-space: nowrap; }
-.path-line { margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-.is-behind .path-line:first-of-type { color: var(--text); }
-
-/* A step ahead is chosen as a whole; its target brightens on hover. */
-.path-choose {
+.train-queue { padding: 0; overflow: hidden; }
+.train-queue .panel-head { margin: 0; }
+.queue { margin: 0; padding: 0; list-style: none; }
+.queue-step + .queue-step { border-top: 1px solid var(--hairline); }
+.q-row {
   width: 100%;
-  padding: 0;
+  min-height: var(--control);
+  display: grid;
+  grid-template-columns: var(--space-4) var(--space-10) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
   border: 0;
-  border-radius: var(--radius-control);
-  background: none;
-  color: var(--muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
   font: inherit;
   text-align: start;
-  display: grid;
-  gap: var(--space-1);
+  transition: transform var(--dur-quick) var(--ease-out);
 }
-.path-choose .path-unit { transition: color var(--dur-quick) var(--ease-out); }
-.path-choose:hover .path-unit { color: var(--text); }
+.q-row:active { transform: scale(0.98); }
+.q-row[aria-pressed="true"] { background: var(--raised-2); box-shadow: inset 2px 0 var(--accent); }
+.q-row:focus-visible { outline-offset: -2px; }
+.q-n { display: grid; place-items: center; color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+.q-unit { font: 500 var(--text-lead)/1.2 var(--font-mono); white-space: nowrap; }
+.is-general .q-unit { grid-column: 2 / -1; font: inherit; }
+.q-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--text-small); }
+.q-cost { color: var(--text); font: 500 var(--text-mono)/1.4 var(--font-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.is-current .q-cost, .q-cost.is-up { color: var(--accent); }
+.q-cost [data-speed-unit] { color: var(--muted); font-weight: 400; }
+.q-cost.is-up [data-speed-unit] { color: inherit; }
+.is-fixed .q-state { color: var(--accent); }
+.q-check { width: var(--space-3); height: var(--space-3); fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.q-ring { width: 7px; height: 7px; border: 1.5px solid var(--outline); border-radius: var(--radius-full); }
 
-/* The open step's details: its evidence, the words it was missed in, and its one button. */
-.train-open {
-  grid-row: 2;
-  grid-column: var(--open) / -1;
-  min-width: 0;
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--hairline);
+/* The drilled steps fold away under the queue. Their column reads what they won back, not what they cost. */
+.q-fold {
+  width: 100%;
+  min-height: var(--control);
   display: grid;
-  justify-items: start;
-  gap: var(--space-4);
-}
-.train-evidence { margin: 0; font-size: var(--text-lead); font-variant-numeric: tabular-nums lining-nums; }
-.train-last { margin: calc(var(--space-3) * -1) 0 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-/* Missed words that hold the target: the target in the text colour, the rest muted. Coral would say its letters
-   were the ones mistyped, which isn't known. */
-.train-words {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
+  grid-template-columns: var(--space-4) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
+  border: 0;
+  border-top: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  background: transparent;
   color: var(--muted);
-  font-size: var(--text-title);
-  line-height: 1.3;
+  font: inherit;
+  font-size: var(--text-small);
+  text-align: start;
 }
-.train-words b { color: var(--text); font-weight: inherit; }
-.train-actions { margin-top: var(--space-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.q-fold[aria-expanded="true"] { color: var(--text); }
+.q-chevron { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.q-fold[aria-expanded="true"] .q-chevron { transform: rotate(90deg); }
+.q-count { justify-self: start; padding: 0 6px; border-radius: var(--radius-full); background: var(--raised-2); font: 500 var(--text-caption)/1.6 var(--font-mono); }
+.queue.is-done { border-top: 1px solid var(--hairline); }
 
-/* The comparison is the step just retested: its outcome, then its figures beside the baseline's, in three rows. */
+@media (hover: hover) and (pointer: fine) {
+  .q-row:hover, .q-fold:hover { background: var(--raised-2); }
+}
+
+/* The chosen step: what it is, its drill's first words and its button, then its measures, the learner's own words for
+   its evidence, and for a pair the run-by-run timings. */
+.train-detail { min-width: 0; scroll-margin-top: var(--space-4); }
+.train-step { display: grid; gap: var(--space-3); align-content: start; }
+.train-step-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: var(--space-4); padding: 2px 2px var(--space-1); }
+.train-step-head > div:first-child { min-width: 0; }
+.train-step-unit { margin: var(--space-1) 0 0; font: 500 56px/0.95 var(--font-mono); letter-spacing: -0.05em; overflow-wrap: anywhere; }
+.train-step-unit.is-label { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; }
+.train-preview { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-small); line-height: 1.5; }
+.train-preview b { color: var(--text); font-weight: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 5px; }
+.train-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+.train-starts { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); white-space: nowrap; }
+/* Three measures a row at every width, so the frame's two-a-row phone rule is undone here. */
+.train-cells { grid-auto-flow: column; grid-template-columns: none; }
+.train-cells .cell { border-top: 0; border-left: 1px solid var(--hairline); }
+.train-cells .cell:first-child, .train-cells [hidden] + .cell { border-left: 0; }
+.train-evidence { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--text-fine); font-variant-numeric: tabular-nums lining-nums; }
+.train-evidence:not(:has(> :not([hidden]))) { display: none; }
+.train-evidence p { margin: 0; }
+.train-figure { white-space: nowrap; }
+.train-words b { color: var(--text); font-weight: inherit; }
+
+/* One dot for each run that timed the pair, at its median interval in that run, against the person's pace. Dots that
+   share a slot stack, and a tall stack packs its dots closer so it stays inside the plot. */
+.train-timings .panel-head { margin-bottom: 0; }
+.train-timings .panel-note { color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+.timing-plot {
+  --plot-height: 150px;
+  --dot: 6px;
+  --dot-step: min(calc(var(--dot) + 2px), calc((var(--plot-height) - var(--space-10)) / var(--tall)));
+  position: relative;
+  height: var(--plot-height);
+  margin-top: var(--space-4);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+.timing-dots { position: absolute; inset: 0; }
+.timing-dots i { position: absolute; bottom: calc(var(--stack) * var(--dot-step)); width: var(--dot); height: var(--dot); margin: 0 0 3px calc(var(--dot) / -2); border-radius: var(--radius-full); background: var(--accent); }
+.timing-mark { position: absolute; top: 0; bottom: 0; padding-left: 7px; border-left: 1px solid var(--accent); color: var(--muted); font: 400 var(--text-caption)/1.45 var(--font-mono); white-space: nowrap; }
+.timing-mark b { display: block; color: var(--text); font-weight: 400; }
+.timing-mark.is-pace, .is-flipped .timing-mark.is-own { padding: 0 7px 0 0; border-left: 0; border-right: 1px dashed var(--outline); text-align: right; transform: translateX(-100%); }
+.is-flipped .timing-mark.is-own { border-right-style: solid; border-right-color: var(--accent); }
+.is-flipped .timing-mark.is-pace { padding: 0 0 0 7px; border-right: 0; border-left: 1px dashed var(--outline); text-align: left; transform: none; }
+.timing-axis { display: flex; justify-content: space-between; padding-top: var(--space-2); color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+
+/* The comparison is the step just retested: its outcome, then its figures beside the baseline's. */
+.train-comparison { display: grid; gap: var(--space-3); }
 #comparison-status {
-  margin: var(--space-2) 0 0;
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  font-size: var(--text-body);
+  margin: 0;
+  font-size: var(--text-lead);
   font-weight: 400;
-  line-height: 1.4;
 }
 #comparison-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--muted); transform: translateY(-2px); }
 [data-outcome="improved"] > #comparison-status::before { background: var(--accent); }
 [data-outcome="mixed"] > #comparison-status::before { background: var(--warning); }
 [data-outcome="regressed"] > #comparison-status::before { background: var(--danger); }
-/* Focus lands on the outcome so it is read out; it isn't a control, so it draws no ring. */
 #comparison-status:focus-visible { outline: none; }
-.comparison-rows {
-  margin: var(--space-2) 0 0;
-  display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-}
-.comparison-rows > div, .comparison-rows dd { display: contents; }
-.comparison-rows dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.comparison-rows strong { font-size: var(--text-body); font-weight: 400; font-variant-numeric: tabular-nums lining-nums; }
-.comparison-rows strong b { color: var(--muted); font-size: var(--text-small); font-weight: 400; margin-left: 1px; }
-.comparison-rows dd > span { color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-#comparison-panel.is-uncompared .comparison-rows { display: none; }
-#comparison-conditions { margin: var(--space-2) 0 0; }
-#comparison-conditions:empty { display: none; }
-#comparison-caveat { max-width: 60ch; margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-small); }
-#comparison-caveat:empty { display: none; }
+.comparison-rows { margin: 0; }
+.comparison-rows dd { margin: var(--space-1) 0 0; }
+.comparison-rows .cell-note { display: block; }
+.train-comparison.is-uncompared .comparison-rows { display: none; }
+#comparison-conditions, #comparison-caveat { margin: 0; }
+#comparison-conditions:empty, #comparison-caveat:empty { display: none; }
+#comparison-caveat { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.is-just > .train-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--space-2) var(--space-4); }
 
-/* As a retest's comparison opens, the path moves on one step and the next step opens. */
-@keyframes path-advance { from { transform: translateX(var(--advance)); } }
-@keyframes path-open { from { opacity: 0; transform: translateY(var(--space-2)); } }
-.train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head {
-  animation: path-advance var(--dur-fast) var(--ease-out);
-}
-.train-path.is-advancing .train-open { animation: path-open var(--dur-fast) var(--ease-out); }
-
-/* Up to 900px the path runs down the page, its line on the left: the two newest steps behind you (a line fading in
-   from above when there are more), then the open step with its details under its target, then the steps ahead. */
+/* Up to 900px the detail sits under the queue; up to 480px its head stacks and its measures shrink to fit three. */
 @media (max-width: 900px) {
-  .train-path { margin: 0; padding: var(--space-4) 0 0; grid-template-columns: minmax(0, 1fr); overflow: visible; }
-  .train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
-  .path-step, .path-step.is-just, #train-current { grid-row: auto; grid-column: 1; position: relative; display: grid; padding: 0 0 var(--space-6); }
-  #train-current > .path-head, .train-open { grid-row: auto; grid-column: auto; }
-  .path-step:is([data-early], .is-place) { display: none; }
-  .path-head { margin-right: 0; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-4); }
-  .path-head::before { display: none; }
-  .path-node { justify-self: center; }
-  :is(.path-line, #comparison-status, .comparison-rows, #comparison-conditions, #comparison-caveat, .train-open) { margin-left: var(--space-10); }
-  .path-choose { gap: 0; }
-  .path-choose .path-line { margin-left: var(--space-10); }
-  .train-open { margin-top: var(--space-3); padding-top: 0; border-top: 0; }
-  .train-last { margin-top: calc(var(--space-2) * -1); }
-  .train-words { font-size: var(--text-lead); }
-  #train-unit { white-space: normal; }
-
-  /* Each step's line runs from its node's centre to the next node's. */
-  .path-step { --mid: calc(var(--text-title) * 0.575); }
-  #train-current { --mid: calc(var(--text-display) / 2); }
-  .path-step::before {
-    content: "";
-    position: absolute;
-    top: var(--mid);
-    bottom: calc(var(--text-title) * -0.575);
-    left: calc(var(--space-6) / 2 - 1px);
-    width: 2px;
-    border-radius: var(--radius-full);
-    background: var(--accent);
-  }
-  .path-step:has(+ #train-current)::before { bottom: calc(var(--text-display) / -2); }
-  :is(#train-current, .is-ahead)::before {
-    background: repeating-linear-gradient(180deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
-  }
-  .train-path > :last-child::before, #train-current:has(+ .is-place)::before { display: none; }
-  /* A target that wraps keeps its node on its first line. */
-  #train-current > .path-head { align-items: start; }
-  #train-current .path-node { margin: calc(var(--mid) - var(--space-6) / 2) 0 0; }
-  .path-step[data-early] + .path-step::after {
-    content: "";
-    position: absolute;
-    top: calc(var(--space-4) * -1);
-    height: calc(var(--mid) + var(--space-4));
-    left: calc(var(--space-6) / 2 - 1px);
-    width: 2px;
-    background: linear-gradient(transparent, var(--accent));
-  }
-
-  .train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head, .train-path.is-advancing .train-open { animation: none; }
-  .train-path.is-advancing > #train-current { animation: path-open var(--dur-fast) var(--ease-out); }
+  .train-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Forced colours would draw every node as the same ring and drop the open step's dot and the line: draw them in system
-   colours. Behind you a CanvasText ring, or a CanvasText disc once fixed, on a solid CanvasText line; the open step a
-   Highlight ring holding a Highlight dot; ahead a smaller GrayText ring on a dashed GrayText line. */
+@media (max-width: 480px) {
+  .train-step-head { flex-direction: column; align-items: stretch; }
+  .train-actions { align-items: flex-start; }
+  .train-step-unit { font-size: var(--text-display); }
+  .train-cells .cell { padding-inline: var(--space-3); }
+  .train-cells .cell-figure { font-size: var(--text-lead); }
+  .train-cells .cell-unit { margin-left: var(--space-1); }
+}
+
+/* Forced colours drop the chosen row's tint and the dots' fill: draw them in system colours. */
 @media (forced-colors: active) {
-  .path-node, .path-head::before, .path-step::before, .path-step[data-early] + .path-step::after { forced-color-adjust: none; }
-  .path-node { border-color: CanvasText; background: Canvas; }
-  .is-fixed .path-node { background: CanvasText; }
-  #train-current .path-node { border-color: Highlight; box-shadow: inset 0 0 0 var(--space-1) Canvas, inset 0 0 0 var(--space-6) Highlight; }
-  .is-ahead .path-node { border-color: GrayText; }
-  .path-head::before, .path-step::before { background: CanvasText; }
-  :is(#train-current, .is-ahead) .path-head::before { background: repeating-linear-gradient(90deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
-  :is(#train-current, .is-ahead)::before { background: repeating-linear-gradient(180deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
-  .path-step[data-early] + .path-step::after { background: linear-gradient(transparent, CanvasText); }
+  .q-row[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .q-check, .q-ring, .timing-dots i, .timing-mark { forced-color-adjust: none; }
+  .q-check { stroke: CanvasText; }
+  .q-ring { border-color: CanvasText; }
+  .timing-dots i { background: CanvasText; }
+  .timing-mark { border-color: CanvasText; color: CanvasText; }
 }
 
 .run-card-graph { margin: 0; }
@@ -2731,88 +2872,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes graph-fade { from { opacity: 0; } }
 
-/* The score on the left; on the right the facts in one row, and under them the average and best. */
-.run-card-head {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: end;
-  gap: var(--space-6) 0;
-}
-
-/* A speed too wide for the row puts its unit underneath instead of pushing past the card. */
-.run-card-score {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-#result-wpm {
-  font-family: var(--font-app);
-  font-size: var(--text-numeral);
-  font-weight: 400;
-  line-height: 0.76;
-  letter-spacing: -0.035em;
-}
-
-.run-card-unit { color: var(--muted); font: italic var(--text-lead)/1 var(--font-app); }
-
-/* On a wide card the figure's side bearing pulls it back onto the card's left edge; a phone keeps the
-   whole box inside the padding. */
-@media (min-width: 761px) {
-  #result-wpm { margin-inline-start: -0.09em; }
-}
-
-.run-card-side { min-width: 0; padding-bottom: var(--space-2); display: grid; gap: var(--space-3); }
-
-.run-card-facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3) 0;
-}
-
-/* Values sit on one line even when a label wraps; a cell never widens its track. */
-.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-1); min-width: 0; }
-.run-card-facts dt { color: var(--muted); font: 500 var(--text-mono)/1.35 var(--font-mono); letter-spacing: 0.04em; }
-.run-card-facts dd { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.15; }
-.run-card-facts strong { font-weight: inherit; }
-.run-card-facts b { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 1px; }
-
-.run-card-standing { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-
-/* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it
-   scrolls. One word at a time is the tab stop; the chosen word is underlined and its pace shows in
-   the line below. The padding (offset by the margin) keeps a focused word's ring inside the scroller. */
-.run-card-wordlist { display: grid; justify-items: start; gap: var(--space-3); }
-.run-card-words {
-  justify-self: stretch;
-  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
-  padding: var(--space-1) var(--space-2);
-  max-height: calc(var(--text-body) * 1.6 * 4 + var(--space-1) * 2);
-  overflow-y: auto;
-  color: var(--muted);
-  font: var(--text-body)/1.6 var(--font-app);
-}
-.run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
-.run-card-words .word-miss { padding-inline: var(--space-1); color: var(--danger); background: var(--danger-soft); }
-.run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
-.word-detail { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-.word-detail:empty { display: none; }
-
-/* The way into word practice reads as a green line of text, with a full-height target under touch. */
-.run-card-practice {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--accent);
-  font: var(--text-small)/1.35 var(--font-app);
-  cursor: pointer;
-}
-.run-card-practice:hover { text-decoration: underline; text-underline-offset: 3px; }
-
 .metric-note {
   margin: 0;
   color: var(--muted);
@@ -2820,7 +2879,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   font-style: italic;
   line-height: 1.45;
 }
-@media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
 
 .section-heading h1 {
   margin: 0 0 var(--space-3);
@@ -2964,13 +3022,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
-.standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
-.standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
-/* Longhands, so the shorthand can't reset .num's tabular figures. */
-.standard-figures strong { color: var(--text); font-family: var(--font-app); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
-.standard-score p { max-width: 64ch; margin: 0; }
-.standard-score .result-note { color: var(--muted); }
 
 .pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pill {
@@ -3006,35 +3057,44 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .figure-percent { margin-inline-start: calc(var(--space-1) * -1); }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
 .view-panel:focus-visible { outline-offset: var(--space-2); }
-/* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
-.practice-goal { display: grid; gap: var(--space-8); }
-/* The calendar fills the column, the practice figures in one row under it. */
-.practice-layout { display: grid; gap: var(--space-8); }
-.practice-calendar { min-width: 0; display: grid; gap: var(--space-3); }
+/* Practice calendar (TOB-470): a year of days in week columns, Sunday first, at four accent steps (--practice-level-1…3,
+   then --accent); empty days sit on the hairline. Each day keeps its size, and where the panel is narrower than a year
+   the oldest weeks fall outside the scroller's start, which shows the newest. The scroller is a whole number of weeks
+   wide, so its start never cuts a week, and a month's name hides while its week is not whole in view. */
 .practice-stats { margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-6); }
-.goal-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: ". months" "weekdays calendar"; gap: var(--space-1) var(--space-2); }
-.goal-months { grid-area: months; display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); white-space: nowrap; }
-.goal-weekdays { grid-area: weekdays; display: grid; grid-template-rows: repeat(7, minmax(0, 1fr)); gap: var(--space-1); align-items: center; color: var(--muted); font: var(--text-fine)/1 var(--font-mono); }
-.goal-calendar {
-  grid-area: calendar;
-  display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column;
-  gap: var(--space-1);
-}
-.goal-legend { margin: 0; justify-self: end; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-label); }
-.goal-legend span { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-cell); background: var(--hairline); }
+.practice-calendar { position: relative; min-width: 0; display: grid; gap: var(--space-3); }
+.goal-chart { display: flex; gap: var(--space-2); min-width: 0; }
+.goal-weekdays { flex: none; display: grid; grid-template-rows: repeat(7, var(--calendar-cell)); gap: var(--space-1); padding-top: calc(var(--calendar-cell) + var(--space-2)); color: var(--muted); font: var(--text-caption)/var(--calendar-cell) var(--font-mono); }
+.goal-frame { flex: 1; min-width: 0; container-type: inline-size; }
+.goal-scroll { width: fit-content; max-width: calc(round(down, 100cqi + var(--space-1), var(--calendar-cell) + var(--space-1)) - var(--space-1)); display: flex; flex-direction: row-reverse; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.goal-scroll::-webkit-scrollbar { display: none; }
+.goal-weeks { flex: none; display: grid; gap: var(--space-2); }
+.goal-months { display: grid; grid-template-columns: repeat(var(--weeks, 53), var(--calendar-cell)); gap: var(--space-1); color: var(--muted); font: var(--text-caption)/var(--calendar-cell) var(--font-mono); white-space: nowrap; }
+.goal-months [data-cut] { visibility: hidden; }
+.goal-calendar { display: grid; grid-template-columns: repeat(var(--weeks, 53), var(--calendar-cell)); grid-template-rows: repeat(7, var(--calendar-cell)); grid-auto-flow: column; gap: var(--space-1); }
+.goal-legend { margin: 0; justify-self: end; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); }
+.goal-legend span { width: var(--calendar-cell); height: var(--calendar-cell); border-radius: var(--radius-cell); background: var(--hairline); }
 .goal-legend span:first-child { margin-left: var(--space-1); }
 .goal-legend span:last-child { margin-right: var(--space-1); }
 .goal-day-picker { display: none; }
 .goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
-.goal-day { aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
 :is(.goal-day, .goal-legend span)[data-level="1"] { background: var(--practice-level-1); }
 :is(.goal-day, .goal-legend span)[data-level="2"] { background: var(--practice-level-2); }
 :is(.goal-day, .goal-legend span)[data-level="3"] { background: var(--practice-level-3); }
 :is(.goal-day, .goal-legend span)[data-level="4"] { background: var(--accent); }
 /* Goal met: a centre dot in accent-ink (≥3:1 on both green steps in both themes), so it never rests on colour alone. */
 .goal-day[data-goal="met"]::after { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-full); background: var(--accent-ink); }
-/* The focused or hovered day, in words. One line is reserved so the page below never shifts. */
-.goal-caption { min-height: 1lh; margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums; }
+.goal-day:focus-visible { outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+  .goal-day:hover { outline: 1.5px solid var(--text); outline-offset: 1px; }
+}
+/* The hovered, focused or picked day in words, over its cell. It appears and moves at once: scanning days should
+   feel instant, and the keyboard moves it many times a minute. */
+.calendar-tip { position: absolute; top: 0; left: 0; z-index: 2; display: grid; gap: 1px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--text); color: var(--ground); box-shadow: var(--shadow-float); font-size: var(--text-fine); line-height: 1.35; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.calendar-tip[hidden] { display: none; }
+.tip-runs { font-weight: 600; }
+.goal-caption { margin: 0; opacity: 0.75; }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
 .progress-trend { display: grid; gap: 0; }
@@ -3070,74 +3130,73 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 .daily-challenge h2 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 
-/* Progress (TOB-420): what changed since last week. No visible heading: the dock names the page. The lead figure,
-   then the list of what moved it, then two small charts, then quiet links to everything else, each a detail view
-   one step away. Rules and space, no boxes. */
-.progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
-.progress-overview > [hidden], .progress-detail > [hidden] { display: none; }
+/* Progress (TOB-420, TOB-470): the conditions and the period, four lead cells, two charts, the practice calendar and
+   the newest runs, in panels on one page. Everything else is a detail view one step away. */
+.progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-content: start; }
+.progress-detail { gap: var(--space-8); }
+.progress-overview > [hidden], .progress-detail > [hidden], .progress-toolbar[hidden] { display: none; }
 
-.week-lead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: var(--space-3) var(--space-8); padding-top: var(--space-6); }
-/* The run card's numeral: the same size, weight, leading and tracking. */
-.lead-figure { margin: 0; display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-app); font-size: var(--text-numeral); font-weight: 400; line-height: 0.76; letter-spacing: -0.035em; white-space: nowrap; }
-.lead-unit { color: var(--muted); font-size: var(--text-lead); font-style: italic; letter-spacing: 0; }
-.week-lead[data-tone="gain"] .lead-number { color: var(--accent); }
-.week-lead[data-tone="drop"] .lead-number { color: var(--danger); }
-/* No figure to state: a muted rule where the number would stand, at the numeral's baseline. */
-.lead-dash { display: block; width: var(--space-16); height: var(--space-1); border-radius: var(--radius-full); background: var(--outline); }
-.week-lead:has(.lead-dash) { align-items: center; }
-.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.progress-empty { display: grid; justify-items: start; gap: var(--space-6); }
-.progress-empty[hidden] { display: none; }
-.lead-context { min-width: 0; display: grid; gap: var(--space-2); padding-bottom: var(--space-2); }
-.lead-sentence { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
-.lead-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.lead-sample:not([hidden])::after { content: "·"; margin-inline: var(--space-2); }
-.conditions-disclosure > summary::after { display: inline-block; margin-left: var(--space-2); }
-.detail-filters .lead-sample { display: none; }
-.lead-note { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
-.trend-figures { margin: var(--space-4) 0 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.trend-figures > span { white-space: nowrap; }
+.progress-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .progress-filters { min-width: 0; max-width: 100%; display: flex; align-items: center; }
 .progress-filters[hidden] { display: none; }
 .conditions-disclosure { min-width: 0; max-width: 100%; }
-/* The line reads as text, so a long line wraps like one and the chevron trails its last word. The padding keeps a
-   44px target. */
-.conditions-disclosure > summary { display: block; padding-block: calc((var(--control) - 1lh) / 2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
-.conditions-disclosure > summary::-webkit-details-marker { display: none; }
-.conditions-disclosure > summary:hover { color: var(--text); }
-.conditions-panel { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-2); padding-bottom: var(--space-2); }
+/* The conditions line is the control: a quiet box that opens the lengths and condition sets under it. */
+.conditions-disclosure > summary { display: flex; align-items: center; gap: var(--space-2); min-height: var(--progress-control); max-width: 100%; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ground-2); color: var(--text); font-size: var(--text-label); cursor: pointer; list-style: none; }
+.conditions-disclosure > summary::-webkit-details-marker, .conditions-disclosure > summary::after { display: none; }
+.conditions-chevron { flex: none; width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); transition: transform var(--dur-quick) var(--ease-out); }
+.conditions-disclosure[open] .conditions-chevron { transform: rotate(180deg); }
+.progress-conditions { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.conditions-disclosure[open] { display: grid; justify-items: start; }
+/* Open, the lengths and condition sets sit under the line in place, so nothing on the page is covered. */
+.conditions-panel { max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius); background: var(--raised); }
 .conditions-panel > * { max-width: 100%; }
 #progress-tests:empty { display: none; }
-.progress-conditions { margin: 0; }
 
-.week-movers { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
-.mover {
-  display: grid; grid-template-columns: calc(var(--space-16) * 2) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-6);
-  min-height: calc(var(--control) + var(--space-6)); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline);
+/* The period: three choices in one quiet box, the chosen one raised. */
+.period-row { display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ground-2); }
+.period-option { min-height: calc(var(--progress-control) - 6px); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-cell); background: none; color: var(--muted); font-size: var(--text-label); white-space: nowrap; cursor: pointer;
+  transition: transform var(--dur-quick) var(--ease-out); }
+.period-option[aria-pressed="true"] { background: var(--raised-2); color: var(--text); }
+.period-option:active, .quiet-action:active { transform: scale(0.97); }
+
+/* The lead cells. The wpm cell's change is in the accent for a gain and coral for a drop. Practice and fixed open their
+   views, so they are buttons that look like the cells beside them. */
+.week-cells .cell { display: block; }
+.week-cells .cell-value { display: flex; align-items: baseline; margin-top: var(--space-1); }
+.week-cells .cell-note { min-height: 1lh; }
+.week-cells .cell-label, .week-cells .cell-note { display: block; }
+.lead-note { margin: var(--space-1) 0 0; }
+.lead-note[hidden] { display: block; visibility: hidden; }
+.lead-cell[data-tone="gain"] .lead-change { color: var(--accent); }
+.lead-cell[data-tone="drop"] .lead-change { color: var(--danger); }
+.lead-dash { color: var(--muted); }
+.cell-link { width: 100%; border-block: 0; border-right: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.cell-link:first-child { border-left: 0; }
+.cell-link:active { background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) {
+  .cell-link:hover { background: var(--raised-2); }
 }
-.mover[hidden] { display: none; }
-.mover-unit { font-size: var(--text-title); font-weight: 400; line-height: 1.2; overflow-wrap: anywhere; }
-.mover-change { margin: 0; font-size: var(--text-lead); line-height: 1.4; }
-.mover-before, .mover-arrow, .mover-tail { color: var(--muted); }
-.mover.is-fixed .mover-after { color: var(--accent); }
-.mover-status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.is-practice .mover-unit, .is-practice .mover-change { color: var(--muted); }
-.is-practice .mover-unit { font-size: var(--text-lead); }
-.mover-link { min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted); font-family: var(--font-app); text-align: start; cursor: pointer;
-  text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 0.2em; transition: color var(--dur-quick) var(--ease-out); }
-.mover-link:hover { color: var(--text); text-decoration-color: currentColor; }
-.more-movers { justify-self: start; margin-top: calc(var(--space-6) * -1); }
 
-.week-charts-head { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
-.week-chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
-.week-chart-slot { min-width: 0; }
-.week-chart { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: inherit; cursor: pointer; }
+.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.progress-empty { display: grid; justify-items: start; gap: var(--space-4); padding: var(--space-10) var(--space-6); }
+.progress-empty[hidden] { display: none; }
+.empty-title { margin: 0; font-size: var(--text-lead); font-weight: 500; line-height: 1.3; }
+
+.panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.panel-count { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+.week-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.week-charts[hidden] { display: none; }
+.week-chart-slot { --week-chart-height: 220px; min-width: 0; }
+.week-chart { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; cursor: pointer; }
 .week-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.week-chart:hover .trend-rule { stroke: var(--outline); }
-.week-chart-end { fill: var(--ground); stroke: var(--accent); stroke-width: 2; }
-.week-chart-value { fill: var(--text); font: var(--text-lead) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-.week-chart-unit { fill: var(--muted); font-size: var(--text-small); }
-.week-chart-runs { fill: var(--muted); font: var(--text-label) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+@media (hover: hover) and (pointer: fine) {
+  .week-chart:hover .trend-rule { stroke: var(--outline); }
+}
+.week-chart-runs circle { fill: var(--muted); opacity: 0.45; }
+.week-chart-fill { fill: var(--accent); opacity: 0.07; }
+.week-chart-end { fill: var(--ground-2); stroke: var(--accent); stroke-width: 2; }
 /* Speed draws in the accent, accuracy in the text colour, so the two small charts read apart at a glance. */
 .trend-line.trend-accuracy, .week-chart-end.trend-accuracy, .trend-dot.trend-accuracy { stroke: var(--text); }
 
@@ -3152,71 +3211,74 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 .trend-dot.trend-accuracy:is(:hover, :focus) { fill: var(--text); }
 
-.progress-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-6); border-top: 1px solid var(--hairline); }
+/* Runs: speed first, a crown on a run that was a best when typed. */
+.runs-table { width: 100%; border-collapse: collapse; font-size: var(--text-label); font-variant-numeric: tabular-nums; }
+.runs-table th { width: 25%; padding: 0 var(--space-4) var(--space-2) 0; color: var(--muted); font: 400 var(--text-mono)/1.5 var(--font-mono); text-align: start; }
+.runs-table td { padding: var(--space-2) var(--space-4) var(--space-2) 0; border-top: 1px solid var(--hairline); white-space: nowrap; }
+.runs-table :is(th, td):last-child { padding-right: 0; }
+.runs-speed data { display: inline-block; min-width: 3ch; font: 500 var(--text-small)/1.2 var(--font-mono); }
+.runs-accuracy { font: 400 var(--text-mono)/1.2 var(--font-mono); }
+.pb { display: inline-flex; margin-left: 6px; vertical-align: -2px; color: var(--accent); }
+.pb-icon { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.pb-crown { fill: currentColor; }
+.runs-empty { margin: 0; color: var(--muted); font-size: var(--text-label); }
+.progress-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); margin-top: var(--space-2); }
 .progress-more > [hidden] { display: none; }
 .progress-more:not(:has(> :not([hidden]))) { display: none; }
-.progress-more .btn-ghost { padding-inline: var(--space-4); }
-.clear-history { margin-left: auto; }
+/* A quiet text action: the runs panel's links and Clear history. */
+.quiet-action { min-height: var(--progress-control); padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--text-label); cursor: pointer;
+  transition: transform var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .quiet-action:hover { color: var(--text); }
+}
+
+.week-movers { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.mover {
+  display: grid; grid-template-columns: calc(var(--space-16) * 2) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-6);
+  min-height: calc(var(--control) + var(--space-6)); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline);
+}
+.mover[hidden] { display: none; }
+.mover-unit { font-size: var(--text-title); font-weight: 400; line-height: 1.2; overflow-wrap: anywhere; }
+.mover-change { margin: 0; font-size: var(--text-lead); line-height: 1.4; }
+.mover-before, .mover-arrow, .mover-tail { color: var(--muted); }
+.mover.is-fixed .mover-after { color: var(--accent); }
+.mover-status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.more-movers { justify-self: start; margin-top: var(--space-4); }
+.week-moved { display: grid; }
+.week-moved[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .week-charts { grid-template-columns: minmax(0, 1fr); }
+  .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mover { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "unit status" "change change"; row-gap: var(--space-1); }
+  .mover-unit { grid-area: unit; }
+  .mover-change { grid-area: change; }
+  .mover-status { grid-area: status; justify-self: end; }
+}
+/* On a phone the kind column gives way; each run's kind is in the full list. */
+@media (max-width: 420px) {
+  .runs-table :is(th, td):nth-child(4) { display: none; }
+  .runs-table :is(th, td):nth-child(3) { padding-right: 0; }
+}
+@media (any-pointer: coarse) {
+  .progress-screen { --progress-control: var(--control); }
+  .period-option, .quiet-action { min-width: var(--control); min-height: var(--control); }
+}
 
 .detail-head { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-3); padding-top: var(--space-4); }
 .detail-back { padding-left: var(--space-2); gap: var(--space-1); }
 .detail-back svg { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.detail-heading { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
+.detail-heading { margin: 0; font-size: var(--text-title); font-weight: 500; line-height: 1.1; letter-spacing: -0.02em; }
 /* Where Progress moves focus for someone (.focus-landing) the ring follows their last input, a key or a pointer (TOB-448). */
 .focus-landing:focus:not([data-focus-ring]) { outline: none; }
-.detail-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); width: 100%; }
+.detail-filters { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); width: 100%; }
 .detail-filters:empty { display: none; }
-.detail-filters .lead-meta { font: inherit; }
 .view-tabs { margin-bottom: var(--space-6); }
+#detail-calendar:not([hidden]) { display: grid; gap: var(--space-8); }
 .detail-panel h3 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
-.progress-section, .training-memory { padding: var(--space-8) 0 0; margin-top: var(--space-8); border-top: 1px solid var(--hairline); }
-.standard-score { display: grid; justify-items: start; gap: var(--space-3); }
-.standard-figures[hidden] { display: none; }
+.progress-section { padding: var(--space-8) 0 0; margin-top: var(--space-8); border-top: 1px solid var(--hairline); }
 
-/* Keys: static heatmap, coral steps only, no motion. Rows stagger by half a key, then a whole key. */
-.key-heatmap { justify-content: center; gap: var(--heat-gap); margin: var(--space-4) 0 var(--space-3); }
-.key-heatmap .key-row { justify-content: start; gap: var(--heat-gap); }
-.key-heatmap .key-row:nth-child(2) { padding-left: calc(var(--heat-key) / 2); }
-.key-heatmap .key-row:nth-child(3) { padding-left: var(--heat-key); }
-.key-heatmap .key { width: var(--heat-key); height: var(--heat-key); align-content: center; gap: var(--space-1); color: var(--text); background: var(--heat, transparent); border-color: var(--heat-edge, var(--hairline-strong)); transition: none; border-bottom-width: 1px; cursor: pointer; }
-:is(.key-heatmap .key, .heat-legend li)[data-heat="1"] { --heat: var(--heat-1); }
-:is(.key-heatmap .key, .heat-legend li)[data-heat="2"] { --heat: var(--heat-2); }
-:is(.key-heatmap .key, .heat-legend li)[data-heat="3"] { --heat: var(--heat-3); --heat-edge: var(--danger); }
-.key-heatmap .key[data-heat="none"] { border-style: dashed; color: var(--outline); }
-.key-heatmap .key[data-selected="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
-.key-heatmap[aria-hidden="true"] { pointer-events: none; }
-.key-rate { font: 400 var(--text-mono)/1 var(--font-mono); font-variant-numeric: tabular-nums; }
-.key[data-heat="1"] .key-rate { color: var(--muted); }
-.heat-legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-4); padding: 0; list-style: none; font: 400 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); }
-.heat-legend li { display: inline-flex; align-items: center; gap: var(--space-2); }
-.heat-legend li::before { content: ""; width: var(--space-4); height: var(--space-4); border: 1px solid var(--heat-edge, var(--hairline-strong)); border-radius: var(--radius-sm); background: var(--heat, transparent); }
-.heat-legend li[data-heat="none"]::before { border-style: dashed; border-color: var(--outline); }
-.key-select-field { margin: 0 0 var(--space-3); }
-.key-detail { margin: 0 0 var(--space-6); font-variant-numeric: tabular-nums lining-nums; }
-.pairs-heading { margin: 0 0 var(--space-2); font-size: var(--text-lead); font-weight: 400; }
-.pairs-table { border-collapse: collapse; font-size: var(--text-small); }
-.pairs-table th { font: 500 var(--text-mono)/1.4 var(--font-mono); color: var(--muted); text-align: left; padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
-.pairs-table td { padding: var(--space-2) var(--space-6) var(--space-2) 0; border-bottom: 1px solid var(--hairline); }
-.pairs-table td.num { font-variant-numeric: tabular-nums; }
-.pair-bar { display: block; height: 3px; margin-top: var(--space-1); border-radius: var(--radius-full); background: var(--danger); }
-/* The keyboard, its legend and the pairs under it, centred as one group the keyboard's width. */
-.keys-layout { display: grid; grid-template-columns: minmax(0, auto); justify-content: center; gap: var(--space-6); }
-.keys-layout[hidden] { display: none; }
-.keys-map { display: grid; justify-items: center; }
-.heat-legend { justify-content: center; }
-.key-detail { text-align: center; }
-.keys-pairs .pairs-table { width: 100%; }
-@media (max-width: 600px) {
-  .key-heatmap { --heat-key: var(--space-8); display: grid; grid-template-columns: minmax(0, 1fr); }
-  .key-heatmap .key { flex: 1 1 0; min-width: 0; max-width: var(--heat-key); }
-  .key-rate { display: none; }
-  .pairs-table { width: 100%; }
-  .pairs-table th, .pairs-table td { padding-right: var(--space-2); }
-}
-.training-target, .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
-.training-target { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; }
-.training-target h3 { margin: 0; font-size: var(--text-lead); }
-.training-target p { margin: var(--space-2) 0 0; font-size: var(--text-small); color: var(--muted); }
+.run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .run-row { padding: var(--space-1) 0; }
 .run-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--control); font-variant-numeric: tabular-nums lining-nums; }
 .show-all-runs { margin-top: var(--space-6); }
@@ -3316,70 +3378,145 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 /* ── Challenge ──────────────────────────────────────────────────────────── */
 
-/* Challenge is the people you race: quick match on top, one row per person, quiet links at the foot. The dock names
-   the page, so it has no visible heading. A race, a guest's invitation or a foot link's view takes the list's place. */
+/* Challenge: quick match and friends as two panels, then one tile for each other way to race. The navigation names
+   the page, so it has no visible heading. A race, a guest's invitation or a tile's view takes their place. */
 .online-copy { color: var(--muted); font-size: var(--text-small); }
-.quick-match { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-2) var(--space-6); padding-bottom: var(--space-8); border-bottom: 1px solid var(--hairline); }
-.quick-match-head { min-width: 0; display: grid; gap: var(--space-1); }
-.quick-match-head h2 { justify-self: start; margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
-.quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
-.quick-match-status, .quick-match-lonely { grid-column: 1 / -1; }
-.quick-match-status { margin: var(--space-2) 0 0; }
-.quick-match-lonely { margin-top: 0; flex-wrap: wrap; }
-.quick-match [data-quick-part="status"]:empty { display: none; }
+#challenge-people { display: grid; gap: var(--space-3); }
+.challenge-panels { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; gap: var(--space-3); }
 
-.people-list { list-style: none; margin: 0; padding: 0; }
+.quick-match { display: flex; flex-direction: column; }
+.quick-figure { margin: 0; font: 500 var(--text-display)/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.05em; }
+.quick-figure-label, .quick-gauge-note { margin: var(--space-1) 0 0; color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.gauge { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; margin: var(--space-4) 0 0; }
+.gauge > i { height: 6px; border-radius: var(--radius-cell); background: var(--raised-2); }
+.gauge > i.is-lit { background: var(--accent); }
+.quick-gauge-note { margin-top: var(--space-2); }
+.quick-match-rating { margin: 0; color: var(--muted); font-size: var(--text-small); }
+.quick-match-setup { margin: var(--space-4) 0 var(--space-3); color: var(--muted); font-size: var(--text-label); }
+.quick-match-go { width: 100%; }
+.quick-match-status { margin: var(--space-3) 0 0; }
+.quick-match [data-quick-part="status"]:empty { display: none; }
+.quick-match-lonely { margin-top: var(--space-2); flex-wrap: wrap; }
+
+.people-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.panel-select, .people-add {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  min-height: 30px; padding: 0 var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm);
+  background: none; color: var(--text); font: inherit; font-size: var(--text-label); cursor: pointer; text-align: start;
+  transition: background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.people-add { border-color: transparent; color: var(--muted); }
+.panel-select-label { color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.people-conditions { font-variant-numeric: tabular-nums; }
+.people-conditions:empty { display: none; }
+.panel-select-chevron, .people-add-icon { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.panel-select-chevron { color: var(--muted); }
+.panel-select:active, .people-add:active { transform: scale(0.97); }
+.panel-select:focus-visible, .people-add:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .panel-select:hover { background: var(--raised-2); }
+  .people-add:hover { color: var(--text); }
+}
+
+.people-list { list-style: none; margin: calc(var(--space-2) * -1) 0 0; padding: 0; }
+/* Name, what happened last, the tally, the action: one ruled line each, as the prototype's friend rows. */
 .people-row {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4) var(--space-6);
-  padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline);
+  display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-1) var(--space-4);
+  min-height: 52px; padding: var(--space-2) 0; border-bottom: 1px solid var(--hairline);
   transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
 }
+.people-row:last-child { border-bottom: 0; }
 /* A person who arrives eases in; a row redrawn in place doesn't arrive again. */
 @starting-style {
   .people-row:not([data-settled]) { opacity: 0; transform: translateY(var(--space-1)); }
 }
 /* Focus lands on a row after Dismiss (a row presses nothing); its ring follows the row's corners. */
 .people-row:focus-visible { border-radius: var(--radius-sm); }
-.people-who { min-width: 0; display: grid; gap: var(--space-1); }
-.people-name { margin: 0; font-size: var(--text-lead); line-height: 1.3; overflow-wrap: anywhere; }
-.people-line { margin: 0; color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
-.people-line:empty { display: none; }
-/* Something waiting for you reads in the text colour; history stays muted. */
-.people-row:is([data-state="invited"], [data-state="ghost"]) .people-line { color: var(--text); }
-.people-side { flex: none; display: flex; align-items: center; gap: var(--space-6); }
-.people-tally { margin: 0; font-size: var(--text-lead); line-height: 1; white-space: nowrap; }
-.people-actions { display: flex; align-items: center; gap: var(--space-2); }
-.people-status { margin: var(--space-4) 0 0; }
-.people-status:empty { display: none; }
-.people-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-6); padding-top: var(--space-4); }
-.people-foot-group { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); }
-.people-link {
-  min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted);
-  font: inherit; font-size: var(--text-body); cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out);
+.people-who, .people-side { display: contents; }
+.people-name { margin: 0; font-size: var(--text-small); font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.people-line { margin: 0; color: var(--muted); font-size: var(--text-label); overflow-wrap: anywhere; }
+/* Something waiting for you reads in the accent; history stays muted. */
+.people-row:is([data-state="invited"], [data-state="ghost"]) .people-line { color: var(--accent); }
+.people-tally { grid-column: 3; margin: 0; color: var(--muted); font: 400 var(--text-label)/1 var(--font-mono); white-space: nowrap; }
+.people-actions { grid-column: 4; display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); }
+.people-actions .btn { height: 34px; padding: 0 var(--space-3); font-size: var(--text-label); }
+.people-action { min-width: 64px; }
+.people-detail { color: var(--muted); font-size: var(--text-label); font-weight: 400; overflow-wrap: anywhere; }
+.people-signin { justify-self: start; }
+/* Touch reaches the panel head's two quiet controls as it does a button. */
+@media (any-pointer: coarse) {
+  .panel-select, .people-add { min-height: var(--control); }
 }
-.people-link:hover { color: var(--text); }
-/* Race setup carries what a one-press Race uses, as a conditions line. */
-.people-setup-link { display: inline-flex; flex-wrap: wrap; align-items: baseline; align-content: center; justify-content: flex-start; column-gap: var(--space-2); text-align: start; }
-.people-conditions { font: var(--text-mono)/1.5 var(--font-mono); letter-spacing: 0.01em; }
-.people-conditions:empty { display: none; }
-.people-detail { color: var(--muted); font-size: var(--text-small); overflow-wrap: anywhere; }
-#online-room-conditions { margin-top: var(--space-2); }
+.people-status { margin: var(--space-3) 0 0; }
+.people-status:empty { display: none; }
+#online-room-conditions { margin-top: 0; }
 #online-room-conditions:empty { display: none; }
-.people-link:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; border-radius: var(--radius-sm); }
 
-/* Add a friend, Race setup, the daily passage with the friends board, and One keyboard: one step from the list. */
-.challenge-view > h2 { margin: var(--space-4) 0 var(--space-6); font-size: var(--text-title); font-weight: 400; }
+/* The other ways to race. Each tile is one button: the icon, the name, one short line. */
+.challenge-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: var(--space-3); }
+.tile {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-1) var(--space-3);
+  min-width: 0; padding: var(--panel-inset); border: 1px solid var(--hairline-strong); border-radius: var(--radius);
+  background: var(--ground-2); color: var(--text); font: inherit; text-align: start; cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.tile-icon { grid-row: 1 / span 2; display: grid; place-items: center; width: 34px; height: 34px; border-radius: var(--radius-sm); background: var(--raised-2); color: var(--accent); }
+.tile-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.tile-name { font-size: var(--text-body); font-weight: 500; line-height: 1.3; }
+.tile-line { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.tile-line:empty { display: none; }
+.tile:active:not([aria-disabled="true"]) { transform: scale(0.97); }
+.tile[aria-disabled="true"] { cursor: progress; }
+.tile[aria-disabled="true"] > * { opacity: var(--disabled-opacity); }
+.tile:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .tile:hover:not([aria-disabled="true"]) { border-color: var(--outline); background: var(--raised); }
+}
+
+/* Add a friend, Race setup, the daily passage with the friends board, and One keyboard: one step from Challenge,
+   each in a panel with Back above it. */
+.challenge-view { display: grid; gap: var(--space-3); align-content: start; }
 .challenge-view h2[tabindex="-1"]:focus { outline: 0; }
-.challenge-back { margin-left: calc(var(--space-3) * -1); }
-.challenge-view > .challenge-back + .daily-challenge { border-top: 0; padding-top: var(--space-4); }
-.challenge-view > .online-actions { margin-top: var(--space-8); }
+.challenge-back { justify-self: start; margin-left: calc(var(--space-3) * -1); }
+.challenge-view :is(.daily-challenge, .friends-board) { padding: 0 var(--panel-inset) var(--panel-inset); border-top: 1px solid var(--hairline-strong); }
+.challenge-view .panel-title { margin: 0; font: 400 var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.challenge-view .daily-heading { justify-content: flex-start; align-items: baseline; }
+.challenge-view .daily-heading .condition-copy { margin: 0; }
+.daily-start { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3) var(--space-6); }
+.daily-start .result-note { margin: 0; }
+.challenge-view .daily-challenge details { margin-top: var(--space-4); }
+.challenge-view .friends-board-lists { margin-bottom: 0; }
+.challenge-view .challenge-setup, .challenge-view .race-stage, .challenge-view .handoff-panel, .challenge-view .race-leaderboard { padding-top: 0; border-top: 0; }
+
+/* Narrower than the two panels need, they stack; on a phone a row puts its line under the name, and the action
+   beside both. */
+@container page (max-width: 860px) {
+  .challenge-panels { grid-template-columns: minmax(0, 1fr); }
+}
+/* On a phone the page keeps a 16px gutter; Challenge's panels reach across it, so a row, the race setup and the
+   friends board's shape picker keep the room they need at 320px. Tiles stay cards. */
+@media (max-width: 760px) {
+  #compete-screen .panel { margin-inline: calc(var(--space-4) * -1); padding-inline: var(--space-4); border-inline: 0; border-radius: 0; }
+  #compete-screen .panel-head { margin-inline: calc(var(--space-4) * -1); padding-inline: var(--space-4); }
+}
+@container page (max-width: 560px) {
+  .people-row { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; row-gap: 0; }
+  .people-name { grid-column: 1; grid-row: 1; }
+  .people-line { grid-column: 1 / span 2; grid-row: 2; }
+  .people-tally { grid-column: 2; grid-row: 1; }
+  .people-actions { grid-column: 3; grid-row: 1 / span 2; }
+  /* Add a friend beside the title; the setup, the longer of the two, on a row of its own. */
+  .people-tools { display: contents; }
+  .people-add { order: 1; margin-right: calc(var(--space-3) * -1); }
+  .panel-select { order: 2; flex: 1 1 100%; min-width: 0; margin-bottom: var(--space-2); }
+  .panel-select-chevron { margin-left: auto; }
+  .daily-start .btn { width: 100%; }
+}
 .online-name-field { max-width: calc(var(--content-max) / 2); margin-bottom: var(--space-6); }
 .online-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: var(--space-4) var(--space-6); max-width: calc(var(--content-max) * 0.75); }
 .online-setup-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .online-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
-.online-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
-.online-section-heading h2, .online-join h2 { margin: 0; font-size: var(--text-title); }
+.online-join h2 { margin: 0; font-size: var(--text-title); }
 .online-join .player-field { max-width: calc(var(--content-max) / 2); }
 .online-actions { display: flex; gap: var(--space-3); margin-top: var(--space-6); }
 .online-friend-list { list-style: none; margin: var(--space-8) 0 0; padding: 0; }
@@ -3544,15 +3681,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 @media (max-width: 760px) {
   .online-setup, .online-players { grid-template-columns: 1fr; }
-  .quick-match { grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-4); padding-bottom: var(--space-6); }
-  .quick-match-head h2 { font-size: var(--text-title); }
-  .people-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--space-3) var(--space-4); }
-  .people-side { display: contents; }
-  .people-tally { grid-column: 2; grid-row: 1; align-self: start; padding-top: var(--space-1); }
-  .people-actions { grid-column: 1 / -1; grid-row: 2; }
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
-  .online-section-heading { flex-wrap: wrap; }
   .online-friend-row { flex-wrap: wrap; }
   :is(.online-typing-wrap, .duel-replay-wrap) { --passage-size: var(--text-title); }
 }
@@ -3941,9 +4071,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .account-toast[data-tone="done"] .status-dot { color: var(--accent); }
 .egg-toast { padding-right: 20px; bottom: calc(var(--space-6) + 64px); }
 
-/* A race challenge drops in under the corner buttons, then leaves after TOAST_MS in src/inbox.js. */
+/* A race challenge drops in at the top right, under the top bar, then leaves after TOAST_MS in src/inbox.js. */
 .challenge-toast {
-  top: calc(var(--space-4) + 58px + var(--space-2));
+  top: calc(var(--top-bar) + var(--space-3));
   right: var(--space-4);
   bottom: auto;
   left: auto;
@@ -3983,33 +4113,29 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
-/* The centred dock must clear the account button: below 900px settings drops to its icon. */
+/* The top bar keeps every control on one row: below 900px settings drops to its icon. */
 @media (max-width: 900px) and (min-width: 761px) {
-  .nav-item { padding: 0 12px; }
+  .nav-item { padding: 0 var(--space-3); }
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 }
 
-/* Side by side, the corner would meet the centred dock: the inbox moves under the person. */
-@media (max-width: 1023px) and (min-width: 761px) {
-  .corner { flex-direction: column-reverse; align-items: flex-end; }
-  .challenge-toast { top: calc(var(--space-4) + 2 * (58px + var(--space-2))); }
-}
-
 @media (max-width: 760px) {
-  html { scroll-padding-top: var(--space-4); scroll-padding-bottom: calc(62px + 12px + env(safe-area-inset-bottom) + var(--space-4)); }
-  .app-shell { width: calc(100% - 32px); padding-bottom: 96px; }
+  html { scroll-padding-top: var(--space-4); scroll-padding-bottom: calc(var(--bottom-bar) + env(safe-area-inset-bottom) + var(--space-4)); }
+  .app-shell { padding-bottom: calc(var(--bottom-bar) + env(safe-area-inset-bottom) + var(--space-4)); }
+  #main-content, .site-footer { width: calc(100% - 32px); }
 
-  .dock-zone {
+  /* The navigation is a flat bar fixed to the bottom, with the short labels where the full ones don't fit. */
+  .dock {
     position: fixed;
-    top: auto;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 0 12px calc(12px + env(safe-area-inset-bottom));
+    inset: auto 0 0;
+    height: calc(var(--bottom-bar) + env(safe-area-inset-bottom));
+    padding: 6px 4px env(safe-area-inset-bottom);
+    gap: 2px;
+    justify-content: space-between;
+    border-top: 1px solid var(--hairline-strong);
+    border-bottom: 0;
   }
-
-  .dock { width: 100%; height: 62px; padding: 6px 4px; gap: 2px; justify-content: space-between; }
   .brand, .dock-sep { display: none; }
   .dock-nav { flex: 1; min-width: 0; justify-content: space-between; gap: 0; }
   .nav-item { flex: 1 1 auto; min-width: var(--control); padding: 0 4px; font-size: 14px; }
@@ -4017,18 +4143,16 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
-  /* The dock moves to the bottom; the corner stays top right and scrolls with the page. */
+  /* The corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
-  .corner { position: absolute; top: var(--space-3); right: var(--space-4); }
-  .corner-trigger { width: var(--control); height: var(--control); border-radius: var(--radius-control); }
-  .account[data-state="member"] .account-trigger::after { top: 9px; right: 9px; }
+  .corner { position: absolute; top: var(--space-3); right: var(--space-4); height: auto; padding: 0; gap: var(--space-2); background: none; border: 0; }
+  .corner-trigger { border: 1px solid var(--hairline-strong); border-radius: var(--radius-control); background: var(--ground-2); }
   .corner-popover { width: min(300px, calc(100vw - var(--space-8))); }
   .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
-  .inbox-count { top: 2px; right: 1px; }
 
 
-  .screen { padding-top: var(--space-8); }
-  .typing-screen { min-height: auto; padding-top: var(--space-6); }
+  .screen { padding-top: var(--screen-top-phone); }
+  .typing-screen { min-height: auto; }
 
   /* Six modes (with standard and compose) are wider than a phone column: the mode group wraps onto a
      second line rather than scroll sideways; the selection pill follows its button to either line. */
@@ -4050,10 +4174,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .standard-options:not([hidden]) ~ #duration-options[hidden] { display: flex !important; visibility: hidden; }
   .quote-filter-trigger { min-height: var(--space-10); }
 
-  .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
-  .live-stats { justify-content: space-between; gap: var(--space-4); }
-  body[data-session="practice"] .live-stats { gap: var(--space-8); }
-  .live-stat strong { font-size: 40px; }
   body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
   body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 26px; }
   body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 32px; }
@@ -4062,7 +4182,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .compose-result-foot { flex-direction: column; align-items: stretch; }
   .compose-result-actions { flex-direction: column-reverse; }
   .shortcut-row { display: none; }
-  .keyboard:not(.key-heatmap) { display: none; }
+  .keyboard { display: none; }
   /* The finger map stays in lessons, sized to the column; its labels shorten to a letter. */
   .keyboard.finger-map { --key-size: calc((100vw - 32px - var(--space-4) - 40px) / 10); display: grid; column-gap: var(--space-4); }
   .finger-label-full { display: none; }
@@ -4077,17 +4197,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .release-notes { padding: var(--space-2) var(--space-4) var(--space-6) var(--space-8); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
-  #result-wpm { font-size: var(--text-numeral-mobile); }
-  /* The run card stacks: the score over its facts, the conditions line under the actions. */
-  .run-card { padding: var(--space-6); gap: var(--space-6); }
-  .run-card-head { grid-template-columns: minmax(0, 1fr); }
   /* The page's scroll padding already keeps the row clear of the dock. */
-  .result-actions { padding-top: var(--space-6); scroll-margin-bottom: 0; }
+  .result-actions { scroll-margin-bottom: 0; }
   /* Run again takes the row; the drill and the replay share the next, so the actions stay above the dock. */
   .result-buttons { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .result-buttons .btn, .result-buttons .btn:not(.btn-ghost) { min-width: 0; padding-inline: var(--space-2); }
   .result-buttons .btn-primary, .result-buttons .btn[hidden] + .btn, .result-buttons .btn:has(+ .btn[hidden]) { grid-column: 1 / -1; }
-  .result-actions .condition-copy { text-align: start; }
+  .result-context { text-align: start; }
   .history-summary { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
@@ -4100,9 +4216,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @media (max-width: 360px) {
   /* "Drill and retest" is wider than half the card. */
   .result-buttons { grid-template-columns: 1fr; }
-  /* Eighteen weeks fill the 288px column, so the weekday names give way. */
-  .goal-weekdays { display: none; }
-  .goal-chart { grid-template-columns: auto; grid-template-areas: "months" "calendar"; }
   /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   /* The full words don't fit beside settings and commands, so the dock shows its short verbs.
@@ -4113,19 +4226,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .nav-label-short { display: inline; }
 }
 
-/* Phones: a word count ("100/100") beside a three-digit speed, or a four-digit cpm, is wider than the
-   column at practice's 32px gaps. The three figures spread across the column instead, as a drill's do,
-   and the gap only has to keep them apart. e2e/layout.spec.js measures the widest figures. */
-@media (max-width: 430px) {
-  .live-stats,
-  body[data-session="practice"] .live-stats { justify-content: space-between; gap: var(--space-2); }
-}
-
-/* At 40px a four-digit cpm beside a word count is wider than the column up to 371px. */
-@media (max-width: 374px) {
-  .live-stat strong { font-size: var(--text-title); }
-}
-
 /* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
    a tablet with a trackpad reports its fine pointer as primary, and a finger still reaches every
    control. e2e/touch-targets.spec.js measures every control; touch-targets-hybrid.spec.js checks
@@ -4133,6 +4233,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
    so neither the layout nor the focus ring moves. Relative position keeps that reach above the
    content after it. */
 @media (any-pointer: coarse) {
+  /* The side bar's rows and its toggle grow to a finger's reach. */
+  :root { --frame-item: var(--control); --side-toggle: var(--control); }
   .quote-filter-trigger { min-height: var(--control); }
   .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
@@ -4186,23 +4288,11 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   }
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
-  .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .figure-value { font-size: var(--text-title); }
-  .week-lead { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
-  .lead-figure { font-size: var(--text-numeral-mobile); }
-  .lead-context { padding-bottom: 0; }
-  .mover { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "unit status" "change change"; row-gap: var(--space-1); }
-  .mover-unit { grid-area: unit; }
-  .mover-change { grid-area: change; }
-  .mover-status { grid-area: status; justify-self: end; }
-  .week-chart-pair { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
-  .detail-heading { font-size: var(--text-title); }
-  .practice-layout, .progress-spread { grid-template-columns: minmax(0, 1fr); }
+  .progress-spread { grid-template-columns: minmax(0, 1fr); }
   .progress-spread { gap: var(--space-8); }
   .trend-figure { grid-template-columns: minmax(0, 1fr); }
   .trend-legend { margin-bottom: var(--space-3); }
-  .training-target { grid-template-columns: 1fr; }
-  .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
   .friends-board-lists { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
 }
@@ -4215,14 +4305,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-title); }
   .duel-unit, .duel-accuracy { font-size: var(--text-small); }
   .duel-tally { font-size: var(--text-title); gap: var(--space-1); }
-}
-
-@media (max-width: 360px) {
-  #result-wpm { font-size: var(--text-numeral-narrow); }
-  .lead-figure { font-size: var(--text-numeral-narrow); }
-  /* Three tracks are about 76px here: values step down a size so "120.0 s" fits. */
-  .run-card { padding: var(--space-4); }
-  .run-card-facts dd { font-size: var(--text-lead); }
 }
 
 

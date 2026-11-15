@@ -1,8 +1,8 @@
 import { isAnalysisRun, isAttempt, isRunRecord } from '../src/domain-history.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, keyAnalysis, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
-import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recentAverage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, summarizePatterns, wordHistory } from '../src/typing.js';
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
 import { wordListIds } from '../src/words.js';
@@ -217,6 +217,21 @@ test('trends never mix correction rules, word lists, drills, interruptions, or d
     run('d', { kind: 'drill' }), run('e', { kind: 'daily' }), run('f', { interrupted: true })];
 
   assert.deepEqual(filterRuns(runs.filter(trendRun), conditionKey(conditions)).map((r) => r.id), ['a']);
+});
+
+test('the recent average is the last ten trend runs at one key, and can leave out the run just finished', () => {
+  const key = conditionKey(conditions);
+  const earlier = Array.from({ length: 11 }, (_, index) => run(`r${index}`, { score: { wpm: index ? 100 : 10, accuracy: 98 } }));
+  const others = [run('drill', { kind: 'drill', score: { wpm: 300, accuracy: 98 } }), run('other', { conditions: { ...conditions, wordList: '5k' }, score: { wpm: 300, accuracy: 98 } }), run('repeat', { fresh: false, score: { wpm: 300, accuracy: 98 } })];
+  const latest = run('latest', { score: { wpm: 121, accuracy: 98 } });
+  const runs = [...earlier, ...others, latest];
+
+  // The oldest of the eleven earlier runs falls outside the ten; drills, other keys and repeated text never count.
+  assert.deepEqual(recentAverage(runs, key, { excluding: 'latest' }), { wpm: 100, runs: 10 });
+  assert.deepEqual(recentAverage(runs, key), { wpm: Math.round((9 * 100 + 121) / 10), runs: 10 });
+  assert.deepEqual(recentAverage(runs, key, { last: 1 }), { wpm: 121, runs: 1 });
+  assert.equal(recentAverage([latest], key, { excluding: 'latest' }), null);
+  assert.equal(recentAverage(runs, conditionKey({ ...conditions, count: 50 })), null);
 });
 
 test('a code run is a trend run but never sets a best', () => {
@@ -456,119 +471,6 @@ test('a run keeps the day it was practised on, whichever time zone reads it late
     if (zone === undefined) delete process.env.TZ;
     else process.env.TZ = zone;
   }
-});
-
-test('key analysis sums first attempts per key and ranks pairs only with enough samples', () => {
-  const runs = [run('a', { patterns: [['th', 12, 2, 10, 140, 20], ['ah', 4, 1, 0, null, null], ['an', 5, 0, 0, null, null]] }),
-    run('b', { patterns: [['th', 8, 0, 4, 120, -5], ['an', 3, 1, 0, null, null]] }),
-    run('c', { interrupted: true, patterns: [['th', 50, 50, 0, null, null]] })];
-
-  const result = keyAnalysis(runs);
-  assert.equal(result.runs, 2);
-  assert.deepEqual(result.keys.h, { key: 'h', samples: 24, errors: 3, missRate: 3 / 24, enough: true });
-  assert.equal(result.keys.n.enough, false);
-  assert.equal(result.keys.n.samples, 8);
-  assert.deepEqual(result.pairs.map((p) => [p.pair, p.samples, p.errors, p.slowRuns]), [['th', 20, 2, 1]]);
-  assert.equal(result.pairDerivedRuns, 2);
-});
-
-test('slow-run share counts only runs with enough clean intervals for that pair', () => {
-  // Five runs see "th"; one has 12 clean intervals and was slow, four have too few to say either way.
-  const runs = [run('timed', { patterns: [['th', 12, 0, 12, 180, 40]] }),
-    ...['a', 'b', 'c', 'd'].map((id) => run(id, { patterns: [['th', 12, 3, 9, 150, 10]] })),
-    run('none', { patterns: [['he', 12, 4, 0, null, null]] })];
-
-  const th = keyAnalysis(runs).pairs.find((p) => p.pair === 'th');
-  assert.deepEqual([th.slowRuns, th.timedRuns, th.runs], [1, 1, 5]);
-  const he = keyAnalysis(runs).pairs.find((p) => p.pair === 'he');
-  assert.deepEqual([he.slowRuns, he.timedRuns, he.runs], [0, 0, 1]);
-  // A timed run that was not slow still counts in the denominator.
-  const mixed = keyAnalysis([...runs, run('quick', { patterns: [['th', 12, 0, 11, 120, -20]] })]).pairs.find((p) => p.pair === 'th');
-  assert.deepEqual([mixed.slowRuns, mixed.timedRuns, mixed.runs], [1, 2, 6]);
-});
-
-test('run summaries count every letter directly, including word-initial presses', () => {
-  const text = 'quiet quay';
-  const attempt = createAttempt({ id: 'q', text, textId: 'q', conditions });
-  attempt.startedAt = 0;
-  // Mistype the first "q" (word-initial) and the "i" after "u" (mid-word).
-  attempt.events = [...text].map((char, position) => ({ type: 'insert', position, offsetMs: (position + 1) * 100, accepted: true,
-    text: position === 0 ? 'w' : position === 2 ? 'o' : char }));
-  const record = runRecord({ ...completeAttempt(attempt, { endedAt: 1100 }), fresh: true });
-  assert.equal(record.keysVersion, KEY_COUNTS_VERSION);
-  const keys = Object.fromEntries(record.keys.map(([key, samples, errors]) => [key, { samples, errors }]));
-  assert.deepEqual(keys.q, { samples: 2, errors: 1 });
-  assert.deepEqual(keys.i, { samples: 1, errors: 1 });
-  assert.equal(keys[' '], undefined);
-  assert.equal(record.keys.reduce((n, k) => n + k[1], 0), 9);
-  // Pair memory alone would see no "q" at all: both are word-initial.
-  assert.equal(record.patterns.some(([pair]) => pair[1] === 'q'), false);
-
-  // Direct counts win over pairs; an older summary without them still contributes its pairs.
-  const direct = run('new', { keysVersion: KEY_COUNTS_VERSION, keys: [['q', 12, 3], ['h', 4, 0]] });
-  const legacy = run('old');
-  const result = keyAnalysis([legacy, direct]);
-  assert.equal(result.runs, 2);
-  assert.equal(result.pairDerivedRuns, 1);
-  assert.deepEqual(result.keys.q, { key: 'q', samples: 12, errors: 3, missRate: 0.25, enough: true });
-  assert.deepEqual(result.keys.h, { key: 'h', samples: 16, errors: 2, missRate: 2 / 16, enough: true });
-  assert.equal(keyAnalysis([run('drill', { kind: 'drill', patterns: [], keys: [], keysVersion: KEY_COUNTS_VERSION })]).runs, 0);
-  // Custom text is never mined: a stray custom record with counts adds nothing to the heatmap or pairs.
-  const custom = run('custom', { kind: 'custom', keysVersion: KEY_COUNTS_VERSION, keys: [['q', 40, 40]], patterns: [['th', 40, 40, 20, 300, 200]] });
-  const withCustom = keyAnalysis([legacy, direct, custom]);
-  assert.equal(withCustom.runs, 2);
-  assert.deepEqual(withCustom.keys.q, result.keys.q);
-  assert.equal(withCustom.pairs.some((p) => p.pair === 'th' && p.samples >= 40), false);
-});
-
-test('the standard score keeps its best and a median of recent runs, and waits for three runs', () => {
-  const standard = standardConditions();
-  const key = conditionKey(standard);
-  const at = (wpm, overrides = {}) => run(`s${wpm}`, { conditions: standard, score: { wpm, accuracy: 97 }, ...overrides });
-  assert.deepEqual(standardScore([], key), { total: 0, recent: 0, best: null, median: null, settled: false });
-  // Two runs: a best, but no median yet.
-  const two = [at(60), at(70)];
-  assert.deepEqual(standardScore(two, key), { total: 2, recent: 2, best: 70, median: null, settled: false });
-
-  // Other conditions, drills, daily, interrupted and a different recipe or input never count.
-  const noise = [run('time'), at(99, { kind: 'drill' }), at(98, { kind: 'daily' }), at(97, { interrupted: true }),
-    at(96, { status: 'interrupted' }), at(95, { conditions: { ...standard, recipe: 'standard-v2' } }),
-    at(94, { conditions: standardConditions('touch') }), at(93, { conditions: { ...standard, mode: 'time', recipe: undefined } })];
-
-  const three = [...two, ...noise, at(64, { kind: 'retest' })];
-  assert.deepEqual(standardScore(three, key), { total: 3, recent: 3, best: 70, median: 64, settled: true });
-  // The median covers only the newest ten; the best is the one passed in (the stored best) when there is one.
-  const twelve = [at(100), at(90), ...Array.from({ length: 10 }, (_, i) => at(50 + i))];
-  assert.deepEqual(standardScore(twelve, key), { total: 12, recent: 10, best: 100, median: 54.5, settled: true });
-  assert.equal(standardScore(twelve, key, 101).best, 101);
-});
-
-test('the standard headline stays on the keyboard unless touch has the only score or a settled, busier one', () => {
-  // Shaped like standardScore: `total` counts only runs still in the kept summaries; a best can outlive them.
-  const score = (total, best = total ? 60 : null) => ({ total, recent: Math.min(total, 10), best, median: null, settled: total >= 3 });
-  const pick = (keyboard, touch) => standardInputClass(keyboard, touch);
-  assert.equal(pick(score(0), score(0)), 'physical-keyboard');
-  // Kept counts aren't lifetime counts: a keyboard best whose runs aged out holds against one or two touch runs.
-  assert.equal(pick(score(0, 82), score(1)), 'physical-keyboard');
-  assert.equal(pick(score(0, 82), score(2)), 'physical-keyboard');
-  assert.equal(pick(score(1), score(2)), 'physical-keyboard');
-  // Touch heads once it has a median from more kept runs than the keyboard (a tie stays on the keyboard)...
-  assert.equal(pick(score(0, 82), score(3)), 'touch');
-  assert.equal(pick(score(1), score(3)), 'touch');
-  assert.equal(pick(score(3), score(3)), 'physical-keyboard');
-  assert.equal(pick(score(3), score(4)), 'touch');
-  // ...or when the keyboard has nothing at all, even if touch has only a kept best.
-  assert.equal(pick(score(0), score(1)), 'touch');
-  assert.equal(pick(score(0), score(0, 47)), 'touch');
-});
-
-test('a custom run never reaches the standard score, even under standard conditions', () => {
-  const standard = standardConditions();
-  const key = conditionKey(standard);
-  const at = (wpm, overrides = {}) => run(`s${wpm}`, { conditions: standard, score: { wpm, accuracy: 97 }, ...overrides });
-  const runs = [at(60), at(62), at(64), at(150, { kind: 'custom' }), at(140, { kind: 'custom' }), at(130, { kind: 'custom' })];
-  assert.deepEqual(standardScore(runs, key), { total: 3, recent: 3, best: 64, median: 62, settled: true });
-  assert.deepEqual(standardScore(runs.slice(3), key), { total: 0, recent: 0, best: null, median: null, settled: false });
 });
 
 test('custom run records keep the score but no per-pair patterns', () => {

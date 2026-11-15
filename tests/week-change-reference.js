@@ -28,8 +28,7 @@ import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEviden
 import { isFixed } from '../src/train-path.js';
 import { evidenceSince, sinceDrilled } from './train-path-reference.js';
 
-// A week holds a median from this many runs, the floor the standard score's median uses: below it one or two runs
-// would stand in for a week.
+// A week holds a median from this many runs: below it, one or two runs would stand in for a week.
 export const WEEK_MIN_RUNS = 3;
 
 // The overview lists this many units, so the lead and the list fit one screen at 1280 × 800. The rest wait behind

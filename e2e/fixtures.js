@@ -131,16 +131,14 @@ export async function openProgressDetail(page, name) {
   if ((await page.locator('#progress-screen').getAttribute('data-detail')) === name) return;
 
   if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();
-  await page.locator(`#progress-more [data-progress-open="${name}"]`).click();
+  await page.locator(`#progress-overview [data-progress-open="${name}"]`).click();
   await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
 }
 
 // The trends' tabs (Speed, Accuracy, Consistency), opened from the small speed chart; and the views that were tabs
-// before the overview (Practice, the calendar; Keys).
+// before the overview (Practice, the calendar).
 export async function openProgressView(page, name) {
   if (name === 'Practice') return openProgressDetail(page, 'calendar');
-
-  if (name === 'Keys') return openProgressDetail(page, 'keys');
 
   if ((await page.locator('#progress-screen').getAttribute('data-detail')) !== 'trends') {
     if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();
@@ -182,6 +180,13 @@ export async function chooseSetting(page, id, value) {
 
   await expect(option).toBeEnabled();
   await option.locator('..').click();
+}
+
+// Where navigation sits (settings → appearance): a side bar from 960px, the default, or a top bar.
+export async function chooseNavigation(page, placement) {
+  await chooseSetting(page, 'navigation-select', placement);
+  await closeSettings(page);
+  await expect(page.locator('html')).toHaveAttribute('data-navigation', placement);
 }
 
 export async function signInWithEmail(page, email, password = 'correct horse battery') {

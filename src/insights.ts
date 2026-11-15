@@ -18,10 +18,6 @@ interface Shape { id: string; mode: unknown; size: string; variants: Map<string,
 
 interface RecurringPair { pair: string; observations: number; errors: number; runs: number; errorRuns: number; slowRuns: number; lastAt: string | null }
 
-interface KeyTotal { key: string; samples: number; errors: number }
-
-interface PairTotal { pair: string; samples: number; errors: number; slowRuns: number; timedRuns: number; runs: number }
-
 import type { Attempt, Conditions, Replay } from './typing.js';
 import type { RunRecord, KeyCounts } from './profile-types.js';
 
@@ -267,6 +263,15 @@ export const practiceRun = <T>(run: T): run is T & HistoricalRecord & { status: 
 // bests, trends and weekly medians: repeated text (fresh: false) flatters a score. Bests are judged only as
 // they are set: one stored before repeat quotes (perhaps by an exhausted pool's fallback) stays as it is.
 export const trendRun = <T>(run: T): run is T & HistoricalRecord & { status: 'complete'; kind: 'test' | 'retest' } => isRecord(run) && practiceRun(run) && run.fresh !== false;
+
+// The average a run is set against: the mean wpm of the last ten trend runs at one condition key, to the whole
+// wpm, with how many runs it holds; null with none. Leaving out the run just finished gives the average it is
+// compared with. Practice's readout, the run card and the pace caret read it here, so they never disagree.
+export function recentAverage(runs: readonly unknown[], key: string, { excluding = null, last = 10 }: { excluding?: string | null; last?: number } = {}) {
+  const recent = filterRuns(runs.filter(trendRun), key).filter((run): run is typeof run & ScoredRun => run.id !== excluding && isScoredRun(run) && Boolean(run.score.wpm)).slice(-last);
+
+  return recent.length ? { wpm: Math.round(recent.reduce((sum, run) => sum + run.score.wpm, 0) / recent.length), runs: recent.length } : null;
+}
 
 // A run that may set a personal best: a trend run that isn't code. Code runs are their own condition and
 // never set a best. Saving a run and merging two copies both ask this, so they can't disagree.
@@ -555,40 +560,6 @@ export function practiceStats(byDay: Record<string, number>, inputRuns: readonly
   };
 }
 
-const STANDARD_RECENT_RUNS = 10;
-export const STANDARD_MIN_RUNS = 3;
-
-// The standard score headline: the best at one standard key, plus the median wpm of the most recent
-// completed runs there. Below three runs there is no median, so one run can't stand in for a score.
-// Only comparable kinds count: a custom run is never a standard run, whatever conditions it carries.
-export function standardScore(inputRuns: readonly unknown[], key: string, best: number | null = null) {
-  const runs = analysisRuns(inputRuns);
-  const eligible = runs.filter(isScoredRun).filter((run) => comparableKind(run.kind) && trendRun(run) && conditionKey(run.conditions) === key);
-  const recent = eligible.slice(-STANDARD_RECENT_RUNS);
-  const settled = recent.length >= STANDARD_MIN_RUNS;
-
-  return {
-    total: eligible.length,
-    recent: recent.length,
-    best: best ?? (eligible.length ? Math.max(...eligible.map((run) => run.score.wpm)) : null),
-    median: settled ? median(recent.map((run) => run.score.wpm)) : null,
-    settled,
-  };
-}
-
-// Which input class heads the standard score, given standardScore for each. Totals count only runs
-// still in the kept summaries, while bests outlive them, so totals alone can't stand for lifetime
-// practice. Physical keyboard is the default. Touch heads only when the keyboard has nothing at all,
-// or once touch has a settled median from more kept runs, so one touch run can't replace a keyboard score.
-export function standardInputClass(keyboard: ReturnType<typeof standardScore>, touch: ReturnType<typeof standardScore>) {
-  const keyboardEmpty = !keyboard.total && keyboard.best === null;
-  const touchHasScore = touch.total > 0 || touch.best !== null;
-
-  if (keyboardEmpty && touchHasScore) return 'touch';
-
-  return touch.settled && touch.total > keyboard.total ? 'touch' : 'physical-keyboard';
-}
-
 export function recurringTargets(inputRuns: readonly unknown[], inputLoops: readonly unknown[], compatibleConditions?: Conditions | HistoricalRecord) {
   const runs = analysisRuns(inputRuns);
   const loops = analysisLoops(inputLoops);
@@ -841,70 +812,6 @@ const DAILY_TEXTS = [
 
 // Stilltype rule: no confident per-key or per-pair claim below this many first attempts.
 export const MIN_PATTERN_SAMPLES = 10;
-
-const directKeys = (run: AnalysisRun) => run.keysVersion === KEY_COUNTS_VERSION && Array.isArray(run.keys) ? run.keys : null;
-
-// Compact run memory → per-key and per-pair totals. A key's miss rate is first-attempt errors on
-// that letter over its tries. Older summaries without per-letter counts fall back to their pairs
-// (a pair's first attempt is a try at its second letter), so they only count letters typed after
-// another letter; pairDerivedRuns says how many runs that applies to. Non-comparable kinds (custom text) and
-// repeated text are never mined, even if a record carries counts (a run on an exhausted pool saved them before
-// repeat quotes).
-export function keyAnalysis(inputRuns: readonly unknown[], limit = 8) {
-  const runs = analysisRuns(inputRuns);
-
-  const recent = runs.filter((r) => comparableKind(r.kind) && validRun(r) && r.fresh !== false
-    && ((r.patterns || []).length || directKeys(r)?.length))
-    .slice(-MAX_PATTERN_RUNS);
-
-  const keys = new Map<string, KeyTotal>();
-  const pairs = new Map<string, PairTotal>();
-  let pairDerivedRuns = 0;
-
-  const addKey = (key: string, samples: number, errors: number) => {
-    const k = keys.get(key) || { key, samples: 0, errors: 0 };
-    k.samples += samples;
-    k.errors += errors;
-    keys.set(key, k);
-  };
-
-  for (const run of recent) {
-    const direct = directKeys(run);
-
-    if (direct) for (const [key, samples, errors] of direct) addKey(key, samples, errors);
-    else pairDerivedRuns += 1;
-
-    for (const [pair, observations, errors, timingCount, medianMs, slowdownMs] of run.patterns || []) {
-      if (!direct) addKey(pair.charAt(1), observations, errors);
-      const p = pairs.get(pair) || { pair, samples: 0, errors: 0, slowRuns: 0, timedRuns: 0, runs: 0 };
-      p.samples += observations;
-      p.errors += errors;
-      p.runs += 1;
-      // Only runs with enough clean intervals can say slow or not; the rest stay unknown.
-      const timed = timingCount >= MIN_PATTERN_SAMPLES && medianMs !== null && slowdownMs !== null;
-
-      if (timed) p.timedRuns += 1;
-
-      if (timed && (slowdownMs ?? 0) > 0) p.slowRuns += 1;
-      pairs.set(pair, p);
-    }
-  }
-
-  const rate = <T extends { samples: number; errors: number }>(v: T) => ({ ...v, missRate: v.samples ? v.errors / v.samples : 0, enough: v.samples >= MIN_PATTERN_SAMPLES });
-
-  return {
-    runs: recent.length,
-    pairDerivedRuns,
-    keys: Object.fromEntries([...keys.values()].map((k) => [k.key, rate(k)])),
-    pairs: [...pairs.values()].flatMap((v) => {
-      const p = rate(v);
-
-      return p.enough && (p.errors > 0 || p.slowRuns > 0) ? [p] : [];
-    })
-      .sort((a, b) => b.missRate - a.missRate || b.slowRuns - a.slowRuns || b.samples - a.samples || a.pair.localeCompare(b.pair))
-      .slice(0, limit),
-  };
-}
 
 // The bare word: a word without the punctuation around it, lowercased ("Table," → "table").
 // Punctuation inside stays ("9:30", "don't"), so no merged, made-up tokens. `same[k]` is true where

@@ -3,19 +3,19 @@ import { test, expect, openApp, passageText } from './fixtures.js';
 
 const MORE = ['code', 'standard', 'book', 'compose', 'custom', 'drill', 'learn to type'];
 
-test('modes, lengths and punctuation float in separate groups; "more" names the mode chosen inside it', async ({ page }) => {
+test('modes, lengths and punctuation sit in one strip, side by side; "more" names the mode chosen inside it', async ({ page }) => {
   await openApp(page);
   const rail = page.locator('.practice-rail');
-  await expect(rail).toHaveCSS('border-top-style', 'none');
+  await expect(rail).toHaveCSS('border-top-style', 'solid');
   let previous;
 
   for (const group of ['.mode-options', '#duration-options', '#punctuation-switch']) {
     await expect(rail.locator(group)).toBeVisible();
-    await expect(rail.locator(group)).toHaveCSS('border-top-style', 'solid');
+    await expect(rail.locator(group)).toHaveCSS('border-top-style', 'none');
     const box = await rail.locator(group).boundingBox();
 
     if (previous) {
-      expect(box.x).toBeGreaterThan(previous.x + previous.width);
+      expect(box.x).toBeGreaterThanOrEqual(previous.x + previous.width);
       expect(box.y).toBe(previous.y);
     }
 

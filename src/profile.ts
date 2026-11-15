@@ -62,6 +62,8 @@ export const defaultPreferences: Preferences = {
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   wordHighlightSlide: false,
   tape: false,
+  // Where the screens are listed: a side bar, or a bar across the top. Display only.
+  navigation: 'side',
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
@@ -150,6 +152,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
     typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
     appFont: normalizeFont(value.appFont, APP_FONTS),
     tape: value.tape === true,
+    navigation: value.navigation === 'top' ? 'top' as const : 'side' as const,
     adaptive: value.adaptive === true,
     repeatQuotes: value.repeatQuotes === true,
     layout: normalizeLayout(value.layout),

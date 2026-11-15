@@ -67,7 +67,8 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
     await page.locator(`${rating}:not([hidden])`).waitFor();
     note('rating before', await h.text(rating));
     check(plain(await h.text(rating)) === 'Gust I · 1795 · 20 rated races', 'the rating line leads with the rank');
-    check(await fits(rating), 'the rating line fits without scrolling sideways');
+    // The line is for a screen reader; what is drawn is the figure, the rank and the gauge's note.
+    check(await fits('#quick-match .quick-gauge-note') && await fits('#quick-match .quick-figure-label'), 'the drawn rating fits without scrolling sideways');
     await shot('rating-before');
 
     for (const scenario of SCENARIOS) {

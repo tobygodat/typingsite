@@ -24,9 +24,9 @@ export function FriendsBoard({ controller }: { controller: FriendsBoardControlle
   const rows = view.rows ?? [];
   const bests = view.picked ? bestsOrder(view.bestsRows, view.picked) : [];
 
-  return <section id="friends-board" className="friends-board" aria-labelledby="friends-board-heading">
-    <div className="online-section-heading">
-      <h2 id="friends-board-heading" tabIndex={-1}>Friends board</h2>
+  return <section id="friends-board" className="panel friends-board" aria-labelledby="friends-board-heading">
+    <div className="panel-head">
+      <h2 id="friends-board-heading" className="panel-title" tabIndex={-1}>friends board</h2>
       <button id="refresh-friends-board" className="btn btn-ghost btn-sm" type="button" hidden={!view.signedIn} aria-disabled={view.loading ? 'true' : undefined} onClick={() => { if (!view.loading) void controller.refresh({ manual: true }); }}>Refresh</button>
     </div>
     <div id="friends-board-guest" className="friends-board-guest" hidden={view.signedIn}>

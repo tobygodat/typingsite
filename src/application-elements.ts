@@ -29,6 +29,8 @@ const HOST_TAGS = {
   "lesson-primary": "button",
   "live-accuracy": "strong",
   "live-stats": "div",
+  "side-bar": "div",
+  "main-content": "main",
   "live-wpm": "strong",
   "mode-more": "details",
   "mode-more-label": "summary",

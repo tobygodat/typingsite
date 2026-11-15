@@ -98,8 +98,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-delta')).toHaveText(new RegExp(`^(Matched your best of|[+−]\\d+ vs your best of) ${first * 5} cpm$`));
   await expect(page.locator('#announcement')).toHaveText(`${second} cpm, ${accuracy}% accuracy.`);
   await expect(page.locator('#best')).toHaveText(`Best · ${Math.max(first * 5, second)} cpm`);
-  // Two counted runs at these conditions: the card's average and best read in cpm too.
-  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2) * 5} · best ${Math.max(first * 5, second)}`);
+  // A counted run before this one: the card's change against its average reads in cpm too.
+  await expect(page.locator('#result-versus')).toHaveText(new RegExp(`^[+−]?${Math.abs(second - first * 5)} vs avg ${first * 5}$`));
   await shot(page, testInfo, 'results-dark');
 
   await openView(page, 'Progress');
@@ -121,7 +121,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-wpm')).toHaveText(String(second / 5));
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /average \d+ wpm/);
-  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2)} · best ${Math.max(first, second / 5)}`);
+  await expect(page.locator('#result-versus')).toHaveText(new RegExp(`^[+−]?${Math.abs(second / 5 - first)} vs avg ${first}$`));
 });
 
 test('light theme: the run card and the palette command in cpm', async ({ page }, testInfo) => {
@@ -129,7 +129,7 @@ test('light theme: the run card and the palette command in cpm', async ({ page }
   await openApp(page);
   await chooseWords(page, 10);
   await command(page, 'speed unit · cpm');
-  await expect(page.locator('#live-wpm + span')).toHaveText('cpm');
+  await expect(page.locator('#live-stats [data-speed-unit]')).toHaveText('cpm');
   await page.locator('#typing-input').focus();
   await typeRun(page, 5);
   const value = Number(await page.locator('#result-wpm').textContent());
@@ -165,7 +165,7 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   await command(page, 'speed unit · cpm');
   await command(page, 'ghost');
 
-  await expect(page.locator('#live-wpm + span')).toHaveText('cpm');
+  await expect(page.locator('#live-stats [data-speed-unit]')).toHaveText('cpm');
   const text = await passageText(page);
   await typeInto(page, text.slice(0, 14), '#typing-input', { delay: 150 });
   await expect(page.locator('#live-wpm')).toHaveText(/^\d+$/);
@@ -176,7 +176,7 @@ test('live speed and the ghost pacer read in the chosen unit', async ({ page }) 
   await page.mouse.move(40, 40);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'speed-unit', 'wpm');
-  await expect(page.locator('#live-wpm + span')).toHaveText('wpm');
+  await expect(page.locator('#live-stats [data-speed-unit]')).toHaveText('wpm');
   await expect(page.locator('#settings-dialog')).toContainText('live wpm and accuracy');
   await expect(page.locator('#typing-status')).toHaveText('In progress');
 });
@@ -366,7 +366,7 @@ test('a member’s unit is saved with the profile, a guest’s is not, and saved
   await command(page, 'speed unit · cpm');
   await page.reload();
   await expect(page.locator('#speed-unit input:checked')).toHaveValue('wpm');
-  await expect(page.locator('#live-wpm + span')).toHaveText('wpm');
+  await expect(page.locator('#live-stats [data-speed-unit]')).toHaveText('wpm');
 
   // A profile saved before the setting existed reads in wpm.
   const conditions = { mode: 'time', duration: 30, count: null, punctuation: false, quoteLength: null, difficulty: null, wordList: '200',
@@ -388,7 +388,7 @@ test('a member’s unit is saved with the profile, a guest’s is not, and saved
   await page.reload();
   await expect(page.locator('#speed-unit input:checked')).toHaveValue('cpm');
   await expect(page.locator('#best')).toHaveText('Best · 360 cpm');
-  await expect(page.locator('#live-wpm + span')).toHaveText('cpm');
+  await expect(page.locator('#live-stats [data-speed-unit]')).toHaveText('cpm');
 });
 
 async function member(browser, supabase, email) {
@@ -624,7 +624,7 @@ test('new learning and composing surfaces follow cpm without changing their stor
 });
 
 
-test('standard scores display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
+test('standard runs display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
   const user = supabase.addUser('standard-units@stilltype.test');
   const conditions = standardConditions();
 
@@ -644,10 +644,8 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('330');
-  await expect(page.locator('#standard-median')).toHaveText('315');
-  await expect(page.locator('#standard-best + span')).toHaveText('cpm');
+  await openProgressDetail(page, 'runs');
+  await expect(page.locator('#run-history .run-row').first()).toContainText('320 cpm');
   // The oldest run has no error count: its row leaves the figure blank rather than print a placeholder.
   const facts = await page.locator('#run-history dd').allTextContents();
   expect(facts.length).toBeGreaterThan(0);

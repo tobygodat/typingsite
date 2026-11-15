@@ -1,59 +1,26 @@
 import type { CalendarDay } from './progress-calendar.js';
 import { flushSync } from 'react-dom';
 import type { LearningStore } from './learning-store.js';
-import type { Conditions, InputClass } from './typing.js';
-import { conditionKey, standardConditions } from './typing.js';
-import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, standardScore, standardInputClass, dayKey, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
+import { dayKey, runDay, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
 import { monthLabels } from './progress-view.js';
 import { runCountTotals } from './run-counts.js';
 import { promptText } from './compose.js';
-import { speedFigure } from './units.js';
-import { copyParts } from './native-copy.js';
+import { dayRecords } from './progress-records.js';
+import { analysisRuns } from './domain-history.js';
 import type { ProgressPeriod } from './progress-filters.js';
 
 interface PracticeProgressPorts {
-  inputLayout(input: InputClass): string;
-  recipeSummary(conditions: Conditions): string;
-  conditionTail(conditions: Conditions): string;
-  calendarWeeks(): number; coarse(): boolean; period(): ProgressPeriod;
+  coarse(): boolean; period(): ProgressPeriod;
   dateCopy(at: string | null): string;
 }
+
+// A year of weeks, as many as fit beside the day names; the oldest are clipped first where the page is narrower.
+const CALENDAR_WEEKS = 53;
 
 export function createPracticeProgress(learning: LearningStore, ports: PracticeProgressPorts) {
   let goalDay = '';
   let practicePerDay: ReturnType<typeof practiceStats>['runsPerDay'] = [];
   const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
-
-function renderStandardScore() {
-  const scoreFor = (inputClass: InputClass) => {
-    const key = conditionKey({ ...standardConditions(inputClass), layout: ports.inputLayout(inputClass) });
-
-    return standardScore(learning.profile.runs, key, learning.profile.bests[key]?.wpm ?? null);
-  };
-
-  const keyboard = scoreFor('physical-keyboard');
-  const touch = scoreFor('touch');
-  const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
-  const source = { ...standardConditions(sourceInput), layout: ports.inputLayout(sourceInput) };
-  const score = onTouch ? touch : keyboard;
-  const other = onTouch ? keyboard : touch;
-  // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
-  // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
-  const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
-  const keptBest = standardScore(learning.profile.runs, conditionKey(source)).best;
-  const olderBest = score.total && Number(score.best) > Number(keptBest) ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
-  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
-
-  if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
-  else if (!score.total) note = 'No standard runs yet.';
-  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
-  // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
-  const empty = !score.total && score.best === null;
-  flushSync(() => learning.progress.standard.publish({ best: score.best, median: score.median,
-    medianLabel: score.settled ? 'median of last ' + plural(score.recent, 'run') : 'median', conditions: ports.recipeSummary(source) + ' · ' + ports.conditionTail(source), empty,
-    note: copyParts([note, other.best === null ? '' : [' Your ' + (onTouch ? 'physical keyboard' : 'touch') + ' best is ', speedFigure(other.best), '.']]) }));
-}
 
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
@@ -61,20 +28,26 @@ function renderGoal(date = new Date()) {
   const coarse = ports.coarse();
   flushSync(() => learning.progress.calendar.visible.publish(Object.keys(byDay).length > 0));
   const goal = learning.preferences.dailyGoal;
-  const weeks = ports.calendarWeeks();
+  const weeks = CALENDAR_WEEKS;
+  const records = dayRecords(learning.profile.runs);
+  const keptFrom = analysisRuns(learning.profile.runs).map(runDay).filter((day) => day !== null).sort()[0] ?? goalDay;
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
   const days: CalendarDay[] = [];
 
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
-    const minutes = byDay[dayKey(day)] || 0;
+    const key = dayKey(day);
+    const minutes = byDay[key] || 0;
     const met = goal > 0 && minutes >= goal;
-    days.push({ day: dayKey(day), level: String(practiceLevel(minutes, goal)), met,
+    const record = key >= keptFrom ? records.get(key) ?? { runs: 0, best: null } : null;
+    days.push({ day: key, runs: record?.runs ?? null, best: record?.best ?? null, level: String(practiceLevel(minutes, goal)), met,
       label: day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ': ' + goalMinutes(minutes) + ' min' + (met ? ', goal met' : ''),
       caption: [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), goalMinutes(minutes) + ' min', met && 'goal met'].filter(Boolean).join(' · ') });
   }
 
   const practised = days.filter((day) => day.level !== '0').length;
+  const counted = days.reduce((sum, day) => sum + (day.runs ?? 0), 0);
   flushSync(() => learning.progress.calendar.view.publish({ days, months: monthLabels(days.map((day) => day.day)), weeks, coarse, today: goalDay,
+    summary: `${plural(counted, 'run')} · ${plural(practised, 'day')}`,
     label: 'Practice minutes per day, last ' + weeks + ' weeks: ' + plural(practised, 'day') + ' with practice. Arrow keys move between days.' }));
   renderPracticeStats(ports.period(), date);
 }
@@ -117,6 +90,6 @@ function renderComposeHistory() {
   flushSync(() => learning.progress.composing.publish({ rows, note: list.length > shown.length ? 'newest ' + shown.length + ' of ' + list.length : '' }));
 }
 
-return { standard: renderStandardScore, goal: renderGoal, composing: renderComposeHistory,
+return { goal: renderGoal, composing: renderComposeHistory,
   get day() { return goalDay; }, get runsPerDay() { return practicePerDay; } };
 }

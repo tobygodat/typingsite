@@ -65,8 +65,10 @@ async function signOut(page) {
   await expect(page.locator('#account')).toHaveAttribute('data-state', 'guest');
 }
 
-const lead = (page) => ({ number: page.locator('#lead-figure .lead-number'), spoken: page.locator('#lead-figure .sr-only'), sentence: page.locator('#lead-sentence'),
-  sample: page.locator('#lead-sample'), note: page.locator('#lead-note') });
+const lead = (page) => ({ number: page.locator('#lead-figure .lead-number'), change: page.locator('#lead-note .lead-change'), spoken: page.locator('#lead-note .sr-only'),
+  sentence: page.locator('#lead-sentence'), sample: page.locator('#lead-sample'), note: page.locator('#lead-note'), label: page.locator('#lead-label') });
+
+const cell = (page, id) => ({ figure: page.locator(`#lead-${id} .cell-figure`), note: page.locator(`#lead-${id} .cell-note`) });
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/progress/${name}` : testInfo.outputPath(name));
@@ -81,39 +83,46 @@ const resolved = (page, token) => page.evaluate((name) => {
   return color;
 }, token);
 
-test('the lead is this week against the week before, with both medians, their runs and conditions, and no page heading', async ({ page, supabase }) => {
+test('the lead is this week’s median against the week before’s, with its accuracy, runs and conditions, and no page heading', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
-  const { number, spoken, sentence, sample } = lead(page);
-  await expect(number).toHaveText('+5');
+  const { number, change, spoken, sentence, sample, label } = lead(page);
+  await expect(label).toHaveText('wpm · this week');
+  await expect(number).toHaveText('78');
+  await expect(change).toHaveText('+5');
+  await expect(lead(page).note).toContainText('+5 vs last week');
   await expect(spoken).toHaveText('5 wpm faster than the week before.');
-  await expect(page.locator('#lead-figure .lead-unit')).toHaveText('wpm');
   await expect(page.locator('#week-lead')).toHaveAttribute('data-tone', 'gain');
-  await expect(number).toHaveCSS('color', await resolved(page, '--accent'));
-  await expect(sentence).toHaveText('78 this week, 73 the week before');
+  await expect(change).toHaveCSS('color', await resolved(page, '--accent'));
+  await expect(sentence).toHaveText('78 this week, 73 the week before, medians of 6 and 7 runs');
   await expect(sample).toHaveText('medians of 6 and 7 runs');
+  // The week's median accuracy, against the week before's.
+  await expect(cell(page, 'accuracy').figure).toHaveText('96');
+  await expect(cell(page, 'accuracy').note).toHaveText('+1 vs last week');
   await expect(page.locator('#progress-conditions')).toHaveText('english 1k · 25 words · plain · physical keyboard · continue on error');
-  // The dock names the page; the one heading is for assistive technology.
+  // The dock names the page; the one page heading is for assistive technology, and the panels are titled.
   await expect(page.getByRole('heading', { name: 'Progress', level: 1 })).toHaveClass(/sr-only/);
-  await expect(page.locator('#progress-screen :is(h1, h2):not(.sr-only):visible')).toHaveCount(0);
+  await expect(page.locator('#progress-screen h1:not(.sr-only):visible')).toHaveCount(0);
+  await expect(page.locator('#progress-overview .panel-title:visible')).toHaveText(['wpm', 'accuracy %', 'calendar', 'runs']);
 });
 
 test('a drop reads as a drop in coral, and a week without change as none', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns([80, 82, 81, 80, 79, 83, 81], [76, 75, 77, 74, 76, 75]));
-  await expect(lead(page).number).toHaveText('−5');
+  await expect(lead(page).number).toHaveText('76');
+  await expect(lead(page).change).toHaveText('−5');
   await expect(lead(page).spoken).toHaveText('5 wpm slower than the week before.');
   await expect(page.locator('#week-lead')).toHaveAttribute('data-tone', 'drop');
-  await expect(lead(page).number).toHaveCSS('color', await resolved(page, '--danger'));
-  await expect(lead(page).sentence).toHaveText('76 this week, 81 the week before');
+  await expect(lead(page).change).toHaveCSS('color', await resolved(page, '--danger'));
+  await expect(lead(page).sentence).toContainText('76 this week, 81 the week before');
 
   const user = supabase.addUser('flat@stilltype.test');
   supabase.profiles.set(user.id, { data: profileOf(weekRuns([75, 76, 74, 75, 75, 77, 74], [75, 74, 76, 75, 75, 76])) });
   await signOut(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await expect(lead(page).number).toHaveText('0');
+  await expect(lead(page).change).toHaveText('0');
   await expect(lead(page).spoken).toHaveText('The same as the week before.');
   await expect(page.locator('#week-lead')).toHaveAttribute('data-tone', 'flat');
-  await expect(lead(page).number).toHaveCSS('color', await resolved(page, '--text'));
+  await expect(lead(page).change).toHaveCSS('color', await resolved(page, '--muted'));
 });
 
 test('one week of history: the lead is this week so far, and predicts nothing', async ({ page, supabase }) => {
@@ -122,19 +131,20 @@ test('one week of history: the lead is this week so far, and predicts nothing', 
   const { number, sentence, sample, note } = lead(page);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'this-week');
   await expect(number).toHaveText('75');
-  await expect(sentence).toHaveText('this week so far');
+  await expect(sentence).toHaveText('this week so far, median of 5 runs');
   await expect(sample).toHaveText('median of 5 runs');
   await expect(note).toBeHidden();
-  const practice = page.locator('#week-movers .is-practice');
-  await expect(practice.locator('.mover-change')).toHaveText('0 → to 1 min · 5 days in a row');
-  await expect(practice.locator('.status')).toHaveText('more');
+  await expect(cell(page, 'practice').figure).toHaveText('1');
+  await expect(cell(page, 'practice').note).toHaveText('0 min last week · 5 days in a row');
 });
 
 test('one run so far: the lead shows that run and what a week’s median takes', async ({ page, supabase }) => {
   await openProgress(page, supabase, [run(0, 64, 95)]);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'thin');
+  await expect(lead(page).label).toHaveText('wpm · latest run');
   await expect(lead(page).number).toHaveText('64');
-  await expect(lead(page).sentence).toHaveText('your latest run');
+  await expect(cell(page, 'accuracy').figure).toHaveText('95');
+  await expect(lead(page).sentence).toContainText('your latest run');
   await expect(lead(page).sample).toHaveText('1 run this week');
   await expect(lead(page).note).toHaveText('A week has a median from 3 runs.');
 });
@@ -152,7 +162,7 @@ test('the conditions line is the control: lengths and condition sets change the 
   await expect(variants.locator('option:checked')).toHaveText('plain');
   await expect(tests.getByRole('button', { name: '100 words' })).toBeDisabled();
   await expect(tests.getByRole('button', { name: '15 seconds' })).toBeEnabled();
-  await expect(lead(page).sentence).toHaveText('this week so far');
+  await expect(lead(page).sentence).toContainText('this week so far');
   await expect(lead(page).sample).toHaveText('median of 3 runs');
 
   // Punctuation is its own set: its runs, none of the plain ones.
@@ -172,55 +182,54 @@ test('the conditions line is the control: lengths and condition sets change the 
   await expect(page.locator('#run-history')).toContainText('100 wpm');
 });
 
-test('what moved it: the fixed pairs with their evidence, three at a time, then practice; a named pair still drills from Keys', async ({ page, supabase }) => {
+test('what moved it: the fixed cell counts the pairs fixed this week and opens them, with their evidence, three at a time', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
+  // Ranked by the time each saved: the cell names the first three.
+  await expect(cell(page, 'fixed').figure).toHaveText('5');
+  await expect(cell(page, 'fixed').note).toHaveText('ex · qu · ix +2');
+  // Two minutes each week, a plain fact, in the practice cell.
+  await expect(cell(page, 'practice').figure).toHaveText('2');
+  await expect(cell(page, 'practice').note).toHaveText('2 min last week · 6 days in a row');
+  await page.locator('#lead-fixed').click();
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'fixed');
+  await expect(page.locator('#progress-detail-heading')).toHaveText('Fixed');
   const rows = page.locator('#week-movers > li');
   await expect(page.locator('#week-movers')).toHaveAccessibleName('What changed since last week');
-  // Ranked by the time each saved; three show, then practice.
-  await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'practice']);
+  await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix']);
   const unit = (name) => rows.filter({ has: page.locator('.mover-unit', { hasText: new RegExp(`^${name}$`) }) });
   await expect(unit('ex').locator('.mover-change')).toHaveText('7 of 56 → to 0 of 90 missed');
   await expect(unit('ex').locator('.status')).toHaveText('fixed');
   await expect(unit('ex').locator('.mover-after')).toHaveCSS('color', await resolved(page, '--accent'));
   await expect(unit('ex').locator('.mover-change')).toHaveAttribute('title', '56 tries in 7 runs before this week, 90 tries in 6 runs this week');
   // A fixed row is a fact, with nothing to press.
-  await expect(rows.filter({ visible: true }).locator('.status')).toHaveText(['fixed', 'fixed', 'fixed', 'same']);
-  await expect(rows.locator('button')).toHaveCount(1);
-  // Two minutes each week: the same, as a plain fact.
-  await expect(rows.last().locator('.mover-change')).toHaveText('2 → to 2 min · 6 days in a row');
+  await expect(rows.filter({ visible: true }).locator('.status')).toHaveText(['fixed', 'fixed', 'fixed']);
+  await expect(rows.locator('button')).toHaveCount(0);
 
   await expect(page.locator('#more-movers')).toHaveText('2 more');
   await page.locator('#more-movers').click();
   await expect(page.locator('#more-movers')).toHaveAttribute('aria-expanded', 'true');
-  await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'ox', 'ux', 'practice']);
+  await expect(rows.filter({ visible: true }).locator('.mover-unit')).toHaveText(['ex', 'qu', 'ix', 'ox', 'ux']);
   await page.locator('#more-movers').click();
-  await expect(rows.filter({ visible: true })).toHaveCount(4);
-
-  // Drilling a named pair stays one step away: Patterns across runs in Keys starts the drill Train would.
-  await openProgressDetail(page, 'keys');
-  const target = page.locator('#training-targets .training-target').first();
-  const name = (await target.locator('h3').textContent()).match(/“(.+)”/)[1];
-  await target.getByRole('button', { name: `Practice “${name}” again` }).click();
-  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
-  await expect(page.locator('#session-title')).toHaveText(`Practice “${name}”`);
-  // Coming back from another screen, Progress opens on its overview.
-  await openView(page, 'Progress');
-  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', '');
+  await expect(rows.filter({ visible: true })).toHaveCount(3);
+  await page.locator('#progress-back').click();
+  await expect(page.locator('#lead-fixed')).toBeFocused();
 });
 
 // The list holds only what there is: no "more" under a short list, a practice row alone, and no list at all.
 test('exactly three fixed pairs all show, with no control for more', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns(undefined, undefined, ['qu', 'ex', 'ox']));
-  await expect(page.locator('#week-movers > li:visible .mover-unit')).toHaveCount(4);
-  await expect(page.locator('#week-movers > li .mover-unit').last()).toHaveText('practice');
+  await expect(cell(page, 'fixed').note).toHaveText('ex · qu · ox');
+  await openProgressDetail(page, 'fixed');
+  await expect(page.locator('#week-movers > li:visible .mover-unit')).toHaveCount(3);
   await expect(page.locator('#more-movers')).toBeHidden();
   await expect(page.locator('#more-movers')).toHaveText('');
 });
 
-test('one fixed pair lists alone with practice, a week with nothing fixed lists practice, and with neither there is no list', async ({ page, supabase }) => {
+test('one fixed pair lists alone, a week with nothing fixed opens no list, and old runs leave the week empty', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns(undefined, undefined, ['qu']));
   const units = page.locator('#week-movers > li .mover-unit');
-  await expect(units).toHaveText(['qu', 'practice']);
+  await openProgressDetail(page, 'fixed');
+  await expect(units).toHaveText(['qu']);
   await expect(page.locator('#more-movers')).toBeHidden();
 
   const signInAs = async (email, list) => {
@@ -232,32 +241,32 @@ test('one fixed pair lists alone with practice, a week with nothing fixed lists 
   };
 
   await signInAs('practice-only@stilltype.test', weekRuns(undefined, undefined, []));
-  await expect(units).toHaveText(['practice']);
-  await expect(page.locator('#more-movers')).toBeHidden();
-  await expect(page.locator('#week-moved')).toBeVisible();
+  await expect(cell(page, 'fixed').figure).toHaveText('0');
+  await expect(page.locator('#lead-fixed')).not.toHaveAttribute('data-progress-open');
+  await expect(cell(page, 'practice').figure).toHaveText('2');
 
   // Runs a month old: a lead that says so, no list and no rule left over, and the links to everything else.
   await signInAs('old@stilltype.test', [run(30, 60, 95), run(29, 62, 95), run(28, 61, 95)]);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'none');
-  await expect(page.locator('#week-moved')).toBeHidden();
+  await expect(lead(page).note).toHaveText('No runs at these conditions in the last two weeks.');
   await expect(page.locator('#week-movers > li')).toHaveCount(0);
   await expect(page.locator('#progress-more')).toBeVisible();
 });
 
-test('the practice row opens the practice calendar, with its goal, streaks and runs started, and Progress goes back to it', async ({ page, supabase }) => {
+test('the calendar’s streaks link opens the practice view, with its goal, streaks and runs started, and Progress goes back to it', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns(), { extra: { preferences: { dailyGoal: 5 } } });
   // No day met the 5-minute goal, so no streak is claimed.
-  await expect(page.locator('#week-movers .is-practice .mover-change')).toHaveText('2 → to 2 min');
-  await page.getByRole('button', { name: 'practice calendar', exact: true }).click();
+  await expect(cell(page, 'practice').note).toHaveText('2 min last week');
+  await expect(page.locator('#practice-goal')).toBeVisible();
+  await page.locator('#open-practice').click();
   await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'calendar');
   await expect(page.locator('#progress-detail-heading')).toBeFocused();
   await expect(page.locator('#progress-detail-heading')).toHaveText('Practice');
-  await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(page.locator('#practice-stats')).toContainText('Active days');
   await expect(page.locator('#practice-stats')).toContainText('Runs started');
   await expect(page.locator('#practice-runs svg')).toHaveAttribute('aria-label', /^Runs per day from .+: 13 runs on 13 days, at most 1 in a day\.$/);
   await page.locator('#progress-back').click();
-  await expect(page.getByRole('button', { name: 'practice calendar', exact: true })).toBeFocused();
+  await expect(page.locator('#open-practice')).toBeFocused();
 });
 
 test('practice notes count in the singular for one run, and in the plural otherwise', async ({ page, supabase }) => {
@@ -268,13 +277,14 @@ test('practice notes count in the singular for one run, and in the plural otherw
   await expect(page.locator('#goal-calendar')).toHaveAttribute('aria-label', /: 1 day with practice\./);
 });
 
-test('two small charts, each with its value at the line’s end, open their full charts, whose tabs move by arrow keys', async ({ page, supabase }) => {
+test('two small charts, a line of daily medians over a dot for each run, open their full charts, whose tabs move by arrow keys', async ({ page, supabase }) => {
   await openProgress(page, supabase);
   const speed = page.locator('#week-speed button');
   await expect(speed).toHaveAccessibleName('Speed by day, Sep 18 to today: 3 days, 4 runs, from 50 to 75 wpm. 75 wpm today, the median of 2 runs. Open the speed chart.');
-  await expect(page.locator('#week-speed .week-chart-value')).toHaveText('75 wpm');
-  await expect(page.locator('#week-speed .week-chart-runs')).toHaveText('2 runs');
-  await expect(page.locator('#week-accuracy .week-chart-value')).toHaveText('95%');
+  // A dot for each run under the line of daily medians, and the runs counted over the panel.
+  await expect(page.locator('#week-speed .week-chart-runs circle')).toHaveCount(4);
+  await expect(page.locator('#week-speed-runs')).toHaveText('4 runs');
+  await expect(page.locator('#week-accuracy button')).toHaveAccessibleName(/95% today, the median of 2 runs\. Open the accuracy chart\.$/);
   await expect(page.locator('#week-speed .trend-label').last()).toHaveText('today');
 
   await speed.click();
@@ -435,12 +445,14 @@ test('a guest with no runs sees no tagline, and a thin week states its counts an
   await openApp(page);
   await openView(page, 'Progress');
   await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
-  await expect(page.locator('#progress-empty .lead-context > *')).toHaveCount(1);
+  await expect(page.locator('#progress-empty > :not(.empty-actions, .first-run-learn)')).toHaveCount(1);
+  await expect(page.locator('#week-cells')).toBeHidden();
+  await expect(page.locator('#progress-runs')).toBeHidden();
 
   // Two runs the week before and four this week: the count is the evidence, and no date is promised.
   await openProgress(page, supabase, [run(9, 70, 95), run(8, 71, 95), run(3, 72, 95), run(2, 75, 95), run(1, 74, 95), run(0, 77, 95)]);
   await expect(page.locator('#week-lead')).toHaveAttribute('data-state', 'this-week');
-  await expect(lead(page).note).toHaveText('The week before has 2 runs, too few for a median.');
+  await expect(lead(page).note).toHaveText('2 runs last week');
 });
 
 test('undoing a clear comes back to the conditions that were showing', async ({ page, supabase }) => {
@@ -457,12 +469,12 @@ test('undoing a clear comes back to the conditions that were showing', async ({ 
   await expect(lead(page).sample).toHaveText('2 runs this week');
 });
 
-test('every quiet link opens its view, named and focused, and Progress goes back; the palette opens them too', async ({ page, supabase }) => {
+test('every quiet link and the fixed cell open their views, named and focused, and Progress goes back; the palette opens them too', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
-  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs', 'Keys', 'Practice calendar', 'Standard score']);
+  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs']);
   await expect(page.locator('#clear-history')).toBeVisible();
 
-  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['keys', 'Keys', '#key-heatmap'], ['calendar', 'Practice', '#practice-goal'], ['standard', 'Standard score', '#standard-score']]) {
+  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['calendar', 'Practice', '#practice-stats'], ['fixed', 'Fixed', '#week-movers']]) {
     const link = page.locator(`[data-progress-open="${name}"]`);
     await link.click();
     await expect(page.locator('#progress-detail-heading')).toHaveText(heading);
@@ -473,18 +485,78 @@ test('every quiet link opens its view, named and focused, and Progress goes back
     await expect(link).toBeFocused();
   }
 
-  for (const [label, name] of [['runs and drills', 'runs'], ['keys and pairs', 'keys'], ['practice calendar', 'calendar'], ['your standard score', 'standard']]) {
+  for (const [label, name] of [['runs and drills', 'runs'], ['practice calendar', 'calendar']]) {
     await page.keyboard.press('Control+k');
     await page.keyboard.type(label);
     await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText(label);
     await page.keyboard.press('Enter');
     await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
   }
+});
 
-  // Keys keeps Patterns across runs, the learner's queue, each unit with its drill.
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-targets .training-target').first()).toContainText('Practice “');
-  await expect(page.locator('#training-targets').getByRole('button', { name: /^Practice “.+” again$/ }).first()).toBeVisible();
+test('the runs table lists the newest runs at these conditions, speed first, with a crown on each that was a best when typed', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [run(6, 60, 95), run(5, 58, 95), run(4, 64, 96), run(3, 64, 97), { ...run(2, 99, 99), fresh: false },
+    { ...run(1, 70, 98.25), kind: 'retest' }, run(0, 90, 99, { punctuation: true })]);
+  const panel = page.locator('#progress-runs');
+  const rows = panel.locator('#runs-table tbody tr');
+  await expect(panel.locator('.panel-head')).toContainText('runs');
+  await expect(panel.locator('#clear-history')).toBeVisible();
+  await expect(panel.locator('#runs-table th')).toHaveText(['wpm', 'accuracy', 'when', 'kind']);
+  // Newest first. A tie with the best so far and repeated text are no new best; the punctuation set keeps its own.
+  await expect(rows.locator('td:first-child data')).toHaveText(['70', '99', '64', '64', '58', '60']);
+  await expect(rows.locator('td:nth-child(4)')).toHaveText(['retest', 'repeated', 'test', 'test', 'test', 'test']);
+  await expect(rows.first().locator('td')).toHaveText(['70, personal best', '98.3%', 'Oct 16', 'retest']);
+  const crowned = await rows.evaluateAll((list) => list.map((row) => Boolean(row.querySelector('.pb'))));
+  expect(crowned).toEqual([true, false, false, true, false, true]);
+  await expect(rows.first().locator('.pb')).toHaveAttribute('title', 'A personal best when you typed it');
+  await expect(rows.first().locator('.pb .sr-only')).toHaveText(', personal best');
+
+  // The table follows the speed unit.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect(panel.locator('#runs-table th').first()).toHaveText('cpm');
+  await expect(rows.first().locator('td:first-child data')).toHaveText('350');
+});
+
+test('the calendar shows a year of weeks, and its tip names a day’s runs and best by hover and by keyboard, at once', async ({ page, supabase }) => {
+  await openProgress(page, supabase, [...weekRuns(), run(0, 84, 95, { mode: 'time', count: null, duration: 15 })]);
+  const days = page.locator('#goal-calendar .goal-day');
+  const tip = page.locator('.calendar-tip');
+  // A Saturday: 53 full week columns, Sunday first, a month name over each column that starts a month.
+  await expect(days).toHaveCount(53 * 7);
+  await expect(page.locator('#goal-months > span')).toHaveCount(53);
+  await expect(days.first()).toHaveAttribute('aria-label', /^Sunday, /);
+  await expect(page.locator('#calendar-summary')).toHaveText('14 runs · 13 days');
+  await expect(tip).toBeHidden();
+
+  await days.last().hover();
+  await expect(tip).toBeVisible();
+  await expect(tip.locator('.tip-runs')).toHaveText('2 runs · best 84 wpm');
+  await expect(page.locator('#goal-caption')).toHaveText('Sat, Oct 17 · <1 min');
+  // A day before the oldest kept run has its minutes only.
+  await days.nth((await days.count()) - 1 - 20).hover();
+  await expect(tip.locator('.tip-runs')).toHaveCount(0);
+  await expect(page.locator('#goal-caption')).toHaveText('Sun, Sep 27 · 0 min');
+  await page.mouse.move(5, 5);
+  await expect(tip).toBeHidden();
+
+  // From the keyboard: one tab stop, arrows move a week; the tip follows focus and never animates.
+  await days.last().focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(days.nth((await days.count()) - 8)).toBeFocused();
+  await expect(tip.locator('.tip-runs')).toHaveText('1 run · best 74 wpm');
+  await expect(page.locator('#goal-caption')).toHaveText('Sat, Oct 10 · <1 min');
+  expect(await tip.evaluate((node) => ({ animations: node.getAnimations().length, transition: getComputedStyle(node).transitionDuration }))).toEqual({ animations: 0, transition: '0s' });
+  const [cell, box] = await Promise.all([days.nth((await days.count()) - 8).boundingBox(), tip.boundingBox()]);
+  expect(box.y + box.height, 'the tip stands over its day').toBeLessThanOrEqual(cell.y);
+
+  // The best is in the unit the person reads speeds in.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await days.last().hover();
+  await expect(tip.locator('.tip-runs')).toHaveText('2 runs · best 420 cpm');
 });
 
 test('the run list opens on the newest ten, and one button lists every run', async ({ page, supabase }) => {
@@ -511,12 +583,14 @@ test('in cpm the lead, the small chart and the full chart’s point each round t
   await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText('speed unit · cpm');
   await page.keyboard.press('Enter');
   // Medians of 66 and 60 wpm: 330 and 300 cpm, and the change printed is their difference.
-  await expect(lead(page).sentence).toHaveText('330 this week, 300 the week before');
-  await expect(lead(page).number).toHaveText('+30');
-  await expect(page.locator('#lead-figure .lead-unit')).toHaveText('cpm');
+  await expect(lead(page).sentence).toContainText('330 this week, 300 the week before');
+  await expect(lead(page).number).toHaveText('330');
+  await expect(lead(page).change).toHaveText('+30');
+  await expect(lead(page).label).toHaveText('cpm · this week');
+  await expect(page.locator('#week-speed-title')).toHaveText('cpm');
   await expect(lead(page).spoken).toHaveText('30 cpm faster than the week before.');
   // Today's median, 65.5 wpm, is 327.5 cpm, printed 328.
-  await expect(page.locator('#week-speed .week-chart-value')).toHaveText('328 cpm');
+  await expect(page.locator('#week-speed button')).toHaveAccessibleName(/ 328 cpm today, the median of 2 runs\./);
   await openProgressView(page, 'Speed');
   await expect(page.locator('#progress-trend .trend-callout').first()).toHaveText(/^328 today/);
   await expect(page.locator('#progress-trend .trend-dot').last()).toHaveAttribute('aria-label', /: median 328 cpm over 2 runs/);
@@ -551,7 +625,7 @@ test('Show all lasts until the period, test or condition set changes', async ({ 
 
 test('Clear history and Undo: the overview follows both at once, and a merge from another device redraws it', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
-  await expect(lead(page).sentence).toHaveText('78 this week, 73 the week before');
+  await expect(lead(page).sentence).toContainText('78 this week, 73 the week before');
   await page.locator('#clear-history').click();
   await expect(page.locator('#confirm-clear')).toBeDisabled();
   await page.locator('#confirm-clear-input').fill('clear');
@@ -561,7 +635,7 @@ test('Clear history and Undo: the overview follows both at once, and a merge fro
   await expect(page.locator('#week-moved')).toBeHidden();
   await expect(page.locator('#week-charts')).toBeHidden();
   await page.locator('#undo-clear').click();
-  await expect(lead(page).sentence).toHaveText('78 this week, 73 the week before');
+  await expect(lead(page).sentence).toContainText('78 this week, 73 the week before');
   await expect(page.locator('#week-movers .mover-unit').first()).toHaveText('ex');
 
   // Another device saves three faster runs today: this tab pulls them and the lead moves.
@@ -569,7 +643,7 @@ test('Clear history and Undo: the overview follows both at once, and a merge fro
   const row = supabase.profiles.get(user);
   supabase.profiles.set(user, { ...row, data: { ...row.data, runs: [...row.data.runs, run(0, 99, 99), run(0, 99, 99), run(0, 99, 99)], updatedAt: new Date(NOW.getTime() + 1000).toISOString() } });
   await page.evaluate(() => { document.activeElement?.blur(); dispatchEvent(new Event('online')); });
-  await expect(lead(page).sentence).toHaveText('79 this week, 73 the week before');
+  await expect(lead(page).sentence).toContainText('79 this week, 73 the week before');
   await expect(lead(page).sample).toHaveText('medians of 9 and 7 runs');
 });
 
@@ -581,14 +655,14 @@ test('in another tab, a run, a clear and its undo reach the overview at once, an
   await supabase.attach(other);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
-  const practice = page.getByRole('button', { name: 'practice calendar', exact: true });
+  const practice = page.locator('#lead-fixed');
   await practice.focus();
 
-  // A run typed in the other tab: the lead and the practice row count it, and focus stays on the row's button.
+  // A run typed in the other tab: the lead counts it, and focus stays on the fixed cell.
   await completePassage(other);
   await expect(other.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(lead(page).sample).toHaveText('medians of 7 and 7 runs');
-  await expect(page.getByRole('button', { name: 'practice calendar', exact: true })).toBeFocused();
+  await expect(practice).toBeFocused();
 
   // A run row open in the runs view stays open, with focus, while the other tab clears and undoes.
   await openProgressDetail(page, 'runs');
@@ -626,9 +700,8 @@ const HOLDERS = {
     return page.getByRole('combobox', { name: 'Conditions', exact: true });
   },
   'a period pill': async (page) => page.getByRole('group', { name: 'Period' }).getByRole('button', { name: '7 days' }),
-  'the more control': async (page) => page.locator('#more-movers'),
+  'the fixed cell': async (page) => page.locator('#lead-fixed'),
   'the runs link': async (page) => page.locator('#open-runs'),
-  'the Keys link': async (page) => page.locator('#progress-more [data-progress-open="keys"]'),
   'Clear history': async (page) => page.locator('#clear-history'),
 };
 
@@ -853,28 +926,32 @@ test('All runs from the first run to today, like 7 and 30 days', async ({ page, 
   expect(share).toBeCloseTo(9 / 12, 2);
 });
 
-test('with only drills to show, the empty lead stands with the practice row and the calendar, and a clear empties the foot', async ({ page, supabase }) => {
+test('with only drills to show, the empty state stands with the calendar and Clear history, and a clear empties the page', async ({ page, supabase }) => {
   await openProgress(page, supabase, [{ ...run(1, 50, 95), kind: 'drill' }, { ...run(0, 50, 95), kind: 'drill' }]);
   await expect(page.locator('#progress-empty')).toBeVisible();
-  await expect(page.locator('#week-movers .is-practice')).toBeVisible();
-  await expect(page.locator('[data-progress-open="runs"]')).toBeHidden();
-  await expect(page.locator('[data-progress-open="calendar"]')).toBeVisible();
-  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  // The calendar reads the period, so it moves there.
+  await expect(page.locator('[data-progress-open="runs"]')).toBeHidden();
+  await expect(page.locator('#clear-history')).toBeVisible();
+  // The practice view is a command away.
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('practice calendar');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', 'calendar');
+  // The practice figures read the period, so it moves there.
   const period = page.getByRole('group', { name: 'Period' });
-  await period.getByRole('button', { name: 'All', exact: true }).click();
-  await expect(period.getByRole('button', { name: 'All', exact: true })).toBeFocused();
+  await period.getByRole('button', { name: 'all', exact: true }).click();
+  await expect(period.getByRole('button', { name: 'all', exact: true })).toBeFocused();
   await page.locator('#progress-back').click();
   await page.locator('#clear-history').click();
   await page.locator('#confirm-clear-input').fill('clear');
   await page.locator('#confirm-clear').click();
   await expect(page.locator('#progress-empty')).toBeVisible();
-  await expect(page.locator('#progress-more')).toBeHidden();
+  await expect(page.locator('#progress-runs')).toBeHidden();
+  await expect(page.locator('#practice-goal')).toBeHidden();
 });
 
 for (const [width, height] of [[1440, 900], [1280, 800], [390, 844], [320, 640]]) {
-  test(`the overview holds at ${width}px: at a laptop size the lead and the list fit the first screen, and nothing scrolls sideways`, async ({ page, supabase }, testInfo) => {
+  test(`the overview holds at ${width}px: at a laptop size the cells and the charts fit the first screen, and nothing scrolls sideways`, async ({ page, supabase }, testInfo) => {
     await openProgress(page, supabase, weekRuns(), { width, height });
 
     for (const theme of ['dark', 'light']) {
@@ -883,8 +960,8 @@ for (const [width, height] of [[1440, 900], [1280, 800], [390, 844], [320, 640]]
       expect(await overflow(page), `${theme} at ${width}`).toBeLessThanOrEqual(0);
 
       if (width >= 1280) {
-        const last = await page.locator('#week-movers > li:visible').last().boundingBox();
-        expect(last.y + last.height, 'the list ends above the fold').toBeLessThanOrEqual(height);
+        const charts = await page.locator('#week-charts').boundingBox();
+        expect(charts.y + charts.height, 'the cells and both charts end above the fold').toBeLessThanOrEqual(height);
       }
 
       await page.locator('.conditions-disclosure > summary').click();
@@ -901,7 +978,7 @@ for (const [width, height] of [[1440, 900], [1280, 800], [390, 844], [320, 640]]
 test('the palette’s progress shows the overview from a detail view', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
 
-  for (const name of ['runs', 'keys', 'trends']) {
+  for (const name of ['runs', 'trends']) {
     if (name === 'trends') await page.locator('#week-speed button').click();
     else await openProgressDetail(page, name);
     await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);

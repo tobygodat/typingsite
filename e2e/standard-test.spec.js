@@ -120,7 +120,7 @@ test('standard mode shows its recipe, locks the settings that would change it, a
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s');
 });
 
-test('a standard run keeps its own best, apart from a time test, and starts the Progress headline', async ({ page }, testInfo) => {
+test('a standard run keeps its own best, apart from a time test, and lists as standard on Progress', async ({ page }, testInfo) => {
   await page.clock.install();
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
@@ -146,13 +146,6 @@ test('a standard run keeps its own best, apart from a time test, and starts the 
   await expect(page.locator('#best')).toHaveText('No best yet');
 
   await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('60');
-  await expect(page.locator('#standard-median')).toHaveText('—');
-  await expect(page.locator('#standard-median + span')).toBeHidden();
-  await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText('1 standard run kept. The median appears after 3.');
-  await expect(page.locator('#standard-score-conditions')).toHaveText(`${RECIPE} · physical keyboard · stop on error`);
   await openProgressDetail(page, 'runs');
   await page.locator('.conditions-disclosure > summary').click();
   await expect(page.getByRole('group', { name: 'Test' }).getByRole('button', { name: 'standard', exact: true })).toHaveCount(1);
@@ -184,7 +177,7 @@ test('a fresh-text retest of a standard run draws a new standard passage and com
   await expect(page.locator('#condition-line')).toContainText('english 200 · 30 s · plain · physical keyboard · continue on error');
 });
 
-test('standard mode, its run card and its Progress headline fit a 320px screen', async ({ page }) => {
+test('standard mode, its run card and Progress fit a 320px screen', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.clock.install();
   await openApp(page);
@@ -201,205 +194,7 @@ test('standard mode, its run card and its Progress headline fit a 320px screen',
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
   await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('60');
   expect(await overflow(page)).toBeLessThanOrEqual(0);
-
-  for (const id of ['#take-standard', '#standard-score-note', '#standard-score-conditions']) {
-    const box = await page.locator(id).boundingBox();
-    expect(box.x + box.width, id).toBeLessThanOrEqual(320);
-  }
-});
-
-test('Progress shows the standard best and the median of recent runs with its count', async ({ page, supabase }) => {
-  await page.clock.install({ time: new Date('2026-10-08T12:00:00Z') });
-  const user = supabase.addUser('standard@stilltype.test');
-  // The newest completed run was on touch input: one touch run doesn't take over the keyboard score.
-  const data = seededProfile([58, 63, 61, 66, 64]);
-  data.runs.push({ ...data.runs[0], id: 'standard-touch', at: new Date().toISOString(), conditions: standardConditions('touch'), score: { wpm: 41, accuracy: 95 } });
-  supabase.profiles.set(user.id, { data });
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('66');
-  await expect(page.locator('#standard-median')).toHaveText('63');
-  await expect(page.locator('#standard-median-label')).toHaveText('median of last 5 runs');
-  await expect(page.locator('#standard-score-note')).toHaveText('5 completed standard runs kept. Your touch best is 41 wpm.');
-  await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-
-  await page.locator('#take-standard').click();
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
-  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#typing-input')).toBeFocused();
-  await expect(page.locator('#best')).toHaveText('Best · 66 wpm');
-});
-
-const NO_STANDARD_RUNS = 'No standard runs yet.';
-
-// With no standard run, the standard score says so and offers the test.
-async function expectNoStandardScore(page) {
-  await expect(page.locator('#standard-score')).toBeVisible();
-  await expect(page.locator('#standard-best')).toHaveText('—');
-  await expect(page.locator('#standard-median')).toHaveText('—');
-  await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
-  await expect(page.locator('#take-standard')).toBeVisible();
-}
-
-test('a fresh profile can find and start the standard test from Progress', async ({ page }, testInfo) => {
-  await openApp(page);
-  await openView(page, 'Progress');
-  // Nothing to compare yet: the empty lead offers a test and the standard test, and no link leads to an empty view.
-  await expect(page.locator('#progress-empty')).toBeVisible();
-  await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
-  await expect(page.locator('#progress-more')).toBeHidden();
-  // One filled action: the empty state's primary button. The standard test stays quiet.
-  await expect(page.locator('#progress-screen .btn-primary:visible')).toHaveCount(1);
-  await expect(page.locator('#empty-standard')).toHaveClass(/btn-ghost/);
-
-  for (const [width, height] of [[1280, 800], [320, 568]]) {
-    await page.setViewportSize({ width, height });
-    expect(await overflow(page)).toBeLessThanOrEqual(0);
-
-    for (const id of ['#empty-standard', '#progress-empty .btn-primary']) {
-      const box = await page.locator(id).boundingBox();
-      expect(box.x + box.width, id).toBeLessThanOrEqual(width);
-    }
-
-    for (const theme of ['dark', 'light']) {
-      await page.emulateMedia({ colorScheme: theme });
-      await page.mouse.move(0, 0);
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await settle(page);
-      await page.screenshot({ path: shot(testInfo, width > 320 ? `progress-fresh-${theme}.png` : `progress-fresh-320-${theme}.png`) });
-    }
-  }
-
-  await page.locator('#empty-standard').click();
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
-  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#condition-line')).toHaveText(CONDITIONS);
-  await expect(page.locator('#typing-input')).toBeFocused();
-});
-
-test('a profile with only an interrupted standard run still shows the standard score on Progress', async ({ page, supabase }) => {
-  const user = supabase.addUser('interrupted@stilltype.test');
-  const data = seededProfile([60]);
-  data.runs = data.runs.filter((run) => run.interrupted);
-  data.seenTextIds = data.runs.map((run) => run.textId);
-  data.bests = {};
-  supabase.profiles.set(user.id, { data });
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openView(page, 'Progress');
-  await expect(page.locator('#progress-empty')).toBeVisible();
-  // There is history to clear, even though none of it counts.
-  await expect(page.locator('#clear-history')).toBeVisible();
-  await openProgressDetail(page, 'standard');
-  await expectNoStandardScore(page);
-  await page.locator('#take-standard').click();
-  await expect(page.locator('#mode-standard')).toHaveAttribute('aria-pressed', 'true');
-});
-
-test('a standard best that outlives its runs in the kept history says so, not "no runs yet"', async ({ page, supabase }) => {
-  const user = supabase.addUser('aged@stilltype.test');
-  // Bests stay until history is cleared, but only the newest 1,000 run summaries are kept: here every
-  // standard run has aged out and only a newer time test remains.
-  const data = seededProfile([62, 66, 64]);
-  data.runs = [{ ...data.runs[0], id: 'time-30', at: new Date().toISOString(), textId: 'generated-time-30',
-    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' },
-    score: { wpm: 58, accuracy: 97 } }];
-  supabase.profiles.set(user.id, { data });
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('66');
-  await expect(page.locator('#standard-best + span')).toBeVisible();
-  await expect(page.locator('#standard-median')).toHaveText('—');
-  await expect(page.locator('#standard-median + span')).toBeHidden();
-  await expect(page.locator('#standard-median-label')).toHaveText('median');
-  await expect(page.locator('#standard-score-note')).toHaveText(AGED_OUT);
-});
-
-// Run summaries are pruned to the newest 1,000 but bests are not, so kept run counts can't stand in for
-// lifetime counts when choosing which input class heads Progress.
-const AGED_OUT = 'Your best is kept, but your standard runs are older than the newest 1,000 runs that Progress keeps, so the median waits for 3 new ones.';
-const OLDER_BEST = 'Your best comes from a run older than the newest 1,000 runs that Progress keeps.';
-const TOUCH_KEY = conditionKey(standardConditions('touch'));
-
-const touchRun = (wpm, i, base) => ({ ...base, id: `standard-touch-${i}`, at: new Date(Date.now() - (3 - i) * 3600000).toISOString(),
-  textId: `standard-v1-touch${i}`, conditions: standardConditions('touch'), score: { wpm, accuracy: 95 } });
-
-async function openProgressAs(page, supabase, email, data) {
-  const user = supabase.addUser(email);
-  data.seenTextIds = data.runs.map((run) => run.textId);
-  supabase.profiles.set(user.id, { data });
-  await openApp(page);
-  await signInWithEmail(page, user.email);
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-}
-
-test('when only some standard runs are kept, the note counts kept runs and says the best is older', async ({ page, supabase }) => {
-  // Two standard runs, then 999 newer comparable runs (daily challenges, which stay off Progress): keeping
-  // the newest 1,000 summaries drops the first standard run, the 66 wpm best, while the best itself stays.
-  const data = seededProfile([66, 60]);
-  const [first, second] = data.runs;
-
-  const daily = Array.from({ length: 999 }, (_, i) => ({ ...second, id: `daily-${i}`, kind: 'daily', textId: `daily-${i}`,
-    at: new Date(Date.now() - (999 - i) * 60000).toISOString(), challengeDate: '2026-10-01', firstDailyAttempt: i === 0,
-    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' },
-    score: { wpm: 58, accuracy: 97 } }));
-
-  data.runs = [first, second, ...daily];
-  await openProgressAs(page, supabase, 'partly-aged@stilltype.test', data);
-  await expect(page.locator('#standard-best')).toHaveText('66');
-  await expect(page.locator('#standard-median')).toHaveText('—');
-  await expect(page.locator('#standard-score-note')).not.toContainText('so far');
-  await expect(page.locator('#standard-score-note')).toHaveText(`1 standard run kept. ${OLDER_BEST} The median appears after 3.`);
-  // The longest note still wraps inside a 320px screen.
-  await page.setViewportSize({ width: 320, height: 640 });
-  expect(await overflow(page)).toBeLessThanOrEqual(0);
-  const note = await page.locator('#standard-score-note').boundingBox();
-  expect(note.x + note.width).toBeLessThanOrEqual(320);
-});
-
-test('a kept keyboard best stays the headline over one newer touch run, and the touch best is named', async ({ page, supabase }) => {
-  // Every keyboard standard run has aged out of the kept summaries; one touch run is newer.
-  const data = seededProfile([62, 66, 64]);
-  data.runs = [touchRun(48, 0, data.runs[0])];
-  data.bests[TOUCH_KEY] = { wpm: 48, attemptId: data.runs[0].id, at: data.runs[0].at };
-  await openProgressAs(page, supabase, 'kept-keyboard@stilltype.test', data);
-  await expect(page.locator('#standard-best')).toHaveText('66');
-  await expect(page.locator('#standard-median')).toHaveText('—');
-  await expect(page.locator('#standard-score-conditions')).toContainText('physical keyboard');
-  await expect(page.locator('#standard-score-note')).toHaveText(`${AGED_OUT} Your touch best is 48 wpm.`);
-});
-
-test('a touch best is the headline when it is the only standard best, even with no runs left', async ({ page, supabase }) => {
-  const data = seededProfile([60]);
-  data.runs = [{ ...data.runs[0], id: 'time-30', textId: 'generated-time-30',
-    conditions: { ...standardConditions(), mode: 'time', duration: 30, recipe: undefined, wordList: '200', correctionPolicy: 'relaxed' } }];
-  data.bests = { [TOUCH_KEY]: { wpm: 47, attemptId: 'standard-touch-old', at: data.runs[0].at } };
-  await openProgressAs(page, supabase, 'touch-best@stilltype.test', data);
-  await expect(page.locator('#standard-best')).toHaveText('47');
-  await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
-  await expect(page.locator('#standard-score-note')).toHaveText(AGED_OUT);
-});
-
-test('a settled touch score with more kept runs heads Progress, and the keyboard best is named', async ({ page, supabase }) => {
-  // One keyboard run is still kept; the keyboard best of 82 came from runs that have aged out.
-  const data = seededProfile([70]);
-  data.runs.push(...[44, 48, 46].map((wpm, i) => touchRun(wpm, i, data.runs[0])));
-  data.bests[conditionKey(standardConditions())].wpm = 82;
-  data.bests[TOUCH_KEY] = { wpm: 48, attemptId: 'standard-touch-1', at: data.runs.at(-2).at };
-  await openProgressAs(page, supabase, 'settled-touch@stilltype.test', data);
-  await expect(page.locator('#standard-best')).toHaveText('48');
-  await expect(page.locator('#standard-median')).toHaveText('46');
-  await expect(page.locator('#standard-median-label')).toHaveText('median of last 3 runs');
-  await expect(page.locator('#standard-score-conditions')).toContainText('touch input');
-  await expect(page.locator('#standard-score-note')).toHaveText('3 completed standard runs kept. Your physical keyboard best is 82 wpm.');
 });
 
 test('the palette starts the standard test and leaves out the settings it locks', async ({ page }) => {
@@ -420,7 +215,7 @@ test('the palette starts the standard test and leaves out the settings it locks'
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-hint')).toHaveText('current');
 });
 
-test('a custom passage over standard keeps its own condition and never reaches the standard score', async ({ page }) => {
+test('a custom passage over standard keeps its own condition', async ({ page }) => {
   const text = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
   await chooseMore(page, 'mode-standard');
@@ -447,11 +242,6 @@ test('a custom passage over standard keeps its own condition and never reaches t
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-conditions')).toContainText('custom text');
   await expect(page.locator('#result-conditions')).not.toContainText('standard');
-
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('—');
-  await expect(page.locator('#standard-score-note')).toHaveText(NO_STANDARD_RUNS);
 
   // Standard again closes the custom passage and locks the recipe's settings.
   await openView(page, 'Practice');
@@ -490,15 +280,6 @@ test('screenshots', async ({ page, supabase }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' });
   await openApp(page);
   await signInWithEmail(page, user.email);
-
-  for (const theme of ['dark', 'light']) {
-    await page.emulateMedia({ colorScheme: theme });
-    await openView(page, 'Progress');
-    await openProgressDetail(page, 'standard');
-    await expect(page.locator('#standard-median')).toHaveText('60');
-    await page.mouse.move(0, 0);
-    await page.screenshot({ path: shot(testInfo, `progress-${theme}.png`) });
-  }
 
   for (const theme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: theme });

@@ -4,14 +4,17 @@ import type { TrainingMemory, DrillRecommendation } from './training-memory.js';
 import type { SealedRun } from './practice-session.js';
 import type { HistoricalTrace } from './profile-types.js';
 import type { ProfileSync } from './profile-sync.js';
-import { compareAttempts, comparable, summarizePatterns } from './typing.js';
+import { compareAttempts, comparable, makeDrill, summarizePatterns } from './typing.js';
 import { isRecord } from './domain-values.js';
 import { analysisRuns, isComparisonSource, isPatternAttempt } from './domain-history.js';
 import { firstTriesAt, conditionParts, evidenceRun } from './insights.js';
 import type { ConditionLabelSource } from './insights.js';
-import { keyboardOf, paceShift } from './learner.js';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, paceShift } from './learner.js';
 import type { Recommendation, TargetEvidence } from './learner.js';
-import { evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
+import { behindCopy, evidenceCopy, missedCopy, readsSince, sinceCopy, trainPath } from './train-path.js';
+import type { BehindStep } from './train-path.js';
+import { trainFigures } from './train-cost.js';
+import type { StepDetail } from './learning-store.js';
 import { signedNumber } from './units.js';
 import { uid } from './profile.js';
 
@@ -53,6 +56,9 @@ function baselineTries(before: HistoricalTrace, target: string | null) {
   if (!/^[a-z]$/.test(target || '')) return null;
   throw new TypeError('The baseline has no first-try recording');
 }
+
+// The words of a drill's text the detail pane shows before it starts.
+const PREVIEW_WORDS = 6;
 
 const COMPARISON_HEADINGS = { improved: 'The retest was stronger.', mixed: 'A mixed result.', regressed: 'The retest was lower.', steady: 'Level with your baseline.' };
 
@@ -166,13 +172,37 @@ function renderTrain({ advance = false, fresh = false } = {}) {
 
   const length = retests ? conditionParts(requiredConditions(baselineConditions)).length : '';
   const since = sinceCopy(current.since);
+  const keyboard = keyboardOf(source);
+  const model = fitLearner(learnerEvidence(learning.profile.runs, keyboard), Date.now(), LEARNER_VARIANTS[DEFAULT_POLICY], learning.preferences.trainFocus);
+  const words = named && current.was?.basis !== 'slow' ? evidenceWords(current.unit, source) : [];
+  const evidence = named ? evidenceCopy(current.was, { all: Boolean(since) }) : '';
+  // The drill restores its baseline's conditions, so its words come from the baseline's list.
+  const list = baselineConditions?.wordList ?? source.wordList ?? learning.preferences.wordList;
+  const preview = (unit: string | null) => makeDrill(unit, list, unit ? [] : recommendation.lean).text.split(' ').slice(0, PREVIEW_WORDS);
+  const missedWords = (unit: string, was: TargetEvidence | null) => (was?.basis === 'slow' ? [] : evidenceWords(unit, source));
+
+  // behindCopy leads with the retest's read-back. The cells show it too, unless they have moved on to the runs since;
+  // every other line restates a cell.
+  const behindLines = (step: BehindStep) => {
+    const lines = behindCopy(step);
+    const kept = step.retest && readsSince(step) ? 1 : 0;
+
+    return { lines: lines.slice(0, kept), told: lines.slice(kept) };
+  };
+
+  const details = new Map<string, StepDetail>([
+    [current.unit ?? '', { preview: preview(current.unit), evidence, words, lines: [], told: [] }],
+    ...path.ahead.map((step): [string, StepDetail] => [step.unit, { preview: preview(step.unit), evidence: evidenceCopy(step.was), words: missedWords(step.unit, step.was), lines: [], told: [] }]),
+    ...path.behind.map((step): [string, StepDetail] => [step.unit ?? '', { preview: preview(step.unit ?? null), evidence: '', words: [], ...behindLines(step) }]),
+  ]);
+
   const previous = learning.train.getSnapshot();
   flushSync(() => learning.train.publish({
     path, named, next, hasComparison: Boolean(after),
+    figures: trainFigures({ model, path, runs: learning.profile.runs, keyboard }), details,
     startLabel: named ? 'Drill “' + current.unit + '”' : retests ? 'Drill and retest' : 'Drill',
-    starts: learning.preferences.drillSeconds + ' s' + (length ? ', then ' + (baselineConditions?.mode === 'quote' ? 'a ' : '') + length + ' on fresh text' : ''),
-    words: named && current.was?.basis !== 'slow' ? evidenceWords(current.unit, source) : [],
-    evidence: named ? evidenceCopy(current.was, { all: Boolean(since) }) : '', since,
+    starts: learning.preferences.drillSeconds + ' s' + (length ? ' + ' + length + ' retest' : ''),
+    words, evidence, since,
     fresh, advance, revision: (previous?.revision ?? 0) + 1,
   }));
 }

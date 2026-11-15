@@ -1,34 +1,40 @@
 # Progress: what changed
 
-Progress opens on one question: what changed since last week, and what moved it. A large figure gives the change in
-speed against the week before, with the two medians beside it and a conditions line that is also the control that
-changes them. Under it, the pairs and keys fixed this week, and practice; then two small charts; then
-quiet links to runs and drills, keys, the practice calendar, the standard score and composing, each a view one step
-away with a way back.
+Progress is one page in the Instrument look (TOB-470): the conditions control and the period, four lead cells (this
+week's wpm against last week, accuracy, practice minutes, units fixed), two charts of daily medians over a dot for each
+run, a year of practice in a calendar with a tip per day, and the newest runs with a crown on each that was a best when
+typed, beside Clear history. Runs and drills, the full charts, the practice figures, what was fixed and composing are
+each a view one step away with a way back.
 
 ## Sub-features
 
-- PW-1: The lead states a change only when both weeks hold at least three runs at the chosen conditions: a gain in green, a drop in coral, no change plain.
-- PW-2: Without two weeks to compare, the lead shows this week's median, the week before's or the latest run, and says when a change can show.
-- PW-3: A new guest sees "Nothing to compare yet" with Take a test and Take the standard test.
-- PW-4: The conditions line opens the length pills and the condition-set select; the lead, charts and lists follow.
-- PW-5: The list shows units fixed this week (the word "fixed"), three at a time with "N more" for the rest, then practice (more, less, same). One fixed unit lists alone with practice; nothing fixed lists practice alone; with neither, there is no list. A named unit is drilled from Patterns across runs in Keys.
-- PW-6: A small chart opens its full chart on the trends view; each link opens its view; Progress goes back, focus on what opened it.
+- PW-1: The wpm cell states a change ("+N vs last week") only when both weeks hold at least three runs at the chosen conditions: a gain in green, a drop in coral, no change plain.
+- PW-2: Without two weeks to compare, the wpm cell shows this week's median, the week before's or the latest run, and its label says which.
+- PW-3: A new guest sees "Nothing to compare yet" with Take a test.
+- PW-4: The conditions control opens the length pills and the condition-set select; the cells, charts and lists follow.
+- PW-5: The fixed cell counts the units fixed this week and names three; it opens their list, three at a time with "N more".
+- PW-6: A chart opens its full chart on the trends view; each link opens its view; Progress goes back, focus on what opened it.
 - PW-7: Clear history empties the page to the new-guest state and Undo brings the week back.
+- PW-8: The calendar shows a year, the oldest weeks clipped first; hovering, focusing or tapping a day shows its runs, best and minutes.
 
 ## How to get to it (user POV)
 
 - Dock → progress (the overview), or Ctrl+K → "progress".
-- Ctrl+K → "runs and drills", "keys and pairs", "practice calendar", "your standard score".
-- From the overview: the runs, keys, practice calendar, standard score and composing links; a small chart; the "practice" label on the practice row.
+- Ctrl+K → "runs and drills", "practice calendar".
+- From the overview: the runs links under the table, "streaks" on the calendar, the fixed cell, a chart.
 
 ## Driving it with verify.mjs
 
 Preconditions: `$V doctor` exits 0.
 
+- The Instrument page on a year of history: `$V drive .claude/skills/verify-stilltype/flows/progress-instrument.mjs --width 1350 --height 910`.
+  `PROGRESS_STATES=guest,thin,full` picks states, `PROGRESS_NAV=top` puts navigation in the top bar. Shots: guest, thin,
+  each period, runs (crowns), the tip by hover and by keyboard, conditions open and at 15 s, each detail view, the clear dialog.
+
 - Every state, dark, at a laptop width: `$V drive .claude/skills/verify-stilltype/flows/progress-week.mjs --width 1280 --height 800`.
-  Shots: guest, gain, conditions-open, each detail view, cleared, undone, drill, one, practice, quiet, drop, flat, week. `run.json`
-  notes each lead and its movers ("ol:fixed", "ex:fixed", "qu:fixed", "practice:less" for gain; "qu:fixed", "practice:less" for one; "practice:less" for practice; none for quiet).
+  Shots: guest, gain, conditions-open, each detail view (runs, calendar, fixed, trends), cleared, undone, one, practice, quiet, drop,
+  flat, week. `run.json` notes each lead and what was fixed ("ol:fixed", "ex:fixed", "qu:fixed" for gain; "qu:fixed" for one; none for
+  practice and quiet).
 - Phones and light: add `--width 390 --height 844 --mobile` or `--width 320 --height 568 --mobile`, or
   `--scheme light`. Each step checks nothing scrolls sideways.
 - One account only: `PROGRESS_ONLY=gain` (or one, practice, quiet, drop, flat, week, guest) before the command.

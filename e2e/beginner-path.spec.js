@@ -3,7 +3,7 @@
 import { LESSONS } from '../src/lessons.js';
 import { conditionKey } from '../src/typing.js';
 import { DEFAULT_WORD_LIST } from '../src/words.js';
-import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, insertPlainText } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, chooseWords, completePassage, passageText, typeInto, signInWithEmail, storageKeys, chooseMore, chooseSetting, insertPlainText, chooseNavigation } from './fixtures.js';
 
 const body = (page) => page.locator('body');
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -210,11 +210,12 @@ test('a run under 95% accuracy keeps the next keys locked and shows the numbers'
   await expect(page.locator('#session-title')).toHaveText('Lesson 1 · f and j');
 });
 
-// A lesson result taller than a short screen scrolls to the result, which must stop below the top dock.
+// A lesson result taller than a short screen scrolls to the result, which must stop below the top bar.
 for (const viewport of [{ width: 1280, height: 600 }, { width: 820, height: 600 }]) {
   test(`a lesson result on a short ${viewport.width}px screen stops below the dock`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await openApp(page);
+    await chooseNavigation(page, 'top');
     await openLessons(page);
     await startLesson(page, 1);
     await typeLesson(page);

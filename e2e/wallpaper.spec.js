@@ -242,8 +242,8 @@ for (const [label, viewport] of VIEWPORTS) {
       await chooseWords(page, 25);
       await expect.poll(() => opacity(page)).toBe(1);
 
-      // A strip down the left edge, where nothing is drawn over the layer, from the top of the reading band to the
-      // bottom of the footer: how far each row is from the bare ground.
+      // A strip down the left edge of the page, beside the side bar where there is one and nothing is drawn over the
+      // layer, from the top of the reading band to the bottom of the footer: how far each row is from the bare ground.
       const span = await page.evaluate(() => {
         const rects = [...document.querySelectorAll('#typing-form, .shortcut-row, .site-footer > *')].flatMap((node) => {
           const rect = node.getBoundingClientRect();
@@ -251,10 +251,12 @@ for (const [label, viewport] of VIEWPORTS) {
           return rect.height ? [rect] : [];
         });
 
-        return { top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
+        const bar = document.querySelector('.dock-zone').getBoundingClientRect();
+
+        return { left: bar.height ? bar.right : 0, top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
       });
 
-      const clip = { x: 2, y: Math.round(span.top), width: 4, height: Math.round(span.bottom - span.top) };
+      const clip = { x: Math.round(span.left) + 2, y: Math.round(span.top), width: 4, height: Math.round(span.bottom - span.top) };
       const shown = await page.screenshot({ clip });
       await layer(page).evaluate((node) => { node.style.visibility = 'hidden'; });
       const bare = await page.screenshot({ clip });

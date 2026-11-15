@@ -20,16 +20,17 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   await chooseWords(page, 10);
   await completePassage(page);
   await openView(page, 'Progress');
-  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
+  await openProgressView(page, 'Practice');
   await expect(streakFigure(page).locator('.figure-note')).toHaveText(/^today (<1|\d+) of 5 min$/);
+  await page.locator('#progress-back').click();
   const days = page.locator('#goal-calendar .goal-day');
   expect(await days.count()).toBeGreaterThanOrEqual(17 * 7 + 1);
   const today = days.last();
   await expect(today).toHaveAttribute('data-level', '1');
   // Under the 5-minute goal: no goal-met mark.
   await expect(today).not.toHaveAttribute('data-goal', 'met');
-  // The caption is visual only and stays empty until a day is focused or hovered (today's minutes sit in the figures under it).
+  // The caption is visual only and stays empty until a day is focused or hovered (today's minutes sit in the practice figures).
   const caption = page.locator('#goal-caption');
   await expect(caption).toHaveAttribute('aria-hidden', 'true');
   await expect(caption).toHaveText('');
@@ -48,7 +49,7 @@ test('daily goal line and practice calendar render on Progress', async ({ page }
   // Hover shows the hovered day; leaving the calendar returns to the focused one, and blurring clears it.
   await days.nth(3).hover();
   await expect(caption).toHaveText(/^Wed, [A-Z][a-z]{2} \d{1,2} · 0 min$/);
-  await page.mouse.move(1200, 700);
+  await page.mouse.move(5, 5);
   await expect(caption).toHaveText(`${weekday}, ${month} ${date} · 0 min`);
   await weekAgo.evaluate((cell) => cell.blur());
   await expect(caption).toHaveText('');
@@ -126,6 +127,7 @@ test('Progress screenshots with ten weeks of seeded history', async ({ page, sup
   await openView(page, 'Progress');
   await openProgressView(page, 'Practice');
   await expectStreak(page, 5, /^today \d+ of 10 min$/);
+  await page.locator('#progress-back').click();
 
   // Goal-met days carry a mark beyond colour: the attribute, the label's words and an accent-ink centre dot.
   const days = page.locator('#goal-calendar .goal-day');
@@ -184,24 +186,26 @@ test('the calendar and its longest caption fit a 320px screen', async ({ page, s
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 320, height: 640 });
   await openView(page, 'Progress');
-  await openProgressView(page, 'Practice');
   const days = page.locator('#goal-calendar .goal-day');
-  const longest = await days.evaluateAll((cells) => cells.reduce((best, cell, i) => (cell.dataset.caption.length > cells[best].dataset.caption.length ? i : best), 0));
+  const longest = await days.evaluateAll((cells) => cells.reduce((best, cell, i) => (cell.getAttribute('aria-label').length > cells[best].getAttribute('aria-label').length ? i : best), 0));
   await days.nth(longest).focus();
   await expect(page.locator('#goal-caption')).toHaveText(/ · goal met$/);
   const width = await page.evaluate(() => document.documentElement.clientWidth);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
 
-  for (const selector of ['#goal-calendar', '#goal-caption', '#practice-stats']) {
+  // The newest weeks show and the oldest are clipped first; the tip stays on one line, inside the column.
+  for (const selector of ['.goal-scroll', '.calendar-tip']) {
     const box = await page.locator(selector).boundingBox();
     expect(box.x, selector).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width, selector).toBeLessThanOrEqual(width);
   }
 
-  // The caption stays on its one reserved line.
   const { height, line } = await page.locator('#goal-caption').evaluate((node) => ({ height: node.getBoundingClientRect().height, line: parseFloat(getComputedStyle(node).lineHeight) }));
   expect(height).toBeLessThanOrEqual(line + 1);
   await page.locator('#practice-goal').screenshot({ path: testInfo.outputPath('progress-goal-320.png') });
+  await openProgressView(page, 'Practice');
+  const stats = await page.locator('#practice-stats').boundingBox();
+  expect(stats.x + stats.width).toBeLessThanOrEqual(width);
 });
 
 // Custom text is never compared, and drills aren't trend runs, but both are real practice: their minutes
@@ -216,14 +220,13 @@ test('drills and a custom text run count toward daily practice but not the trend
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  // No test to compare, so the lead says so; the practice row and the calendar still count the drills.
+  // No test to compare, so the empty state says so; the calendar and the practice figures still count the drills.
   await expect(page.locator('#progress-empty')).toBeVisible();
   await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
-  await expect(page.locator('#week-movers .is-practice')).toContainText('day in a row');
-  await openProgressView(page, 'Practice');
-  await expectStreak(page, 1);
   await expect(page.locator(`#goal-calendar .goal-day[data-day="${dayKey(runs.at(-1).at)}"]`)).not.toHaveAttribute('data-level', '0');
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '0');
+  await openProgressView(page, 'Practice');
+  await expectStreak(page, 1);
   await openView(page, 'Practice');
   await chooseMore(page, 'mode-custom');
   await page.locator('#custom-text').fill(text);
@@ -233,10 +236,10 @@ test('drills and a custom text run count toward daily practice but not the trend
   await openView(page, 'Progress');
   await expect(page.locator('#week-lead')).toBeHidden();
   await expect(page.locator('#progress-empty-title')).toHaveText('Nothing to compare yet');
-  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
-  await expectStreak(page, 2, /^today (<1|\d+) min$/);
   await expect(page.locator('#goal-calendar .goal-day').last()).toHaveAttribute('data-level', '1');
+  await openProgressView(page, 'Practice');
+  await expectStreak(page, 2, /^today (<1|\d+) min$/);
 });
 
 // A client from before the calendar keeps practiceDays as an unknown field when it clears history, so a synced
@@ -253,10 +256,8 @@ test('archived practice days alone can be cleared from Progress or the palette, 
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
   const practised = page.locator('#goal-calendar .goal-day:not([data-level="0"])');
-  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(practised).toHaveCount(3);
-  await page.locator('#progress-back').click();
   await expect(page.locator('#clear-history')).toBeVisible();
   await expect(page.locator('#clear-history')).toBeEnabled();
   // The palette lists only enabled commands, so finding this one means it is offered.
@@ -271,7 +272,6 @@ test('archived practice days alone can be cleared from Progress or the palette, 
   await expect(page.locator('#clear-history')).toBeHidden();
   await page.locator('#undo-clear').click();
   await expect(page.locator('#clear-history')).toBeEnabled();
-  await openProgressView(page, 'Practice');
   await expect(page.locator('#practice-goal')).toBeVisible();
   await expect(practised).toHaveCount(3);
 });
@@ -378,13 +378,17 @@ test.describe('calendar on a touch device', () => {
     await chooseWords(page, 10);
     await completePassage(page);
     await openView(page, 'Progress');
-    await openProgressView(page, 'Practice');
     const picker = page.getByLabel('Practice day', { exact: true });
     await expect(picker).toBeVisible();
     expect((await picker.boundingBox()).height).toBeGreaterThanOrEqual(44);
     await expect(page.locator('#goal-calendar')).toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('#goal-calendar [tabindex]')).toHaveCount(0);
     const first = await picker.locator('option').first().getAttribute('value');
+    // A tap on a day shows its tip, as a hover does.
+    await page.locator('#goal-calendar .goal-day').last().tap();
+    await expect(page.locator('.calendar-tip .tip-runs')).toHaveText(/^1 run · best \d+ wpm$/);
+    await page.locator('#calendar-title').tap();
+    await expect(page.locator('.calendar-tip')).toBeHidden();
     await picker.focus();
     await picker.selectOption(first);
     await expect(page.locator('#goal-caption')).toHaveText(/^Sun, [A-Z][a-z]{2} \d{1,2} · 0 min$/);

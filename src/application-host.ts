@@ -2,7 +2,7 @@ import { createRunCopy } from './run-copy.js';
 import { createHistorySelection } from './history-selection.js';
 import { createLoopHistory } from './loop-history.js';
 import type { PaletteCommand } from './palette.js';
-import type { AppView } from './navigation.js';
+import type { AppView, NavigationPlacement } from './navigation.js';
 import type { InputClass, MinimumFailure } from './typing.js';
 import type { SealedRun, SessionKind } from './practice-session.js';
 import type { HistoricalRecord, ActivePreferences } from './profile-types.js';
@@ -26,6 +26,7 @@ import { createGhostLaunch } from './ghost-launch.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
+import { SIDE_BAR_KEY, SIDE_BAR_MEDIA, storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
 import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
@@ -64,7 +65,7 @@ import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
-import { renderSpeedGraph } from './graph.js';
+import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
 import { readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
@@ -73,8 +74,7 @@ import { boardColumn, boardCurrent, optOutPending } from './friends-board.js';
 import { forgetRace, listRaceInvites } from './multiplayer.js';
 import { listChallenges } from './ghost-race.js';
 import { FOCUSES } from './learner.js';
-import { isScoredRun } from './domain-history.js';
-import { CORRECTION_LABELS, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, filterRuns, missedAndSlowWords, practiceTextConditions, recurringMissedWords, trendRun } from './insights.js';
+import { CORRECTION_LABELS, correctionLabel, dayKey, recordPracticeTime, comparableKind, evidenceRun, missedAndSlowWords, practiceTextConditions, recentAverage, recurringMissedWords, trendRun } from './insights.js';
 import { formatSpeed, showSpeed, speedFigure } from './units.js';
 import {
   LESSONS, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
@@ -282,7 +282,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
 
-  const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
+  const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
     ...TRAINING_PREFERENCES];
 
   const runInProgress = () => runActive || localRaceRunning();
@@ -357,7 +357,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (!announcing.includes(message)) announcing.push(message);
   }
 
-  const { recipeLabel, recipeSummary, conditionTail, describeConditions, describeMinimums, stopReason, describeRun, inputLabel } = createRunCopy(learning, conditions);
+  const { recipeLabel, recipeSummary, describeConditions, describeMinimums, stopReason, describeRun, inputLabel } = createRunCopy(learning, conditions);
 
   const startedBy = (event: { pointerType?: string } | null) => (event?.pointerType && event.pointerType !== 'mouse' ? 'touch' : 'physical-keyboard');
 
@@ -419,14 +419,16 @@ export async function attachApplication({ practice, learning, palette, settings:
   function showBest() {
     const key = currentBestKey();
 
+    const average = key ? recentAverage(learning.profile.runs, key)?.wpm ?? null : null;
+
     if (key && (practice.attempt?.conditions || conditions()).mode === 'code') {
-      practice.presentIntro({ best: ['Code runs aren’t ranked'] });
+      practice.presentIntro({ best: ['Code runs aren’t ranked'], standing: { average, best: null } });
 
       return;
     }
 
     const best = key && learning.profile.bests[key];
-    practice.presentIntro({ best: copyParts(!key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet') });
+    practice.presentIntro({ best: copyParts(!key ? 'Not counted' : best ? ['Best · ', speedFigure(best.wpm)] : 'No best yet'), standing: { average, best: best ? best.wpm : null } });
   }
 
   function applyPreferences() {
@@ -438,6 +440,9 @@ export async function attachApplication({ practice, learning, palette, settings:
     document.body.dataset.liveMetrics = String(learning.preferences.liveMetrics);
     document.body.dataset.keyboard = String(learning.preferences.keyboard);
     document.body.dataset.focusMode = String(learning.preferences.focusMode);
+
+    if (navigation.placement(learning.preferences.navigation)) updateGlides({ instant: true });
+    followSideBar();
     selectSetting('font-size', String(learning.preferences.fontSize));
     selectSetting('word-highlight', learning.preferences.wordHighlight);
     selectSetting('word-highlight-slide', learning.preferences.wordHighlightSlide);
@@ -451,6 +456,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     selectSetting('correction-select', learning.preferences.correction);
     selectSetting('focus-toggle', String(learning.preferences.focusMode));
     selectSetting('tape-toggle', learning.preferences.tape);
+    selectSetting('navigation-select', learning.preferences.navigation);
     renderKeyboard();
     applySoundPreferences();
     applyTheme();
@@ -878,12 +884,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (mode === 'custom') wpm = learning.preferences.paceWpm;
     else if (mode === 'best') wpm = learning.profile.bests[key]?.wpm || null;
-    else if (mode === 'average' || mode === 'last') {
-    
-      const recent = trendRunsAt(key).slice(mode === 'last' ? -1 : -10);
-
-      if (recent.length) wpm = meanWpm(recent);
-    }
+    else if (mode === 'average' || mode === 'last') wpm = recentAverage(learning.profile.runs, key, { last: mode === 'last' ? 1 : 10 })?.wpm ?? null;
 
     const fromBest = mode === 'best' && Boolean(wpm);
     const fallback = !wpm;
@@ -976,9 +977,8 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (practice.sessionKind === 'retest') {
       switchView('train');
-      renderComparison(training.baseline, completed, saved);
-    
       scrollTo(0, 0);
+      renderComparison(training.baseline, completed, saved);
       $('comparison-status').focus({ preventScroll: true });
 
       return;
@@ -1067,8 +1067,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     const unsaved = saved || practice.sessionKind === 'retest' ? '' : 'Couldn’t save on this device.';
     const chars = characterBreakdown(completed, replay);
     const errors = replay.firstAttempts.filter((item) => !item.correct).length;
-    const recent = trendRun(completed) ? trendRunsAt(conditionKey(completed.conditions)).slice(-10) : [];
-    const best = learning.profile.bests[conditionKey(completed.conditions)]?.wpm;
+    const key = conditionKey(completed.conditions);
+    const before = trendRun(completed) && rateShown(completed) ? recentAverage(learning.profile.runs, key, { excluding: completed.id }) : null;
     const mined = evidenceRun(completed);
     const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
     const words = [...missed, ...slow.map((item) => item.word)];
@@ -1079,7 +1079,8 @@ export async function attachApplication({ practice, learning, palette, settings:
       accuracy: replay.score.accuracy, seconds: (replay.elapsedMs / 1000).toFixed(1),
       consistency: consistency(completed, replay) ?? null,
       accuracyTitle: plural(errors, 'first-try error') + ' · final c/i/e/m ' + chars.correct + '/' + chars.incorrect + '/' + chars.extra + '/' + chars.missed,
-      standing: recent.length < 2 || !best ? [] : copyParts(['average ', speedFigure(meanWpm(recent), { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]),
+      versus: before && { change: replay.score.wpm - before.wpm, average: before.wpm },
+      range: rateShown(completed) ? speedRange(speedSeries(completed)) : null,
       headline: copyParts(resultHeadline(completed)), conditions: copyParts(describeRun(completed)),
       note: copyParts([uncounted, uncounted && unsaved ? ' ' : '', unsaved]),
       words: wordHistory(completed, replay).map((item) => ({ ...item, wpm: rateShown(completed) ? item.wpm : null })),
@@ -1120,20 +1121,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (current) flushSync(() => practice.result.publish({ ...current, drillLabel: label }));
   }
 
-  function scrollablePath() {
-    const list = $('train-path');
-
-    if (list.scrollWidth > list.clientWidth + 1) list.tabIndex = 0;
-    else list.removeAttribute('tabindex');
-    pathEdges();
-  }
-
-  function pathEdges() {
-    const list = $('train-path');
-    list.toggleAttribute('data-more-behind', list.scrollLeft > 1);
-    list.toggleAttribute('data-more-ahead', list.scrollLeft < list.scrollWidth - list.clientWidth - 1);
-  }
-
   function switchView(view: AppView) {
     quoteFilters.dismiss();
     const previous = document.body.dataset.view;
@@ -1160,6 +1147,10 @@ export async function attachApplication({ practice, learning, palette, settings:
   }
 
   function navigate(view: AppView, { keep = false } = {}) {
+    // A screen opened from the navigation starts at its top. The last screen's offset can lie past the end of a
+    // shorter one, and WebKit on a phone leaves it there, painting the page past its end and the bottom bar off its taps.
+    if (document.body.dataset.view !== view) scrollTo({ top: 0, behavior: 'instant' });
+
     if (view === 'practice') {
 
       const waitingTraining = keep && document.body.dataset.view !== 'practice' && practice.attempt?.status === 'ready' && (practice.sessionKind === 'drill' || practice.sessionKind === 'retest');
@@ -1213,14 +1204,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     return race.attempt?.status === 'running' && !race.attempt.interrupted && document.body.dataset.view === 'compete';
   }
 
-  function trendRunsAt(key: string) {
-    return filterRuns(learning.profile.runs.filter(trendRun), key).filter((run): run is typeof run & import('./profile-types.js').ScoredRun => isScoredRun(run) && Boolean(run.score.wpm));
-  }
-
-  function meanWpm(runs: readonly import('./profile-types.js').ScoredRun[]) {
-    return Math.round(runs.reduce((sum, run) => sum + run.score.wpm, 0) / runs.length);
-  }
-
   function labelWords() {
     const result = practice.result.getSnapshot();
 
@@ -1231,15 +1214,10 @@ export async function attachApplication({ practice, learning, palette, settings:
     return at ? new Date(at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Earlier run · date unavailable';
   }
 
-  const renderTraining = learning.progress.patterns.refresh;
-  learning.progress.patterns.configure({ learning, conditions, describe: describeConditions, recommendation: trainingRecommendation, practice: practiceTarget, date: dateCopy });
-
   const plural = (count: number | undefined, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-  const narrowColumn = window.matchMedia('(max-width: 760px)');
-
-  const practiceProgress = createPracticeProgress(learning, { inputLayout, recipeSummary, conditionTail, dateCopy,
-    calendarWeeks: () => narrowColumn.matches ? 17 : 26, coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
+  const practiceProgress = createPracticeProgress(learning, { dateCopy,
+    coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
 
   const renderGoal = practiceProgress.goal;
 
@@ -1460,7 +1438,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       closeAccountMenu(); markInterrupted(NOTICES.deleteOpened); markRaceInterrupted();
     }, confirmed(deleted) {
       clearTimeout(sync.state.syncTimer); sync.state.syncTimer = 0; sync.state.unsynced = false;
-      inbox?.forget(); forgetRace(); friendsBoard?.forget(); accounts.session = null; account.forgetAccount(deleted); wipeHistory();
+      inbox?.forget(); forgetRace(); friendsBoard?.forget(); storeSideBarHidden(deleted?.user.id ?? null, false); accounts.session = null; account.forgetAccount(deleted); wipeHistory();
 
       try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
 
@@ -1556,6 +1534,7 @@ export async function attachApplication({ practice, learning, palette, settings:
         $('typing-input').focus({ preventScroll: false });
       },
       exitFocus() { learning.preferences.focusMode = false; applyPreferences(); saveProfile(); focusPractice(); },
+      toggleSideBar,
     });
     learning.commands.practice = () => { editors.customOpen = false; setModeControls(); resetSession('practice', { focus: true, leaveCompose: true }); };
 
@@ -1606,10 +1585,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     onSetting('drill-length', (value) => setTraining('drillSeconds', Number(value)));
     onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
     learning.progress.filters.commands.choose = chooseProgress;
-    learning.progress.commands.calendar = () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') });
     learning.progress.commands.showAll = progressHistory.showAll;
 
-    narrowColumn.addEventListener('change', () => renderGoal(), { signal: lifetime.signal });
     onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
     onSetting('typing-font', (value) => { learning.preferences.typingFont = value; applyFonts(); saveChoice('typingFont'); });
     onSetting('app-font', (value) => { learning.preferences.appFont = value; applyFonts(); saveChoice('appFont'); });
@@ -1651,6 +1628,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     settingsView.pace.configure({ changed(wpm) { learning.preferences.paceWpm = wpm; setPaceCaret('custom', { speed: true }); }, refresh: showPace });
     onSetting('focus-toggle', (value) => { learning.preferences.focusMode = value === 'true'; applyPreferences(); saveChoice('focusMode'); });
     onSetting('tape-toggle', (value) => { learning.preferences.tape = value === 'true'; applyPreferences(); saveChoice('tape'); });
+    onSetting('navigation-select', (value) => setNavigation(value === 'top' ? 'top' : 'side'));
     onSetting('sound-select', (value) => setSound(value));
   
     settingsView.onVolume((value) => setSoundVolume(value, { save: false }), () => saveChoice('soundVolume'));
@@ -1711,11 +1689,8 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-    learning.progress.commands.standard = () => setTestShape('standard');
     learning.progress.commands.movers = progressHistory.movers;
 
-    matchMedia('(pointer: coarse)').addEventListener('change', progressHistory.refreshKeys, { signal: lifetime.signal });
-    $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
   
     learning.commands.back = () => {
       if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
@@ -1854,6 +1829,49 @@ export async function attachApplication({ practice, learning, palette, settings:
     resetSession('practice', { focus: true, leaveCompose: true });
   }
 
+  // The side bar's state belongs to whoever is signed in on this device, or to the tab for a guest.
+  let sideBarOwner: string | null | undefined;
+
+  function followSideBar() {
+    const owner = accounts.session?.user.id ?? null;
+
+    if (owner === sideBarOwner) return;
+    sideBarOwner = owner;
+    navigation.sideBar(storedSideBarHidden(owner));
+  }
+
+  // The bar slides on its own layer; the page jumps to its new place and glides in from the old one with the bar's
+  // own transform transition (none under reduced motion), so nothing reflows mid-slide.
+  function slideSideBar(hidden: boolean) {
+    const page = $('main-content');
+    const before = page.getBoundingClientRect().left;
+    navigation.sideBar(hidden);
+    const shift = before - page.getBoundingClientRect().left;
+    const slide = getComputedStyle($('side-bar'));
+    const duration = parseFloat(slide.transitionDuration) * 1000;
+
+    if (shift && duration > 1) page.animate([{ transform: `translateX(${shift}px)` }, { transform: 'none' }], { duration, easing: slide.transitionTimingFunction.split(/,(?![^(]*\))/)[0] ?? 'ease' });
+    updateGlides({ instant: true });
+  }
+
+  function toggleSideBar() {
+    const hidden = !navigation.view.getSnapshot().sideHidden;
+    slideSideBar(hidden);
+    storeSideBarHidden(sideBarOwner ?? null, hidden);
+  }
+
+  function toggleSideBarCommand() {
+    toggleSideBar();
+
+    if (document.body.dataset.view === 'practice') focusPractice();
+  }
+
+  function setNavigation(placement: NavigationPlacement) {
+    learning.preferences.navigation = placement;
+    applyPreferences();
+    saveChoice('navigation');
+  }
+
   function togglePreference(key: 'keyboard' | 'liveMetrics' | 'focusMode' | 'tape') {
     learning.preferences[key] = !learning.preferences[key];
     applyPreferences();
@@ -1971,8 +1989,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (view === 'results' && practice.shownResult) renderResultDrill(practice.shownResult);
 
     if (view === 'train') renderTrain();
-
-    renderTraining();
 
     if (view === 'progress') renderWeek();
 
@@ -2132,7 +2148,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       ...([['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']] as const).map(([view, label]) => ({
         group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
       })),
-      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['keys', 'keys and pairs', 'heatmap patterns across runs'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'your standard score', 'standard test best median']] as const).map(([detail, label, keywords]) => ({
+      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['calendar', 'practice calendar', 'daily goal streak minutes days']] as const).map(([detail, label, keywords]) => ({
         group: 'go to', label, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
         run: () => { navigate('progress'); openProgressDetail(detail); },
       })),
@@ -2151,7 +2167,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       { group: 'test', label: 'book', keywords: `novel page read ${BOOKS.map((book) => book.name).join(' ')}`, hint: shape('book') ? 'current' : '', on: shape('book'), run: () => setTestShape('book') },
       { group: 'test', label: 'composing practice', keywords: 'compose write writing free typing prompt own words', hint: composeOpen ? 'current' : '', on: composeOpen, run: openCompose },
       { group: 'test', label: 'another prompt', keywords: 'compose composing writing new different prompt skip', disabled: !composeOpen, run: () => { switchView('practice'); compose.another(); } },
-      { group: 'test', label: 'standard test · 60 seconds', keywords: `standard score real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
+      { group: 'test', label: 'standard test · 60 seconds', keywords: `standard real world fixed recipe benchmark ${recipeLabel()}`, hint: shape('standard') ? 'current' : recipeLabel(), on: shape('standard'), run: () => setTestShape('standard') },
       { group: 'test', label: 'punctuation', keywords: 'capitals commas periods', hint: onOff(Boolean(learning.preferences.punctuation)), on: Boolean(learning.preferences.punctuation), disabled: fixedText, run: () => { learning.preferences.punctuation = !learning.preferences.punctuation; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
       { group: 'test', label: 'numbers', keywords: 'digits figures', hint: onOff(Boolean(learning.preferences.numbers)), on: Boolean(learning.preferences.numbers), disabled: fixedText, run: () => { learning.preferences.numbers = !learning.preferences.numbers; applyPreferences(); saveProfile(); resetSession(restartKind(), { focus: true }); } },
       ...wordListIds.map((id) => ({ group: 'test', label: `word list · top ${id}`, keywords: 'common words vocabulary 200 1000 5000 10000 monkeytype easier harder', hint: learning.preferences.wordList === id ? 'current' : '', on: learning.preferences.wordList === id, disabled: fixedText, run: () => inPractice((kind) => setWordList(id, kind)) })),
@@ -2178,6 +2194,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     
       ...([['off', 'off'], ['current', 'this word'], ['next', 'next word']] as const).map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: learning.preferences.wordHighlight === mode ? 'current' : '', on: learning.preferences.wordHighlight === mode, run: () => setWordHighlight(mode) })),
       { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(Boolean(learning.preferences.wordHighlightSlide)), on: learning.preferences.wordHighlightSlide, disabled: learning.preferences.wordHighlight === 'off', run: () => setWordHighlightSlide(!learning.preferences.wordHighlightSlide) },
+      ...(learning.preferences.navigation === 'side' ? [{ group: 'display', label: navigation.view.getSnapshot().sideHidden ? 'show side bar' : 'hide side bar', keywords: 'sidebar navigation panel collapse expand toggle menu', run: toggleSideBarCommand }] : []),
+      ...(['side', 'top'] as const).map((placement) => ({ group: 'display', label: `navigation · ${placement} bar`, keywords: 'sidebar topbar menu screens layout position move', hint: learning.preferences.navigation === placement ? 'current' : '', on: learning.preferences.navigation === placement, run: () => setNavigation(placement) })),
       { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(Boolean(learning.preferences.tape)), on: learning.preferences.tape, run: () => togglePreference('tape') },
       ...([['wpm', 'words'], ['cpm', 'characters']] as const).map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: learning.preferences.speedUnit === unit ? 'current' : '', on: learning.preferences.speedUnit === unit, run: () => setSpeedUnit(unit) })),
       { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(Boolean(learning.preferences.liveMetrics)), on: Boolean(learning.preferences.liveMetrics), run: () => togglePreference('liveMetrics') },
@@ -2257,7 +2275,18 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   addEventListener('resize', () => {
     relayoutText();
-    scrollablePath();
+  }, { signal: lifetime.signal });
+
+  const sideBarWidth = matchMedia(SIDE_BAR_MEDIA);
+  navigation.wide(sideBarWidth.matches);
+  sideBarWidth.addEventListener('change', () => navigation.wide(sideBarWidth.matches), { signal: lifetime.signal });
+
+  // The same person hiding or showing the side bar in another tab; a guest's state is the tab's own.
+  addEventListener('storage', (event) => {
+    if (!sideBarOwner || (event.key !== null && event.key !== SIDE_BAR_KEY + sideBarOwner)) return;
+    const hidden = storedSideBarHidden(sideBarOwner);
+
+    if (hidden !== navigation.view.getSnapshot().sideHidden) slideSideBar(hidden);
   }, { signal: lifetime.signal });
 
   document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); }, { signal: lifetime.signal });
@@ -2357,8 +2386,6 @@ export async function attachApplication({ practice, learning, palette, settings:
   setRunning(false);
 
   renderHistory();
-
-  renderTraining();
 
   renderDaily();
 

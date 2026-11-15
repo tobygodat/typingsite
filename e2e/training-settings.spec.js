@@ -144,23 +144,14 @@ test('each focus names its own target on the same history, and Patterns across r
     await openView(page, 'Train');
     await expect(page.locator('#train-heading')).toHaveText(`Practice “${target}”`);
     await expect(page.locator('#train-evidence')).toHaveText(evidence);
-
-    // Progress lists the same queue, its first row the target Train names, with the same evidence line.
-    await openView(page, 'Progress');
-    await openProgressDetail(page, 'keys');
-    const first = page.locator('#training-targets .training-target').first();
-    await expect(first.locator('h3')).toHaveText(`Practice “${target}”`);
-    await expect(first.locator('p').first()).toHaveText(evidence);
-    await expect(page.locator('#training-targets')).not.toContainText('slower than your median');
   }
 
   // Accuracy queues only units named on their misses; speed only pairs named on their pace.
   await chooseSetting(page, 'train-focus', 'accuracy');
   await closeSettings(page);
-  await openView(page, 'Progress');
-  await openProgressDetail(page, 'keys');
-  await expect(page.locator('#training-targets h3')).toHaveText(['Practice “an”']);
-  await page.locator('#training-targets').getByRole('button', { name: 'Practice “an” again' }).click();
+  await openView(page, 'Train');
+  await expect(page.locator('#train-heading')).toHaveText('Practice “an”');
+  await page.locator('#start-drill').click();
   await expect(page.locator('#session-title')).toHaveText('Practice “an”');
 });
 

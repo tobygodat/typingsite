@@ -1,8 +1,8 @@
-// Progress, "What changed" (TOB-420). A new guest's page, then accounts whose history another device synced, dated
-// from today: a week with a gain (two pairs fixed, one fixed by pace since its drill, practice down), one pair fixed,
-// nothing fixed with practice, runs a month old (no list), a week with a drop, a week with no change, and one week of
-// history only. Shots: each lead and list, the conditions control open, every detail view and the way back, a drill
-// from Patterns across runs, and Clear history then Undo.
+// Progress's lead cells on seeded weeks (TOB-420, TOB-470). A new guest's page, then accounts whose history another
+// device synced, dated from today: a week with a gain (two pairs fixed, one fixed by pace since its drill, practice
+// down), one pair fixed, nothing fixed with practice, runs a month old (no list), a week with a drop, a week with no
+// change, and one week of history only. Shots: each page, the conditions control open, every detail view and the way
+// back, and Clear history then Undo.
 // PROGRESS_ONLY=gain (or one, practice, quiet, drop, flat, week, guest) runs one account.
 import { englishFrequency } from '../../../../src/learner.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../../../../src/typing.js';
@@ -99,14 +99,14 @@ export default async ({ page, h, shot, note, check, fake }) => {
     await h.attr('#account', 'data-sync', 'synced');
     await h.openView('Progress');
     await h.settle();
-    note(`${shape} lead`, `${await h.text('#lead-figure')} | ${await h.text('#lead-sentence')} | ${await h.text('#lead-meta')} | ${await h.text('#lead-note')}`);
+    note(`${shape} lead`, `${await h.text('#lead-label')} ${await h.text('#lead-figure')} | ${await h.text('#lead-note')} | ${await h.text('#lead-sentence')}`);
     note(`${shape} movers`, JSON.stringify(await rows()));
     check(await sideways() <= 0, `${shape}: nothing scrolls sideways at ${width}`);
     await shot(shape);
 
-    if (shape === 'one') check(JSON.stringify(await rows()) === JSON.stringify(['qu:fixed', 'practice:less']) && await page.locator('#more-movers').isHidden(), 'one fixed pair, then practice, no "more"');
+    if (shape === 'one') check(JSON.stringify(await rows()) === JSON.stringify(['qu:fixed']) && await page.locator('#more-movers').isHidden(), 'one fixed pair, no "more"');
 
-    if (shape === 'practice') check(JSON.stringify(await rows()) === JSON.stringify(['practice:less']), 'practice alone');
+    if (shape === 'practice') check(JSON.stringify(await rows()) === '[]' && (await h.text('#lead-fixed .cell-figure')) === '0', 'nothing fixed, practice in its own cell');
 
     if (shape === 'quiet') check(await page.locator('#week-moved').isHidden() && await page.locator('#progress-more').isVisible(), 'no list, the links still there');
 
@@ -122,8 +122,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
     await page.locator('.conditions-disclosure > summary').click();
 
     // Each detail view, and the way back.
-    for (const [open, name] of [['[data-progress-open="runs"]', 'runs'], ['[data-progress-open="keys"]', 'keys'], ['[data-progress-open="calendar"]', 'calendar'],
-      ['[data-progress-open="standard"]', 'standard'], ['#week-speed button', 'trends']]) {
+    for (const [open, name] of [['[data-progress-open="runs"]', 'runs'], ['[data-progress-open="calendar"]', 'calendar'], ['#lead-fixed', 'fixed'], ['#week-speed button', 'trends']]) {
       await page.locator(open).first().click();
       await h.attr('#progress-screen', 'data-detail', name);
       await h.settle();
@@ -146,15 +145,5 @@ export default async ({ page, h, shot, note, check, fake }) => {
     await h.settle();
     check((await h.text('#lead-figure')).length > 0 && await page.locator('#week-lead').isVisible(), 'undone: the lead is back');
     await shot('undone');
-
-    // A named pair is drilled from Patterns across runs, one step away.
-    await page.locator('[data-progress-open="keys"]').click();
-    const target = page.locator('#training-targets .training-target').first();
-    const unit = (await target.locator('h3').textContent()).match(/“(.+)”/)[1];
-    await target.getByRole('button').click();
-    await h.attr('#typing-screen', 'data-session', 'drill');
-    note('drill title', await h.text('#session-title'));
-    check((await h.text('#session-title')) === `Practice “${unit}”`, `Practice “${unit}” again starts a drill on it`);
-    await shot('drill');
   }
 };

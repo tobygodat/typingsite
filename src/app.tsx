@@ -33,14 +33,30 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
   const shown = view.screen === 'results' ? 'practice' : view.screen;
   const restartLabel = bindingLabel(view.keys.restart);
 
+  // The footer sits where it is seen, so the tab order follows the eye: at the foot of the side bar, or of the page.
+  const footerInSideBar = view.placement === 'side' && view.wide;
+
+  const footer = <footer className="site-footer">
+    <PracticeBest practice={practice} />
+    <AccountGuestNote controller={accounts} />
+    <span className="footer-links">
+      <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog" onClick={() => suggestion.open()}>suggest a feature</button>
+      <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0" onClick={() => release.open()}>v0.5.0</button>
+    </span>
+  </footer>;
+
   return <>
   <a className="skip-link" href="#typing-input" onClick={(event) => { event.preventDefault(); navigation.skip(); }}>Skip to typing</a>
   <div id="wallpaper" className="wallpaper" hidden></div>
 
   <div className="app-shell">
-    <header className="dock-zone">
+    <div id="side-bar" className="dock-zone">
       <nav className="dock" aria-label="Main navigation">
         <a className={shown === 'practice' ? 'brand is-active' : 'brand'} href="#practice" data-nav="practice" aria-label="Stilltype practice" aria-current={shown === 'practice' ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigation.go('practice'); }}><span className="brand-word">stilltype</span><span className="brand-dot" aria-hidden="true">.</span></a>
+
+        <button id="side-bar-toggle" className="side-toggle" type="button" aria-controls="side-bar" aria-expanded={!view.sideHidden} aria-label={view.sideHidden ? 'Show side bar' : 'Hide side bar'} onClick={() => navigation.toggleSideBar()}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.6" /><path d="M5.75 5.5v5" /></svg>
+        </button>
 
         <div className="dock-nav glide" data-glide="current">
           <span className="glide-pill" aria-hidden="true"></span>
@@ -52,20 +68,24 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
 
         <span className="dock-sep" aria-hidden="true"></span>
 
-        <button id="settings-trigger" onClick={() => settings.open()} className="dock-command dock-settings" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog">
-            <svg className="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>
-            <span className="dock-label" aria-hidden="true">settings</span>
-        </button>
-
         <button id="palette-trigger" className="dock-command" type="button" aria-label="Commands" aria-haspopup="dialog" aria-controls="palette" aria-keyshortcuts={ariaShortcuts(view.keys.commands) || undefined} onClick={() => palette.open()}>
           <svg className="search-glyph" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+          <span className="dock-label" aria-hidden="true">commands</span>
+          <kbd className="dock-key key-hint" aria-hidden="true">{bindingLabel(view.keys.commands)}</kbd>
+        </button>
+
+        <button id="settings-trigger" onClick={() => settings.open()} className="dock-command dock-settings" type="button" aria-label="Settings" aria-haspopup="dialog" aria-controls="settings-dialog">
+          <svg className="settings-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></svg>
+          <span className="dock-label" aria-hidden="true">settings</span>
         </button>
       </nav>
-    </header>
 
-    <div className="corner">
-      <Inbox controller={inbox} />
-      <AccountMenu controller={accounts} />
+      <div className="corner">
+        <Inbox controller={inbox} />
+        <AccountMenu controller={accounts} />
+      </div>
+
+      {footerInSideBar && footer}
     </div>
 
     <main id="main-content">
@@ -129,14 +149,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
       <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} local={challenge.local} daily={challenge.daily} visible={shown === 'compete'} />
     </main>
 
-    <footer className="site-footer">
-      <PracticeBest practice={practice} />
-      <AccountGuestNote controller={accounts} />
-      <span className="footer-links">
-        <button id="suggest-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="suggest-dialog" onClick={() => suggestion.open()}>suggest a feature</button>
-        <button id="release-trigger" className="footer-link" type="button" aria-haspopup="dialog" aria-controls="release-dialog" aria-label="What’s new in v0.5.0" onClick={() => release.open()}>v0.5.0</button>
-      </span>
-    </footer>
+    {!footerInSideBar && footer}
   </div>
 
   <button id="exit-focus" className="btn btn-secondary exit-focus" type="button" onClick={() => navigation.exitFocus()} aria-keyshortcuts={ariaShortcuts(view.keys.exitFocus) || undefined}><kbd id="exit-focus-hint" className="key-hint">{bindingLabel(view.keys.exitFocus)}</kbd> exit focus</button>

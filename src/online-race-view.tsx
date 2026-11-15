@@ -1,6 +1,6 @@
 import { raceSetupText } from './race-options.js';
 import { Component, createRef, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
 import type { OnlineRaceController } from './online-race.js';
 import { roomStatus } from './online-race.js';
 import type { Friend, RacePlayer, RaceRoom } from './multiplayer.js';
@@ -28,30 +28,30 @@ export function OnlineRaceError({ controller }: Props) {
   return <p id="online-error" className="field-error" role="alert">{view.error}</p>;
 }
 
-export function OnlineRacePeople({ controller }: Props) {
+export function OnlineRacePeople({ controller, children }: Props & { children?: ReactNode }) {
   const view = useOnline(controller);
-  const people = view.controllers?.people;
-  const peopleView = useSyncExternalStore(people?.view.subscribe ?? noSubscription, people?.view.getSnapshot ?? emptyPeople, people?.view.getSnapshot ?? emptyPeople);
-  const hasLinkRow = peopleView.rows.some((row) => row.state === 'link');
 
   return <div id="challenge-people" className="people" hidden={view.mode !== 'people' || Boolean(view.room || view.joining)} onKeyDown={preventChallengeRepeat}>
-    {view.controllers && <><QuickMatch controller={view.controllers.quick} /><ChallengePeople controller={view.controllers.people} /></>}
-    <p id="people-status" className="online-copy people-status" role="status">{view.peopleStatus}</p>
-    <div className="people-foot"><div className="people-foot-group">
-      <button id="people-add" className="people-link" type="button" data-signed-in="" hidden={!view.signedIn} onClick={() => controller.show('add', { focus: true })}>Add a friend</button>
-      <button id="people-race-link" className="people-link" type="button" data-signed-in="" hidden={!view.signedIn || hasLinkRow} aria-disabled={view.busy || undefined} onClick={controller.raceLink}>Copy a race link</button>
-      <button id="people-setup" className="people-link people-setup-link" type="button" data-signed-in="" hidden={!view.signedIn} onClick={() => controller.show('setup', { focus: true })}>Race setup <span id="people-setup-conditions" className="people-conditions">{view.setupText}</span></button>
-      <button id="online-signin" className="people-link" type="button" data-guest="" hidden={view.signedIn} onClick={controller.signIn}>Sign in to keep friends</button>
-    </div><div className="people-foot-group">
-      <button id="open-daily" className="people-link" type="button" onClick={() => controller.show('daily', { focus: true })}>Daily passage</button>
-      <button id="open-local" className="people-link" type="button" onClick={() => controller.show('local', { focus: true })}>One keyboard</button>
-    </div></div>
+    <div className="challenge-panels">
+      {view.controllers && <QuickMatch controller={view.controllers.quick} />}
+      <section className="panel people-panel" aria-labelledby="people-heading">
+        <header className="panel-head"><h2 id="people-heading" className="panel-title">friends</h2>
+          <div className="people-tools">
+            <button id="people-setup" className="panel-select" type="button" data-signed-in="" hidden={!view.signedIn} onClick={() => controller.show('setup', { focus: true })}><span className="panel-select-label"><span className="sr-only">Race </span>setup</span> <span id="people-setup-conditions" className="people-conditions">{view.setupText}</span><Chevron /></button>
+            <button id="people-add" className="people-add" type="button" data-signed-in="" hidden={!view.signedIn} onClick={() => controller.show('add', { focus: true })}><Plus />Add a friend</button>
+          </div>
+        </header>
+        {view.controllers && <ChallengePeople controller={view.controllers.people} />}
+        <button id="online-signin" className="btn btn-secondary people-signin" type="button" data-guest="" hidden={view.signedIn} onClick={controller.signIn}>Sign in to keep friends</button>
+        <p id="people-status" className="online-copy people-status" role="status">{view.peopleStatus}</p>
+      </section>
+    </div>
+    {children}
   </div>;
 }
 
-const noSubscription = () => () => {};
-const emptyPeopleView: ReturnType<import('./challenge-people-view.js').PeopleController['view']['getSnapshot']> = { rows: [], now: 0, busy: false };
-const emptyPeople = () => emptyPeopleView;
+const Chevron = () => <svg className="panel-select-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" /></svg>;
+const Plus = () => <svg className="people-add-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" /></svg>;
 
 export function OnlineRaceBack({ controller }: Props) {
   return <button className="btn btn-ghost btn-sm challenge-back" type="button" data-challenge-back="" aria-label="Back to challenge" onClick={() => controller.show('people', { focus: true })}>Back</button>;
@@ -62,12 +62,14 @@ export function OnlineRaceAddFriend({ controller }: Props) {
   const email = useRef<HTMLInputElement>(null);
 
   return <section id="people-add-view" className="challenge-view" aria-labelledby="people-add-heading" hidden={view.mode !== 'add'} onKeyDown={preventChallengeRepeat}>
-    <OnlineRaceBack controller={controller} /><h2 id="people-add-heading" tabIndex={-1}>Add a friend</h2>
+    <OnlineRaceBack controller={controller} /><div className="panel">
+    <header className="panel-head"><h2 id="people-add-heading" className="panel-title" tabIndex={-1}>add a friend</h2></header>
     <form id="online-setup" className="online-setup" onSubmit={(event) => { event.preventDefault(); void controller.addFriend(); }}>
       <div className="player-field"><label htmlFor="online-invite-email">Their account email</label><input ref={email} id="online-invite-email" className="input" type="email" maxLength={254} required autoComplete="off" placeholder="name@example.com" value={view.email} onChange={(event) => controller.setEmail(event.target.value)} /></div>
       <div className="online-setup-actions"><button id="add-friend" className="btn btn-primary" type="submit" aria-disabled={view.changingFriends || undefined}>Add friend</button><button id="create-online-race" className="btn btn-ghost" type="button" aria-disabled={view.busy || undefined} onClick={() => { if (email.current?.reportValidity()) controller.raceOnce(); }}>Race once</button></div>
     </form>
     <FriendList controller={controller} friends={view.friends} busy={view.changingFriends} />
+    </div>
   </section>;
 }
 
@@ -112,7 +114,8 @@ export function OnlineRaceSetup({ controller }: Props) {
   }, [controller, setup, spec]);
 
   return <section id="people-setup-view" className="challenge-view" aria-labelledby="people-setup-heading" hidden={view.mode !== 'setup'} onKeyDown={preventChallengeRepeat}>
-    <OnlineRaceBack controller={controller} /><h2 id="people-setup-heading" tabIndex={-1}>Race setup</h2>
+    <OnlineRaceBack controller={controller} /><div className="panel">
+    <header className="panel-head"><h2 id="people-setup-heading" className="panel-title" tabIndex={-1}>race setup</h2></header>
     <div className="player-field online-name-field"><label htmlFor="online-name">Your race name</label><input id="online-name" className="input" type="text" maxLength={24} autoComplete="nickname" placeholder="Name" value={view.name} onChange={(event) => controller.setName(event.target.value)} /></div>
     <div id="online-options" className="online-options" role="group" aria-label="Race options">
       <div ref={modes} className="segmented glide mode-options" role="group" aria-label="Race mode" data-race-modes="" data-glide="pressed"><span className="glide-pill" aria-hidden="true"></span>{(['time', 'words', 'quote'] satisfies Array<typeof setup.mode>).map((mode) => <button key={mode} type="button" className={setup.mode === mode ? 'is-active' : undefined} data-mode={mode} aria-pressed={setup.mode === mode} onClick={() => controller.setMode(mode)}>{mode}</button>)}</div>
@@ -120,6 +123,7 @@ export function OnlineRaceSetup({ controller }: Props) {
       <label className="compact-switch" data-race-punctuation="" hidden={setup.mode === 'quote'}><input className="switch" type="checkbox" checked={Boolean(setup.punctuation)} onChange={(event) => controller.setPunctuation(event.target.checked)} /><span>punctuation</span></label>
     </div>
     <div className="online-actions"><button id="online-setup-done" className="btn btn-primary" type="button" onClick={() => controller.show('people', { focus: true })}>Done</button><button id="online-customize-reset" className="btn btn-ghost" type="button" hidden={!view.resetSetup} onClick={controller.matchPractice}>Match practice</button></div>
+    </div>
   </section>;
 }
 
@@ -189,8 +193,8 @@ export function OnlineRaceRoom({ controller }: Props) {
       <h2>You’re invited to race.</h2><div className="player-field"><label htmlFor="online-guest-name">Your race name</label><input id="online-guest-name" className="input" type="text" maxLength={24} required autoComplete="nickname" placeholder="Name" value={view.guestName} onChange={(event) => controller.setGuestName(event.target.value)} /></div>
       <div className="online-actions"><button id="join-online-race" className="btn btn-primary" type="submit" aria-disabled={view.busy || undefined}>Join race</button><button id="dismiss-race-invite" className="btn btn-ghost" type="button" onClick={controller.dismissGuest}>Cancel</button></div>
     </form>
-    <section id="online-room" className="online-room" aria-labelledby="online-room-heading" hidden={!room}>
-      <div className="online-section-heading"><h2 id="online-room-heading">Your race</h2><button id="online-leave" className="btn btn-ghost btn-sm" type="button" aria-disabled={view.busy || undefined} onClick={controller.close}>{closed ? 'Close race' : 'Leave race'}</button></div>
+    <section id="online-room" className="panel online-room" aria-labelledby="online-room-heading" hidden={!room}>
+      <div className="panel-head"><h2 id="online-room-heading" className="panel-title">your race</h2><button id="online-leave" className="btn btn-ghost btn-sm" type="button" aria-disabled={view.busy || undefined} onClick={controller.close}>{closed ? 'Close race' : 'Leave race'}</button></div>
       <p id="online-room-conditions" className="condition-copy">{room?.conditions?.mode ? raceSetupText(room.conditions) : ''}</p><p id="online-room-status" className="online-copy" role="status">{room ? roomStatus(room, view.finishRequested) : ''}</p>
       <p id="online-rating-change" className={`online-copy${carded ? ' sr-only' : ''}`} role="status" hidden={!result}>{result?.sentence || ''}</p>
       {view.controllers && <RankCard controller={view.controllers.rankCard} />}

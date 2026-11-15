@@ -28,7 +28,7 @@ test('the run card shows consistency, the counts behind accuracy and the words t
   // The breakdown describes the finished text: the fixed slip is a first-try error, not "incorrect".
   await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', finalChars(`${text.length}/0/0/0`));
-  await expect(page.locator('.run-card-facts dt')).toHaveText(['accuracy', 'time', 'consistency']);
+  await expect(page.locator('.run-card-facts dt')).toHaveText(['wpm', 'accuracy', 'time', 'consistency']);
   // The print scrolls with the page.
   expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('static');
 
@@ -59,7 +59,7 @@ test('the run card shows consistency, the counts behind accuracy and the words t
 });
 
 test('the words list is one tab stop whose words show their pace by keyboard', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1000, height: 800 });
   await openApp(page);
   // Enough words to run past the list's four lines in the wide trace.
   await chooseWords(page, 100);

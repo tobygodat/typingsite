@@ -458,10 +458,10 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await closeSettings(page);
     await expect(page.locator('#settings-dialog')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
-    // The label takes its own line, so the controls' rail stays centred under the dock.
+    // The label takes its own line, so the controls' rail stays centred in the page.
     const rail = await page.locator('.practice-rail').boundingBox();
-    const dock = await page.locator('.dock').boundingBox();
-    expect(Math.abs((rail.x + rail.width / 2) - (dock.x + dock.width / 2))).toBeLessThanOrEqual(2);
+    const column = await page.locator('#main-content').boundingBox();
+    expect(Math.abs((rail.x + rail.width / 2) - (column.x + column.width / 2))).toBeLessThanOrEqual(2);
     expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(rail.y + rail.height);
     await page.mouse.move(1270, 790);
     await shot(page, testInfo, `practice-${scheme}`);

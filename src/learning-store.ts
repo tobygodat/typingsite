@@ -3,10 +3,18 @@ import type { SyncedProfile } from './profile-copy.js';
 import type { CopyPart } from './practice-session.js';
 import type { ActivePreferences, HydratedProfile } from './profile-types.js';
 import type { trainPath } from './train-path.js';
+import type { TrainFigures } from './train-cost.js';
 import { createStore } from './store.js';
+
+// What the detail pane shows of a step beyond its figures: the start of its drill text, the learner's evidence line and
+// the missed words holding it (a step to do), or its read-back (a step behind you): `lines` say what its cells don't,
+// `told` what they already show, kept as the cells' description.
+export interface StepDetail { preview: string[]; evidence: string; words: string[]; lines: string[]; told: string[] }
 
 export interface TrainView {
   path: ReturnType<typeof trainPath>;
+  figures: TrainFigures;
+  details: ReadonlyMap<string, StepDetail>;
   named: boolean;
   next: boolean;
   hasComparison: boolean;

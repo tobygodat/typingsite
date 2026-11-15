@@ -1,7 +1,8 @@
 import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
-import { QUEUE_IDLE, queueStep, queued, ratingChangeLine, ratingLine } from './quick-match.js';
-import type { QueueEvent as DomainQueueEvent, QueueState, Rating } from './quick-match.js';
+import { GAUGE_SEGMENTS, QUEUE_IDLE, queueStep, queued, quickConditions, ratingChangeLine, ratingGauge, ratingLine } from './quick-match.js';
+import type { QueueEvent as DomainQueueEvent, QueueState, Rating, RatingGauge } from './quick-match.js';
+import { raceSetupText } from './race-options.js';
 import { quickMatch } from './multiplayer.js';
 import type { QuickMatchReply } from './multiplayer.js';
 import type { Session } from './network.js';
@@ -18,7 +19,7 @@ type LastRating = Extract<QuickMatchReply, { last?: object }>;
 
 type DisplayRating = Rating & { last?: LastRating['last'] };
 
-interface QuickMatchView { label: string; status: string; rating: string; lonely: boolean; best: boolean; signedIn: boolean }
+interface QuickMatchView { label: string; status: string; rating: string; gauge: RatingGauge | null; searching: boolean; lonely: boolean; best: boolean; signedIn: boolean }
 
 interface QuickMatchOptions {
   getSession(): Session | null;
@@ -35,7 +36,7 @@ type TimedEvent = Extract<QueueEvent, { now: number }>;
 type DispatchEvent = Exclude<QueueEvent, TimedEvent> | Omit<Extract<QueueEvent, { type: 'reply' }>, 'now'> | { type: 'tick' | 'keep-waiting' };
 
 export function createQuickMatch() {
-  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', lonely: false, best: false, signedIn: false });
+  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', gauge: null, searching: false, lonely: false, best: false, signedIn: false });
   let options: QuickMatchOptions | null = null;
   let state: QueueState = QUEUE_IDLE;
   let requests = Promise.resolve();
@@ -79,7 +80,8 @@ export function createQuickMatch() {
       case 'idle': status = lastResult(); break;
     }
 
-    flushSync(() => view.publish({ label: searching ? 'Stop looking' : 'Find a race', status, rating: getSession() ? ratingLine(rating) : '', lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
+    flushSync(() => view.publish({ label: searching ? 'Stop looking' : 'Find a race', status, rating: getSession() ? ratingLine(rating) : '', gauge: getSession() ? ratingGauge(rating) : null,
+      searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
 
     if (searching && !tickTimer) tickTimer = window.setInterval(() => dispatch({ type: 'tick' }), 1000);
     else if (!searching && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
@@ -197,12 +199,28 @@ export function createQuickMatch() {
 
 export type QuickMatchController = ReturnType<typeof createQuickMatch>;
 
+const STANDARD_SETUP = raceSetupText(quickConditions());
+
+// The rating as a figure, then the gauge. A screen reader hears the rating line instead, which says the same.
+function Gauge({ gauge }: { gauge: RatingGauge }) {
+  return <div className="quick-gauge" aria-hidden="true">
+    <p className="quick-figure num">{gauge.rating}</p>
+    <p className="quick-figure-label">rating · {gauge.rank ?? 'provisional'}</p>
+    <div className="gauge" data-quick-part="gauge" data-lit={gauge.lit}>{Array.from({ length: GAUGE_SEGMENTS }, (_, index) => <i key={index} className={index < gauge.lit ? 'is-lit' : undefined}></i>)}</div>
+    {gauge.note && <p className="quick-gauge-note">{gauge.note}</p>}
+  </div>;
+}
+
 export function QuickMatch({ controller }: { controller: QuickMatchController }) {
   const view = useSyncExternalStore(controller.view.subscribe, controller.view.getSnapshot, controller.view.getSnapshot);
 
-  return <section id="quick-match" className="quick-match" aria-labelledby="quick-match-heading">
-    <div className="quick-match-head"><h2 id="quick-match-heading" tabIndex={-1}>Quick match</h2><p className="quick-match-rating num" data-quick-part="rating" hidden={!view.rating}>{view.rating}</p><p className="quick-match-rating" data-guest="" hidden={view.signedIn}>Sign in to be matched.</p></div>
-    <button className="btn btn-primary quick-match-go" type="button" data-quick="toggle" data-quick-part="toggle" onClick={() => controller.press('toggle')}>{view.label}</button>
+  return <section id="quick-match" className="panel quick-match" aria-labelledby="quick-match-heading">
+    <header className="panel-head"><h2 id="quick-match-heading" className="panel-title" tabIndex={-1}>quick match</h2></header>
+    <p className="sr-only" data-quick-part="rating" hidden={!view.rating}>{view.rating}</p>
+    {view.gauge && <Gauge gauge={view.gauge} />}
+    <p className="quick-match-rating" data-guest="" hidden={view.signedIn}>Sign in to be matched.</p>
+    <p className="quick-match-setup" data-quick-part="setup">{STANDARD_SETUP}</p>
+    <button className={`btn ${view.searching ? 'btn-secondary' : 'btn-primary'} quick-match-go`} type="button" data-quick="toggle" data-quick-part="toggle" onClick={() => controller.press('toggle')}>{view.label}</button>
     <p className="online-copy quick-match-status" role="status" data-quick-part="status">{view.status}</p>
     <div className="online-actions quick-match-lonely" data-quick-part="lonely" hidden={!view.lonely}><button className="btn btn-ghost btn-sm" type="button" data-quick="keep" onClick={() => controller.press('keep')}>Keep waiting</button><button className="btn btn-ghost btn-sm" type="button" data-quick="best" data-quick-part="best" hidden={!view.best} onClick={() => controller.press('best')}>Race your best run</button></div>
   </section>;

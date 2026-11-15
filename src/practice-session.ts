@@ -33,7 +33,10 @@ export interface ResultView {
   seconds: string;
   consistency: number | null;
   accuracyTitle: string;
-  standing: CopyPart[];
+  // This run's wpm against the average before it, at its conditions: none without an earlier run.
+  versus: { change: number; average: number } | null;
+  // The trace's slowest and fastest point, a display figure only.
+  range: { low: number; high: number } | null;
   headline: CopyPart[];
   conditions: CopyPart[];
   note: CopyPart[];
@@ -45,9 +48,12 @@ export interface ResultView {
   graph: boolean;
 }
 
+// The average and best at the conditions on screen, in wpm: Practice's readout before a run.
+export interface Standing { average: number | null; best: number | null }
+
 interface PracticeIntroView {
   kind: SessionKind; kicker: string; title: string; description: string; conditions: CopyPart[];
-  best: CopyPart[]; caps: boolean | null; pace: CopyPart[]; paceVisible: boolean; egg: CopyPart[];
+  best: CopyPart[]; standing: Standing; caps: boolean | null; pace: CopyPart[]; paceVisible: boolean; egg: CopyPart[];
 }
 
 export interface PracticeControlsView {
@@ -102,7 +108,7 @@ export function createPracticeSession() {
   let origin: number | null = null;
   let purpose: SessionKind = 'practice';
   let displayed: SealedRun | null = null;
-  const intro = createStore<PracticeIntroView>({ kind: 'practice', kicker: 'open practice', title: 'Practice', description: '', conditions: ['english · common words · 30 s'], best: ['No best yet'], caps: null, pace: [], paceVisible: false, egg: [] });
+  const intro = createStore<PracticeIntroView>({ kind: 'practice', kicker: 'open practice', title: 'Practice', description: '', conditions: ['english · common words · 30 s'], best: ['No best yet'], standing: { average: null, best: null }, caps: null, pace: [], paceVisible: false, egg: [] });
   const presentIntro = (patch: Partial<Omit<PracticeIntroView, 'kind'>>) => flushSync(() => intro.publish({ ...intro.getSnapshot(), ...patch }));
   const result = createStore<ResultView | null>(null);
   const controls = createStore<PracticeControlsView>({ visible: true, minimums: [], minimumVisible: false, bookPage: 1, mode: 'time', lengthMode: 'time', lengthValue: 30, duration: 30, count: 25, punctuation: false, adaptive: false, custom: false, customOpen: false, manualOpen: false, composing: false, codeLanguage: 'js', standardRecipe: '' });

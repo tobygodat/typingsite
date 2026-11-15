@@ -1,7 +1,7 @@
 // Training settings (TOB-419, ADR 0015), signed in at words 50: the settings dialog's three training rows; three
 // passages typed with a 150 ms pause before the "h" of every "th" and the "n" of every "an" and "in" missed once; Train
-// and Patterns across runs in each focus on that history; a 15-second drill and its retest at speed, then Train's
-// two lines; the retest off; a 120-second drill. Run with --signed-in --delay 40.
+// in each focus on that history; a 15-second drill and its retest at speed, then Train's two lines; the retest off;
+// a 120-second drill. Run with --signed-in --delay 40.
 export default async ({ page, h, shot, note, check }) => {
   const choose = async (id, value) => {
     await h.openSettings('practice');
@@ -64,15 +64,6 @@ export default async ({ page, h, shot, note, check }) => {
     targets[focus] = { heading: await h.text('#train-heading'), evidence: await h.text('#train-evidence') };
     note(`train, ${focus}`, `${targets[focus].heading} · ${targets[focus].evidence}`);
     await shot(`train-${focus}`);
-
-    await h.openView('Progress');
-    await page.locator('#training-memory-heading').scrollIntoViewIfNeeded();
-    await h.settle();
-    const first = page.locator('#training-targets .training-target').first();
-    note(`patterns, ${focus}`, await page.locator('#training-targets').innerText());
-    check((await first.locator('h3').textContent()) === targets[focus].heading, `${focus}: Patterns across runs leads with Train's target`);
-    check((await first.locator('p').first().textContent()) === targets[focus].evidence, `${focus}: with Train's evidence line`);
-    await shot(`patterns-${focus}`);
   }
 
   check(targets.accuracy.heading !== targets.speed.heading, 'accuracy and speed name different targets on this history');

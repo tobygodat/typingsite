@@ -133,6 +133,8 @@ test('an account with no valid tape value starts on three lines and keeps the ta
 
 test('the tape steps by whole words near the right edge, never per letter', async ({ page }) => {
   test.setTimeout(60_000);
+  // A line over about 1060px, so a tenth of it is the lead rather than the fade and margin (src/tape.js).
+  await page.setViewportSize({ width: 1440, height: 720 });
   await openApp(page);
   await setTape(page, true);
   await chooseWords(page, 50);
