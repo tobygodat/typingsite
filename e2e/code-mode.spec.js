@@ -96,6 +96,7 @@ test('practising a code target keeps the prose punctuation, numbers and word lis
   await expect(page.locator('#punctuation-toggle')).not.toBeChecked();
   await expect(page.locator('#numbers-toggle input[value="true"]')).toBeChecked();
 
+  await chooseMore(page, 'mode-code');
   await openView(page, 'Train');
   await expect(page.locator('#train-current')).toContainText('th');
   await page.locator('#start-drill').click();

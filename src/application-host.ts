@@ -1215,10 +1215,8 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const plural = (count: number | undefined, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
-  const narrowColumn = window.matchMedia('(max-width: 760px)');
-
   const practiceProgress = createPracticeProgress(learning, { dateCopy,
-    calendarWeeks: () => narrowColumn.matches ? 17 : 26, coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
+    coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
 
   const renderGoal = practiceProgress.goal;
 
@@ -1586,10 +1584,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     onSetting('drill-length', (value) => setTraining('drillSeconds', Number(value)));
     onSetting('retest-toggle', (value) => setTraining('retest', value === 'true'));
     learning.progress.filters.commands.choose = chooseProgress;
-    learning.progress.commands.calendar = () => openProgressDetail('calendar', { opener: () => $('week-movers').querySelector('.is-practice .mover-link') });
     learning.progress.commands.showAll = progressHistory.showAll;
 
-    narrowColumn.addEventListener('change', () => renderGoal(), { signal: lifetime.signal });
     onSetting('font-size', (value) => { learning.preferences.fontSize = value; applyPreferences(); saveChoice('fontSize'); });
     onSetting('typing-font', (value) => { learning.preferences.typingFont = value; applyFonts(); saveChoice('typingFont'); });
     onSetting('app-font', (value) => { learning.preferences.appFont = value; applyFonts(); saveChoice('appFont'); });

@@ -333,7 +333,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       small.push(...await sweep(page, 'progress'));
 
       // Every view's own controls, one panel at a time.
-      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Keys', 'Speed']) {
+      for (const view of ['Accuracy', 'Consistency', 'Practice', 'Speed']) {
         await openProgressView(page, view);
         small.push(...await sweep(page, `progress, ${view.toLowerCase()} view`));
       }

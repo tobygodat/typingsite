@@ -1,17 +1,19 @@
 import { PROGRESS_DETAILS } from './progress-navigation.js';
 import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
-import { PracticeProgress } from './progress-calendar.js';
-import { ProgressRunRows, ProgressCompositions, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
+import { PracticeCalendarPanel, ProgressPracticeFigures } from './progress-calendar.js';
+import { ProgressRunRows, ProgressCompositions, ProgressCells, ProgressMovers, ProgressRunsPanel, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
+import { unitText } from './units.js';
 
+// Progress in the Instrument look (TOB-470): the conditions and the period, four lead cells, two charts, the practice
+// calendar and the newest runs, on one page. Everything else is a detail view one step away.
 export function ProgressScreen({ learning, visible = false }: { learning: LearningStore; visible?: boolean }) {
   const progress = learning.progress;
   const navigation = progress.navigation;
   const { detail, tab } = useSyncExternalStore(navigation.view.subscribe, navigation.view.getSnapshot, navigation.view.getSnapshot);
   const overview = useSyncExternalStore(progress.overview.subscribe, progress.overview.getSnapshot, progress.overview.getSnapshot);
-  const lead = useSyncExternalStore(progress.lead.subscribe, progress.lead.getSnapshot, progress.lead.getSnapshot);
   const movers = useSyncExternalStore(progress.movers.subscribe, progress.movers.getSnapshot, progress.movers.getSnapshot);
   const charts = useSyncExternalStore(progress.charts.subscribe, progress.charts.getSnapshot, progress.charts.getSnapshot);
   const filtersInDetail = ['runs', 'trends'].includes(detail);
@@ -22,55 +24,46 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
         <h1 id="progress-heading" className="sr-only" tabIndex={-1}>Progress</h1>
 
         <div id="progress-overview" className="progress-overview" hidden={Boolean(detail)}>
-          <div id="week-lead" className="week-lead" data-state={lead.state} data-tone={lead.tone} hidden={!overview.hasProgress}>
-            <ProgressLeadFigures progress={learning.progress} />
-            <div className="lead-context">
-              <ProgressLeadCopy progress={learning.progress} part="sentence" />
-              <div id="lead-meta" className="lead-meta">{!filtersInDetail && <ProgressFilters progress={learning.progress} />}</div>
-              <ProgressLeadCopy progress={learning.progress} part="note" />
-            </div>
+          <div className="progress-toolbar" hidden={!overview.hasProgress}>
+            {!filtersInDetail && <ProgressFilters progress={progress} />}
+            {!periodInDetail && <ProgressPeriodControl progress={progress} />}
           </div>
 
-          <div id="progress-empty" className="progress-empty" hidden={overview.hasProgress}>
-            <div className="week-lead" data-state="empty">
-              <p className="lead-figure" aria-hidden="true"><span className="lead-dash"></span></p>
-              <div className="lead-context">
-                <h2 id="progress-empty-title" className="lead-sentence focus-landing" tabIndex={-1}>Nothing to compare yet</h2>
-              </div>
-            </div>
+          <div hidden={!overview.hasProgress}><ProgressCells progress={progress} /></div>
+
+          <div id="progress-empty" className="panel progress-empty" hidden={overview.hasProgress}>
+            <h2 id="progress-empty-title" className="empty-title focus-landing" tabIndex={-1}>Nothing to compare yet</h2>
             <div className="empty-actions">
               <button className="btn btn-primary" type="button" data-action="go-practice" onClick={() => learning.commands.practice()}>Take a test</button>
             </div>
             <p className="first-run-learn">New to typing? <button className="quiet-link" type="button" data-action="open-lessons" onClick={() => learning.commands.openLessons()}>Learn to type</button>.</p>
           </div>
 
-          <div id="week-moved" className="week-moved" hidden={!movers.rows.length}>
-            <ProgressMovers progress={learning.progress} />
-            <button id="more-movers" className="quiet-link more-movers" type="button" aria-expanded={movers.open} aria-controls="week-movers" hidden={movers.extra < 1} onClick={() => progress.commands.movers()}>{movers.extra < 1 ? '' : movers.open ? 'Fewer' : `${movers.extra} more`}</button>
-          </div>
-
           <div id="week-charts" className="week-charts" hidden={!charts.visible}>
-            <div className="week-charts-head">
-              {!periodInDetail && <ProgressPeriodControl progress={learning.progress} />}
-            </div>
-            <div className="week-chart-pair">
+            <section className="panel chart-panel" aria-labelledby="week-speed-title">
+              <header className="panel-head"><h2 id="week-speed-title" className="panel-title">{unitText('{unit}')}</h2><span id="week-speed-runs" className="panel-count">{charts.runs} {charts.runs === 1 ? 'run' : 'runs'}</span></header>
               <div id="week-speed" className="week-chart-slot"></div>
+            </section>
+            <section className="panel chart-panel" aria-labelledby="week-accuracy-title">
+              <header className="panel-head"><h2 id="week-accuracy-title" className="panel-title">accuracy %</h2></header>
               <div id="week-accuracy" className="week-chart-slot"></div>
-            </div>
+            </section>
           </div>
 
-          <ProgressMore progress={learning.progress} />
+          <PracticeCalendarPanel controller={progress.calendar} onOpen={(opener) => navigation.open('calendar', { opener })} />
+
+          <ProgressRunsPanel progress={progress} />
         </div>
 
         <div id="progress-detail" className="progress-detail" hidden={!detail}>
           <div className="detail-head">
             <button id="progress-back" onClick={() => navigation.close()} className="btn btn-ghost btn-sm detail-back" type="button"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5" /></svg>Progress</button>
             <h2 id="progress-detail-heading" className="detail-heading focus-landing" tabIndex={-1}>{PROGRESS_DETAILS[detail]}</h2>
-            <div id="detail-filters" className="detail-filters">{filtersInDetail && <ProgressFilters progress={learning.progress} />}{periodInDetail && <ProgressPeriodControl progress={learning.progress} />}</div>
+            <div id="detail-filters" className="detail-filters">{filtersInDetail && <ProgressFilters progress={progress} />}{periodInDetail && <ProgressPeriodControl progress={progress} />}</div>
           </div>
 
           <section id="detail-runs" className="detail-panel" data-panel="runs" aria-labelledby="progress-detail-heading" hidden={detail !== 'runs'}>
-            <ProgressRunRows progress={learning.progress} />
+            <ProgressRunRows progress={progress} />
             <section className="progress-section" aria-labelledby="comparison-history-heading">
               <h3 id="comparison-history-heading">Drills and retests</h3>
               <HistoryLoops learning={learning} />
@@ -97,15 +90,21 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
           </section>
 
           <section id="detail-calendar" className="detail-panel" data-panel="calendar" aria-labelledby="progress-detail-heading" hidden={detail !== 'calendar'}>
-            <PracticeProgress controller={learning.progress.calendar} />
+            <ProgressPracticeFigures controller={progress.calendar} />
+            <div id="practice-runs" className="practice-runs"></div>
+          </section>
+
+          <section id="detail-fixed" className="detail-panel" data-panel="fixed" aria-labelledby="progress-detail-heading" hidden={detail !== 'fixed'}>
+            <div id="week-moved" className="week-moved" hidden={!movers.rows.length}>
+              <ProgressMovers progress={progress} />
+              <button id="more-movers" className="quiet-link more-movers" type="button" aria-expanded={movers.open} aria-controls="week-movers" hidden={movers.extra < 1} onClick={() => progress.commands.movers()}>{movers.extra < 1 ? '' : movers.open ? 'Fewer' : `${movers.extra} more`}</button>
+            </div>
           </section>
 
           <section id="compose-history" className="detail-panel compose-history" data-panel="compose" aria-labelledby="progress-detail-heading" hidden={detail !== 'compose'}>
-            <ProgressCompositions progress={learning.progress} />
+            <ProgressCompositions progress={progress} />
           </section>
         </div>
-
-
       </section>
   );
 }

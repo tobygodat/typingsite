@@ -80,6 +80,9 @@
   --panel-inset: 14px;
   --text-caption: 11px;
   --text-figure: 26px;
+  /* Progress (TOB-470): its compact controls on a fine pointer, and a calendar day. */
+  --progress-control: 34px;
+  --calendar-cell: 14px;
   --disabled-opacity: 0.38;
   --settings-height: 704px;
   --settings-body-height: 520px;
@@ -3048,35 +3051,41 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .figure-percent { margin-inline-start: calc(var(--space-1) * -1); }
 .figure-note { color: var(--muted); font-size: var(--text-small); }
 .view-panel:focus-visible { outline-offset: var(--space-2); }
-/* Daily goal: static calendar, accent at four steps (--practice-level-1…3, then --accent); empty days sit on the hairline. */
-.practice-goal { display: grid; gap: var(--space-8); }
-/* The calendar fills the column, the practice figures in one row under it. */
-.practice-layout { display: grid; gap: var(--space-8); }
-.practice-calendar { min-width: 0; display: grid; gap: var(--space-3); }
+/* Practice calendar (TOB-470): a year of days in week columns, Sunday first, at four accent steps (--practice-level-1…3,
+   then --accent); empty days sit on the hairline. Each day keeps its size, and where the panel is narrower than a year
+   the oldest weeks fall outside the scroller's start, which shows the newest. */
 .practice-stats { margin: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-6); }
-.goal-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: ". months" "weekdays calendar"; gap: var(--space-1) var(--space-2); }
-.goal-months { grid-area: months; display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); gap: var(--space-1); color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); white-space: nowrap; }
-.goal-weekdays { grid-area: weekdays; display: grid; grid-template-rows: repeat(7, minmax(0, 1fr)); gap: var(--space-1); align-items: center; color: var(--muted); font: var(--text-fine)/1 var(--font-mono); }
-.goal-calendar {
-  grid-area: calendar;
-  display: grid; grid-template-columns: repeat(var(--weeks, 26), minmax(0, 1fr)); grid-template-rows: repeat(7, auto); grid-auto-flow: column;
-  gap: var(--space-1);
-}
-.goal-legend { margin: 0; justify-self: end; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font-size: var(--text-label); }
-.goal-legend span { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-cell); background: var(--hairline); }
+.practice-calendar { position: relative; min-width: 0; display: grid; gap: var(--space-3); }
+.goal-chart { display: flex; gap: var(--space-2); min-width: 0; }
+.goal-weekdays { flex: none; display: grid; grid-template-rows: repeat(7, var(--calendar-cell)); gap: var(--space-1); padding-top: calc(var(--calendar-cell) + var(--space-2)); color: var(--muted); font: var(--text-caption)/var(--calendar-cell) var(--font-mono); }
+.goal-scroll { min-width: 0; display: flex; flex-direction: row-reverse; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.goal-scroll::-webkit-scrollbar { display: none; }
+.goal-weeks { flex: none; display: grid; gap: var(--space-2); }
+.goal-months { display: grid; grid-template-columns: repeat(var(--weeks, 53), var(--calendar-cell)); gap: var(--space-1); color: var(--muted); font: var(--text-caption)/var(--calendar-cell) var(--font-mono); white-space: nowrap; }
+.goal-calendar { display: grid; grid-template-columns: repeat(var(--weeks, 53), var(--calendar-cell)); grid-template-rows: repeat(7, var(--calendar-cell)); grid-auto-flow: column; gap: var(--space-1); }
+.goal-legend { margin: 0; justify-self: end; display: flex; align-items: center; gap: var(--space-1); color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); }
+.goal-legend span { width: var(--calendar-cell); height: var(--calendar-cell); border-radius: var(--radius-cell); background: var(--hairline); }
 .goal-legend span:first-child { margin-left: var(--space-1); }
 .goal-legend span:last-child { margin-right: var(--space-1); }
 .goal-day-picker { display: none; }
 .goal-day-picker .input { width: 100%; min-width: 0; max-width: 100%; }
-.goal-day { aspect-ratio: 1; display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
+.goal-day { display: grid; place-items: center; border-radius: var(--radius-cell); background: var(--hairline); }
 :is(.goal-day, .goal-legend span)[data-level="1"] { background: var(--practice-level-1); }
 :is(.goal-day, .goal-legend span)[data-level="2"] { background: var(--practice-level-2); }
 :is(.goal-day, .goal-legend span)[data-level="3"] { background: var(--practice-level-3); }
 :is(.goal-day, .goal-legend span)[data-level="4"] { background: var(--accent); }
 /* Goal met: a centre dot in accent-ink (≥3:1 on both green steps in both themes), so it never rests on colour alone. */
 .goal-day[data-goal="met"]::after { content: ""; width: var(--space-1); height: var(--space-1); border-radius: var(--radius-full); background: var(--accent-ink); }
-/* The focused or hovered day, in words. One line is reserved so the page below never shifts. */
-.goal-caption { min-height: 1lh; margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums; }
+.goal-day:focus-visible { outline-offset: 1px; }
+@media (hover: hover) and (pointer: fine) {
+  .goal-day:hover { outline: 1.5px solid var(--text); outline-offset: 1px; }
+}
+/* The hovered, focused or picked day in words, over its cell. It appears and moves at once: scanning days should
+   feel instant, and the keyboard moves it many times a minute. */
+.calendar-tip { position: absolute; top: 0; left: 0; z-index: 2; display: grid; gap: 1px; padding: 6px 9px; border-radius: var(--radius-sm); background: var(--text); color: var(--ground); box-shadow: var(--shadow-float); font-size: var(--text-fine); line-height: 1.35; white-space: nowrap; pointer-events: none; font-variant-numeric: tabular-nums; }
+.calendar-tip[hidden] { display: none; }
+.tip-runs { font-weight: 600; }
+.goal-caption { margin: 0; opacity: 0.75; }
 .filter-field { min-width: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
 .filter-field select { width: 100%; max-width: 100%; text-overflow: ellipsis; }
 .progress-trend { display: grid; gap: 0; }
@@ -3112,74 +3121,75 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .daily-challenge { padding: var(--space-8) 0; border-top: 1px solid var(--hairline); }
 .daily-challenge h2 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 
-/* Progress (TOB-420): what changed since last week. No visible heading: the dock names the page. The lead figure,
-   then the list of what moved it, then two small charts, then quiet links to everything else, each a detail view
-   one step away. Rules and space, no boxes. */
-.progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
-.progress-overview > [hidden], .progress-detail > [hidden] { display: none; }
+/* Progress (TOB-420, TOB-470): the conditions and the period, four lead cells, two charts, the practice calendar and
+   the newest runs, in panels on one page. Everything else is a detail view one step away. */
+.progress-screen { padding-top: var(--space-6); }
+.progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-content: start; }
+.progress-detail { gap: var(--space-8); }
+.progress-overview > [hidden], .progress-detail > [hidden], .progress-toolbar[hidden] { display: none; }
 
-.week-lead { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: var(--space-3) var(--space-8); padding-top: var(--space-6); }
-/* The run card's numeral: the same size, weight, leading and tracking. */
-.lead-figure { margin: 0; display: flex; align-items: baseline; gap: var(--space-2); font-family: var(--font-app); font-size: var(--text-numeral); font-weight: 400; line-height: 0.76; letter-spacing: -0.035em; white-space: nowrap; }
-.lead-unit { color: var(--muted); font-size: var(--text-lead); font-style: italic; letter-spacing: 0; }
-.week-lead[data-tone="gain"] .lead-number { color: var(--accent); }
-.week-lead[data-tone="drop"] .lead-number { color: var(--danger); }
-/* No figure to state: a muted rule where the number would stand, at the numeral's baseline. */
-.lead-dash { display: block; width: var(--space-16); height: var(--space-1); border-radius: var(--radius-full); background: var(--outline); }
-.week-lead:has(.lead-dash) { align-items: center; }
-.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.progress-empty { display: grid; justify-items: start; gap: var(--space-6); }
-.progress-empty[hidden] { display: none; }
-.lead-context { min-width: 0; display: grid; gap: var(--space-2); padding-bottom: var(--space-2); }
-.lead-sentence { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
-.lead-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--space-2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.lead-sample:not([hidden])::after { content: "·"; margin-inline: var(--space-2); }
-.conditions-disclosure > summary::after { display: inline-block; margin-left: var(--space-2); }
-.detail-filters .lead-sample { display: none; }
-.lead-note { margin: 0; max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
-.trend-figures { margin: var(--space-4) 0 0; color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.trend-figures > span { white-space: nowrap; }
+.progress-toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
 .progress-filters { min-width: 0; max-width: 100%; display: flex; align-items: center; }
 .progress-filters[hidden] { display: none; }
 .conditions-disclosure { min-width: 0; max-width: 100%; }
-/* The line reads as text, so a long line wraps like one and the chevron trails its last word. The padding keeps a
-   44px target. */
-.conditions-disclosure > summary { display: block; padding-block: calc((var(--control) - 1lh) / 2); color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); cursor: pointer; list-style: none; transition: color var(--dur-quick) var(--ease-out); }
-.conditions-disclosure > summary::-webkit-details-marker { display: none; }
-.conditions-disclosure > summary:hover { color: var(--text); }
-.conditions-panel { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-2); padding-bottom: var(--space-2); }
+/* The conditions line is the control: a quiet box that opens the lengths and condition sets under it. */
+.conditions-disclosure > summary { display: flex; align-items: center; gap: var(--space-2); min-height: var(--progress-control); max-width: 100%; padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ground-2); color: var(--text); font-size: var(--text-label); cursor: pointer; list-style: none; }
+.conditions-disclosure > summary::-webkit-details-marker, .conditions-disclosure > summary::after { display: none; }
+.conditions-chevron { flex: none; width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; color: var(--muted); transition: transform var(--dur-quick) var(--ease-out); }
+.conditions-disclosure[open] .conditions-chevron { transform: rotate(180deg); }
+.progress-conditions { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.conditions-disclosure[open] { display: grid; justify-items: start; }
+/* Open, the lengths and condition sets sit under the line in place, so nothing on the page is covered. */
+.conditions-panel { max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid var(--hairline-strong); border-radius: var(--radius); background: var(--raised); }
 .conditions-panel > * { max-width: 100%; }
 #progress-tests:empty { display: none; }
-.progress-conditions { margin: 0; }
 
-.week-movers { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
-.mover {
-  display: grid; grid-template-columns: calc(var(--space-16) * 2) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-6);
-  min-height: calc(var(--control) + var(--space-6)); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline);
+/* The period: three choices in one quiet box, the chosen one raised. */
+.period-row { display: inline-flex; flex: none; padding: 2px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ground-2); }
+.period-option { min-height: calc(var(--progress-control) - 6px); padding: 0 var(--space-3); border: 0; border-radius: var(--radius-cell); background: none; color: var(--muted); font-size: var(--text-label); white-space: nowrap; cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out); }
+.period-option[aria-pressed="true"] { background: var(--raised-2); color: var(--text); }
+.period-option:active, .quiet-action:active { transform: scale(0.97); }
+
+/* The lead cells. The wpm cell's change is in the accent for a gain and coral for a drop. Practice and fixed open their
+   views, so they are buttons that look like the cells beside them. */
+.week-cells .cell { display: block; }
+.week-cells .cell-value { display: flex; align-items: baseline; margin-top: var(--space-1); }
+.week-cells .cell-note { min-height: 1lh; }
+.week-cells .cell-label, .week-cells .cell-note { display: block; }
+.lead-note { margin: var(--space-1) 0 0; }
+.lead-note[hidden] { display: block; visibility: hidden; }
+.lead-cell[data-tone="gain"] .lead-change { color: var(--accent); }
+.lead-cell[data-tone="drop"] .lead-change { color: var(--danger); }
+.lead-dash { color: var(--muted); }
+.cell-link { width: 100%; border-block: 0; border-right: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out); }
+.cell-link:first-child { border-left: 0; }
+.cell-link:active { background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) {
+  .cell-link:hover { background: var(--raised-2); }
 }
-.mover[hidden] { display: none; }
-.mover-unit { font-size: var(--text-title); font-weight: 400; line-height: 1.2; overflow-wrap: anywhere; }
-.mover-change { margin: 0; font-size: var(--text-lead); line-height: 1.4; }
-.mover-before, .mover-arrow, .mover-tail { color: var(--muted); }
-.mover.is-fixed .mover-after { color: var(--accent); }
-.mover-status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.is-practice .mover-unit, .is-practice .mover-change { color: var(--muted); }
-.is-practice .mover-unit { font-size: var(--text-lead); }
-.mover-link { min-height: var(--control); padding: 0; border: 0; background: none; color: var(--muted); font-family: var(--font-app); text-align: start; cursor: pointer;
-  text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 0.2em; transition: color var(--dur-quick) var(--ease-out); }
-.mover-link:hover { color: var(--text); text-decoration-color: currentColor; }
-.more-movers { justify-self: start; margin-top: calc(var(--space-6) * -1); }
 
-.week-charts-head { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
-.week-chart-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-10); }
-.week-chart-slot { min-width: 0; }
-.week-chart { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--radius-control); background: none; color: inherit; cursor: pointer; }
+.empty-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.progress-empty { display: grid; justify-items: start; gap: var(--space-4); padding: var(--space-10) var(--space-6); }
+.progress-empty[hidden] { display: none; }
+.empty-title { margin: 0; font-size: var(--text-lead); font-weight: 500; line-height: 1.3; }
+
+.panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.panel-count { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+.week-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+.week-charts[hidden] { display: none; }
+.week-chart-slot { --week-chart-height: 220px; min-width: 0; }
+.week-chart { display: block; width: 100%; padding: 0; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; cursor: pointer; }
 .week-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.week-chart:hover .trend-rule { stroke: var(--outline); }
-.week-chart-end { fill: var(--ground); stroke: var(--accent); stroke-width: 2; }
-.week-chart-value { fill: var(--text); font: var(--text-lead) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-.week-chart-unit { fill: var(--muted); font-size: var(--text-small); }
-.week-chart-runs { fill: var(--muted); font: var(--text-label) var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+@media (hover: hover) and (pointer: fine) {
+  .week-chart:hover .trend-rule { stroke: var(--outline); }
+}
+.week-chart-runs circle { fill: var(--muted); opacity: 0.45; }
+.week-chart-fill { fill: var(--accent); opacity: 0.07; }
+.week-chart-end { fill: var(--ground-2); stroke: var(--accent); stroke-width: 2; }
 /* Speed draws in the accent, accuracy in the text colour, so the two small charts read apart at a glance. */
 .trend-line.trend-accuracy, .week-chart-end.trend-accuracy, .trend-dot.trend-accuracy { stroke: var(--text); }
 
@@ -3194,22 +3204,70 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 .trend-dot.trend-accuracy:is(:hover, :focus) { fill: var(--text); }
 
-.progress-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-top: var(--space-6); border-top: 1px solid var(--hairline); }
+/* Runs: speed first, a crown on a run that was a best when typed. */
+.runs-table { width: 100%; border-collapse: collapse; font-size: var(--text-label); font-variant-numeric: tabular-nums; }
+.runs-table th { width: 25%; padding: 0 var(--space-4) var(--space-2) 0; color: var(--muted); font: 400 var(--text-mono)/1.5 var(--font-mono); text-align: start; }
+.runs-table td { padding: var(--space-2) var(--space-4) var(--space-2) 0; border-top: 1px solid var(--hairline); white-space: nowrap; }
+.runs-table :is(th, td):last-child { padding-right: 0; }
+.runs-speed data { display: inline-block; min-width: 3ch; font: 500 var(--text-small)/1.2 var(--font-mono); }
+.runs-accuracy { font: 400 var(--text-mono)/1.2 var(--font-mono); }
+.pb { display: inline-flex; margin-left: 6px; vertical-align: -2px; color: var(--accent); }
+.pb-icon { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.pb-crown { fill: currentColor; }
+.runs-empty { margin: 0; color: var(--muted); font-size: var(--text-label); }
+.progress-more { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); margin-top: var(--space-2); }
 .progress-more > [hidden] { display: none; }
 .progress-more:not(:has(> :not([hidden]))) { display: none; }
-.progress-more .btn-ghost { padding-inline: var(--space-4); }
-.clear-history { margin-left: auto; }
+/* A quiet text action: the runs panel's links and Clear history. */
+.quiet-action { min-height: var(--progress-control); padding: 0; border: 0; background: none; color: var(--muted); font-size: var(--text-label); cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .quiet-action:hover { color: var(--text); }
+}
+
+.week-movers { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.mover {
+  display: grid; grid-template-columns: calc(var(--space-16) * 2) minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-6);
+  min-height: calc(var(--control) + var(--space-6)); padding: var(--space-3) 0; border-bottom: 1px solid var(--hairline);
+}
+.mover[hidden] { display: none; }
+.mover-unit { font-size: var(--text-title); font-weight: 400; line-height: 1.2; overflow-wrap: anywhere; }
+.mover-change { margin: 0; font-size: var(--text-lead); line-height: 1.4; }
+.mover-before, .mover-arrow, .mover-tail { color: var(--muted); }
+.mover.is-fixed .mover-after { color: var(--accent); }
+.mover-status { font: 500 var(--text-mono)/1.3 var(--font-mono); letter-spacing: 0.02em; }
+.more-movers { justify-self: start; margin-top: var(--space-4); }
+.week-moved { display: grid; }
+.week-moved[hidden] { display: none; }
+
+@media (max-width: 760px) {
+  .week-charts { grid-template-columns: minmax(0, 1fr); }
+  .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mover { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "unit status" "change change"; row-gap: var(--space-1); }
+  .mover-unit { grid-area: unit; }
+  .mover-change { grid-area: change; }
+  .mover-status { grid-area: status; justify-self: end; }
+}
+/* On a phone the kind column gives way; each run's kind is in the full list. */
+@media (max-width: 420px) {
+  .runs-table :is(th, td):nth-child(4) { display: none; }
+  .runs-table :is(th, td):nth-child(3) { padding-right: 0; }
+}
+@media (any-pointer: coarse) {
+  .progress-screen { --progress-control: var(--control); }
+  .period-option, .quiet-action { min-width: var(--control); min-height: var(--control); }
+}
 
 .detail-head { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: start; gap: var(--space-3); padding-top: var(--space-4); }
 .detail-back { padding-left: var(--space-2); gap: var(--space-1); }
 .detail-back svg { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.detail-heading { margin: 0; font-size: var(--text-display); font-weight: 400; line-height: 1.05; letter-spacing: -0.025em; }
+.detail-heading { margin: 0; font-size: var(--text-title); font-weight: 500; line-height: 1.1; letter-spacing: -0.02em; }
 /* Where Progress moves focus for someone (.focus-landing) the ring follows their last input, a key or a pointer (TOB-448). */
 .focus-landing:focus:not([data-focus-ring]) { outline: none; }
-.detail-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); width: 100%; }
+.detail-filters { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--space-3); width: 100%; }
 .detail-filters:empty { display: none; }
-.detail-filters .lead-meta { font: inherit; }
 .view-tabs { margin-bottom: var(--space-6); }
+#detail-calendar:not([hidden]) { display: grid; gap: var(--space-8); }
 .detail-panel h3 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 .progress-section { padding: var(--space-8) 0 0; margin-top: var(--space-8); border-top: 1px solid var(--hairline); }
 
@@ -4151,9 +4209,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @media (max-width: 360px) {
   /* "Drill and retest" is wider than half the card. */
   .result-buttons { grid-template-columns: 1fr; }
-  /* Eighteen weeks fill the 288px column, so the weekday names give way. */
-  .goal-weekdays { display: none; }
-  .goal-chart { grid-template-columns: auto; grid-template-areas: "months" "calendar"; }
   /* The mode buttons tighten so each wrapped row fits the 288px column. */
   .segmented button { padding: 0 var(--space-1); font-size: var(--text-label); }
   /* The full words don't fit beside settings and commands, so the dock shows its short verbs.
@@ -4226,23 +4281,11 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   }
   .progress-screen .pill-row::-webkit-scrollbar { display: none; }
   .progress-screen .pill-row > * { flex: none; }
-  .practice-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .figure-value { font-size: var(--text-title); }
-  .week-lead { grid-template-columns: minmax(0, 1fr); padding-top: 0; }
-  .lead-figure { font-size: var(--text-numeral-mobile); }
-  .lead-context { padding-bottom: 0; }
-  .mover { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "unit status" "change change"; row-gap: var(--space-1); }
-  .mover-unit { grid-area: unit; }
-  .mover-change { grid-area: change; }
-  .mover-status { grid-area: status; justify-self: end; }
-  .week-chart-pair { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
-  .detail-heading { font-size: var(--text-title); }
-  .practice-layout, .progress-spread { grid-template-columns: minmax(0, 1fr); }
+  .progress-spread { grid-template-columns: minmax(0, 1fr); }
   .progress-spread { gap: var(--space-8); }
   .trend-figure { grid-template-columns: minmax(0, 1fr); }
   .trend-legend { margin-bottom: var(--space-3); }
-  .training-target { grid-template-columns: 1fr; }
-  .training-target button { justify-self: start; }
   .daily-heading { flex-direction: column; }
   .friends-board-lists { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); }
 }
@@ -4255,10 +4298,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .duel-side:is([data-outcome="lost"], [data-outcome="unchecked"]) .duel-wpm { font-size: var(--text-title); }
   .duel-unit, .duel-accuracy { font-size: var(--text-small); }
   .duel-tally { font-size: var(--text-title); gap: var(--space-1); }
-}
-
-@media (max-width: 360px) {
-  .lead-figure { font-size: var(--text-numeral-narrow); }
 }
 
 

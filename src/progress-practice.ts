@@ -1,16 +1,21 @@
 import type { CalendarDay } from './progress-calendar.js';
 import { flushSync } from 'react-dom';
 import type { LearningStore } from './learning-store.js';
-import { dayKey, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
+import { dayKey, runDay, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
 import { monthLabels } from './progress-view.js';
 import { runCountTotals } from './run-counts.js';
 import { promptText } from './compose.js';
+import { dayRecords } from './progress-records.js';
+import { analysisRuns } from './domain-history.js';
 import type { ProgressPeriod } from './progress-filters.js';
 
 interface PracticeProgressPorts {
-  calendarWeeks(): number; coarse(): boolean; period(): ProgressPeriod;
+  coarse(): boolean; period(): ProgressPeriod;
   dateCopy(at: string | null): string;
 }
+
+// A year of weeks, as many as fit beside the day names; the oldest are clipped first where the page is narrower.
+const CALENDAR_WEEKS = 53;
 
 export function createPracticeProgress(learning: LearningStore, ports: PracticeProgressPorts) {
   let goalDay = '';
@@ -23,20 +28,26 @@ function renderGoal(date = new Date()) {
   const coarse = ports.coarse();
   flushSync(() => learning.progress.calendar.visible.publish(Object.keys(byDay).length > 0));
   const goal = learning.preferences.dailyGoal;
-  const weeks = ports.calendarWeeks();
+  const weeks = CALENDAR_WEEKS;
+  const records = dayRecords(learning.profile.runs);
+  const keptFrom = analysisRuns(learning.profile.runs).map(runDay).filter((day) => day !== null).sort()[0] ?? goalDay;
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - (weeks - 1) * 7 - date.getDay());
   const days: CalendarDay[] = [];
 
   for (const day = new Date(start); day <= date; day.setDate(day.getDate() + 1)) {
-    const minutes = byDay[dayKey(day)] || 0;
+    const key = dayKey(day);
+    const minutes = byDay[key] || 0;
     const met = goal > 0 && minutes >= goal;
-    days.push({ day: dayKey(day), level: String(practiceLevel(minutes, goal)), met,
+    const record = key >= keptFrom ? records.get(key) ?? { runs: 0, best: null } : null;
+    days.push({ day: key, runs: record?.runs ?? null, best: record?.best ?? null, level: String(practiceLevel(minutes, goal)), met,
       label: day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ': ' + goalMinutes(minutes) + ' min' + (met ? ', goal met' : ''),
       caption: [day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), goalMinutes(minutes) + ' min', met && 'goal met'].filter(Boolean).join(' · ') });
   }
 
   const practised = days.filter((day) => day.level !== '0').length;
+  const counted = days.reduce((sum, day) => sum + (day.runs ?? 0), 0);
   flushSync(() => learning.progress.calendar.view.publish({ days, months: monthLabels(days.map((day) => day.day)), weeks, coarse, today: goalDay,
+    summary: `${plural(counted, 'run')} · ${plural(practised, 'day')}`,
     label: 'Practice minutes per day, last ' + weeks + ' weeks: ' + plural(practised, 'day') + ' with practice. Arrow keys move between days.' }));
   renderPracticeStats(ports.period(), date);
 }

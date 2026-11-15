@@ -200,7 +200,7 @@ test('a drill started from saved history, left once, is retested against that hi
   const user = supabase.addUser('saved@stilltype.test');
   const traces = [savedTrace('saved-a', '2026-09-28T12:00:00Z'), savedTrace('saved-b', '2026-09-29T12:00:00Z')];
 
-  const data = { version: 2, preferences: {}, attempts: traces,
+  const data = { version: 2, preferences: { mode: 'words', count: 25, wordList: '1k' }, attempts: traces,
     runs: traces.map((t) => runRecord(t)), loops: [], seenTextIds: traces.map((t) => t.textId), bests: {}, updatedAt: '2026-09-29T12:00:00Z' };
 
   supabase.profiles.set(user.id, { data });

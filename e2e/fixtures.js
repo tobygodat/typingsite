@@ -131,7 +131,7 @@ export async function openProgressDetail(page, name) {
   if ((await page.locator('#progress-screen').getAttribute('data-detail')) === name) return;
 
   if (await page.locator('#progress-detail').isVisible()) await page.locator('#progress-back').click();
-  await page.locator(`#progress-more [data-progress-open="${name}"]`).click();
+  await page.locator(`#progress-overview [data-progress-open="${name}"]`).click();
   await expect(page.locator('#progress-screen')).toHaveAttribute('data-detail', name);
 }
 

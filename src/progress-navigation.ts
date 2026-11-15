@@ -5,7 +5,7 @@ import type { ProgressDetail, ProgressPeriod } from './progress-filters.js';
 
 export type ProgressTrend = 'speed' | 'accuracy' | 'consistency';
 
-export const PROGRESS_DETAILS: Record<ProgressDetail, string> = { '': '', runs: 'Runs', trends: 'Trends', calendar: 'Practice', compose: 'Composing' };
+export const PROGRESS_DETAILS: Record<ProgressDetail, string> = { '': '', runs: 'Runs', trends: 'Trends', calendar: 'Practice', compose: 'Composing', fixed: 'Fixed' };
 
 type FocusTarget = HTMLElement | SVGElement;
 

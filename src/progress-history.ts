@@ -12,7 +12,8 @@ import { createProgressFigures } from './progress-figures.js';
 import { copyParts } from './native-copy.js';
 import type { NativeCopy } from './native-copy.js';
 import type { LearningStore } from './learning-store.js';
-import type { RunRowView } from './progress-sections.js';
+import type { RunRowView, RunTableRow } from './progress-sections.js';
+import { personalBests } from './progress-records.js';
 import type { ProgressPeriod } from './progress-filters.js';
 import type { createPracticeProgress } from './progress-practice.js';
 
@@ -110,6 +111,21 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     renderHistory();
   }
 
+  // The overview's table: the newest runs listed, each marked when it was a best as it was typed.
+  function renderRunTable(newest: readonly ListedRun[]) {
+    const bests = personalBests(learning.profile.runs);
+    const day = (at: AnalysisRun['at']) => (at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'date unavailable');
+
+    const rows: RunTableRow[] = newest.slice(0, RECENT_RUNS).map((run, index) => {
+      if (!isScoredRun(run)) throw new TypeError('A listed run requires its score');
+
+      return { key: run.id ?? `run-${index}`, wpm: run.score.wpm, accuracy: `${Number(run.score.accuracy.toFixed(1))}%`, day: day(run.at), best: bests.has(run),
+        kind: run.fresh === false ? 'repeated' : run.kind === 'retest' ? 'retest' : run.conditions?.mode === 'standard' ? 'standard' : 'test' };
+    });
+
+    flushSync(() => learning.progress.table.publish({ rows, empty: progressState.key ? 'No runs in this period.' : '' }));
+  }
+
   function renderRunRows() {
     const shown = progressState.allRuns ? listedRuns : listedRuns.slice(0, RECENT_RUNS);
     const previous = learning.progress.runs.getSnapshot();
@@ -156,6 +172,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     practiceProgress.goal(date);
     listedRuns = [...runRows].reverse();
     renderRunRows();
+    renderRunTable(listedRuns);
     ports.loops(loops);
     practiceProgress.composing();
     showProgressDetail();
@@ -203,12 +220,12 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     progressTrendNote = progressRuns.length
       ? [progressRuns.some((r) => !r.at) ? 'Undated runs not charted.' : '', repeatCopy].filter(Boolean).join(' ')
       : runRows.length ? `No fresh-text runs in this period. ${repeatCopy}` : 'No runs in this period.';
-    flushSync(() => learning.progress.charts.publish({ visible: Boolean(progressRuns.length) }));
+    flushSync(() => learning.progress.charts.publish({ visible: Boolean(progressRuns.length), runs: progressRuns.length }));
 
     // Everything else, one step away.
     const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
     const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
-    const links = { runs: hasProgress, calendar: Object.keys(byDay).length > 0, compose: learning.profile.compositions.length > 0 };
+    const links = { runs: hasProgress, calendar: Object.keys(byDay).length > 0, compose: learning.profile.compositions.length > 0, fixed: week.movers.length > 0 };
 
     flushSync(() => learning.progress.overview.publish({ hasHistory, hasProgress, links,
       runsLabel: runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs' }));
@@ -222,7 +239,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
   function renderWeek() {
     const open = progressState.detail;
     const focused = $('progress-screen').contains(document.activeElement) ? document.activeElement : null;
-    renderOverview(new Date());
+    renderRunTable([...renderOverview(new Date()).runRows].reverse());
 
     // The full charts keep no rows, so when a clear from another tab leaves them nothing to draw they close whole,
     // back to the overview. A view of rows stays as it is until it is left.
@@ -260,7 +277,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     };
 
     const shown = { 'week-speed': overview, 'week-accuracy': overview, 'progress-trend': view === 'speed', 'accuracy-trend': view === 'accuracy',
-      'progress-spread': view === 'consistency', 'practice-runs': detail === 'calendar' && !$('practice-goal').hidden };
+      'progress-spread': view === 'consistency', 'practice-runs': detail === 'calendar' };
 
     for (const [id, render] of Object.entries(draw)) {
       if (hasKey(shown, id) && shown[id]) render();

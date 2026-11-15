@@ -363,13 +363,12 @@ export function renderTrend(container: HTMLElement, runs: readonly unknown[], on
   for (const [offset, x, textAnchor] of ticks) chart.append(svgText(dateAt(offset), { x, y: height - 6, 'text-anchor': textAnchor, class: 'trend-label' }));
 }
 
-// The overview's small chart (TOB-420): one metric's daily medians over the period as one line, its gridlines'
-// values on the right, the dates at either end, and the last day's value at the line's end with the runs it is the
-// median of. No legend: one series, named by its value's unit. The whole chart is one button that opens the fuller
-// chart, and its name carries what the chart shows.
+// The overview's small chart (TOB-420, TOB-470): one metric's daily medians over the period as one line over a faint
+// dot for each run, its gridlines' values on the left and the dates at either end. No legend: one series, named by
+// its panel. The whole chart is one button that opens the fuller chart, and its name carries what the chart shows.
 const WEEK_AXIS = 24;
-const WEEK_LABELS = 40;
-const WEEK_END = 104;
+const WEEK_LABELS = 36;
+const WEEK_INSET = 6;
 
 export function renderWeekChart(container: HTMLElement, runs: readonly unknown[], metric: Metric, { period = null, onOpen }: { period?: Period | null; onOpen: () => void }) {
   const focused = container.contains(document.activeElement);
@@ -380,14 +379,16 @@ export function renderWeekChart(container: HTMLElement, runs: readonly unknown[]
   const spec = METRICS[metric];
   const width = Math.max(240, container.clientWidth || 480);
   const style = getComputedStyle(container);
-  const height = parseFloat(style.getPropertyValue('--chart-height-min')) || 240;
+  const height = parseFloat(style.getPropertyValue('--week-chart-height')) || 220;
   const bottom = height - WEEK_AXIS;
   const values = days.map((day) => spec.value(day[metric] ?? 0));
+  const dots = days.map((day) => day.runs.map(spec.run));
   const lines = gridlines(values, spec.minStep(), spec.ceiling);
-  const [low, high] = [indexed(lines, 0), indexed(lines, 2)];
-  const plot = width - WEEK_LABELS - WEEK_END;
+  const low = Math.min(indexed(lines, 0), ...dots.flat());
+  const high = Math.max(indexed(lines, 2), ...dots.flat());
+  const plot = width - WEEK_LABELS - WEEK_INSET;
   const range: [string, string] = [period?.from ?? indexed(days, 0).day, period?.to ?? indexed(days, days.length - 1).day];
-  const { xs } = dayPositions(days.map((day) => day.day), range, 0, plot);
+  const { xs } = dayPositions(days.map((day) => day.day), range, WEEK_LABELS, plot);
   const yOf = (v: number) => (high === low ? bottom / 2 : bottom - 8 - ((v - low) / (high - low)) * (bottom - 16));
   const unit = metric === 'wpm' ? unitName() : '%';
   const last = indexed(days, days.length - 1);
@@ -408,23 +409,25 @@ export function renderWeekChart(container: HTMLElement, runs: readonly unknown[]
 
   for (const v of lines) {
     const y = yOf(v);
-    chart.append(svgNode('line', { x1: 0, x2: plot, y1: y, y2: y, class: 'trend-rule' }), svgText(`${v}`, { x: plot + 12, y: y + 4, class: 'trend-label' }));
+    chart.append(svgNode('line', { x1: WEEK_LABELS, x2: width, y1: y, y2: y, class: 'trend-rule' }), svgText(`${v}`, { x: WEEK_LABELS - 8, y: y + 4, 'text-anchor': 'end', class: 'trend-label' }));
   }
 
   const points: Point[] = values.map((v, i) => [indexed(xs, i), yOf(v)]);
+  const runDots = svgNode('g', { class: 'week-chart-runs' });
+  dots.forEach((list, i) => list.forEach((v) => runDots.append(svgNode('circle', { cx: indexed(xs, i), cy: yOf(v), r: 2 }))));
+
+  if (metric === 'wpm' && points.length > 1) {
+    const [first, end] = [indexed(points, 0), indexed(points, points.length - 1)];
+    chart.append(svgNode('polygon', { points: [...points, [end[0], bottom], [first[0], bottom]].map((p) => p.join(',')).join(' '), class: 'week-chart-fill' }));
+  }
+
+  chart.append(runDots);
 
   if (points.length > 1) chart.append(svgNode('polyline', { points: points.map((p) => p.join(',')).join(' '), class: `trend-line trend-${metric}` }));
   const [x, y] = indexed(points, points.length - 1);
   chart.append(svgNode('circle', { cx: x, cy: y, r: 4, class: `week-chart-end trend-${metric}` }));
-  // The value at the line's end, outside the gridline labels, with the runs its day holds.
-  const labelX = plot + WEEK_LABELS + 8;
-  const labelY = Math.min(Math.max(y, 16), bottom - 24);
-  const span = (text: string, className: string) => Object.assign(svgNode('tspan', { class: className }), { textContent: text });
-  const valueText = svgNode('text', { x: labelX, y: labelY + 6, class: 'week-chart-value' });
-  valueText.append(span(String(lastValue), 'week-chart-number'), span(metric === 'wpm' ? ` ${unit}` : '%', 'week-chart-unit'));
-  chart.append(valueText, svgText(count, { x: labelX, y: labelY + 26, class: 'week-chart-runs' }));
   const spanDays = dayOffset(...range);
-  const ticks: [string, number, string][] = spanDays ? [[shortDate(range[0]), 0, 'start'], [isToday ? 'today' : shortDate(range[1]), plot, 'end']] : [[isToday ? 'today' : shortDate(range[0]), plot / 2, 'middle']];
+  const ticks: [string, number, string][] = spanDays ? [[shortDate(range[0]), WEEK_LABELS, 'start'], [isToday ? 'today' : shortDate(range[1]), width, 'end']] : [[isToday ? 'today' : shortDate(range[0]), WEEK_LABELS + plot / 2, 'middle']];
 
   for (const [text, tx, anchor] of ticks) chart.append(svgText(text, { x: tx, y: height - 4, 'text-anchor': anchor, class: 'trend-label' }));
   button.append(chart);
