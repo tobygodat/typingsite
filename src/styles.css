@@ -1119,6 +1119,10 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     border: 0;
   }
 
+  /* A short window scrolls the screens and commands inside the bar, so its foot stays in reach; the padding keeps focus
+     rings clear of the scroll edge. */
+  :root[data-navigation="side"] .dock { min-height: 0; margin: calc(var(--space-2) * -1); padding: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+
   :root[data-navigation="side"] .brand { align-self: flex-start; margin: 0; padding: 0 var(--frame-inset) var(--space-6); font-size: 19px; }
   :root[data-navigation="side"] .dock-nav { display: grid; }
   :root[data-navigation="side"] :is(.nav-item, .dock-command, .corner-trigger) {

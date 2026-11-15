@@ -293,8 +293,10 @@ test('Space on a row that took focus after Dismiss leaves the page where it is',
   expect(await scrolled()).toBe(before);
   await expect(page.locator('#online-room')).toBeHidden();
 
-  // Nothing else changed: from the page itself, Space scrolls.
-  await page.evaluate(() => { document.activeElement.blur(); scrollTo(0, 0); });
+  // Nothing else changed: from the page itself, Space scrolls. A press on the page's empty top makes it the page's own
+  // Space, not the side bar's, whose list scrolls in a window this short.
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.locator('#main-content').click({ position: { x: 4, y: 4 } });
   await page.keyboard.press(' ');
   expect(await page.evaluate(() => window.spaceScrolls)).toBe(true);
   await expect.poll(scrolled).toBeGreaterThan(0);

@@ -207,6 +207,24 @@ test('the footer is read where it is seen: after the page below 960px, in the si
   await expect(page.locator('#main-content + .site-footer')).toBeVisible();
 });
 
+test('on a short window the side bar scrolls inside itself, its foot in reach', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 420 });
+  await openApp(page);
+  await expect(sideBar(page)).toBeVisible();
+
+  // The foot (the account and the footer) stays inside the window; the screens and commands scroll above it.
+  for (const foot of [page.locator('#account-trigger'), sideBar(page).locator('#release-trigger')]) {
+    const box = await foot.boundingBox();
+    expect(box.y + box.height).toBeLessThanOrEqual(420);
+  }
+
+  const dock = page.locator('nav.dock');
+  expect(await dock.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  await page.locator('#settings-trigger').focus();
+  await expect(page.locator('#settings-trigger')).toBeInViewport();
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 320, height: 568 }, ...phone });
 
