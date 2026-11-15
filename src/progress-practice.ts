@@ -1,20 +1,13 @@
 import type { CalendarDay } from './progress-calendar.js';
 import { flushSync } from 'react-dom';
 import type { LearningStore } from './learning-store.js';
-import type { Conditions, InputClass } from './typing.js';
-import { conditionKey, standardConditions } from './typing.js';
-import { MAX_RUN_SUMMARIES, STANDARD_MIN_RUNS, standardScore, standardInputClass, dayKey, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
+import { dayKey, minutesByDay, practiceLevel, goalMinutes, periodDays, practiceStats, practiceStreak } from './insights.js';
 import { monthLabels } from './progress-view.js';
 import { runCountTotals } from './run-counts.js';
 import { promptText } from './compose.js';
-import { speedFigure } from './units.js';
-import { copyParts } from './native-copy.js';
 import type { ProgressPeriod } from './progress-filters.js';
 
 interface PracticeProgressPorts {
-  inputLayout(input: InputClass): string;
-  recipeSummary(conditions: Conditions): string;
-  conditionTail(conditions: Conditions): string;
   calendarWeeks(): number; coarse(): boolean; period(): ProgressPeriod;
   dateCopy(at: string | null): string;
 }
@@ -23,37 +16,6 @@ export function createPracticeProgress(learning: LearningStore, ports: PracticeP
   let goalDay = '';
   let practicePerDay: ReturnType<typeof practiceStats>['runsPerDay'] = [];
   const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
-
-function renderStandardScore() {
-  const scoreFor = (inputClass: InputClass) => {
-    const key = conditionKey({ ...standardConditions(inputClass), layout: ports.inputLayout(inputClass) });
-
-    return standardScore(learning.profile.runs, key, learning.profile.bests[key]?.wpm ?? null);
-  };
-
-  const keyboard = scoreFor('physical-keyboard');
-  const touch = scoreFor('touch');
-  const onTouch = standardInputClass(keyboard, touch) === 'touch';
-  const sourceInput = onTouch ? 'touch' : 'physical-keyboard';
-  const source = { ...standardConditions(sourceInput), layout: ports.inputLayout(sourceInput) };
-  const score = onTouch ? touch : keyboard;
-  const other = onTouch ? keyboard : touch;
-  // Bests outlive run summaries, so counts are of kept runs, never lifetime counts, and a best above every
-  // kept run came from one that has aged out of the kept history. With none left, nothing is counted.
-  const kept = MAX_RUN_SUMMARIES.toLocaleString('en-US');
-  const keptBest = standardScore(learning.profile.runs, conditionKey(source)).best;
-  const olderBest = score.total && Number(score.best) > Number(keptBest) ? ` Your best comes from a run older than the newest ${kept} runs that Progress keeps.` : '';
-  let note = `${plural(score.total, 'completed standard run')} kept.${olderBest}`;
-
-  if (!score.total && score.best !== null) note = `Your best is kept, but your standard runs are older than the newest ${kept} runs that Progress keeps, so the median waits for ${STANDARD_MIN_RUNS} new ones.`;
-  else if (!score.total) note = 'No standard runs yet.';
-  else if (!score.settled) note = `${plural(score.total, 'standard run')} kept.${olderBest} The median appears after ${STANDARD_MIN_RUNS}.`;
-  // With nothing scored yet, the recipe is what Take the standard test sets up, so it isn't repeated here.
-  const empty = !score.total && score.best === null;
-  flushSync(() => learning.progress.standard.publish({ best: score.best, median: score.median,
-    medianLabel: score.settled ? 'median of last ' + plural(score.recent, 'run') : 'median', conditions: ports.recipeSummary(source) + ' · ' + ports.conditionTail(source), empty,
-    note: copyParts([note, other.best === null ? '' : [' Your ' + (onTouch ? 'physical keyboard' : 'touch') + ' best is ', speedFigure(other.best), '.']]) }));
-}
 
 function renderGoal(date = new Date()) {
   goalDay = dayKey(date);
@@ -117,6 +79,6 @@ function renderComposeHistory() {
   flushSync(() => learning.progress.composing.publish({ rows, note: list.length > shown.length ? 'newest ' + shown.length + ' of ' + list.length : '' }));
 }
 
-return { standard: renderStandardScore, goal: renderGoal, composing: renderComposeHistory,
+return { goal: renderGoal, composing: renderComposeHistory,
   get day() { return goalDay; }, get runsPerDay() { return practicePerDay; } };
 }

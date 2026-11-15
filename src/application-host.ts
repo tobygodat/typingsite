@@ -357,7 +357,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (!announcing.includes(message)) announcing.push(message);
   }
 
-  const { recipeLabel, recipeSummary, conditionTail, describeConditions, describeMinimums, stopReason, describeRun, inputLabel } = createRunCopy(learning, conditions);
+  const { recipeLabel, recipeSummary, describeConditions, describeMinimums, stopReason, describeRun, inputLabel } = createRunCopy(learning, conditions);
 
   const startedBy = (event: { pointerType?: string } | null) => (event?.pointerType && event.pointerType !== 'mouse' ? 'touch' : 'physical-keyboard');
 
@@ -1217,7 +1217,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const narrowColumn = window.matchMedia('(max-width: 760px)');
 
-  const practiceProgress = createPracticeProgress(learning, { inputLayout, recipeSummary, conditionTail, dateCopy,
+  const practiceProgress = createPracticeProgress(learning, { dateCopy,
     calendarWeeks: () => narrowColumn.matches ? 17 : 26, coarse: () => matchMedia('(any-pointer: coarse)').matches, period: () => progressState.period });
 
   const renderGoal = practiceProgress.goal;
@@ -1692,7 +1692,6 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     practice.commands.resultKeyUp = (event) => { if (stopHold !== null && event.key === ' ') event.preventDefault(); };
 
-    learning.progress.commands.standard = () => setTestShape('standard');
     learning.progress.commands.movers = progressHistory.movers;
 
   
@@ -2148,7 +2147,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       ...([['practice', 'practice'], ['train', 'train'], ['progress', 'progress'], ['compete', 'challenge']] as const).map(([view, label]) => ({
         group: 'go to', label, keywords: `${view} open view page`, hint: document.body.dataset.view === view ? 'here' : '', on: document.body.dataset.view === view, run: () => jumpTo(view),
       })),
-      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['calendar', 'practice calendar', 'daily goal streak minutes days'], ['standard', 'your standard score', 'standard test best median']] as const).map(([detail, label, keywords]) => ({
+      ...([['runs', 'runs and drills', 'history list retests comparisons'], ['calendar', 'practice calendar', 'daily goal streak minutes days']] as const).map(([detail, label, keywords]) => ({
         group: 'go to', label, keywords: `progress ${keywords}`, hint: document.body.dataset.view === 'progress' && progressState.detail === detail ? 'here' : '',
         run: () => { navigate('progress'); openProgressDetail(detail); },
       })),

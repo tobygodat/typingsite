@@ -448,10 +448,10 @@ test('undoing a clear comes back to the conditions that were showing', async ({ 
 
 test('every quiet link opens its view, named and focused, and Progress goes back; the palette opens them too', async ({ page, supabase }) => {
   await openProgress(page, supabase, weekRuns());
-  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs', 'Practice calendar', 'Standard score']);
+  await expect(page.locator('#progress-more [data-progress-open]:visible')).toHaveText(['13 runs', 'Practice calendar']);
   await expect(page.locator('#clear-history')).toBeVisible();
 
-  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['calendar', 'Practice', '#practice-goal'], ['standard', 'Standard score', '#standard-score']]) {
+  for (const [name, heading, content] of [['runs', 'Runs', '#run-history'], ['calendar', 'Practice', '#practice-goal']]) {
     const link = page.locator(`[data-progress-open="${name}"]`);
     await link.click();
     await expect(page.locator('#progress-detail-heading')).toHaveText(heading);
@@ -462,7 +462,7 @@ test('every quiet link opens its view, named and focused, and Progress goes back
     await expect(link).toBeFocused();
   }
 
-  for (const [label, name] of [['runs and drills', 'runs'], ['practice calendar', 'calendar'], ['your standard score', 'standard']]) {
+  for (const [label, name] of [['runs and drills', 'runs'], ['practice calendar', 'calendar']]) {
     await page.keyboard.press('Control+k');
     await page.keyboard.type(label);
     await expect(page.locator('#palette-list [aria-selected="true"]')).toContainText(label);

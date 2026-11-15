@@ -5,13 +5,11 @@ import { Fragment, useSyncExternalStore } from 'react';
 import { createStore } from './store.js';
 import type { CopyPart } from './practice-session.js';
 import { Copy } from './results-card.js';
-import { formatSpeed, unitText } from './units.js';
+import { unitText } from './units.js';
 
 export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: CopyPart[]; textNote: string; passage?: string | number | boolean | null }
 
 export interface CompositionRowView { id: string; wpm: number | null; backspaceRate: number | null; prompt: string; detail: string }
-
-export interface StandardView { best: number | null; median: number | null; medianLabel: string; conditions: string; empty: boolean; note: CopyPart[] }
 
 export interface LeadView { figure: string | null; spoken: string; sentence: CopyPart[]; sample: string; note: string; state: string; tone: string }
 
@@ -20,15 +18,14 @@ export interface MoverView { unit?: string; before: string; after: string; tail:
 export function createProgressSections() {
   const runs = createStore<{ rows: RunRowView[]; total: number; revision: number }>({ rows: [], total: 0, revision: 0 });
   const composing = createStore<{ rows: CompositionRowView[]; note: string }>({ rows: [], note: '' });
-  const standard = createStore<StandardView>({ best: null, median: null, medianLabel: 'median', conditions: '', empty: true, note: [] });
   const lead = createStore<LeadView>({ figure: null, spoken: '', sentence: [], sample: '', note: '', state: 'none', tone: 'none' });
   const movers = createStore<{ rows: MoverView[]; open: boolean; extra: number; shown: number }>({ rows: [], open: false, extra: 0, shown: 0 });
-  const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, calendar: false, standard: false, compose: false }, runsLabel: 'All runs' });
+  const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, calendar: false, compose: false }, runsLabel: 'All runs' });
   const trends = createStore<{ parts: CopyPart[][]; note: string }>({ parts: [], note: '' });
   const charts = createStore({ visible: false });
-  const commands = { showAll() {}, calendar() {}, clear() {}, standard() {}, movers() {} };
+  const commands = { showAll() {}, calendar() {}, clear() {}, movers() {} };
 
-  return { trends, charts, navigation: createProgressNavigation(), overview, filters: createProgressFilters(), calendar: createProgressCalendar(), runs, composing, standard, lead, movers, commands };
+  return { trends, charts, navigation: createProgressNavigation(), overview, filters: createProgressFilters(), calendar: createProgressCalendar(), runs, composing, lead, movers, commands };
 }
 
 export type ProgressSections = ReturnType<typeof createProgressSections>;
@@ -43,12 +40,6 @@ export function ProgressCompositions({ progress }: { progress: ProgressSections 
   const view = useSyncExternalStore(progress.composing.subscribe, progress.composing.getSnapshot, progress.composing.getSnapshot);
 
   return <><p id="compose-history-note" className="result-note">{view.note}</p><div id="compose-history-list">{view.rows.map((item) => <article key={item.id} className="compose-row"><div className="compose-row-main"><strong className="num">{item.wpm === null ? <data value="">—</data> : <Copy parts={[{ kind: 'speed', wpm: item.wpm }]} />}</strong><span className="num">{String(item.backspaceRate)}% backspace rate</span></div><p>{item.prompt}</p><p className="condition-copy">{item.detail}</p></article>)}</div></>;
-}
-
-export function ProgressStandard({ progress }: { progress: ProgressSections }) {
-  const view = useSyncExternalStore(progress.standard.subscribe, progress.standard.getSnapshot, progress.standard.getSnapshot);
-
-  return <div id="standard-score" className={`standard-score${view.empty ? ' is-empty' : ''}`}><dl id="standard-figures" className="standard-figures" hidden={view.empty}><div><dt>best</dt><dd><strong id="standard-best" className="num" data-bare="" data-wpm={view.best ?? undefined}>{view.best === null ? '—' : formatSpeed(view.best, { bare: true })}</strong><span data-speed-unit="" hidden={view.best === null}>{unitText('{unit}')}</span></dd></div><div><dt id="standard-median-label">{view.medianLabel}</dt><dd><strong id="standard-median" className="num" data-bare="" data-wpm={view.median ?? undefined}>{view.median === null ? '—' : formatSpeed(view.median, { bare: true })}</strong><span data-speed-unit="" hidden={view.median === null}>{unitText('{unit}')}</span></dd></div></dl><p id="standard-score-note" className="result-note"><Copy parts={view.note} /></p><p id="standard-score-conditions" className="condition-copy" hidden={view.empty}>{view.conditions}</p><button id="take-standard" onClick={() => progress.commands.standard()} className="btn btn-secondary" type="button">Take the standard test</button></div>;
 }
 
 export function ProgressLeadFigures({ progress }: { progress: ProgressSections }) {
@@ -76,7 +67,7 @@ export function ProgressMovers({ progress }: { progress: ProgressSections }) {
 export function ProgressMore({ progress }: { progress: ProgressSections }) {
   const view = useSyncExternalStore(progress.overview.subscribe, progress.overview.getSnapshot, progress.overview.getSnapshot);
 
-  return <nav id="progress-more" className="progress-more" aria-label="More progress"><button id="open-runs" className="btn btn-ghost" type="button" data-progress-open="runs" onClick={(event) => progress.navigation.open('runs', { opener: event.currentTarget })} hidden={!view.links.runs}>{view.runsLabel}</button><button className="btn btn-ghost" type="button" data-progress-open="calendar" onClick={(event) => progress.navigation.open('calendar', { opener: event.currentTarget })} hidden={!view.links.calendar}>Practice calendar</button><button className="btn btn-ghost" type="button" data-progress-open="standard" onClick={(event) => progress.navigation.open('standard', { opener: event.currentTarget })} hidden={!view.links.standard}>Standard score</button><button className="btn btn-ghost" type="button" data-progress-open="compose" onClick={(event) => progress.navigation.open('compose', { opener: event.currentTarget })} hidden={!view.links.compose}>Composing</button><button id="clear-history" className="btn btn-ghost danger-text clear-history" type="button" disabled={!view.hasHistory} hidden={!view.hasHistory} onClick={() => progress.commands.clear()}>Clear history</button></nav>;
+  return <nav id="progress-more" className="progress-more" aria-label="More progress"><button id="open-runs" className="btn btn-ghost" type="button" data-progress-open="runs" onClick={(event) => progress.navigation.open('runs', { opener: event.currentTarget })} hidden={!view.links.runs}>{view.runsLabel}</button><button className="btn btn-ghost" type="button" data-progress-open="calendar" onClick={(event) => progress.navigation.open('calendar', { opener: event.currentTarget })} hidden={!view.links.calendar}>Practice calendar</button><button className="btn btn-ghost" type="button" data-progress-open="compose" onClick={(event) => progress.navigation.open('compose', { opener: event.currentTarget })} hidden={!view.links.compose}>Composing</button><button id="clear-history" className="btn btn-ghost danger-text clear-history" type="button" disabled={!view.hasHistory} hidden={!view.hasHistory} onClick={() => progress.commands.clear()}>Clear history</button></nav>;
 }
 
 export function ProgressTrendFigures({ progress }: { progress: ProgressSections }) {

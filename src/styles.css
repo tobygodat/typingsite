@@ -3013,13 +3013,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .history-detail dl, .run-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-6); }
 .history-detail dt, .run-detail dt { font: var(--text-mono)/1.5 var(--font-mono); color: var(--muted); }
 .history-detail dd, .run-detail dd { margin: var(--space-2) 0 0; font-size: var(--text-lead); }
-.standard-figures { margin: var(--space-2) 0 0; display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-14); }
-.standard-figures dt { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.standard-figures dd { margin: var(--space-2) 0 0; display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-body)/1.2 var(--font-app); }
-/* Longhands, so the shorthand can't reset .num's tabular figures. */
-.standard-figures strong { color: var(--text); font-family: var(--font-app); font-size: var(--text-display); font-weight: 300; line-height: 1; letter-spacing: -0.035em; }
-.standard-score p { max-width: 64ch; margin: 0; }
-.standard-score .result-note { color: var(--muted); }
 
 .pill-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .pill {
@@ -3219,8 +3212,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .view-tabs { margin-bottom: var(--space-6); }
 .detail-panel h3 { margin: 0 0 var(--space-4); font-size: var(--text-title); font-weight: 400; }
 .progress-section { padding: var(--space-8) 0 0; margin-top: var(--space-8); border-top: 1px solid var(--hairline); }
-.standard-score { display: grid; justify-items: start; gap: var(--space-3); }
-.standard-figures[hidden] { display: none; }
 
 .run-row, .daily-result { padding: var(--space-4) 0; border-bottom: 1px solid var(--hairline); }
 .run-row { padding: var(--space-1) 0; }

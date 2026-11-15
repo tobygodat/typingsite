@@ -624,7 +624,7 @@ test('new learning and composing surfaces follow cpm without changing their stor
 });
 
 
-test('standard scores display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
+test('standard runs display cpm while profile bests remain stored in wpm', async ({ page, supabase }) => {
   const user = supabase.addUser('standard-units@stilltype.test');
   const conditions = standardConditions();
 
@@ -644,10 +644,8 @@ test('standard scores display cpm while profile bests remain stored in wpm', asy
   await openApp(page);
   await signInWithEmail(page, user.email);
   await openView(page, 'Progress');
-  await openProgressDetail(page, 'standard');
-  await expect(page.locator('#standard-best')).toHaveText('330');
-  await expect(page.locator('#standard-median')).toHaveText('315');
-  await expect(page.locator('#standard-best + span')).toHaveText('cpm');
+  await openProgressDetail(page, 'runs');
+  await expect(page.locator('#run-history .run-row').first()).toContainText('320 cpm');
   // The oldest run has no error count: its row leaves the figure blank rather than print a placeholder.
   const facts = await page.locator('#run-history dd').allTextContents();
   expect(facts.length).toBeGreaterThan(0);

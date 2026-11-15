@@ -153,7 +153,6 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     // One moment for the whole page, so the week, every figure, chart and list read the same days.
     const date = new Date();
     const { runRows, loops } = renderOverview(date);
-    practiceProgress.standard();
     practiceProgress.goal(date);
     listedRuns = [...runRows].reverse();
     renderRunRows();
@@ -209,7 +208,7 @@ export function createProgressHistory(learning: LearningStore, practiceProgress:
     // Everything else, one step away.
     const byDay = minutesByDay(learning.profile.runs, learning.profile.practiceDays);
     const loops = source ? filterRuns(learning.profile.loops, key, span).reverse() : [];
-    const links = { runs: hasProgress, calendar: Object.keys(byDay).length > 0, standard: hasHistory, compose: learning.profile.compositions.length > 0 };
+    const links = { runs: hasProgress, calendar: Object.keys(byDay).length > 0, compose: learning.profile.compositions.length > 0 };
 
     flushSync(() => learning.progress.overview.publish({ hasHistory, hasProgress, links,
       runsLabel: runRows.length || loops.length ? `${plural(runRows.length, 'run')}${loops.length ? ` and ${plural(loops.length, 'drill')}` : ''}` : 'Runs' }));

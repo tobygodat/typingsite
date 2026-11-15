@@ -1,7 +1,7 @@
 import { isAnalysisRun, isAttempt, isRunRecord } from '../src/domain-history.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recentAverage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, standardInputClass, standardScore, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
+import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recentAverage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
 import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
@@ -471,56 +471,6 @@ test('a run keeps the day it was practised on, whichever time zone reads it late
     if (zone === undefined) delete process.env.TZ;
     else process.env.TZ = zone;
   }
-});
-
-test('the standard score keeps its best and a median of recent runs, and waits for three runs', () => {
-  const standard = standardConditions();
-  const key = conditionKey(standard);
-  const at = (wpm, overrides = {}) => run(`s${wpm}`, { conditions: standard, score: { wpm, accuracy: 97 }, ...overrides });
-  assert.deepEqual(standardScore([], key), { total: 0, recent: 0, best: null, median: null, settled: false });
-  // Two runs: a best, but no median yet.
-  const two = [at(60), at(70)];
-  assert.deepEqual(standardScore(two, key), { total: 2, recent: 2, best: 70, median: null, settled: false });
-
-  // Other conditions, drills, daily, interrupted and a different recipe or input never count.
-  const noise = [run('time'), at(99, { kind: 'drill' }), at(98, { kind: 'daily' }), at(97, { interrupted: true }),
-    at(96, { status: 'interrupted' }), at(95, { conditions: { ...standard, recipe: 'standard-v2' } }),
-    at(94, { conditions: standardConditions('touch') }), at(93, { conditions: { ...standard, mode: 'time', recipe: undefined } })];
-
-  const three = [...two, ...noise, at(64, { kind: 'retest' })];
-  assert.deepEqual(standardScore(three, key), { total: 3, recent: 3, best: 70, median: 64, settled: true });
-  // The median covers only the newest ten; the best is the one passed in (the stored best) when there is one.
-  const twelve = [at(100), at(90), ...Array.from({ length: 10 }, (_, i) => at(50 + i))];
-  assert.deepEqual(standardScore(twelve, key), { total: 12, recent: 10, best: 100, median: 54.5, settled: true });
-  assert.equal(standardScore(twelve, key, 101).best, 101);
-});
-
-test('the standard headline stays on the keyboard unless touch has the only score or a settled, busier one', () => {
-  // Shaped like standardScore: `total` counts only runs still in the kept summaries; a best can outlive them.
-  const score = (total, best = total ? 60 : null) => ({ total, recent: Math.min(total, 10), best, median: null, settled: total >= 3 });
-  const pick = (keyboard, touch) => standardInputClass(keyboard, touch);
-  assert.equal(pick(score(0), score(0)), 'physical-keyboard');
-  // Kept counts aren't lifetime counts: a keyboard best whose runs aged out holds against one or two touch runs.
-  assert.equal(pick(score(0, 82), score(1)), 'physical-keyboard');
-  assert.equal(pick(score(0, 82), score(2)), 'physical-keyboard');
-  assert.equal(pick(score(1), score(2)), 'physical-keyboard');
-  // Touch heads once it has a median from more kept runs than the keyboard (a tie stays on the keyboard)...
-  assert.equal(pick(score(0, 82), score(3)), 'touch');
-  assert.equal(pick(score(1), score(3)), 'touch');
-  assert.equal(pick(score(3), score(3)), 'physical-keyboard');
-  assert.equal(pick(score(3), score(4)), 'touch');
-  // ...or when the keyboard has nothing at all, even if touch has only a kept best.
-  assert.equal(pick(score(0), score(1)), 'touch');
-  assert.equal(pick(score(0), score(0, 47)), 'touch');
-});
-
-test('a custom run never reaches the standard score, even under standard conditions', () => {
-  const standard = standardConditions();
-  const key = conditionKey(standard);
-  const at = (wpm, overrides = {}) => run(`s${wpm}`, { conditions: standard, score: { wpm, accuracy: 97 }, ...overrides });
-  const runs = [at(60), at(62), at(64), at(150, { kind: 'custom' }), at(140, { kind: 'custom' }), at(130, { kind: 'custom' })];
-  assert.deepEqual(standardScore(runs, key), { total: 3, recent: 3, best: 64, median: 62, settled: true });
-  assert.deepEqual(standardScore(runs.slice(3), key), { total: 0, recent: 0, best: null, median: null, settled: false });
 });
 
 test('custom run records keep the score but no per-pair patterns', () => {

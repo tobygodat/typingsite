@@ -2,7 +2,7 @@ import { PROGRESS_DETAILS } from './progress-navigation.js';
 import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
 import { PracticeProgress } from './progress-calendar.js';
-import { ProgressRunRows, ProgressCompositions, ProgressStandard, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
+import { ProgressRunRows, ProgressCompositions, ProgressLeadFigures, ProgressLeadCopy, ProgressMovers, ProgressMore, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 
@@ -40,7 +40,6 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
             </div>
             <div className="empty-actions">
               <button className="btn btn-primary" type="button" data-action="go-practice" onClick={() => learning.commands.practice()}>Take a test</button>
-              <button id="empty-standard" onClick={() => progress.commands.standard()} className="btn btn-ghost" type="button">Take the standard test</button>
             </div>
             <p className="first-run-learn">New to typing? <button className="quiet-link" type="button" data-action="open-lessons" onClick={() => learning.commands.openLessons()}>Learn to type</button>.</p>
           </div>
@@ -99,10 +98,6 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
 
           <section id="detail-calendar" className="detail-panel" data-panel="calendar" aria-labelledby="progress-detail-heading" hidden={detail !== 'calendar'}>
             <PracticeProgress controller={learning.progress.calendar} />
-          </section>
-
-          <section id="detail-standard" className="detail-panel" data-panel="standard" aria-labelledby="progress-detail-heading" hidden={detail !== 'standard'}>
-            <ProgressStandard progress={learning.progress} />
           </section>
 
           <section id="compose-history" className="detail-panel compose-history" data-panel="compose" aria-labelledby="progress-detail-heading" hidden={detail !== 'compose'}>
