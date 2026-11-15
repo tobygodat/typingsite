@@ -41,6 +41,16 @@ npm run test:e2e          # all of Chromium; CI runs this at every PR head, so r
 - **Forks.** A PR from a fork runs only after a maintainer approves it, and gets no secrets.
 - **Failures.** A failing job uploads `test-results/` as `e2e-failures-<engine>-<shard>`, with a trace of each retry, kept for 7 days.
 
+### Trails
+
+`origin` is Entire's mirror of the GitHub repo (`entire://aws-us-east-2.entire.io/gh/tobygodat/typingsite`), so a push goes through Entire to GitHub and runs `ci.yml` as before. `gh` is GitHub directly. `entire-native` is the retired native Entire repo, kept for history.
+
+- **Open one.** On your issue branch, `entire trail create --title "<title> (TOB-n)" --type feature|bug|task --body "<PR body>"` publishes the branch and opens the trail. Then `entire trail ci-pr` opens the GitHub PR, because `ci.yml` runs only on PRs and master pushes.
+- **Gates.** A trail can merge once "Unit and build checks" and the six Chromium shards pass at its head, it has no open high-severity findings, and its branch is up to date with master. To update a branch, `git merge origin/master` and push; `entire trail update-branch` only works on native repos. Firefox/WebKit compat is still requested by hand and doesn't gate.
+- **Review agent.** Entire's code-review agent reviews every push to an open trail. Read its findings with `entire trail finding`, then fix, resolve or dismiss each one with a reason. It is a review, not the independent final proof.
+- **Merge.** Only on Toby's word: `entire trail merge --dry-run` lists any blocking gates, then `entire trail merge`. A merge to master deploys.
+- **Sessions and memory.** Claude Code and Codex sessions are saved as checkpoints in the private `tobygodat/typingsite-checkpoints` repo, never in this public one. Brain memories sync to the public mirror, so never save secrets or personal data with `entire brain remember`.
+
 ### Bounded final proof
 
 One independent checker proves the final head in its own worktree and returns `PASS`, `PASS+NOTES` or `FAIL` with evidence. Cite the passing CI run at that SHA. Prove the changed behavior on the real artifact. For workflow or selection changes, use Playwright's actual test listing and execution output. For product changes, drive the required Practice, Train and affected flows in `AGENTS.md`.
