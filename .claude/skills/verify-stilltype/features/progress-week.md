@@ -32,8 +32,9 @@ Preconditions: `$V doctor` exits 0.
   each period, runs (crowns), the tip by hover and by keyboard, conditions open and at 15 s, each detail view, the clear dialog.
 
 - Every state, dark, at a laptop width: `$V drive .claude/skills/verify-stilltype/flows/progress-week.mjs --width 1280 --height 800`.
-  Shots: guest, gain, conditions-open, each detail view, cleared, undone, drill, one, practice, quiet, drop, flat, week. `run.json`
-  notes each lead and its movers ("ol:fixed", "ex:fixed", "qu:fixed", "practice:less" for gain; "qu:fixed", "practice:less" for one; "practice:less" for practice; none for quiet).
+  Shots: guest, gain, conditions-open, each detail view (runs, calendar, fixed, trends), cleared, undone, one, practice, quiet, drop,
+  flat, week. `run.json` notes each lead and what was fixed ("ol:fixed", "ex:fixed", "qu:fixed" for gain; "qu:fixed" for one; none for
+  practice and quiet).
 - Phones and light: add `--width 390 --height 844 --mobile` or `--width 320 --height 568 --mobile`, or
   `--scheme light`. Each step checks nothing scrolls sideways.
 - One account only: `PROGRESS_ONLY=gain` (or one, practice, quiet, drop, flat, week, guest) before the command.
