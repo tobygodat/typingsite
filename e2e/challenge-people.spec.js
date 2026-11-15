@@ -215,7 +215,7 @@ test.describe('on a phone', () => {
       await expect(page.locator('#people-list [data-state="ghost"]')).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
-      // Every row action, Dismiss and the foot links are at least 44px each way on a coarse pointer.
+      // Every row action, Dismiss, the friends panel's head controls and the tiles are at least 44px each way on a coarse pointer.
       const small = await page.locator('#challenge-people button:visible').evaluateAll((buttons) => buttons
         .map((button) => ({ name: button.textContent.trim(), ...button.getBoundingClientRect().toJSON() }))
         .filter((box) => box.width < 44 || box.height < 44).map((box) => `${box.name} ${Math.round(box.width)}×${Math.round(box.height)}`));
@@ -244,4 +244,42 @@ test.describe('on a phone', () => {
     // The app's reduced-motion rule holds every transition to 1 ms, so the row is there at once.
     expect(await rows(page).first().evaluate((row) => getComputedStyle(row).transitionDuration.split(',').every((value) => parseFloat(value) <= 0.001))).toBe(true);
   });
+});
+
+test('each block says what it does at a glance: the rating and its gauge, the friends panel, and a tile per way to race', async ({ page, supabase }) => {
+  const toby = supabase.addUser('toby@stilltype.test');
+  const maya = supabase.addUser('maya@stilltype.test');
+  supabase.races.quick.ratings.set(toby.id, { rating: 1540, races: 3 });
+  await signedIn(page, supabase);
+
+  // Nobody on the list: the "A friend" row offers the race link, so the tile steps aside.
+  await expect(page.locator('[data-people-action="link"]')).toBeVisible();
+  await expect(page.locator('#people-race-link')).toBeHidden();
+  await expect(page.locator('#quick-match .quick-figure')).toHaveText('1540');
+  await expect(page.locator('#quick-match .quick-figure-label')).toHaveText('rating · provisional');
+  await expect(page.locator('#quick-match [data-quick-part="gauge"]')).toHaveAttribute('data-lit', '3');
+  await expect(page.locator('#quick-match .gauge > i.is-lit')).toHaveCount(3);
+  await expect(page.locator('#quick-match .quick-gauge-note')).toHaveText('3/10 races to a rank');
+  // The figure and gauge are drawn; a screen reader hears the rating line, which says the same.
+  await expect(page.locator('#quick-match .quick-gauge')).toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('#quick-match [data-quick-part="setup"]')).toHaveText('english 200 · 30 s · plain');
+  // It reads "setup" on screen; "Race" before it is for a screen reader, so its name still says what it sets up.
+  await expect(page.getByRole('button', { name: /^Race setup english 200/ })).toBeVisible();
+  await expect(page.locator('#people-setup .panel-select-label .sr-only')).toHaveText('Race');
+  await expect(page.locator('#open-daily .tile-line')).toHaveText(/^[A-Z][a-z]{2} \d{1,2} · not typed$/);
+  await expect(page.locator('#open-local')).toHaveAccessibleName('One keyboard take turns');
+
+  // With a friend and a ranked rating, Race by link is a tile, and the gauge fills through the step toward the next line.
+  supabase.races.addFriend(toby.id, { name: 'Maya', friendId: maya.id });
+  supabase.races.quick.ratings.set(toby.id, { rating: 1835, races: 24 });
+  await page.reload();
+  await openView(page, 'Challenge');
+  await expect(rows(page)).toHaveCount(1);
+  await expect(rows(page).first()).toHaveAttribute('data-state', 'friend');
+  await expect(page.locator('#people-race-link')).toBeVisible();
+  await expect(page.locator('#people-race-link')).toHaveAccessibleName('Race by link no account needed');
+  await expect(page.locator('.challenge-tiles .tile:visible .tile-name')).toHaveText(['Race by link', 'Daily passage', 'One keyboard']);
+  await expect(page.locator('#quick-match .quick-figure-label')).toHaveText('rating · Gale III');
+  await expect(page.locator('#quick-match [data-quick-part="gauge"]')).toHaveAttribute('data-lit', '3');
+  await expect(page.locator('#quick-match .quick-gauge-note')).toHaveText('65 to Gale II');
 });

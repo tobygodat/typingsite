@@ -3610,8 +3610,11 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .people-line { grid-column: 1 / span 2; grid-row: 2; }
   .people-tally { grid-column: 2; grid-row: 1; }
   .people-actions { grid-column: 3; grid-row: 1 / span 2; }
-  .people-tools { width: 100%; justify-content: space-between; }
-  .panel-select { min-width: 0; flex-wrap: wrap; }
+  /* Add a friend beside the title; the setup, the longer of the two, on a row of its own. */
+  .people-tools { display: contents; }
+  .people-add { order: 1; margin-right: calc(var(--space-3) * -1); }
+  .panel-select { order: 2; flex: 1 1 100%; min-width: 0; margin-bottom: var(--space-2); }
+  .panel-select-chevron { margin-left: auto; }
   .daily-start .btn { width: 100%; }
 }
 .online-name-field { max-width: calc(var(--content-max) / 2); margin-bottom: var(--space-6); }
