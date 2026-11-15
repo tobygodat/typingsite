@@ -1,12 +1,20 @@
 // Practice and the run card in the Instrument layout (TOB-470): idle as a guest with no runs, the "more" menu, a run
 // mid-way with live metrics off and on, the first run's card, a card with history and a miss, idle with an average
-// and a best, a manual drill session and the one-line tape. NAV=top puts the navigation in the top bar first.
+// and a best, a manual drill session and the one-line tape. NAV=top puts the navigation in the top bar first;
+// SIDE=hidden hides the side bar.
 export default async ({ page, h, shot, note, check }) => {
+  // Settings opens from the side bar, so a hidden side bar comes back for it and leaves again.
+  const hidden = () => page.locator('#side-bar-toggle[aria-expanded="false"]').count();
   const setting = async (id, value) => {
+    const away = await hidden();
+
+    if (away) await page.locator('#side-bar-toggle').click();
     await h.openSettings();
     await page.evaluate(([field, choice]) => document.querySelector(`#${field} input[value="${choice}"]`).click(), [id, value]);
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('#settings-dialog').open);
+
+    if (away) await page.locator('#side-bar-toggle').click();
   };
   const finish = async (text) => {
     await h.type(text);
@@ -17,6 +25,8 @@ export default async ({ page, h, shot, note, check }) => {
   await h.openApp();
 
   if (process.env.NAV === 'top') await setting('navigation-select', 'top');
+
+  if (process.env.SIDE === 'hidden') await page.locator('#side-bar-toggle').click();
   await shot('idle-guest');
   check((await h.text('#live-standing')).includes('—'), 'a guest with no runs has no average or best');
 
@@ -61,7 +71,12 @@ export default async ({ page, h, shot, note, check }) => {
   await shot('drill');
 
   await page.locator('#restart-button').click();
+  const away = await hidden();
+
+  if (away) await page.locator('#side-bar-toggle').click();
   await h.openView('Practice');
+
+  if (away) await page.locator('#side-bar-toggle').click();
   await page.locator('#mode-time').click();
   await setting('tape-toggle', 'true');
   text = await h.passage();
