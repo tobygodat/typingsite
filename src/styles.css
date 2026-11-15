@@ -66,6 +66,9 @@
   --radius-full: 999px;
 
   --control: 44px;
+  /* Where every screen's first block starts below the frame: the page column's top inset, and a phone's. */
+  --screen-top: var(--space-8);
+  --screen-top-phone: var(--space-6);
   /* The frame (src/navigation.ts): the side bar's width, the top and phone bars' heights, a side bar row and its
      icons. */
   --side-bar: 216px;
@@ -1321,6 +1324,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .switch:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .field-error { min-height: 1.4em; margin: var(--space-2) 0 0; color: var(--danger); font-size: 14px; }
+/* Empty, Challenge's alert line keeps its place in the accessibility tree but takes no room above the first panel. */
+#online-error:empty { min-height: 0; margin: 0; }
 
 /* Status words: a dot and a word, coloured by meaning. app.js sets badge-* for the meaning. */
 .status,
@@ -1369,7 +1374,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .screen {
   min-width: 0;
   width: 100%;
-  padding: var(--space-14) 0 var(--space-10);
+  padding: var(--screen-top) 0 var(--space-10);
 }
 
 /* Practice appears instantly so a restart is never taxed; other screens fade in. */
@@ -1382,7 +1387,6 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .typing-screen {
   display: grid;
   align-content: start;
-  padding-top: var(--space-8);
 }
 
 /* The row paints above what follows it: the "more" menu over the passage, and its controls over the
@@ -2690,7 +2694,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
    under it with what each won back, and the chosen step's detail beside it (under it up to 900px). A row says what it
    is in words and figures: its number, or a check once fixed and a ring while drilled, and its state word. Nothing
    animates as the page opens or a step is chosen: it is opened many times a day. */
-.train-screen { padding-top: var(--space-6); }
 .train-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-3); align-items: start; }
 
 .train-queue { padding: 0; overflow: hidden; }
@@ -3126,7 +3129,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 /* Progress (TOB-420, TOB-470): the conditions and the period, four lead cells, two charts, the practice calendar and
    the newest runs, in panels on one page. Everything else is a detail view one step away. */
-.progress-screen { padding-top: var(--space-6); }
 .progress-overview, .progress-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-content: start; }
 .progress-detail { gap: var(--space-8); }
 .progress-overview > [hidden], .progress-detail > [hidden], .progress-toolbar[hidden] { display: none; }
@@ -4146,8 +4148,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
 
 
-  .screen { padding-top: var(--space-8); }
-  .typing-screen { min-height: auto; padding-top: var(--space-6); }
+  .screen { padding-top: var(--screen-top-phone); }
+  .typing-screen { min-height: auto; }
 
   /* Six modes (with standard and compose) are wider than a phone column: the mode group wraps onto a
      second line rather than scroll sideways; the selection pill follows its button to either line. */
