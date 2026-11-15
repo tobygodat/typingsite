@@ -1147,6 +1147,10 @@ export async function attachApplication({ practice, learning, palette, settings:
   }
 
   function navigate(view: AppView, { keep = false } = {}) {
+    // A screen opened from the navigation starts at its top. The last screen's offset can lie past the end of a
+    // shorter one, and WebKit on a phone leaves it there, painting the page past its end and the bottom bar off its taps.
+    if (document.body.dataset.view !== view) scrollTo({ top: 0, behavior: 'instant' });
+
     if (view === 'practice') {
 
       const waitingTraining = keep && document.body.dataset.view !== 'practice' && practice.attempt?.status === 'ready' && (practice.sessionKind === 'drill' || practice.sessionKind === 'retest');
