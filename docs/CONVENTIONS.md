@@ -45,10 +45,10 @@ npm run test:e2e          # all of Chromium; CI runs this at every PR head, so r
 
 `origin` is Entire's mirror of the GitHub repo (`entire://aws-us-east-2.entire.io/gh/tobygodat/typingsite`), so a push goes through Entire to GitHub and runs `ci.yml` as before. `gh` is GitHub directly. `entire-native` is the retired native Entire repo, kept for history.
 
-- **Open one.** On your issue branch, `entire trail create --title "<title> (TOB-n)" --type feature|bug|task --body "<PR body>"` publishes the branch and opens the trail. Then `entire trail ci-pr` opens the GitHub PR, because `ci.yml` runs only on PRs and master pushes.
+- **Open one.** On your issue branch, `entire trail create --title "<title> (TOB-n)" --type task --body "<PR body>"` publishes the branch and opens the trail (`--type` is `feature`, `bug` or `task`). Then `entire trail ci-pr` opens the GitHub PR, because `ci.yml` runs only on PRs and master pushes.
 - **Gates.** A trail can merge once "Unit and build checks" and the six Chromium shards pass at its head. That run takes about 8 minutes. Firefox/WebKit compat is still requested by hand and doesn't gate.
 - **Merge.** Only on Toby's word: `entire trail merge --dry-run` lists any blocking gates, then `entire trail merge`. A merge to master deploys.
-- **Sessions and memory.** Claude Code and Codex sessions are saved as checkpoints in the private `tobygodat/typingsite-checkpoints` repo, never in this public one. Brain memories sync to the public mirror, so never save secrets or personal data with `entire brain remember`.
+- **Sessions and memory.** Claude Code sessions are saved as checkpoints in the private `tobygodat/typingsite-checkpoints` repo, never in this public one. Codex sessions are saved too once `.codex/hooks.json` is on master and you have approved the hooks in Codex (`/hooks`); `entire status` says whether they are active. Brain memories sync to the public mirror, so never save secrets or personal data with `entire brain remember`.
 
 ### Bounded final proof
 
