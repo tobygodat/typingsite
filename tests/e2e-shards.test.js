@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { ambiguities, split, testKey, testsInReport } from '../scripts/e2e-shards.mjs';
 
 const make = (count, file = 'a.spec.js') => Array.from({ length: count }, (_, i) => ({ project: 'chromium', file, titles: [`test ${i}`] }));
@@ -60,6 +60,7 @@ test('a --test-list line that could match the wrong tests is caught', () => {
   assert.equal(ambiguities([...make(1), ...make(1)]).length, 1);
   assert.equal(ambiguities([{ project: 'chromium', file: 'a.spec.js', titles: ['a › b'] }]).length, 1);
   assert.equal(ambiguities([{ project: 'chromium', file: 'a.spec.js', titles: [' padded'] }]).length, 1);
+  assert.equal(ambiguities([{ project: 'chromium', file: 'a.spec.js', titles: ['two\nlines'] }]).length, 1);
   // The same title in two engines is two tests, not a collision.
   assert.deepEqual(ambiguities([...make(1), { ...make(1)[0], project: 'webkit' }]), []);
 });
@@ -86,4 +87,12 @@ test('the recorded durations are whole milliseconds keyed by test', () => {
     assert.match(key, /\.spec\.js › /);
     assert.ok(Number.isInteger(ms) && ms >= 0, `${key}: ${ms}`);
   }
+});
+
+test('no spec runs its tests as one ordered group, which a split by single tests would scatter across shards', () => {
+  const dir = new URL('../e2e/', import.meta.url);
+  const specs = readdirSync(dir).filter((file) => file.endsWith('.spec.js'));
+  const grouped = specs.filter((file) => /describe\.serial|mode:\s*['"](?:serial|default)['"]/.test(readFileSync(new URL(file, dir), 'utf8')));
+
+  assert.deepEqual(grouped, [], 'scripts/e2e-shards.mjs must keep these groups in one shard before they can run in CI');
 });
