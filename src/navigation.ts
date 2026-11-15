@@ -7,12 +7,12 @@ export type AppView = 'practice' | 'results' | 'train' | 'progress' | 'compete' 
 
 export type NavigationPlacement = 'side' | 'top';
 
-interface NavigationView { screen: AppView; keys: Keybindings; mac: boolean; placement: NavigationPlacement }
+interface NavigationView { screen: AppView; keys: Keybindings; mac: boolean; placement: NavigationPlacement; sideHidden: boolean }
 
-interface NavigationPorts { go(view: AppView, keep: boolean): void; skip(): void; restart(): void; exitFocus(): void }
+interface NavigationPorts { go(view: AppView, keep: boolean): void; skip(): void; restart(): void; exitFocus(): void; toggleSideBar(): void }
 
 export function createNavigation() {
-  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'side' });
+  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'side', sideHidden: false });
   let ports: NavigationPorts | null = null;
 
   return {
@@ -33,11 +33,19 @@ export function createNavigation() {
 
       return true;
     },
+    // Hidden or shown, as html[data-side-bar]. It means something only in the side bar layout; elsewhere CSS ignores it.
+    sideBar(sideHidden: boolean) {
+      document.documentElement.dataset.sideBar = sideHidden ? 'hidden' : 'shown';
+
+      if (view.getSnapshot().sideHidden === sideHidden) return;
+      flushSync(() => view.publish({ ...view.getSnapshot(), sideHidden }));
+    },
     platform(mac: boolean) { flushSync(() => view.publish({ ...view.getSnapshot(), mac })); },
     go(screen: AppView) { ports?.go(screen, true); },
     skip() { ports?.skip(); },
     restart() { ports?.restart(); },
     exitFocus() { ports?.exitFocus(); },
+    toggleSideBar() { ports?.toggleSideBar(); },
   };
 }
 

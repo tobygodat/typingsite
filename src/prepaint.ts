@@ -1,5 +1,6 @@
 import { isRecord } from './domain-values.js';
 import { APP_FONTS, TYPING_FONTS } from './fonts.js';
+import { storedSideBarHidden } from './side-bar.js';
 
 interface PaintTheme {
   id?: unknown;
@@ -66,6 +67,8 @@ try {
   }
 
   if (preferences?.navigation === 'top') root.dataset.navigation = 'top';
+
+  if (typeof user === 'string' && storedSideBarHidden(user)) root.dataset.sideBar = 'hidden';
 
   if (typeof preferences?.typingFont === 'string' && TYPING_FONTS.includes(preferences.typingFont)) root.dataset.typingFont = preferences.typingFont;
 

@@ -48,9 +48,13 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
   <div id="wallpaper" className="wallpaper" hidden></div>
 
   <div className="app-shell">
-    <div className="dock-zone">
+    <div id="side-bar" className="dock-zone">
       <nav className="dock" aria-label="Main navigation">
         <a className={shown === 'practice' ? 'brand is-active' : 'brand'} href="#practice" data-nav="practice" aria-label="Stilltype practice" aria-current={shown === 'practice' ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigation.go('practice'); }}><span className="brand-word">stilltype</span><span className="brand-dot" aria-hidden="true">.</span></a>
+
+        <button id="side-bar-toggle" className="side-toggle" type="button" aria-controls="side-bar" aria-expanded={!view.sideHidden} aria-label={view.sideHidden ? 'Show side bar' : 'Hide side bar'} onClick={() => navigation.toggleSideBar()}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2.6" /><path d="M5.75 5.5v5" /></svg>
+        </button>
 
         <div className="dock-nav glide" data-glide="current">
           <span className="glide-pill" aria-hidden="true"></span>

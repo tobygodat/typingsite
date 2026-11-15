@@ -26,6 +26,7 @@ import { createGhostLaunch } from './ghost-launch.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
+import { storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
 import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
@@ -440,6 +441,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     document.body.dataset.focusMode = String(learning.preferences.focusMode);
 
     if (navigation.placement(learning.preferences.navigation)) updateGlides({ instant: true });
+    followSideBar();
     selectSetting('font-size', String(learning.preferences.fontSize));
     selectSetting('word-highlight', learning.preferences.wordHighlight);
     selectSetting('word-highlight-slide', learning.preferences.wordHighlightSlide);
@@ -1463,7 +1465,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       closeAccountMenu(); markInterrupted(NOTICES.deleteOpened); markRaceInterrupted();
     }, confirmed(deleted) {
       clearTimeout(sync.state.syncTimer); sync.state.syncTimer = 0; sync.state.unsynced = false;
-      inbox?.forget(); forgetRace(); friendsBoard?.forget(); accounts.session = null; account.forgetAccount(deleted); wipeHistory();
+      inbox?.forget(); forgetRace(); friendsBoard?.forget(); storeSideBarHidden(deleted?.user.id ?? null, false); accounts.session = null; account.forgetAccount(deleted); wipeHistory();
 
       try { sessionStorage.setItem(DELETED_NOTICE, '1'); } catch {}
 
@@ -1559,6 +1561,7 @@ export async function attachApplication({ practice, learning, palette, settings:
         $('typing-input').focus({ preventScroll: false });
       },
       exitFocus() { learning.preferences.focusMode = false; applyPreferences(); saveProfile(); focusPractice(); },
+      toggleSideBar,
     });
     learning.commands.practice = () => { editors.customOpen = false; setModeControls(); resetSession('practice', { focus: true, leaveCompose: true }); };
 
@@ -1856,6 +1859,39 @@ export async function attachApplication({ practice, learning, palette, settings:
     setModeControls();
     saveChoice('mode', ...(length && mode !== 'quote' ? [mode === 'time' ? 'duration' : 'count'] : []));
     resetSession('practice', { focus: true, leaveCompose: true });
+  }
+
+  // The side bar's state belongs to whoever is signed in on this device, or to the tab for a guest.
+  let sideBarOwner: string | null | undefined;
+
+  function followSideBar() {
+    const owner = accounts.session?.user.id ?? null;
+
+    if (owner === sideBarOwner) return;
+    sideBarOwner = owner;
+    navigation.sideBar(storedSideBarHidden(owner));
+  }
+
+  // The bar slides on its own layer; the page jumps to its new place and glides in from the old one with the bar's
+  // own transform transition (none under reduced motion), so nothing reflows mid-slide.
+  function toggleSideBar() {
+    const page = $('main-content');
+    const before = page.getBoundingClientRect().left;
+    const hidden = !navigation.view.getSnapshot().sideHidden;
+    navigation.sideBar(hidden);
+    storeSideBarHidden(sideBarOwner ?? null, hidden);
+    const shift = before - page.getBoundingClientRect().left;
+    const slide = getComputedStyle($('side-bar'));
+    const duration = parseFloat(slide.transitionDuration) * 1000;
+
+    if (shift && duration > 1) page.animate([{ transform: `translateX(${shift}px)` }, { transform: 'none' }], { duration, easing: slide.transitionTimingFunction.split(/,(?![^(]*\))/)[0] ?? 'ease' });
+    updateGlides({ instant: true });
+  }
+
+  function toggleSideBarCommand() {
+    toggleSideBar();
+
+    if (document.body.dataset.view === 'practice') focusPractice();
   }
 
   function setNavigation(placement: NavigationPlacement) {
@@ -2188,6 +2224,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     
       ...([['off', 'off'], ['current', 'this word'], ['next', 'next word']] as const).map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: learning.preferences.wordHighlight === mode ? 'current' : '', on: learning.preferences.wordHighlight === mode, run: () => setWordHighlight(mode) })),
       { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(Boolean(learning.preferences.wordHighlightSlide)), on: learning.preferences.wordHighlightSlide, disabled: learning.preferences.wordHighlight === 'off', run: () => setWordHighlightSlide(!learning.preferences.wordHighlightSlide) },
+      ...(learning.preferences.navigation === 'side' ? [{ group: 'display', label: navigation.view.getSnapshot().sideHidden ? 'show side bar' : 'hide side bar', keywords: 'sidebar navigation panel collapse expand toggle menu', run: toggleSideBarCommand }] : []),
       ...(['side', 'top'] as const).map((placement) => ({ group: 'display', label: `navigation · ${placement} bar`, keywords: 'sidebar topbar menu screens layout position move', hint: learning.preferences.navigation === placement ? 'current' : '', on: learning.preferences.navigation === placement, run: () => setNavigation(placement) })),
       { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(Boolean(learning.preferences.tape)), on: learning.preferences.tape, run: () => togglePreference('tape') },
       ...([['wpm', 'words'], ['cpm', 'characters']] as const).map(([unit, per]) => ({ group: 'display', label: `speed unit · ${unit}`, keywords: `${per} per minute speed measure`, hint: learning.preferences.speedUnit === unit ? 'current' : '', on: learning.preferences.speedUnit === unit, run: () => setSpeedUnit(unit) })),

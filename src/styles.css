@@ -73,6 +73,7 @@
   --frame-item: 34px;
   --frame-inset: 10px;
   --frame-glyph: 17px;
+  --side-toggle: 32px;
   --disabled-opacity: 0.38;
   --settings-height: 704px;
   --settings-body-height: 520px;
@@ -771,7 +772,8 @@ kbd {
 
 .dock-label,
 .dock-key,
-.corner-label { display: none; }
+.corner-label,
+.side-toggle { display: none; }
 
 /* Settings is labelled in the top bar so it is findable from every screen. */
 .dock-settings { width: auto; padding: 0 14px 0 12px; }
@@ -1106,7 +1108,37 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     padding: var(--space-6) var(--space-3) var(--space-4) max(var(--space-3), env(safe-area-inset-left));
     background: var(--ground-2);
     border-right: 1px solid var(--hairline-strong);
+    transition: transform var(--dur-drawer) var(--ease-drawer), opacity var(--dur-base) var(--ease-out), visibility 0s;
   }
+
+  /* Hidden, the bar leaves by its own width on its own layer, and only then leaves the tab order and the
+     accessibility tree. Its toggle stays, and moves to the top left of the page. */
+  :root[data-navigation="side"][data-side-bar="hidden"] .app-shell { padding-left: 0; }
+  :root[data-navigation="side"][data-side-bar="hidden"] .dock-zone {
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--dur-drawer) var(--ease-drawer), opacity var(--dur-base) var(--ease-out), visibility 0s linear var(--dur-drawer);
+  }
+
+  :root[data-navigation="side"] .side-toggle {
+    position: absolute;
+    top: calc(var(--space-6) + 10px - var(--side-toggle) / 2);
+    right: var(--space-3);
+    width: var(--side-toggle);
+    height: var(--side-toggle);
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--muted);
+    display: grid;
+    place-items: center;
+    transition: transform var(--dur-drawer) var(--ease-drawer), color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  }
+  :root[data-navigation="side"] .side-toggle:hover { color: var(--text); background: var(--raised-2); }
+  :root[data-navigation="side"] .side-toggle svg { width: var(--frame-glyph); height: var(--frame-glyph); fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+  :root[data-navigation="side"][data-side-bar="hidden"] .side-toggle { transform: translateX(calc(var(--side-toggle) + 2 * var(--space-3))); }
+  :root[data-navigation="side"][data-side-bar="hidden"] body:not([data-focus-mode="true"]) .side-toggle { visibility: visible; }
 
   :root[data-navigation="side"] :is(.dock, .corner) {
     position: static;
@@ -4189,6 +4221,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
    so neither the layout nor the focus ring moves. Relative position keeps that reach above the
    content after it. */
 @media (any-pointer: coarse) {
+  /* The side bar's rows and its toggle grow to a finger's reach. */
+  :root { --frame-item: var(--control); --side-toggle: var(--control); }
   .quote-filter-trigger { min-height: var(--control); }
   .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
