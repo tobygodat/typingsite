@@ -4,3 +4,6 @@ test-results/
 playwright-report/
 supabase/.temp/
 .wrangler/
+
+# Per-user Claude Code settings (entire graph writes its SubagentStart hook here)
+.claude/settings.local.json

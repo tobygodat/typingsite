@@ -40,3 +40,8 @@ A typing-practice web app built around one loop: type a test, see which letter p
 - **Data.** Sync merges and never replaces. Keystroke recordings stay on the device. Every foreign key to `auth.users` cascades. See ADRs 0005–0008.
 - **Lint.** Don't silence an oxlint rule inline. Turn a rule off in `.oxlintrc.json` with a one-line reason, or fix the code.
 - **Work tracking.** Remaining work and known bugs are Linear issues in the Stilltype project, never notes in the repo.
+
+<!-- entire-agent:begin -->
+Read .entire/agent-guide.md for this repository's workflow, source inspection, and verification guidance.
+@.entire/agent-guide.md
+<!-- entire-agent:end -->
