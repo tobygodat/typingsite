@@ -32,21 +32,40 @@ class Calendar extends Component<{ view: CalendarView }, CalendarState, Calendar
   grid = createRef<HTMLDivElement>();
   picker = createRef<HTMLSelectElement>();
   tip = createRef<HTMLDivElement>();
+  scroller = createRef<HTMLDivElement>();
+  months = createRef<HTMLDivElement>();
   cells = new Map<string, HTMLSpanElement>();
+  // A month's name is wider than its week, so it shows only while its week is whole in view: a week past the
+  // scroller's edge would otherwise leave a sliver of its name there.
+  labels: IntersectionObserver | null = null;
   // A finger leaves the calendar as it lifts, so a tapped day's tip stays until a tap lands elsewhere.
   dismiss = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse' && event.target instanceof Node && !this.grid.current?.contains(event.target)) this.setState({ shown: this.focusedDay() });
   };
-  componentDidMount() { document.addEventListener('pointerdown', this.dismiss); }
-  componentWillUnmount() { document.removeEventListener('pointerdown', this.dismiss); }
+  componentDidMount() {
+    document.addEventListener('pointerdown', this.dismiss);
+    this.labels = new IntersectionObserver((entries) => { for (const { target, intersectionRatio } of entries) target.toggleAttribute('data-cut', intersectionRatio < 1); }, { root: this.scroller.current, threshold: 1 });
+    this.watchLabels();
+  }
+  componentWillUnmount() {
+    document.removeEventListener('pointerdown', this.dismiss);
+    this.labels?.disconnect();
+  }
+  watchLabels() {
+    this.labels?.disconnect();
+
+    for (const label of this.months.current?.children ?? []) this.labels?.observe(label);
+  }
   focusedDay() { return document.activeElement instanceof HTMLElement && this.grid.current?.contains(document.activeElement) ? document.activeElement.dataset.day ?? '' : ''; }
   getSnapshotBeforeUpdate(previous: Readonly<{ view: CalendarView }>): CalendarSnapshot | null {
     if (previous.view === this.props.view) return null;
 
     return { grid: Boolean(this.grid.current?.contains(document.activeElement)), picker: document.activeElement === this.picker.current };
   }
-  componentDidUpdate(_previous: Readonly<{ view: CalendarView }>, _state: Readonly<CalendarState>, snapshot: CalendarSnapshot | null) {
+  componentDidUpdate(previous: Readonly<{ view: CalendarView }>, _state: Readonly<CalendarState>, snapshot: CalendarSnapshot | null) {
     this.placeTip();
+
+    if (previous.view.months.length !== this.props.view.months.length) this.watchLabels();
 
     if (!snapshot) return;
     const { view } = this.props;
@@ -93,9 +112,9 @@ class Calendar extends Component<{ view: CalendarView }, CalendarState, Calendar
     return <div ref={this.frame} className="practice-calendar">
       <div className="goal-chart">
         <div className="goal-weekdays" aria-hidden="true"><span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span></div>
-        <div className="goal-scroll">
+        <div className="goal-frame"><div ref={this.scroller} className="goal-scroll">
           <div className="goal-weeks" style={style}>
-            <div id="goal-months" className="goal-months" aria-hidden="true">{view.months.map((month, index) => <span key={index}>{month}</span>)}</div>
+            <div ref={this.months} id="goal-months" className="goal-months" aria-hidden="true">{view.months.map((month, index) => <span key={index}>{month}</span>)}</div>
             <div ref={this.grid} id="goal-calendar" className="goal-calendar" role="group" aria-label={view.label} aria-hidden={view.coarse ? 'true' : undefined} onKeyDown={(event) => this.move(event)}
               onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) this.setState({ shown: '' }); }}
               onPointerLeave={(event) => { if (event.pointerType === 'mouse') this.setState({ shown: this.focusedDay() }); }}
@@ -103,7 +122,7 @@ class Calendar extends Component<{ view: CalendarView }, CalendarState, Calendar
               {view.days.map((day) => <span key={day.day} ref={(node) => { if (node) this.cells.set(day.day, node); else this.cells.delete(day.day); }} className="goal-day" data-level={day.level} data-goal={day.met ? 'met' : undefined} data-day={day.day} role="img" tabIndex={view.coarse ? undefined : active === day.day ? 0 : -1} aria-label={day.label} onFocus={() => this.setState({ active: day.day, shown: day.day })}></span>)}
             </div>
           </div>
-        </div>
+        </div></div>
       </div>
       <p className="goal-legend" aria-hidden="true">less <span data-level="0"></span><span data-level="1"></span><span data-level="2"></span><span data-level="3"></span><span data-level="4"></span> more</p>
       <div className="goal-day-picker"><label className="sr-only" htmlFor="goal-day-select">Practice day</label><select ref={this.picker} id="goal-day-select" className="input select" value={selected} onChange={(event) => this.setState({ selected: event.currentTarget.value, shown: event.currentTarget.value })} onFocus={() => this.setState({ shown: selected })} onBlur={() => this.setState({ shown: '' })}>{view.days.map((day) => <option key={day.day} value={day.day}>{day.label}</option>)}</select></div>
