@@ -110,11 +110,12 @@ function OpenActions({ view, learning }: { view: TrainView | null; learning: Lea
 }
 
 // The open step's evidence: the learner's line, what changed since it was last drilled, and the missed words holding it.
-function OpenEvidence({ view }: { view: TrainView | null }) {
+// Under the step's own cells the learner's line restates them, so it leaves the screen and describes them instead.
+function OpenEvidence({ view, told = false }: { view: TrainView | null; told?: boolean }) {
   const unit = view?.path.current.unit ?? null;
 
   return <div id="train-next" className="train-evidence">
-    <p id="train-evidence" data-text={view?.evidence} hidden={!view?.evidence}><Figures text={view?.evidence ?? ''} /></p>
+    <p id="train-evidence" data-text={view?.evidence} hidden={!view?.evidence || told}><Figures text={view?.evidence ?? ''} /></p>
     <p id="train-last" data-text={view?.since} hidden={!view?.since}><Figures text={view?.since ?? ''} /></p>
     <p id="train-words" className="train-words" hidden={!view?.words.length}>{view?.words.map((word) => <Fragment key={word}><Marked word={word} unit={unit} /> </Fragment>)}</p>
   </div>;
@@ -139,6 +140,12 @@ function Detail({ view, step, learning }: { view: TrainView | null; step: Step; 
   const todo = step.kind === 'ahead' ? step.figures : step.kind === 'current' ? view?.figures.current ?? null : null;
   const eyebrow = !unit ? 'next' : step.kind === 'current' ? `next · ${kindOf(unit)}` : behind ? `${behind.state} · ${kindOf(unit)}` : kindOf(unit);
 
+  // Ids of the lines the cells already state, which describe the cells rather than show under them.
+  const told = todo && (step.kind === 'current' ? view?.evidence : detail?.evidence) ? [step.kind === 'current' ? 'train-evidence' : 'train-step-evidence']
+    : behind?.figures ? (detail?.told ?? []).map((_, index) => `train-told-${index}`) : [];
+
+  const described = told.length ? told.join(' ') : undefined;
+
   const go = step.kind === 'current' ? <OpenActions view={view} learning={learning} />
     : <button id="start-drill" className={`btn ${behind ? 'btn-secondary' : 'btn-primary'}`} type="button" data-action="start-drill" onClick={() => learning.commands.target(unit ?? '')}>Drill “{unit}”{behind ? ' again' : ''}</button>;
 
@@ -151,23 +158,24 @@ function Detail({ view, step, learning }: { view: TrainView | null; step: Step; 
       </div>
       <div className="train-actions">{go}{starts}</div>
     </header>
-    {todo && <div className="cells train-cells">
+    {todo && <div className="cells train-cells" role="group" aria-describedby={described}>
       <Cell label="cost" figure={todo.cost === null ? '—' : `≈${costText(todo.cost, shownUnit())}`} unit={todo.cost === null ? '' : shownUnit()} />
       {todo.slower ? <Cell label="slower" figure={String(todo.slower.ms)} unit="ms" note={todo.slower.own === null ? '' : `${todo.slower.own} vs ${todo.slower.pace}`} />
         : <Cell label="missed" figure={todo.missed ? `${todo.missed.errors}/${todo.missed.tries}` : '—'} />}
       <Cell label="frequency" figure={todo.frequency.perMinute === null ? '—' : perMinuteText(todo.frequency.perMinute)} unit={todo.frequency.perMinute === null ? '' : '/min'} note={todo.frequency.every ? `1 in ${todo.frequency.every} letters` : ''} />
     </div>}
-    {behind?.figures && <div className="cells train-cells">
+    {behind?.figures && <div className="cells train-cells" role="group" aria-describedby={described}>
       <Cell label="won back" figure={behind.figures.won === null ? '—' : wonText(behind.figures.won, shownUnit())} unit={behind.figures.won === null ? '' : shownUnit()} />
       {readCell('missed', behind.figures.now?.read ?? null, behind.figures.now ? (behind.figures.now.since ? 'since the drill' : 'retest') : '')}
       {readCell('before', behind.figures.before)}
     </div>}
     {step.kind === 'current'
-      ? <OpenEvidence view={view} />
+      ? <OpenEvidence view={view} told={told.length > 0} />
       : <div className="train-evidence">
-        {detail?.evidence ? <p data-text={detail.evidence}><Figures text={detail.evidence} /></p> : null}
+        {detail?.evidence ? <p id="train-step-evidence" data-text={detail.evidence} hidden={told.length > 0}><Figures text={detail.evidence} /></p> : null}
         {detail?.words.length ? <p className="train-words">{detail.words.map((word) => <Fragment key={word}><Marked word={word} unit={unit} /> </Fragment>)}</p> : null}
         {detail?.lines.map((line, index) => <p key={index} className="path-line" data-text={line}><Figures text={line} /></p>)}
+        {detail?.told.map((line, index) => <p key={`told-${index}`} id={`train-told-${index}`} className="path-line" data-text={line} hidden={Boolean(behind?.figures)}><Figures text={line} /></p>)}
       </div>}
     {todo?.timings && <TimingPlot timings={todo.timings} />}
   </div>;
@@ -283,7 +291,7 @@ class TrainSteps extends Component<StepsProps, StepsState, StepsSnapshot | null>
           <ol id="train-drilled" className="queue is-done" aria-label="drilled" hidden={!open}>
             {drilled.map((step) => (step.kind === 'behind'
               ? <li key={step.key} className={`queue-step is-behind is-${step.state}`} data-key={step.key} data-unit={step.unit}>
-                <button className="q-row" type="button" aria-pressed={pressed(step)} title={view?.details.get(step.unit)?.lines.join(' · ')} onClick={() => this.choose(step.key)}>
+                <button className="q-row" type="button" aria-pressed={pressed(step)} title={[...view?.details.get(step.unit)?.lines ?? [], ...view?.details.get(step.unit)?.told ?? []].join(' · ')} onClick={() => this.choose(step.key)}>
                   <span className="q-n" aria-hidden="true">{step.state === 'fixed' ? <svg className="q-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" /></svg> : <i className="q-ring"></i>}</span>
                   <b className="q-unit">{step.unit}</b>
                   <span className="q-why"><span className="q-state">{step.state}</span></span>

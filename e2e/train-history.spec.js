@@ -32,14 +32,15 @@ async function besideTab(page, context, supabase, email, { seed = null } = {}) {
 }
 
 // Train as drawn: each step drilled with its state, its read-back and what it won back, the open step's title and
-// evidence, and each step ahead with why, its evidence and what it costs.
+// evidence (on screen, or describing the cells that state it), and each step ahead with why, its evidence and what it
+// costs.
 const drawn = (page) => page.evaluate(() => {
   const text = (node) => (node && !node.hidden ? node.textContent : '');
   const cost = (item) => item.querySelector('.q-cost')?.textContent ?? '';
 
   return {
     behind: [...document.querySelectorAll('#train-drilled > .is-behind:not(.is-just)')].map((item) => [item.dataset.unit, item.querySelector('.q-state').textContent, item.querySelector('.q-row').title, cost(item)].join(' | ')),
-    current: [document.querySelector('#train-heading').textContent, text(document.querySelector('#train-evidence')), text(document.querySelector('#train-last'))].join(' | '),
+    current: [document.querySelector('#train-heading').textContent, document.querySelector('#train-evidence')?.textContent ?? '', text(document.querySelector('#train-last'))].join(' | '),
     ahead: [...document.querySelectorAll('#train-path > .is-ahead')].map((item) => [item.dataset.unit, item.querySelector('.q-why').textContent, item.querySelector('.q-row').title, cost(item)].join(' | ')),
   };
 });

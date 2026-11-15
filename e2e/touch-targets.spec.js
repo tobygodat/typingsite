@@ -322,7 +322,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await chooseWords(page, 25);
       await openView(page, 'Train');
       await expect(page.locator('#train-heading')).toHaveText(/^Practice “/);
-      await expect(page.locator('#train-evidence')).toBeVisible();
+      await expect(page.locator('#train-evidence')).not.toBeEmpty();
       small.push(...await sweep(page, 'train'));
 
       await openView(page, 'Practice');

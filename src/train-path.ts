@@ -206,6 +206,10 @@ export function sinceCopy(since: Since | null) {
   return `${before.errors} of ${before.tries} → ${after.errors} of ${after.tries} missed since you drilled it`;
 }
 
+// Whether a step behind you reads the runs since its drill rather than its retest's own read-back: once runs after
+// the retest hold it, or when it had no retest.
+export const readsSince = (step: BehindStep) => Boolean(step.since.after && (step.since.after.runs > 1 || !step.retest));
+
 // A step behind you: the retest's own read-back, then, once runs after the retest hold it, what they show.
 // Without a read-back (loops saved before it existed) the before and since figures stand in for it.
 export function behindCopy(step: BehindStep) {

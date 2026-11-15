@@ -3,6 +3,7 @@ import { evidenceRun } from './insights.js';
 import { keyboardOf, measuredInterval } from './learner.js';
 import type { Basis, Estimate, LearnerModel, TargetEvidence } from './learner.js';
 import type { TargetCounts } from './profile-types.js';
+import { readsSince } from './train-path.js';
 import type { BehindStep, trainPath } from './train-path.js';
 import { CHARS_PER_WORD } from './typing.js';
 import { speedValue } from './units.js';
@@ -189,8 +190,7 @@ export function trainFigures({ model, path, runs, keyboard }: { model: LearnerMo
     const { retest, before, after } = readsOf(step);
     const [was, now] = retest ? [costOf(unit, retest.was), costOf(unit, retest.now)] : [null, null];
 
-    // The runs since the drill once more than its retest holds the unit, else the retest's own read-back.
-    const latest = after && (after.runs > 1 || !retest) ? { read: after.read, since: true } : retest ? { read: retest.now, since: false } : null;
+    const latest = after && readsSince(step) ? { read: after.read, since: true } : retest ? { read: retest.now, since: false } : null;
 
     return { unit, state: step.state, basis: step.basis, won: was !== null && now !== null ? was - now : null, now: latest, before: retest?.was ?? before ?? null };
   };

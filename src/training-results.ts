@@ -11,7 +11,8 @@ import { firstTriesAt, conditionParts, evidenceRun } from './insights.js';
 import type { ConditionLabelSource } from './insights.js';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, paceShift } from './learner.js';
 import type { Recommendation, TargetEvidence } from './learner.js';
-import { behindCopy, evidenceCopy, missedCopy, sinceCopy, trainPath } from './train-path.js';
+import { behindCopy, evidenceCopy, missedCopy, readsSince, sinceCopy, trainPath } from './train-path.js';
+import type { BehindStep } from './train-path.js';
 import { trainFigures } from './train-cost.js';
 import type { StepDetail } from './learning-store.js';
 import { signedNumber } from './units.js';
@@ -180,10 +181,19 @@ function renderTrain({ advance = false, fresh = false } = {}) {
   const preview = (unit: string | null) => makeDrill(unit, list, unit ? [] : recommendation.lean).text.split(' ').slice(0, PREVIEW_WORDS);
   const missedWords = (unit: string, was: TargetEvidence | null) => (was?.basis === 'slow' ? [] : evidenceWords(unit, source));
 
+  // behindCopy leads with the retest's read-back. The cells show it too, unless they have moved on to the runs since;
+  // every other line restates a cell.
+  const behindLines = (step: BehindStep) => {
+    const lines = behindCopy(step);
+    const kept = step.retest && readsSince(step) ? 1 : 0;
+
+    return { lines: lines.slice(0, kept), told: lines.slice(kept) };
+  };
+
   const details = new Map<string, StepDetail>([
-    [current.unit ?? '', { preview: preview(current.unit), evidence, words, lines: [] }],
-    ...path.ahead.map((step): [string, StepDetail] => [step.unit, { preview: preview(step.unit), evidence: evidenceCopy(step.was), words: missedWords(step.unit, step.was), lines: [] }]),
-    ...path.behind.map((step): [string, StepDetail] => [step.unit ?? '', { preview: preview(step.unit ?? null), evidence: '', words: [], lines: behindCopy(step) }]),
+    [current.unit ?? '', { preview: preview(current.unit), evidence, words, lines: [], told: [] }],
+    ...path.ahead.map((step): [string, StepDetail] => [step.unit, { preview: preview(step.unit), evidence: evidenceCopy(step.was), words: missedWords(step.unit, step.was), lines: [], told: [] }]),
+    ...path.behind.map((step): [string, StepDetail] => [step.unit ?? '', { preview: preview(step.unit ?? null), evidence: '', words: [], ...behindLines(step) }]),
   ]);
 
   const previous = learning.train.getSnapshot();
