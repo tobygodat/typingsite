@@ -8,7 +8,8 @@
 //
 // Every job lists the same tests (same commit and E2E_* env) and reads the same durations, so the six
 // jobs compute the same split, and each test lands in exactly one shard. A test with no recorded
-// duration counts as the median one. Anything that could drop or repeat a test stops the job.
+// duration counts as the median one. Anything that could drop or repeat a test stops the job. It splits
+// single tests, so it would scatter a serial group; tests/e2e-shards.test.js fails if a spec adds one.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -53,7 +54,7 @@ export function ambiguities(tests) {
     if (seen.has(key)) problems.push(`two tests are named ${key}`);
     seen.add(key);
 
-    if (test.titles.some((title) => title.includes('›') || title !== title.trim() || !title)) problems.push(`${key} has a title with ›, edge spaces or nothing`);
+    if (test.titles.some((title) => /[›\n]/.test(title) || title !== title.trim() || !title)) problems.push(`${key} has a title with ›, a line break, edge spaces or nothing`);
   }
 
   for (const test of tests) {
@@ -71,7 +72,9 @@ export function split(tests, durations, total) {
   const median = known.length ? known[Math.floor(known.length / 2)] : 1000;
   const weighed = tests.map((test) => ({ test, ms: durations[testKey(test)] ?? median }));
 
-  weighed.sort((a, b) => b.ms - a.ms || (testKey(a.test) < testKey(b.test) ? -1 : 1));
+  const order = ({ test }) => `${test.project}${SEPARATOR}${testKey(test)}`;
+
+  weighed.sort((a, b) => b.ms - a.ms || (order(a) < order(b) ? -1 : order(a) > order(b) ? 1 : 0));
 
   const shards = Array.from({ length: total }, () => ({ tests: [], ms: 0 }));
 
@@ -119,7 +122,7 @@ function writeShard(spec, file) {
   const selected = playwright(['--list', '--test-list', file]).map((test) => `${test.project}${SEPARATOR}${testKey(test)}`);
 
   if (selected.length !== planned.size || selected.some((key) => !planned.has(key))) {
-    throw new Error(`--test-list ${file} selects ${selected.length} tests, not the ${planned.size} planned`);
+    throw new Error(`--test-list ${file} selects ${selected.length} tests that differ from the ${planned.size} planned`);
   }
 
   const seconds = (ms) => `${Math.round(ms / 1000)}s`;
