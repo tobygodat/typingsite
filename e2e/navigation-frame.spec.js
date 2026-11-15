@@ -185,6 +185,28 @@ test('below 960px a chosen side bar falls back to the top bar', async ({ page })
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
+test('the footer is read where it is seen: after the page below 960px, in the side bar from 960px', async ({ page }) => {
+  // Tab order: the footer's first link comes after the page's last control, or before the page from the side bar.
+  const footerAfterPage = () => page.evaluate(() => {
+    const footer = document.querySelector('.site-footer');
+
+    return Boolean(footer && document.querySelector('#main-content').compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  await page.setViewportSize({ width: 959, height: 800 });
+  await openApp(page);
+  await expect(page.locator('#main-content + .site-footer')).toBeVisible();
+  await expect(sideBar(page).locator('.site-footer')).toHaveCount(0);
+  expect(await footerAfterPage()).toBe(true);
+
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await expect(sideBar(page).locator('.site-footer')).toBeVisible();
+  expect(await footerAfterPage()).toBe(false);
+
+  await page.setViewportSize({ width: 959, height: 800 });
+  await expect(page.locator('#main-content + .site-footer')).toBeVisible();
+});
+
 test.describe('on a phone', () => {
   test.use({ viewport: { width: 320, height: 568 }, ...phone });
 

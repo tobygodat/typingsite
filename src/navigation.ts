@@ -2,17 +2,20 @@ import { flushSync } from 'react-dom';
 import { createStore } from './store.js';
 import { DEFAULT_KEYBINDINGS } from './keybindings.js';
 import type { Keybindings } from './keybindings.js';
+import { SIDE_BAR_MEDIA } from './side-bar.js';
 
 export type AppView = 'practice' | 'results' | 'train' | 'progress' | 'compete' | 'learn';
 
 export type NavigationPlacement = 'side' | 'top';
 
-interface NavigationView { screen: AppView; keys: Keybindings; mac: boolean; placement: NavigationPlacement; sideHidden: boolean }
+interface NavigationView { screen: AppView; keys: Keybindings; mac: boolean; placement: NavigationPlacement; sideHidden: boolean; wide: boolean }
 
 interface NavigationPorts { go(view: AppView, keep: boolean): void; skip(): void; restart(): void; exitFocus(): void; toggleSideBar(): void }
 
 export function createNavigation() {
-  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'side', sideHidden: false });
+  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'side', sideHidden: false,
+    wide: typeof matchMedia === 'function' ? matchMedia(SIDE_BAR_MEDIA).matches : true });
+
   let ports: NavigationPorts | null = null;
 
   return {
@@ -39,6 +42,11 @@ export function createNavigation() {
 
       if (view.getSnapshot().sideHidden === sideHidden) return;
       flushSync(() => view.publish({ ...view.getSnapshot(), sideHidden }));
+    },
+    // Whether the window is wide enough for the side bar. Only the footer reads it, to sit where the layout shows it so
+    // the tab order follows the eye; CSS owns the rest of the layout.
+    wide(wide: boolean) {
+      if (view.getSnapshot().wide !== wide) flushSync(() => view.publish({ ...view.getSnapshot(), wide }));
     },
     platform(mac: boolean) { flushSync(() => view.publish({ ...view.getSnapshot(), mac })); },
     go(screen: AppView) { ports?.go(screen, true); },

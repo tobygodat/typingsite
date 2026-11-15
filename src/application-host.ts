@@ -26,7 +26,7 @@ import { createGhostLaunch } from './ghost-launch.js';
 import { createLessonController } from './lesson-controller.js';
 import { createAccountTransitions } from './account-transitions.js';
 import { createDisplayPreferences } from './display-preferences.js';
-import { storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
+import { SIDE_BAR_MEDIA, storedSideBarHidden, storeSideBarHidden } from './side-bar.js';
 import { createControlGlides } from './control-glide.js';
 import { createTrainingPolicy, CODE_DRILL_NOTE } from './training-policy.js';
 import { createTrainingResults } from './training-results.js';
@@ -2268,6 +2268,10 @@ export async function attachApplication({ practice, learning, palette, settings:
   addEventListener('resize', () => {
     relayoutText();
   }, { signal: lifetime.signal });
+
+  const sideBarWidth = matchMedia(SIDE_BAR_MEDIA);
+  navigation.wide(sideBarWidth.matches);
+  sideBarWidth.addEventListener('change', () => navigation.wide(sideBarWidth.matches), { signal: lifetime.signal });
 
   document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); }, { signal: lifetime.signal });
 

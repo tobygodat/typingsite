@@ -3,6 +3,9 @@
 // src/prepaint.ts reads the same key before first paint.
 export const SIDE_BAR_KEY = 'stilltype-side-bar-v1:';
 
+// The width the side bar needs, as src/styles.css's side bar rules ask it.
+export const SIDE_BAR_MEDIA = '(min-width: 960px)';
+
 export function storedSideBarHidden(userId: string | null): boolean {
   if (!userId) return false;
 

@@ -34,6 +34,8 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
   const restartLabel = bindingLabel(view.keys.restart);
 
   // The footer sits where it is seen, so the tab order follows the eye: at the foot of the side bar, or of the page.
+  const footerInSideBar = view.placement === 'side' && view.wide;
+
   const footer = <footer className="site-footer">
     <PracticeBest practice={practice} />
     <AccountGuestNote controller={accounts} />
@@ -83,7 +85,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
         <AccountMenu controller={accounts} />
       </div>
 
-      {view.placement === 'side' && footer}
+      {footerInSideBar && footer}
     </div>
 
     <main id="main-content">
@@ -147,7 +149,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
       <ChallengeScreen onlineRace={onlineRace} friendsBoard={friendsBoard} local={challenge.local} daily={challenge.daily} visible={shown === 'compete'} />
     </main>
 
-    {view.placement === 'top' && footer}
+    {!footerInSideBar && footer}
   </div>
 
   <button id="exit-focus" className="btn btn-secondary exit-focus" type="button" onClick={() => navigation.exitFocus()} aria-keyshortcuts={ariaShortcuts(view.keys.exitFocus) || undefined}><kbd id="exit-focus-hint" className="key-hint">{bindingLabel(view.keys.exitFocus)}</kbd> exit focus</button>
