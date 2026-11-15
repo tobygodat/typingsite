@@ -20,7 +20,7 @@ export default async ({ page, h, shot, check, fake }) => {
     await page.locator('#settings-dialog').waitFor({ state: 'hidden' });
     await h.openView('Train');
     await h.settle();
-    check((await page.locator('#train-path .is-fixed').count()) >= 1, `${theme}: a fixed step shows`);
+    check((await page.locator('#train-drilled .is-fixed').count()) >= 1, `${theme}: a fixed step shows`);
     await shot(theme);
   }
 };

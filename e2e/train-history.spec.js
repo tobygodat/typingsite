@@ -1,8 +1,9 @@
 import { trainPath, aheadCopy, behindCopy, evidenceCopy, sinceCopy } from '../src/train-path.js';
-import { DEFAULT_POLICY, keyboardOf, recommendFor } from '../src/learner.js';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, recommendFor } from '../src/learner.js';
+import { costText, trainFigures, wonText } from '../src/train-cost.js';
 // Train follows the history this tab holds (TOB-420): a merge, a clear or its undo, made here or in another tab,
-// redraws the path and every other training surface, never mid-run, and never takes focus or scroll from someone
-// using the page. Two tabs of one account share the device cache, so each hears the other's saves.
+// redraws the queue and every other training surface, never mid-run, and never takes focus or the chosen step from
+// someone using the page. Two tabs of one account share the device cache, so each hears the other's saves.
 import { test, expect, openApp, openView, chooseWords, passageText, typeInto, finishDrill, completePassage } from './fixtures.js';
 import { conditions, withHistory } from './train-fixtures.js';
 
@@ -30,24 +31,21 @@ async function besideTab(page, context, supabase, email, { seed = null } = {}) {
   return { other, errors };
 }
 
-// The path as drawn: each step behind you with its state and figures, the open step's title and evidence, and each
-// step ahead with its evidence.
+// Train as drawn: each step drilled with its state, its read-back and what it won back, the open step's title and
+// evidence, and each step ahead with why, its evidence and what it costs.
 const drawn = (page) => page.evaluate(() => {
   const text = (node) => (node && !node.hidden ? node.textContent : '');
-  const unit = (item) => item.querySelector('.path-unit').firstChild.textContent;
-  const lines = (item) => [...item.querySelectorAll('.path-line')].map(text);
-  const steps = [...document.querySelectorAll('#train-path > li:not([hidden])')];
+  const cost = (item) => item.querySelector('.q-cost')?.textContent ?? '';
 
   return {
-    behind: steps.flatMap((item) => (item.matches('.is-behind:not(#comparison-panel)')
-      ? [[unit(item), item.classList.contains('is-fixed') ? 'fixed' : 'drilled', ...lines(item)].join(' | ')] : [])),
+    behind: [...document.querySelectorAll('#train-drilled > .is-behind:not(.is-just)')].map((item) => [item.dataset.unit, item.querySelector('.q-state').textContent, item.querySelector('.q-row').title, cost(item)].join(' | ')),
     current: [document.querySelector('#train-heading').textContent, text(document.querySelector('#train-evidence')), text(document.querySelector('#train-last'))].join(' | '),
-    ahead: steps.flatMap((item) => (item.matches('.is-ahead:not(.is-place)') ? [[unit(item), ...lines(item)].join(' | ')] : [])),
+    ahead: [...document.querySelectorAll('#train-path > .is-ahead')].map((item) => [item.dataset.unit, item.querySelector('.q-why').textContent, item.querySelector('.q-row').title, cost(item)].join(' | ')),
   };
 });
 
-// The path trainPath gives for the history stored on this device, at the run's conditions and the stored focus, in
-// the same form.
+// The steps trainPath gives for the history stored on this device, at the run's conditions and the stored focus, and
+// what train-cost makes of them, in the same form.
 const stored = async (page, after = null) => {
   const { data, now } = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((name) => name.startsWith('stilltype-profile-v2:'));
@@ -57,24 +55,30 @@ const stored = async (page, after = null) => {
 
   const { runs = [], loops = [], attempts = [], preferences = {} } = data;
   const source = conditions;
-  const recommendation = recommendFor(DEFAULT_POLICY, { runs, loops, traces: attempts, source, now, focus: preferences.trainFocus || 'balanced' });
-  const path = trainPath({ recommendation, loops, runs, keyboard: keyboardOf(source), after });
+  const keyboard = keyboardOf(source);
+  const focus = preferences.trainFocus || 'balanced';
+  const recommendation = recommendFor(DEFAULT_POLICY, { runs, loops, traces: attempts, source, now, focus });
+  const path = trainPath({ recommendation, loops, runs, keyboard, after });
+  const figures = trainFigures({ model: fitLearner(learnerEvidence(runs, keyboard), now, LEARNER_VARIANTS[DEFAULT_POLICY], focus), path, runs, keyboard });
   const { current } = path;
   const since = sinceCopy(current.since);
+  const cost = (wpm) => (wpm === null ? '—' : `${costText(wpm, 'wpm')} wpm`);
+  const won = (wpm) => (wpm === null ? '' : `${wonText(wpm, 'wpm')} wpm`);
 
   return {
     path: {
-      behind: path.behind.map((step) => [step.unit, step.state, ...behindCopy(step)].join(' | ')),
+      behind: path.behind.map((step, i) => [step.unit, step.state, behindCopy(step).join(' · '), won(figures.behind[i].won)].join(' | ')),
       current: [current.title, current.unit ? evidenceCopy(current.was, { all: Boolean(since) }) : '', since].join(' | '),
-      ahead: path.ahead.map((step) => [step.unit, aheadCopy(step.was)].join(' | ')),
+      ahead: figures.ahead.map((step, i) => [step.unit, step.basis === 'slow' ? 'slow' : 'missed', aheadCopy(path.ahead[i].was), cost(step.cost)].join(' | ')),
     },
     queue: recommendation.queue.map((item) => item.unit),
   };
 };
 
-// Drawn as stored, once the merge has landed.
-async function expectStoredPath(page, after = null) {
-  await expect.poll(async () => JSON.stringify(await drawn(page)) === JSON.stringify((await stored(page, after)).path), { timeout: 10_000 }).toBe(true);
+// Drawn as stored, once the merge has landed. The open step's evidence shows only while it is the step chosen.
+async function expectStoredPath(page, after = null, parts = ['behind', 'current', 'ahead']) {
+  const pick = (path) => JSON.stringify(parts.map((part) => path[part]));
+  await expect.poll(async () => pick(await drawn(page)) === pick((await stored(page, after)).path), { timeout: 10_000 }).toBe(true);
 }
 
 async function clearIn(page) {
@@ -101,17 +105,17 @@ test('a clear in another tab and its undo redraw Train here, each time as the st
   const { other, errors } = await besideTab(page, context, supabase, 'follow-clear@stilltype.test');
   await openView(page, 'Train');
   await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
-  await expect(page.locator('#train-path > .is-fixed')).toHaveCount(2);
+  await expect(page.locator('#train-drilled > .is-fixed')).toHaveCount(2);
 
   await clearIn(other);
   await expectStoredPath(page);
   await expect(page.locator('#train-heading')).toHaveText('General drill');
-  await expect(page.locator('#train-path > .is-behind:not([hidden])')).toHaveCount(0);
+  await expect(page.locator('#train-drilled > .is-behind')).toHaveCount(0);
 
   await other.locator('#undo-clear').click();
   await expectStoredPath(page);
   await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
-  await expect(page.locator('#train-path > .is-fixed')).toHaveCount(2);
+  await expect(page.locator('#train-drilled > .is-fixed')).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 
@@ -185,19 +189,19 @@ test('a redraw keeps focus on the step that has it, or gives it to the open step
   await page.setViewportSize({ width: 1440, height: 900 });
   const { other, errors } = await besideTab(page, context, supabase, 'follow-focus@stilltype.test');
   await openView(page, 'Train');
-  const ahead = page.locator('#train-path > .is-ahead .path-choose');
-  const unit = await ahead.last().locator('.path-unit').evaluate((node) => node.firstChild.textContent);
-  await ahead.last().focus();
+  const ahead = page.locator('#train-path > .is-ahead');
+  const unit = await ahead.last().getAttribute('data-unit');
+  await ahead.last().locator('.q-row').focus();
 
   // Another tab types a run: if the step is still ahead it keeps focus, otherwise the open step's button takes it.
   await runWithMisses(other);
   await expectStoredPath(page);
   const still = (await drawn(page)).ahead.some((step) => step.startsWith(`${unit} |`));
-  const focused = () => page.evaluate(() => document.activeElement.closest('.path-choose')?.querySelector('.path-unit').firstChild.textContent || document.activeElement.id);
+  const focused = () => page.evaluate(() => document.activeElement.closest('.queue-step')?.dataset.unit || document.activeElement.id);
   expect(await focused()).toBe(still ? unit : 'start-drill');
 
   // Cleared: no step ahead is left, so the open step's button has focus.
-  await page.locator('#train-path > .is-ahead .path-choose').first().focus();
+  await page.locator('#train-path > .is-ahead .q-row').first().focus();
   await clearIn(other);
   await expectStoredPath(page);
   await expect(page.locator('#start-drill')).toBeFocused();
@@ -211,21 +215,23 @@ test('a redraw keeps focus on the step that has it, or gives it to the open step
   expect(errors).toEqual([]);
 });
 
-test('a long path scrolled back to its oldest steps stays there through a redraw', async ({ page, context, supabase }) => {
+test('a drilled step chosen in the open fold stays chosen, with the fold open and its focus, through a redraw', async ({ page, context, supabase }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  const { other, errors } = await besideTab(page, context, supabase, 'follow-scroll@stilltype.test');
+  const { other, errors } = await besideTab(page, context, supabase, 'follow-fold@stilltype.test');
   await openView(page, 'Train');
-  const line = page.locator('#train-path');
-  await expect(line).toHaveAttribute('tabindex', '0');
-  await line.evaluate((element) => { element.scrollLeft = 0; });
-  await line.focus();
-  const first = page.locator('#train-path > .is-behind').first();
-  await expect(first).toBeInViewport();
+  await page.locator('#train-drilled-toggle').click();
+  const qu = page.locator('#train-drilled > [data-unit="qu"] .q-row');
+  await qu.click();
+  await expect(page.locator('#start-drill')).toHaveText('Drill “qu” again');
+  const before = JSON.stringify((await stored(page)).path.ahead);
 
   await runWithMisses(other);
-  await expectStoredPath(page);
-  await expect(line).toBeFocused();
-  expect(await line.evaluate((element) => element.scrollLeft)).toBe(0);
+  await expect.poll(async () => JSON.stringify((await stored(page)).path.ahead), { timeout: 10_000 }).not.toBe(before);
+  await expectStoredPath(page, null, ['behind', 'ahead']);
+  await expect(page.locator('#train-drilled-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(qu).toHaveAttribute('aria-pressed', 'true');
+  await expect(qu).toBeFocused();
+  await expect(page.locator('#start-drill')).toHaveText('Drill “qu” again');
   expect(errors).toEqual([]);
 });
 

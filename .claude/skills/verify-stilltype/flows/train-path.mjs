@@ -1,7 +1,7 @@
-// Train's path (TOB-420). A new guest's path, then an account whose history another device synced: six runs that
-// miss "an" and "er" and slow "th", and four earlier drills behind you ("qu" and "ck" fixed since, "ol" and "wh"
-// drilled). Shots: the path, a pace-named target (speed focus), choosing a step ahead, mid-drill, the comparison as
-// the newest step behind you, and a general drill after one short run. Run with --delay 40.
+// Train's path (TOB-420), drawn as a queue (TOB-470). A new guest's queue, then an account whose history another
+// device synced: six runs that miss "an" and "er" and slow "th", and four earlier drills ("qu" and "ck" fixed since,
+// "ol" and "wh" drilled). Shots: the queue, a pace-named target (speed focus), a step ahead chosen and drilled,
+// mid-drill and the comparison. Run with --delay 40. train-instrument.mjs shoots every state of the layout.
 import { englishFrequency } from '../../../../src/learner.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../../../../src/typing.js';
 
@@ -46,12 +46,12 @@ export default async ({ page, h, shot, note, check, fake }) => {
     await page.locator('#palette-list [role="option"]', { hasText: label }).first().click();
   };
 
-  const steps = async () => page.locator('#train-path > li:not([hidden])').evaluateAll((items) => items.map((item) => item.className.replace('path-step ', '')));
+  const steps = async () => page.locator('.queue-step').evaluateAll((items) => items.map((item) => `${item.dataset.unit ?? item.dataset.key} ${item.className.replace('queue-step ', '')}`));
 
   await h.openApp();
   await h.openView('Train');
   await h.settle();
-  note('guest path', JSON.stringify(await steps()));
+  note('guest queue', JSON.stringify(await steps()));
   check((await h.text('#train-heading')) === 'General drill', 'a new guest is offered the general drill');
   check(await page.locator('#start-drill').isVisible(), 'the general drill can be started');
   await shot('guest');
@@ -67,9 +67,9 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.attr('body', 'data-view', 'results');
   await h.openView('Train');
   await h.settle();
-  note('path', JSON.stringify(await steps()));
+  note('queue', JSON.stringify(await steps()));
   note('open', await h.text('#train-heading'));
-  check((await page.locator('#train-path .is-fixed').count()) >= 1, 'a target is fixed');
+  check((await page.locator('#train-drilled .is-fixed').count()) >= 1, 'a target is fixed');
   check((await page.locator('#train-path .is-ahead').count()) === 3, 'three steps ahead');
   await shot('history');
 
@@ -82,12 +82,13 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await palette('drill length · 15 seconds');
   await h.settle();
 
-  // Choosing a step ahead drills it.
-  const chosen = page.locator('#train-path .is-ahead .path-choose').first();
-  const unit = await chosen.locator('.path-unit').textContent();
-  await chosen.hover();
+  // A step ahead, chosen, then drilled from its detail.
+  const chosen = page.locator('#train-path .is-ahead').first();
+  const unit = await chosen.getAttribute('data-unit');
+  await chosen.locator('.q-row').hover();
   await shot('ahead-hover');
-  await chosen.click();
+  await chosen.locator('.q-row').click();
+  await page.locator('#start-drill').click();
   await h.attr('#typing-screen', 'data-session', 'drill');
   check((await h.text('#session-title')) === `Practice “${unit}”`, 'the step chosen is the drill');
   await page.locator('#typing-input').focus();
@@ -99,8 +100,8 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await h.attr('body', 'data-view', 'train');
   await h.settle();
   note('after', JSON.stringify(await steps()));
-  check(await page.locator('#comparison-panel').isVisible(), 'the comparison is a step on the path');
-  check((await page.locator('#comparison-unit').textContent()) === unit, 'the step just drilled is behind you');
+  check(await page.locator('#comparison-panel').isVisible(), 'the comparison shows');
+  check((await page.locator('#comparison-unit').textContent()) === unit, 'the step just drilled is the comparison');
   await shot('comparison');
   await page.keyboard.press('Tab');
   note('tab after comparison', await page.evaluate(() => document.activeElement.id || document.activeElement.className));

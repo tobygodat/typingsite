@@ -101,7 +101,7 @@ export default async ({ page, h, shot, note, fake, url }) => {
     await signIn(interruptedHistory());
     await h.openView('Train');
     await h.settle();
-    note('loop: Train status of ex', await page.locator('#train-path > li[data-unit="ex"] .path-status').textContent().catch(() => 'not behind'));
+    note('loop: Train status of ex', await page.locator('#train-drilled > li[data-unit="ex"] .q-state').textContent().catch(() => 'not behind'));
     await h.openView('Progress');
     await page.locator('[data-progress-open="runs"]').click();
     const row = page.locator('.history-row', { has: page.locator('.history-target', { hasText: /ex|Fresh-text check/ }) }).first();

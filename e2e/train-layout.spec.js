@@ -1,7 +1,7 @@
 // A run's result on Practice is one card: the score with its facts beside it (two to a row on a phone), the
-// speed trace, the words typed, then Run again and the drill. Train is a path (TOB-420): the
-// targets drilled behind you, the open one, and the next three the learner queues; a retest's comparison is the
-// newest step behind you.
+// speed trace, the words typed, then Run again and the drill. Train (TOB-470) is a queue: the open
+// step and the next three the learner queues, each with what it costs, the drilled steps folded under them, and the
+// chosen step's detail beside them; a retest's comparison is the newest step drilled.
 import { DEFAULT_POLICY } from '../src/learner.js';
 import { test, expect, openProgressDetail, openApp, openView, chooseWords, completePassage, finishDrill, passageText, chooseSetting, closeSettings, chooseNavigation, phone } from './fixtures.js';
 import { withHistory, units, behindUnits } from './train-fixtures.js';
@@ -190,7 +190,7 @@ test('the conditions show at once; no metric notes, and the counts behind accura
   await expect(page.locator('.run-card-facts > div', { has: page.locator('#result-consistency') })).toHaveAttribute('title', /^100 minus the variation/);
 });
 
-// ── Train's path ──────────────────────────────────────────────────────────────────────────────────────────────
+// ── Train: the queue and the chosen step ─────────────────────────────────────────────────────────────────────
 
 async function jumpToTrain(page) {
   await page.keyboard.press('Control+k');
@@ -199,7 +199,10 @@ async function jumpToTrain(page) {
   await expect(page.locator('#train-heading')).toBeFocused();
 }
 
-test('a new guest’s path is one open step, the general drill, on a line that runs on to empty places', async ({ page }) => {
+const costs = (page) => page.locator('#train-path > .queue-step .q-cost data').evaluateAll((nodes) => nodes.map((node) => Number(node.value)));
+const cells = (page) => page.locator('.train-step .train-cells .cell').evaluateAll((nodes) => nodes.map((node) => [...node.querySelectorAll('.cell-label, .cell-figure, .cell-unit, .cell-note')].map((part) => part.textContent).join(' ')));
+
+test('a new guest’s queue is the general drill alone, and its detail starts a drill with nothing after it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openApp(page);
   await openView(page, 'Train');
@@ -208,16 +211,20 @@ test('a new guest’s path is one open step, the general drill, on a line that r
   await expect(page.locator('#train-heading')).toHaveClass(/sr-only/);
   await expect(page.locator('#train-current')).toHaveAttribute('aria-current', 'step');
   await expect(page.locator('#train-unit')).toHaveText('General drill');
-  await expect(page.locator('#train-path > .is-behind')).toHaveCount(1);
+  await expect(page.getByRole('list', { name: 'queue' }).getByRole('listitem')).toHaveCount(1);
+  await expect(page.locator('#train-current .q-row')).toHaveAttribute('aria-pressed', 'true');
+  // Nothing drilled, nothing costed: no fold, no measures, no plot.
+  await expect(page.locator('#train-drilled-toggle')).toHaveCount(0);
+  await expect(page.locator('#train-path .q-cost')).toHaveCount(0);
+  await expect(page.locator('.train-cells')).toHaveCount(0);
+  await expect(page.locator('.timing-plot')).toHaveCount(0);
   await expect(page.locator('#comparison-panel')).toBeHidden();
-  // The empty places are drawn, not announced: nothing ahead is named.
-  await expect(page.locator('#train-path > .is-place')).toHaveCount(3);
-  await expect(page.locator('#train-path > .is-place[aria-hidden="true"]')).toHaveCount(3);
-  await expect(page.getByRole('list', { name: 'Path' }).getByRole('listitem')).toHaveCount(1);
-  // No baseline yet, so no retest follows, and the button and the line under it say so.
+  // No baseline yet, so no retest follows, and the button and the line beside it say so.
   await expect(page.locator('#start-drill')).toHaveText('Drill');
   await expect(page.locator('#train-starts')).toHaveText('30 s');
   await expect(page.locator('#train-evidence')).toBeHidden();
+  // The detail still shows the drill's first words.
+  await expect(page.locator('.train-preview span')).toHaveCount(6);
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
@@ -228,59 +235,101 @@ test('after one short run the open step is a general drill, stated plainly, with
   await completePassage(page);
   await openView(page, 'Train');
   await expect(page.locator('#train-heading')).toHaveText('General drill');
-  await expect(page.locator('#train-path > .is-ahead:not(.is-place)')).toHaveCount(0);
+  await expect(page.locator('#train-path > .is-ahead')).toHaveCount(0);
   await expect(page.locator('#start-drill')).toHaveText('Drill and retest');
-  await expect(page.locator('#train-starts')).toHaveText('30 s, then 10 words on fresh text');
+  await expect(page.locator('#train-starts')).toHaveText('30 s + 10 words retest');
   await page.locator('#start-drill').click();
   await finishDrill(page);
   await completePassage(page);
-  // The comparison is the newest step behind you, the general drill it ran.
+  // The comparison is the newest step drilled, the general drill it ran.
   await expect(page.locator('#comparison-panel')).toBeVisible();
   await expect(page.locator('#comparison-unit')).toHaveText('General drill');
   await expect(page.locator('#comparison-status')).toBeFocused();
+  await expect(page.locator('#train-drilled > .is-just .q-row')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('with history the path shows each drill behind you, the learner’s target open and the next three it queues, as Progress lists them', async ({ page, supabase }) => {
+test('with history the queue opens on the learner’s target with its figures, the next three cost less, and the drilled steps fold under it, as Progress lists them', async ({ page, supabase }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await withHistory(page, supabase, 'path-history@stilltype.test');
   await openView(page, 'Train');
   await expect(page.locator('#train-heading')).toHaveText('Practice “th”');
   await expect(page.locator('#train-unit')).toHaveText('th');
+  await expect(page.locator('.train-step-unit')).toHaveText('th');
   await expect(page.locator('#train-evidence')).toHaveText('90 ms slower than your pace, in 6 of 6 runs that timed it (48 clean intervals)');
   await expect(page.locator('#train-words')).toBeHidden();
   await expect(page.locator('#start-drill')).toHaveText('Drill “th”');
-  await expect(page.locator('#train-starts')).toHaveText('30 s, then 10 words on fresh text');
-  expect(await behindUnits(page)).toEqual(['qu', 'ck', 'ol', 'wh']);
+  await expect(page.locator('#train-starts')).toHaveText('30 s + 10 words retest');
+  // The drill's first words, each holding the pair, marked.
+  const preview = await page.locator('.train-preview span').allTextContents();
+  expect(preview).toHaveLength(6);
+  expect(preview.every((word) => word.includes('th'))).toBe(true);
+  await expect(page.locator('.train-preview b').first()).toHaveText('th');
+
+  // Four rows: the open step and the next three, each with why and what it costs, in the learner's order, so the
+  // costs never rise down the queue.
   const ahead = await units(page, 'ahead');
   expect(ahead).toHaveLength(3);
-  await expect(page.locator('#train-path > .is-ahead .path-line').first()).toHaveText(/^\d+ of \d+ missed$/);
+  await expect(page.locator('#train-current .q-why')).toHaveText('slow');
+  await expect(page.locator('#train-path > .is-ahead .q-why')).toHaveText(['missed', 'missed', 'missed']);
+  const spent = await costs(page);
+  expect(spent).toHaveLength(4);
+  expect(spent.every((cost, i) => cost > 0 && (i === 0 || cost <= spent[i - 1]))).toBe(true);
+  await expect(page.locator('#train-current .q-cost [data-speed-unit]')).toHaveText('wpm');
 
-  // Drilled after one retest; fixed only for the two whose runs since hold 20 clean tries, which the learner no longer queues.
-  // Each says so in a status word beside its target.
-  await expect(page.locator('#train-path > .is-fixed .path-unit')).toHaveText(['qu, fixed', 'ck, fixed']);
-  await expect(page.locator('#train-path > .is-drilled .path-unit')).toHaveText(['ol, drilled', 'wh, drilled']);
-  await expect(page.locator('#train-path > .is-fixed .path-status')).toHaveText(['fixed', 'fixed']);
-  await expect(page.locator('#train-path > .is-drilled .path-status')).toHaveText(['drilled', 'drilled']);
-  // The read-back, then what the runs since the drill hold. The run typed here is one of those runs, and its passage
-  // may hold the pair, so the counts since are whatever that run adds: "qu" has 36 clean tries before it, and "ol",
-  // whose read-back is from its retest alone, gains a since-line only when the passage holds "ol".
-  const qu = await page.locator('#train-path > .is-fixed').first().locator('.path-line').allTextContents();
+  // The open step's measures: its cost as the row has it, 90 ms over a 200 ms pace, and how often it comes up at the
+  // person's median 62 wpm (310 letters a minute).
+  const [cost, slower, frequency] = await cells(page);
+  expect(cost).toMatch(/^cost ≈\d+(\.\d)? wpm$/);
+  expect(cost).toContain(await page.locator('#train-current .q-cost data').textContent());
+  expect(slower).toBe('slower 90 ms 290 vs 200');
+  expect(frequency).toMatch(/^frequency \d+(\.\d)? \/min 1 in \d+ letters$/);
+  // One dot for each of the six runs that timed it, the pace and the pair marked.
+  await expect(page.locator('.train-timings .panel-note')).toHaveText('48 in 6 runs');
+  await expect(page.locator('.timing-dots i')).toHaveCount(6);
+  await expect(page.locator('.timing-mark.is-pace')).toHaveText('pace200');
+  await expect(page.locator('.timing-mark.is-own')).toHaveText('th290');
+  await expect(page.locator('.timing-plot')).toHaveAttribute('aria-label', 'th: 290 ms against your pace of 200 ms, one dot for each of 6 runs');
+
+  // The drilled steps fold under the queue, with what they won back between them.
+  const fold = page.locator('#train-drilled-toggle');
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(fold.locator('.q-count')).toHaveText('4');
+  await expect(fold.locator('.q-cost')).toHaveText(/^(\+\d+(\.\d)?|<0\.1) wpm$/);
+  await expect(page.locator('#train-drilled')).toBeHidden();
+  await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  expect(await behindUnits(page)).toEqual(['qu', 'ck', 'ol', 'wh']);
+
+  // Drilled after one retest; fixed only for the two whose runs since hold 20 clean tries, which the learner no longer
+  // queues. Each says so in its state word, and its mark says it without colour: a check when fixed, a ring when drilled.
+  await expect(page.locator('#train-drilled > .is-fixed .q-unit')).toHaveText(['qu', 'ck']);
+  await expect(page.locator('#train-drilled > .is-drilled .q-unit')).toHaveText(['ol', 'wh']);
+  await expect(page.locator('#train-drilled > .is-fixed .q-state')).toHaveText(['fixed', 'fixed']);
+  await expect(page.locator('#train-drilled > .is-drilled .q-state')).toHaveText(['drilled', 'drilled']);
+  await expect(page.locator('#train-drilled > .is-fixed .q-check')).toHaveCount(2);
+  await expect(page.locator('#train-drilled > .is-drilled .q-ring')).toHaveCount(2);
+
+  // A drilled step chosen: what it won back, its misses since the drill and before it, and the loop's read-back. The run
+  // typed here is one of the runs since, and its passage may hold the pair, so the counts since are whatever that run
+  // adds: "qu" has 36 clean tries before it.
+  await page.locator('#train-drilled > [data-unit="qu"] .q-row').click();
+  await expect(page.locator('#train-drilled > [data-unit="qu"] .q-row')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.train-step .train-cells .cell-label').first()).toHaveText('won back');
+  await expect(page.locator('.train-step-head .cell-label')).toHaveText('fixed · pair');
+  await expect(page.locator('#start-drill')).toHaveText('Drill “qu” again');
+  const [won, missed, before] = await cells(page);
+  expect(won).toMatch(/^won back (\+\d+(\.\d)?|<0\.1) wpm$/);
+  expect(Number(missed.match(/^missed 0\/(\d+) since the drill$/)?.[1])).toBeGreaterThanOrEqual(36);
+  expect(before).toBe('before 6/22');
+  const qu = await page.locator('.train-step .path-line').allTextContents();
   expect(qu[0]).toBe('6 of 22 → 0 of 12 missed');
   expect(qu.slice(1)).toHaveLength(1);
   expect(Number(qu[1].match(/^0 of (\d+) missed since the drill$/)?.[1])).toBeGreaterThanOrEqual(36);
-  const ol = await page.locator('#train-path > .is-drilled').first().locator('.path-line').allTextContents();
+  await page.locator('#train-drilled > [data-unit="ol"] .q-row').click();
+  const ol = await page.locator('.train-step .path-line').allTextContents();
   expect(ol[0]).toBe('6 of 22 → 1 of 12 missed');
   expect(ol.length).toBeLessThanOrEqual(2);
   expect(ol.slice(1).every((line) => /^1 of \d+ missed since the drill$/.test(line)), ol.join(' / ')).toBe(true);
-
-  // The shapes say it without colour: a disc when fixed, a ring when drilled, a larger ring for the open step, a smaller one ahead.
-  const node = (selector) => page.locator(`#train-path ${selector} .path-node`).first().evaluate((el) => ({ size: el.getBoundingClientRect().width,
-    filled: getComputedStyle(el).backgroundColor === getComputedStyle(el).borderTopColor }));
-
-  expect(await node('> .is-fixed')).toMatchObject({ filled: true, size: 16 });
-  expect(await node('> .is-drilled')).toMatchObject({ filled: false, size: 16 });
-  expect((await node('#train-current')).size).toBe(24);
-  expect((await node('> .is-ahead')).size).toBe(12);
 
   // Progress's Patterns across runs lists the same queue: its first row is open here, the next three ahead.
   await openView(page, 'Progress');
@@ -290,62 +339,64 @@ test('with history the path shows each drill behind you, the learner’s target 
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
+test('in cpm every cost and what was won back read five times their wpm, and nothing is redrawn but the figures', async ({ page, supabase }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await withHistory(page, supabase, 'path-cpm@stilltype.test');
+  await openView(page, 'Train');
+  const wpm = await costs(page);
+  await page.keyboard.press('Control+k');
+  await page.locator('#palette-input').fill('speed unit · cpm');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#train-current .q-cost [data-speed-unit]')).toHaveText('cpm');
+  expect(await costs(page)).toEqual(wpm);
+  const shown = await page.locator('#train-path > .queue-step .q-cost data').allTextContents();
+  expect(shown.map((text, i) => (text === '<0.1' ? true : Math.abs(Number(text) - wpm[i] * 5) <= 0.05))).toEqual(wpm.map(() => true));
+  await expect(page.locator('.train-cells .cell').first()).toHaveText(/^cost≈\d+(\.\d)?cpm$/);
+  await expect(page.locator('#train-drilled-toggle .q-cost')).toHaveText(/ cpm$/);
+});
+
 for (const [width, height] of [[1440, 900], [390, 844]]) {
-  test(`under forced colours at ${width}px the four steps and the two halves of the line still differ`, async ({ page, supabase }) => {
+  test(`under forced colours at ${width}px the chosen row, the fixed and the drilled steps still differ`, async ({ page, supabase }) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ forcedColors: 'active' });
     await withHistory(page, supabase, `path-forced-${width}@stilltype.test`);
     await openView(page, 'Train');
     expect(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)).toBe(true);
+    await page.locator('#train-drilled-toggle').click();
 
-    const node = (selector) => page.locator(`#train-path ${selector} .path-node`).first().evaluate((el) => {
+    const look = (selector) => page.locator(selector).first().evaluate((el) => {
       const style = getComputedStyle(el);
 
-      return { size: Math.round(el.getBoundingClientRect().width), fill: style.backgroundColor, ring: style.borderTopColor, dot: style.boxShadow };
+      return { outline: style.outlineStyle, stroke: style.stroke, ring: style.borderTopStyle };
     });
 
-    const [drilled, fixed, open, ahead] = [await node('> .is-drilled'), await node('> .is-fixed'), await node('#train-current'), await node('> .is-ahead')];
-    // Drilled is a ring, fixed a disc of the ring's colour, the open step a larger ring of another colour holding a dot,
-    // and ahead a smaller ring of a third.
-    expect(drilled.fill).not.toBe(drilled.ring);
-    expect(fixed.fill).toBe(fixed.ring);
-    expect(open.size).toBeGreaterThan(drilled.size);
-    expect(open.ring).not.toBe(drilled.ring);
-    expect(open.dot).toContain(open.ring);
-    expect(ahead.size).toBeLessThan(drilled.size);
-    expect(ahead.ring).not.toBe(drilled.ring);
-    expect(ahead.ring).not.toBe(open.ring);
-
-    // The line: solid behind you, dashed from the open step on, drawn with a column's ::before from 901px and a step's
-    // ::before below.
-    const line = (selector) => page.locator(selector).first().evaluate((el) => {
-      const style = getComputedStyle(el, '::before');
-
-      return { color: style.backgroundColor, image: style.backgroundImage };
-    });
-
-    const [done, todo] = width > 900
-      ? [await line('#train-path > .is-behind .path-head'), await line('#train-current > .path-head')]
-      : [await line('#train-path > .is-behind:not([data-early])'), await line('#train-current')];
-
-    expect(done.image).toBe('none');
-    expect(done.color).not.toBe('rgba(0, 0, 0, 0)');
-    expect(todo.image).toContain('repeating-linear-gradient');
-    // And each step behind you says its state in words.
-    await expect(page.locator('#train-path > .is-behind:not([data-early]) .path-status').first()).toBeVisible();
+    // The chosen row is outlined in a system colour; the others are not.
+    expect((await look('#train-current .q-row')).outline).toBe('solid');
+    expect((await look('#train-path > .is-ahead .q-row')).outline).toBe('none');
+    // Fixed is a check drawn in the text colour, drilled a ring, and each says its state in words.
+    expect((await look('#train-drilled > .is-fixed .q-check')).stroke).not.toBe('none');
+    expect((await look('#train-drilled > .is-drilled .q-ring')).ring).toBe('solid');
+    await expect(page.locator('#train-drilled > .is-fixed .q-state').first()).toHaveText('fixed');
+    await expect(page.locator('#train-drilled > .is-drilled .q-state').first()).toHaveText('drilled');
   });
 }
 
-test('each focus opens its own target and queues its own steps ahead, each with evidence of its kind', async ({ page, supabase }) => {
+test('each focus opens its own target and queues its own steps, each on the basis it was ranked by', async ({ page, supabase }) => {
   await withHistory(page, supabase, 'path-focus@stilltype.test');
 
-  for (const [focus, open, pattern] of [['balanced', 'th', /./], ['accuracy', 'an', /^\d+ of \d+ missed$/], ['speed', 'th', /^\d+ ms slower$/]]) {
+  for (const [focus, open, why, evidence] of [['balanced', 'th', /^(slow|missed)$/, /./], ['accuracy', 'an', /^missed$/, /^\d+ of \d+ missed in \d+ runs?$/], ['speed', 'th', /^slow$/, /^\d+ ms slower/]]) {
     await chooseSetting(page, 'train-focus', focus);
     await closeSettings(page);
     await openView(page, 'Train');
     await expect(page.locator('#train-unit')).toHaveText(open);
 
-    for (const line of await page.locator('#train-path > .is-ahead .path-line').allTextContents()) expect(line, focus).toMatch(pattern);
+    for (const word of await page.locator('#train-path > .queue-step .q-why').allTextContents()) expect(word, focus).toMatch(why);
+
+    // A step ahead chosen shows the learner's evidence of its kind.
+    if (await page.locator('#train-path > .is-ahead').count()) {
+      await page.locator('#train-path > .is-ahead .q-row').first().click();
+      await expect(page.locator('.train-step .train-evidence p').first()).toHaveText(evidence);
+    }
   }
 
   // Speed names only "th" here, so nothing waits ahead of it.
@@ -355,16 +406,26 @@ test('each focus opens its own target and queues its own steps ahead, each with 
   await closeSettings(page);
   await openView(page, 'Train');
   await expect(page.locator('#train-words span')).toHaveText(['another', 'than', 'and']);
+  const [, missed] = await cells(page);
+  expect(missed).toMatch(/^missed \d+\/\d+$/);
 });
 
-test('choosing a step ahead drills it, and its loop records the policy and focus that queued it', async ({ page, supabase }) => {
+test('choosing a step ahead shows it, its button drills it, and its loop records the policy and focus that queued it', async ({ page, supabase }) => {
   const user = await withHistory(page, supabase, 'path-ahead@stilltype.test');
   await page.clock.install();
   await openView(page, 'Train');
-  const choice = page.locator('#train-path > .is-ahead .path-choose').first();
-  const unit = (await choice.locator('.path-unit').textContent());
-  await expect(choice).toHaveAccessibleName(new RegExp(`^Drill ${unit}, \\d+ (of \\d+ missed|ms slower)$`));
+  const choice = page.locator('#train-path > .is-ahead .q-row').first();
+  const unit = await page.locator('#train-path > .is-ahead').first().getAttribute('data-unit');
   await choice.click();
+  await expect(choice).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#train-current .q-row')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.train-step-unit')).toHaveText(unit);
+  await expect(page.locator('.train-step-head .cell-label')).toHaveText('pair');
+  await expect(page.locator('.train-step .train-evidence p').first()).toHaveText(/^\d+ (of \d+ missed in \d+ runs?|ms slower)/);
+  // The open step is still the open step.
+  await expect(page.locator('#train-unit')).toHaveText('th');
+  await expect(page.locator('#start-drill')).toHaveText(`Drill “${unit}”`);
+  await page.locator('#start-drill').click();
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
   await expect(page.locator('#session-title')).toHaveText(`Practice “${unit}”`);
   expect((await passageText(page)).split(' ').every((word) => word.includes(unit))).toBe(true);
@@ -374,26 +435,30 @@ test('choosing a step ahead drills it, and its loop records the policy and focus
   await expect.poll(() => supabase.profileFor(user.email)?.loops?.at(-1)).toMatchObject({ target: unit, policy: DEFAULT_POLICY, focus: 'balanced', recommendationKind: 'manual' });
 });
 
-test('after a retest the path moves on: the step just drilled is behind you with its comparison, and the next one is open', async ({ page, supabase }) => {
+test('after a retest the queue moves on: the step just retested is chosen with its comparison, and the next one is open', async ({ page, supabase }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await withHistory(page, supabase, 'path-after@stilltype.test');
   await page.clock.install();
   await jumpToTrain(page);
   const ahead = await units(page, 'ahead');
 
-  // Keyboard order: the line, which scrolls here, then the open step's button, then the steps ahead.
+  // Keyboard order: the queue's rows, the fold, then the chosen step's button.
   await page.keyboard.press('Tab');
-  await expect(page.locator('#train-path')).toBeFocused();
+  await expect(page.locator('#train-current .q-row')).toBeFocused();
+
+  for (const unit of ahead) {
+    await page.keyboard.press('Tab');
+    await expect(page.locator(`#train-path > [data-unit="${unit}"] .q-row`)).toBeFocused();
+  }
+
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#train-drilled-toggle')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('#start-drill')).toBeFocused();
-  await page.keyboard.press('Tab');
-  await expect(page.locator('#train-path > .is-ahead .path-choose').first()).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Enter');
   await expect(page.locator('#typing-input')).toBeFocused();
   await finishDrill(page);
   await expect(page.locator('#typing-input')).toBeFocused();
-  await page.evaluate(() => document.addEventListener('animationstart', (event) => { window.pathMoved ||= event.animationName === 'path-advance'; }));
   await completePassage(page);
 
   const panel = page.locator('#comparison-panel');
@@ -402,6 +467,11 @@ test('after a retest the path moves on: the step just drilled is behind you with
   await expect(page.locator('#comparison-unit')).toHaveText('th');
   await expect(page.locator('#comparison-status')).toBeFocused();
   await expect(page.locator('#comparison-conditions')).toHaveText('fresh text · english 200 · 10 words');
+  // The step just retested is the newest drilled, chosen, with the fold open.
+  await expect(page.locator('#train-drilled-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#train-drilled > :last-child')).toHaveClass(/is-just/);
+  await expect(page.locator('#train-drilled > .is-just .q-unit')).toHaveText('th');
+  await expect(page.locator('#train-drilled > .is-just .q-row')).toHaveAttribute('aria-pressed', 'true');
   // The open step is the comparison's Next: the first unit queued after "th", and it is the next Tab stop.
   await expect(page.locator('#train-unit')).toHaveText(ahead[0]);
   await expect(page.locator('#comparison-next')).toHaveText(`Next: “${ahead[0]}”`);
@@ -410,43 +480,31 @@ test('after a retest the path moves on: the step just drilled is behind you with
   await expect(page.locator('#comparison-next')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('#comparison-back')).toBeFocused();
-  // The comparison is the newest step behind you, the open step just after it; "th" is nowhere else on the path.
-  const order = await page.locator('#train-path > li:not([hidden])').evaluateAll((items) => items.map((item) => item.id || item.className));
-  expect(order.indexOf('train-current')).toBe(order.indexOf('comparison-panel') + 1);
+  // "th" is nowhere else.
   expect([...await behindUnits(page), ...await units(page, 'ahead')]).not.toContain('th');
-  // The path moved on one step as the comparison opened, and the motion has finished.
-  await expect.poll(() => page.evaluate(() => window.pathMoved)).toBe(true);
-  await expect.poll(() => page.evaluate(() => document.getAnimations().filter((a) => a.animationName?.startsWith('path-') && a.playState === 'running').length)).toBe(0);
 
-  // Opened again from the dock, the path is drawn afresh at your settings.
+  // Opened again from the dock, the queue is drawn afresh at your settings, the open step chosen.
   await openView(page, 'Practice');
   await openView(page, 'Train');
   await expect(panel).toBeHidden();
   await expect(page.locator('#start-drill')).toBeVisible();
+  await expect(page.locator('#train-current .q-row')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('a long path scrolls along its line, opening at its end, and the keyboard can scroll it back', async ({ page, supabase }) => {
+test('eight drilled steps all list in the fold, by the date of their retests, and the page never scrolls sideways', async ({ page, supabase }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await withHistory(page, supabase, 'path-long@stilltype.test', 8);
   await openView(page, 'Train');
-  const line = page.locator('#train-path');
-  expect(await behindUnits(page)).toHaveLength(8);
-  await expect(line).toHaveAttribute('tabindex', '0');
-  const scroll = () => line.evaluate((el) => ({ left: el.scrollLeft, max: el.scrollWidth - el.clientWidth }));
-  const start = await scroll();
-  expect(start.max).toBeGreaterThan(0);
-  expect(start.left).toBeGreaterThanOrEqual(start.max - 1);
-  await expect(page.locator('#train-current .path-head')).toBeInViewport();
-  await line.focus();
-
-  for (let press = 0; press < 40; press += 1) await page.keyboard.press('ArrowLeft');
-  await expect.poll(async () => (await scroll()).left).toBe(0);
-  await expect(page.locator('#train-path > .is-behind').first()).toBeInViewport();
-  // The page itself never scrolls sideways.
+  await expect(page.locator('#train-drilled-toggle .q-count')).toHaveText('8');
+  await page.locator('#train-drilled-toggle').click();
+  // Retested on days 1, 2, 3, 4, 1, 2, 3, 4 in that order: oldest first, then by id.
+  expect(await behindUnits(page)).toEqual(['qu', 'sp', 'ck', 'ly', 'ge', 'ol', 'bo', 'wh']);
+  await page.locator('#train-drilled > .is-behind').last().scrollIntoViewIfNeeded();
+  await expect(page.locator('#train-drilled > .is-behind').last()).toBeInViewport();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
 
-test('under reduced motion the path moves on at once', async ({ page, supabase }) => {
+test('under reduced motion nothing on Train moves as the comparison opens', async ({ page, supabase }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await withHistory(page, supabase, 'path-still@stilltype.test');
   await page.clock.install();
@@ -455,40 +513,32 @@ test('under reduced motion the path moves on at once', async ({ page, supabase }
   await finishDrill(page);
   await completePassage(page);
   await expect(page.locator('#comparison-panel')).toBeVisible();
-  const durations = await page.locator('#train-path > li:not([hidden]), #train-next').evaluateAll((items) => items.map((item) => getComputedStyle(item).animationDuration));
+  const durations = await page.locator('#train-screen, #train-screen *').evaluateAll((items) => items.map((item) => getComputedStyle(item).animationDuration));
   // The stylesheet's reduced-motion rule holds every animation to a millisecond at most.
-  expect(durations.every((duration) => parseFloat(duration) <= 0.001), JSON.stringify(durations)).toBe(true);
+  expect(durations.every((duration) => parseFloat(duration) <= 0.001), JSON.stringify([...new Set(durations)])).toBe(true);
 });
 
 for (const [width, height] of [[390, 844], [320, 568]]) {
   test.describe(`phone ${width}`, () => {
     test.use({ viewport: { width, height }, ...phone });
 
-    test(`at ${width}px the path runs down the page: the two newest steps behind you, the open step with its details, then those ahead`, async ({ page, supabase }) => {
+    test(`at ${width}px the queue sits above the chosen step: its rows, the fold, then the open step with its button`, async ({ page, supabase }) => {
       await withHistory(page, supabase, `path-${width}@stilltype.test`);
       await openView(page, 'Train');
       await expect(page.locator('#train-unit')).toHaveText('th');
-      expect(await units(page, 'behind')).toEqual(['ol', 'wh']);
+      await page.locator('#train-drilled-toggle').click();
+      expect(await behindUnits(page)).toEqual(['qu', 'ck', 'ol', 'wh']);
 
-      const box = (selector) => page.locator(selector).first().boundingBox();
+      const [queue, title, button, plot] = [await box(page, '.train-queue'), await box(page, '.train-step-unit'), await box(page, '#start-drill'), await box(page, '.timing-plot')];
 
-      const [wh, open, button, next] = [await page.locator('#train-path > .is-drilled').last().boundingBox(), await box('#train-current .path-head'), await box('#start-drill'),
-        await box('#train-path > .is-ahead')];
-
-      expect(wh.y + wh.height).toBeLessThanOrEqual(open.y);
-      expect(open.y + open.height).toBeLessThanOrEqual(button.y);
-      expect(button.y + button.height).toBeLessThanOrEqual(next.y);
-
-      // The node sits left of its target, in one column with the others.
-      const nodes = await page.locator('#train-path .path-node').evaluateAll((items) => items.filter((n) => n.offsetParent).map((n) => {
-        const r = n.getBoundingClientRect();
-
-        return Math.round(r.left + r.width / 2);
-      }));
-
-      expect(new Set(nodes).size).toBe(1);
+      expect(queue.y + queue.height).toBeLessThanOrEqual(title.y);
+      expect(title.y + title.height).toBeLessThanOrEqual(button.y);
+      expect(button.y + button.height).toBeLessThanOrEqual(plot.y);
+      // The three measures keep one row.
+      const tops = await page.locator('.train-cells .cell').evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().top)));
+      expect(new Set(tops).size).toBe(1);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
-      await page.screenshot({ path: test.info().outputPath(`train-path-${width}.png`), fullPage: true });
+      await page.screenshot({ path: test.info().outputPath(`train-queue-${width}.png`), fullPage: true });
     });
 
     // With drills behind you, the open step's button opens clear of the dock, whatever the screen's height (TOB-448).
@@ -501,19 +551,21 @@ for (const [width, height] of [[390, 844], [320, 568]]) {
       expect(button.height).toBeGreaterThanOrEqual(44);
       expect(button.y + button.height).toBeLessThanOrEqual(dock.y);
       expect(button.y).toBeGreaterThanOrEqual(0);
-      // The open step's target is in view above it.
-      const head = await box(page, '#train-current .path-head');
+      // The open step's target is in view above it, and every row is a full touch target.
+      const head = await box(page, '.train-step-unit');
       expect(head.y).toBeGreaterThanOrEqual(0);
+      const rows = await page.locator('#train-path .q-row, #train-drilled-toggle').evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
+      expect(rows.every((height) => height >= 44), JSON.stringify(rows)).toBe(true);
       expect(await overflow(page)).toBeLessThanOrEqual(0);
       await page.locator('#start-drill').click();
       await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
     });
 
-    test(`at ${width}px a new guest’s path is the one open step`, async ({ page }) => {
+    test(`at ${width}px a new guest’s queue is the one step`, async ({ page }) => {
       await openApp(page);
       await openView(page, 'Train');
       await expect(page.locator('#train-unit')).toHaveText('General drill');
-      await expect(page.locator('#train-path > .is-place').first()).toBeHidden();
+      await expect(page.locator('#train-path > .queue-step')).toHaveCount(1);
       await expect(page.locator('#start-drill')).toBeInViewport();
       expect(await overflow(page)).toBeLessThanOrEqual(0);
     });

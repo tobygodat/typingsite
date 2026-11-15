@@ -50,5 +50,6 @@ export async function withHistory(page, supabase, email, drills = 4) {
   return user;
 }
 
-export const units = (page, kind) => page.locator(`#train-path > .is-${kind} .path-unit`).evaluateAll((nodes) => nodes.filter((node) => node.offsetParent).map((node) => node.firstChild.textContent));
-export const behindUnits = (page) => page.locator('#train-path > .is-behind:not(#comparison-panel) .path-unit').evaluateAll((nodes) => nodes.map((node) => node.firstChild.textContent));
+// The units of the steps still to do (`current`, `ahead`) and of the steps drilled, oldest first, as Train draws them.
+export const units = (page, kind) => page.locator(`#train-path > .is-${kind}`).evaluateAll((nodes) => nodes.map((node) => node.dataset.unit));
+export const behindUnits = (page) => page.locator('#train-drilled > .is-behind:not(.is-just)').evaluateAll((nodes) => nodes.map((node) => node.dataset.unit));

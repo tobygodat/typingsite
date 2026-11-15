@@ -444,7 +444,8 @@ test('a loop whose drill was interrupted has the same name on Train and Progress
   await expect(page.locator('#comparison-panel')).toBeVisible();
 
   await openView(page, 'Train');
-  await expect(page.locator('#train-path > .is-behind:not(#comparison-panel)').filter({ hasText: 'br' }).locator('.path-status')).toHaveText('drilled');
+  await page.locator('#train-drilled-toggle').click();
+  await expect(page.locator('#train-drilled > .is-behind[data-unit="br"] .q-state')).toHaveText('drilled');
   await openView(page, 'Progress');
   await openProgressDetail(page, 'runs');
   await expect(page.locator('.history-target')).toHaveText('“br” drill and retest');
