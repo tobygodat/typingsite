@@ -177,7 +177,7 @@ function updateLive(reset = false, at = now()) {
     const remaining = Math.max(0, Math.ceil((duration - boundedElapsed) / 1000));
     setText(elements.timer, remaining);
     setText(elements.timerUnit, 's');
-    setText(elements.timerLabel, 'remaining');
+    setText(elements.timerLabel, 'time');
     progress = boundedElapsed / duration;
   } else {
     const wordTotal = practice.attempt.text.split(' ').length;

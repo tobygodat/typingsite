@@ -2,6 +2,8 @@ import { Fragment, useLayoutEffect, useRef, useState, useSyncExternalStore } fro
 import type { CopyPart, PracticeSession, ResultView, ResultWord } from './practice-session.js';
 import { formatSpeed, unitText } from './units.js';
 
+const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+
 export function Copy({ parts }: { parts: readonly CopyPart[] }) {
   return parts.map((part, index) => typeof part === 'string' ? <Fragment key={index}>{part}</Fragment>
     : <data key={index} value={part.wpm} data-wpm={part.wpm} data-bare={part.bare ? '' : undefined} data-signed={part.signed ? '' : undefined} data-whole={part.whole ? '' : undefined}>{formatSpeed(part.wpm, part)}</data>);
@@ -39,6 +41,8 @@ function ResultWords({ result }: { result: ResultView | null }) {
 export function ResultsCard({ practice }: { practice: PracticeSession }) {
   const result = useSyncExternalStore(practice.result.subscribe, practice.result.getSnapshot, practice.result.getSnapshot);
   const { commands } = practice;
+  const versus = result?.versus;
+  const missed = result?.words.filter((word) => word.wrong).length ?? 0;
 
   return <>
     <header className="section-heading result-heading">
@@ -46,34 +50,38 @@ export function ResultsCard({ practice }: { practice: PracticeSession }) {
       <p id="result-comparison-note" className="result-note">{result && <Copy parts={result.note} />}</p>
     </header>
     <article id="run-card" className="run-card" aria-label="Run summary" hidden={!result}>
-      <div className="run-card-head">
-        <div className="run-card-score">
-          <strong id="result-wpm" className="num" data-bare="" data-wpm={result?.wpm ?? undefined}>{result?.wpm === null || !result ? '—' : formatSpeed(result.wpm, { bare: true })}</strong>
-          <span className="run-card-unit" data-speed-unit="">{unitText('{unit}')}</span>
+      <dl className="cells run-card-facts">
+        <div className="cell run-card-score">
+          <dt className="cell-label run-card-unit" data-speed-unit="">{unitText('{unit}')}</dt>
+          <dd>
+            <p className="cell-value"><strong id="result-wpm" className="num cell-figure" data-bare="" data-wpm={result?.wpm ?? undefined}>{result?.wpm === null || !result ? '—' : formatSpeed(result.wpm, { bare: true })}</strong></p>
+            {versus && <span id="result-versus" className="cell-note"><span className={versus.change < 0 ? 'is-down' : 'is-up'}><Copy parts={[{ kind: 'speed', wpm: versus.change, bare: true, signed: true }]} /></span> vs avg <Copy parts={[{ kind: 'speed', wpm: versus.average, bare: true, whole: true }]} /></span>}
+          </dd>
         </div>
-        <div className="run-card-side">
-          <dl className="run-card-facts">
-            <div id="result-accuracy-fact" title={result?.accuracyTitle}><dt>accuracy</dt><dd><strong id="result-accuracy" className="num">{result?.accuracy ?? '—'}</strong><b>%</b></dd></div>
-            <div><dt>time</dt><dd id="result-time" className="num">{result ? <>{result.seconds}<b> s</b></> : '—'}</dd></div>
-            <div title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt>consistency</dt><dd><strong id="result-consistency" className="num">{result?.consistency ?? '—'}</strong><b hidden={result?.consistency === null}>%</b></dd></div>
-          </dl>
-          <p id="result-standing" className="run-card-standing" hidden={!result?.standing.length}>{result && <Copy parts={result.standing} />}</p>
-        </div>
-      </div>
-      <figure className="run-card-graph" hidden={result?.graph === false}>
-        <div id="speed-graph" className="speed-graph" role="img" aria-label="Speed over time"></div>
-      </figure>
-      <div className="run-card-wordlist">
+        <div id="result-accuracy-fact" className="cell" title={result?.accuracyTitle}><dt className="cell-label">accuracy</dt><dd><p className="cell-value"><strong id="result-accuracy" className="num cell-figure">{result?.accuracy ?? '—'}</strong><i className="cell-unit">%</i></p>{result && <span className="cell-note">{missed} missed</span>}</dd></div>
+        <div className="cell"><dt className="cell-label">time</dt><dd><p id="result-time" className="cell-value num">{result ? <><b className="cell-figure">{result.seconds}</b><i className="cell-unit"> s</i></> : '—'}</p>{result && <span className="cell-note">{plural(result.words.length, 'word')}</span>}</dd></div>
+        <div className="cell" title="100 minus the variation of your per-second raw speed; needs 3 seconds"><dt className="cell-label">consistency</dt><dd><p className="cell-value"><strong id="result-consistency" className="num cell-figure">{result?.consistency ?? '—'}</strong><i className="cell-unit" hidden={result?.consistency === null}>%</i></p>{result?.range && <span id="result-range" className="cell-note"><Copy parts={[{ kind: 'speed', wpm: result.range.low, bare: true }, '–', { kind: 'speed', wpm: result.range.high }]} /></span>}</dd></div>
+      </dl>
+      <section className="panel run-card-trace" aria-labelledby="speed-title" hidden={result?.graph === false}>
+        <header className="panel-head"><h3 id="speed-title" className="panel-title">speed</h3><span className="trace-legend" aria-hidden="true"><i className="legend-average"></i>{result?.wpm === null || !result ? 'average' : <Copy parts={[{ kind: 'speed', wpm: result.wpm }]} />}<i className="legend-miss"></i>mistake</span></header>
+        <figure className="run-card-graph">
+          <div id="speed-graph" className="speed-graph" role="img" aria-label="Speed over time"></div>
+        </figure>
+      </section>
+      <section className="panel run-card-wordlist" aria-labelledby="typed-title">
+        <header className="panel-head"><h3 id="typed-title" className="panel-title">typed</h3><button id="practice-words" className="run-card-practice" type="button" data-action="practice-words" hidden={!result?.practiceWords.length} onClick={commands.practiceWords}>{result?.practiceWords.length === 1 ? 'Practice this word' : result ? `Practice these ${result.practiceWords.length} words` : 'Practice missed words'}</button></header>
         <ResultWords result={result} />
-        <button id="practice-words" className="run-card-practice" type="button" data-action="practice-words" hidden={!result?.practiceWords.length} onClick={commands.practiceWords}>{result?.practiceWords.length === 1 ? 'Practice this word' : result ? `Practice these ${result.practiceWords.length} words` : 'Practice missed words'}</button>
-      </div>
+      </section>
       <div className="result-actions">
         <div className="result-buttons">
           <button id="run-again" className="btn btn-primary" type="button" data-action="run-again" onClick={commands.runAgain} onKeyDown={(event) => commands.resultKeyDown(event.nativeEvent)} onKeyUp={(event) => commands.resultKeyUp(event.nativeEvent)}>{result?.againLabel ?? 'Run again'}</button>
           <button id="result-drill" className="btn btn-secondary" type="button" hidden={!result?.drillLabel} onClick={commands.drill}>{result?.drillLabel ?? 'Drill'}</button>
           <button id="watch-replay" className="btn btn-ghost" type="button" data-action="watch-replay" hidden={!result?.replay} onClick={commands.watchReplay}>Watch replay</button>
         </div>
-        <p className="condition-copy" id="result-conditions">{result ? <Copy parts={result.conditions} /> : 'english · common words'}</p>
+        <div className="result-context">
+          <p id="result-standing" className="run-card-standing" hidden={!result?.standing.length}>{result && <Copy parts={result.standing} />}</p>
+          <p className="condition-copy" id="result-conditions">{result ? <Copy parts={result.conditions} /> : 'english · common words'}</p>
+        </div>
       </div>
     </article>
   </>;

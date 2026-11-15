@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
-import type { PracticeSession } from './practice-session.js';
+import type { PracticeSession, Standing } from './practice-session.js';
 import { Copy } from './results-card.js';
 import { unitText } from './units.js';
 
@@ -26,7 +26,7 @@ export function NativeLiveStats({ practice }: { practice: PracticeSession }) {
 
     if (!host) return;
 
-    for (const [id, text] of [['timer', '30'], ['timer-unit', 's'], ['timer-label', 'remaining'], ['live-wpm', '—'], ['live-accuracy', '—']]) {
+    for (const [id, text] of [['timer', '30'], ['timer-unit', 's'], ['timer-label', 'time'], ['live-wpm', '—'], ['live-accuracy', '—']]) {
       const node = id ? document.getElementById(id) : null;
 
       if (node && !node.hasChildNodes()) node.textContent = text ?? '';
@@ -37,7 +37,23 @@ export function NativeLiveStats({ practice }: { practice: PracticeSession }) {
     if (unit && !unit.hasChildNodes()) unit.textContent = unitText('{unit}');
   }, []);
 
-  return <div ref={ref} id="live-stats" className="live-stats"><div className="live-stat timer-stat"><strong id="timer" className="num"></strong><span id="timer-unit"></span><small id="timer-label" className="sr-only"></small></div><div className="live-stat"><strong id="live-wpm" className="num" data-bare=""></strong><span data-speed-unit=""></span></div><div className="live-stat"><strong id="live-accuracy" className="num"></strong><span>%<span className="sr-only"> input accuracy</span></span></div><small id="pace-label" className="pace-label" hidden={!intro.paceVisible}><Copy parts={intro.pace} /></small></div>;
+  // The figures are native leaf hosts (src/input-presentation.ts writes them); React renders only the cells round
+  // them. #timer-label names the first cell: time or words.
+  return <div ref={ref} id="live-stats" className="live-stats cells">
+    <div className="live-stat timer-stat cell"><small id="timer-label" className="cell-label"></small><p className="cell-value"><strong id="timer" className="num cell-figure"></strong><span id="timer-unit" className="cell-unit"></span></p></div>
+    <div className="live-stat cell"><span className="cell-label" data-speed-unit=""></span><p className="cell-value"><strong id="live-wpm" className="num cell-figure" data-bare=""></strong></p></div>
+    <div className="live-stat cell"><span className="cell-label">accuracy</span><p className="cell-value"><strong id="live-accuracy" className="num cell-figure"></strong><span className="cell-unit">%<span className="sr-only"> input accuracy</span></span></p></div>
+    <StandingCell standing={intro.standing} />
+    <small id="pace-label" className="pace-label" hidden={!intro.paceVisible}><Copy parts={intro.pace} /></small>
+  </div>;
+}
+
+// The average and best at these conditions, beside the live figures: what the run will be set against.
+function StandingCell({ standing }: { standing: Standing }) {
+  const figure = (wpm: number | null) => wpm === null ? '—' : <Copy parts={[{ kind: 'speed', wpm, bare: true, whole: true }]} />;
+  const empty = standing.average === null && standing.best === null;
+
+  return <div id="live-standing" className="standing-stat cell"><span className="cell-label">avg · best</span><p className="cell-value"><b className="num cell-figure" data-empty={empty ? '' : undefined}>{empty ? '—' : <>{figure(standing.average)} · {figure(standing.best)}</>}</b></p></div>;
 }
 
 export function PracticeIntro({ practice }: { practice: PracticeSession }) {

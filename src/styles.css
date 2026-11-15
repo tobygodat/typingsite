@@ -45,6 +45,7 @@
   --text-numeral: 132px;
   --text-numeral-mobile: 112px;
   --text-numeral-narrow: 80px;
+  --text-score: 64px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -97,13 +98,10 @@
   --heat-key: 52px;
   --heat-gap: 6px;
   --content-max: 1080px;
-  /* The run card: its width, the speed trace's height (time labels included), and the narrowest the
-     conditions line gets beside the actions before it drops under them. */
-  --result-card: 900px;
+  /* The run card: the speed trace's height (time labels included), and the narrowest the conditions line gets
+     beside the actions before it drops under them. */
   --result-trace: 144px;
   --result-conditions: 240px;
-  /* Open practice from the rail to the shortcut row at the default text size: the practice screen's anchor. */
-  --practice-block: 510px;
   /* Progress charts: about 2.5 wide to 1 tall, between these heights. */
   --chart-height: 400px;
   --chart-height-min: 240px;
@@ -1410,13 +1408,12 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* ── Practice ───────────────────────────────────────────────────────────── */
 
-/* The screen sits where open practice's block, centred under the dock, would start, and every mode
-   and session keeps that top: what a mode puts under the rail never moves the rail or the passage. */
+/* The screen starts at the top of the page, and every mode and session keeps that top: what a mode puts under
+   the strip never moves the strip or the passage. */
 .typing-screen {
   display: grid;
   align-content: start;
-  min-height: calc(100svh - 170px);
-  padding-top: max(var(--space-10), calc((100svh - 170px - var(--practice-block)) / 2));
+  padding-top: var(--space-8);
 }
 
 /* The row paints above what follows it: the "more" menu over the passage, and its controls over the
@@ -1756,13 +1753,9 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 .measure-row {
   position: relative;
-  padding-bottom: var(--space-6);
-  margin-bottom: var(--space-6);
-  border-bottom: 1px solid var(--hairline);
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+  display: grid;
+  gap: var(--space-6);
 }
 
 .session-intro { min-width: 0; display: grid; gap: var(--space-2); }
@@ -1801,8 +1794,6 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 /* Open practice shows only the numbers; drills and retests keep kicker, title and description. */
 body[data-session="practice"] .session-intro { display: none; }
-body[data-session="practice"] .measure-row,
-body[data-session="practice"] .live-stats { justify-content: flex-start; }
 
 body[data-session="drill"] .practice-controls,
 body[data-session="drill"] .quote-options,
@@ -1813,47 +1804,31 @@ body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options,
 body[data-session="retest"] .standard-options { display: none; }
 
-.live-stats {
-  position: relative;
-  flex: none;
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-10);
-}
-
-/* Number and unit share one baseline. */
-.live-stat {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  color: var(--muted);
-  font: var(--text-body)/1.2 var(--font-app);
-}
-
-.live-stat strong {
-  color: var(--text);
-  font-family: var(--font-app);
-  font-size: 48px;
-  font-weight: 300;
-  line-height: 1;
-  letter-spacing: -0.035em;
-}
-
-.timer-stat strong { color: var(--accent); }
+/* The readouts: time or words, wpm, accuracy, then the average and best the run is set against, as four cells.
+   The pace label hangs under the row, so the row clips nothing. */
+.live-stats { position: relative; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
+.live-stats .cell-figure { font-size: var(--text-title); }
+.live-stats .cell-value { display: flex; align-items: baseline; white-space: nowrap; }
+#live-wpm:not([data-wpm]),
+.standing-stat [data-empty],
+.standing-stat .cell-figure { color: var(--muted); }
+body[data-running="true"] .timer-stat .cell-figure { color: var(--accent); }
 
 /* Pace caret label: positioned out of flow so showing it never moves the passage. */
 .pace-label {
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
   color: var(--muted);
   font: var(--text-mono)/1 var(--font-mono);
   white-space: nowrap;
 }
 .pace-label[hidden] { display: none; }
 
-body[data-live-metrics="false"] .live-stat:not(.timer-stat) { visibility: hidden; }
+/* With live metrics off (the default) wpm and accuracy keep their cells and show a dash, before and during a run. */
+body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value > * { display: none; }
+body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { content: "—"; color: var(--muted); font: 500 var(--text-title)/1.15 var(--font-mono); }
 
 /* While a run is in progress everything but the passage and the numbers steps back.
    app.js sets data-running; keyboard focus brings a control back. The side bar fades as one box; the top and
@@ -1946,6 +1921,61 @@ body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim)
 
 /* Next to the passage mid-run, the warning appears and leaves instantly. */
 body[data-running="true"] .caps-warning { transition: none; }
+
+/* The Instrument strip (TOB-470): the setup controls as one bordered row of groups split by hairlines, on the
+   page's left edge. On a phone the groups wrap as before, each in its own box. */
+@media (min-width: 761px) {
+  .practice-controls { justify-content: flex-start; margin: 0 0 var(--space-3); }
+  .practice-rail {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0;
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--radius);
+    background: var(--ground-2);
+  }
+  @container page (max-width: 852px) { .practice-rail { display: flex; } }
+  .practice-rail :is(.segmented, .compact-switch) { border: 0; border-radius: 0; background: none; }
+  .practice-rail .segmented { padding: 5px var(--space-2) 5px 5px; }
+  .practice-rail .practice-options > :not([hidden]),
+  .practice-rail #punctuation-switch { border-left: 1px solid var(--hairline); }
+  .practice-rail :is(.segmented button, .mode-more > summary) { height: var(--space-8); font-size: var(--text-label); }
+  .practice-rail .segmented.compact button { min-width: 0; padding: 0 var(--space-3); }
+  .practice-rail .segmented.compact #custom-length { font: var(--text-label)/1 var(--font-app); }
+  .practice-rail .quote-filter-trigger { min-height: var(--space-8); }
+  .practice-rail .compact-switch { height: auto; padding: 0 var(--space-3); gap: var(--space-2); font-size: var(--text-label); }
+  .practice-rail .compact-switch + .compact-switch { padding-left: var(--space-1); }
+  .practice-rail .compact-switch .switch { width: 10px; height: 10px; border: 1.5px solid var(--outline); border-radius: 3px; background: none; }
+  .practice-rail .compact-switch .switch::before { display: none; }
+  .practice-rail .compact-switch .switch:checked { border-color: var(--accent); background: var(--accent); }
+  .practice-rail .compact-switch:has(.switch:checked) { color: var(--text); }
+  .practice-rail .mode-more-menu { left: 0; transform: none; }
+  /* The custom text panel sits under the strip, across the page. */
+  .custom-options { width: 100%; margin: 0 0 var(--space-6); }
+}
+
+/* The key hints share the row under the track with the restart button: they rise into the left of the typing
+   footer, where a passage notice takes their place while it shows, so the notice still never changes a height.
+   Composing has no typing footer, so there they keep their own row. */
+@media (min-width: 761px) {
+  #typing-form .typing-footer { margin-top: var(--space-2); }
+  body:not([data-compose="true"]) .shortcut-row { min-height: var(--control); margin-top: calc(var(--control) * -1); align-items: center; pointer-events: none; }
+  #typing-form:has(#input-help:not(:empty)) ~ .shortcut-row { visibility: hidden; }
+}
+
+/* A phone keeps the three live readouts in one short row, so the passage stays above the bottom bar; the best
+   stays in the footer. */
+@media (max-width: 760px) {
+  .measure-row { margin-bottom: var(--space-4); gap: var(--space-3); }
+  .live-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .live-stats .cell { padding: var(--space-2) var(--space-3); border-top: 0; }
+  .live-stats .cell:nth-child(odd) { border-left: 1px solid var(--hairline); }
+  .live-stats .cell:first-child { border-left: 0; }
+  .live-stats .cell-figure,
+  body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { font-size: var(--text-lead); }
+  .standing-stat { display: none; }
+}
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
 
@@ -2208,9 +2238,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 /* ── Progress line ──────────────────────────────────────────────────────── */
 
 .progress-line {
-  height: 2px;
+  height: 3px;
   border-radius: var(--radius-full);
-  background: var(--hairline);
+  background: var(--raised-2);
   overflow: hidden;
 }
 
@@ -2264,9 +2294,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 #input-help-reserve { visibility: hidden; }
 
 .shortcut-row {
-  margin-top: var(--space-6);
+  margin-top: var(--space-2);
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: var(--space-6);
   color: var(--muted);
@@ -2583,10 +2613,9 @@ body[data-focus-mode="true"][data-view="practice"] .exit-focus { display: inline
 body[data-view="results"] .practice-result { display: grid; }
 body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
-/* One card, centred under the rail; what follows it (a ghost race, its offer) keeps the card's width. */
+/* The run fills the page column under the strip; what follows it (a ghost race, its offer) keeps its width. */
 .results-layout {
-  grid-template-columns: minmax(0, var(--result-card));
-  justify-content: center;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-8);
   align-items: start;
 }
@@ -2595,23 +2624,67 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-heading:has(> h2.sr-only):has(> .result-note:empty) { display: contents; }
 .result-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; }
 
-/* A static print on card stock: the score and its facts, the trace, the words, then the actions. */
+/* The run as figures, then its speed and the words typed in panels, then the actions. A static print: nothing
+   counts up or draws in but the trace. */
 .run-card {
   min-width: 0;
-  padding: var(--space-8);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, var(--card-top), var(--card-bottom));
   display: grid;
-  gap: var(--space-8);
-  /* A finished run scrolls the card clear of the bottom edge (focusResult in src/app.js). */
+  gap: var(--space-3);
+  /* A finished run scrolls the card clear of the bottom edge (focusResult in src/application-host.ts). */
   scroll-margin-bottom: var(--space-6);
 }
 
-/* The actions under a hairline, the conditions line set against them on the right. */
+.run-card-facts { margin: 0; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); }
+.run-card-facts dd { margin: 0; }
+.run-card-facts .cell-figure { font-size: var(--text-title); font-weight: 500; }
+#result-time .cell-unit { margin-left: 0; }
+#result-wpm { font-size: var(--text-score); line-height: 1; letter-spacing: -0.05em; }
+#result-versus .is-up { color: var(--accent); }
+#result-versus .is-down { color: var(--danger); }
+
+.run-card-trace { padding-inline: 0; }
+.run-card-trace .panel-head { margin-inline: 0; }
+.run-card-graph { margin: 0; padding-inline: var(--panel-inset); }
+.trace-legend { display: flex; align-items: center; gap: var(--space-2); color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); }
+.trace-legend i { display: inline-block; flex: none; }
+.legend-average { width: var(--space-4); border-top: 1px dashed var(--muted); }
+.legend-miss { width: 6px; height: 6px; margin-left: var(--space-2); border-radius: var(--radius-full); background: var(--danger); }
+
+/* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it scrolls. One
+   word at a time is the tab stop; the chosen word is underlined and its pace shows in the line below. The
+   padding (offset by the margin) keeps a focused word's ring inside the scroller. */
+.run-card-words {
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+  max-height: calc(var(--text-small) * 1.75 * 4 + var(--space-1) * 2);
+  overflow-y: auto;
+  color: var(--muted);
+  font: var(--text-small)/1.75 var(--font-app);
+}
+.run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
+.run-card-words .word-miss { padding-inline: var(--space-1); color: var(--danger); background: var(--danger-soft); }
+.run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
+.word-detail { margin: var(--space-2) 0 0; color: var(--muted); font: var(--text-label)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
+.word-detail:empty { display: none; }
+
+/* The way into word practice: a quiet action in the panel's head, with a full-height target under touch. */
+.run-card-practice {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  font: var(--text-label)/1.35 var(--font-app);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+@media (hover: hover) and (pointer: fine) { .run-card-practice:hover { color: var(--text); } }
+@media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
+
+/* The actions, the average and best and the conditions line set against them on the right. */
 .result-actions {
-  padding-top: var(--space-8);
-  border-top: 1px solid var(--hairline);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2621,10 +2694,21 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   scroll-margin-bottom: calc(var(--space-8) + var(--space-4));
 }
 .result-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.result-buttons .btn { font-size: var(--text-body); font-weight: 400; }
+.result-buttons .btn { font-size: var(--text-small); font-weight: 400; }
 .result-buttons .btn-primary { font-weight: 500; }
-.result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-6); }
-.result-actions .condition-copy { flex: 1 1 var(--result-conditions); text-align: end; letter-spacing: 0.02em; }
+.result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-4); }
+.result-context { flex: 1 1 var(--result-conditions); display: grid; gap: var(--space-1); text-align: end; }
+.result-context .condition-copy { letter-spacing: 0.02em; }
+.run-card-standing { margin: 0; color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Two figures to a row on a phone, and a shorter trace, so the score and the actions fit one screen. */
+@media (max-width: 760px) {
+  .run-card { gap: var(--space-2); }
+  .run-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .run-card-facts .cell { padding-block: var(--space-2); }
+  #result-wpm { font-size: var(--text-display); }
+  .run-card-trace .speed-graph { height: calc(var(--result-trace) * 0.75); }
+}
 
 .result-more { min-width: 0; display: grid; gap: var(--space-8); }
 .result-more:not(:has(> :not([hidden]))) { display: none; }
@@ -2893,88 +2977,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes graph-fade { from { opacity: 0; } }
 
-/* The score on the left; on the right the facts in one row, and under them the average and best. */
-.run-card-head {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: end;
-  gap: var(--space-6) 0;
-}
-
-/* A speed too wide for the row puts its unit underneath instead of pushing past the card. */
-.run-card-score {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-#result-wpm {
-  font-family: var(--font-app);
-  font-size: var(--text-numeral);
-  font-weight: 400;
-  line-height: 0.76;
-  letter-spacing: -0.035em;
-}
-
-.run-card-unit { color: var(--muted); font: italic var(--text-lead)/1 var(--font-app); }
-
-/* On a wide card the figure's side bearing pulls it back onto the card's left edge; a phone keeps the
-   whole box inside the padding. */
-@media (min-width: 761px) {
-  #result-wpm { margin-inline-start: -0.09em; }
-}
-
-.run-card-side { min-width: 0; padding-bottom: var(--space-2); display: grid; gap: var(--space-3); }
-
-.run-card-facts {
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3) 0;
-}
-
-/* Values sit on one line even when a label wraps; a cell never widens its track. */
-.run-card-facts div { display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-1); min-width: 0; }
-.run-card-facts dt { color: var(--muted); font: 500 var(--text-mono)/1.35 var(--font-mono); letter-spacing: 0.04em; }
-.run-card-facts dd { margin: 0; font-size: 24px; font-weight: 400; line-height: 1.15; }
-.run-card-facts strong { font-weight: inherit; }
-.run-card-facts b { color: var(--muted); font-size: 16px; font-weight: 400; margin-left: 1px; }
-
-.run-card-standing { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-
-/* Words reached, static: plain ink, mistyped words in coral on the error tint. Past four lines it
-   scrolls. One word at a time is the tab stop; the chosen word is underlined and its pace shows in
-   the line below. The padding (offset by the margin) keeps a focused word's ring inside the scroller. */
-.run-card-wordlist { display: grid; justify-items: start; gap: var(--space-3); }
-.run-card-words {
-  justify-self: stretch;
-  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
-  padding: var(--space-1) var(--space-2);
-  max-height: calc(var(--text-body) * 1.6 * 4 + var(--space-1) * 2);
-  overflow-y: auto;
-  color: var(--muted);
-  font: var(--text-body)/1.6 var(--font-app);
-}
-.run-card-words span { color: var(--text); border-radius: var(--radius-sm); cursor: pointer; }
-.run-card-words .word-miss { padding-inline: var(--space-1); color: var(--danger); background: var(--danger-soft); }
-.run-card-words [aria-selected="true"] { text-decoration: underline; text-underline-offset: 3px; }
-.word-detail { margin: 0; color: var(--muted); font: var(--text-small)/1.35 var(--font-app); font-variant-numeric: tabular-nums lining-nums; }
-.word-detail:empty { display: none; }
-
-/* The way into word practice reads as a green line of text, with a full-height target under touch. */
-.run-card-practice {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--accent);
-  font: var(--text-small)/1.35 var(--font-app);
-  cursor: pointer;
-}
-.run-card-practice:hover { text-decoration: underline; text-underline-offset: 3px; }
-
 .metric-note {
   margin: 0;
   color: var(--muted);
@@ -2982,7 +2984,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   font-style: italic;
   line-height: 1.45;
 }
-@media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
 
 .section-heading h1 {
   margin: 0 0 var(--space-3);
@@ -4206,10 +4207,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .standard-options:not([hidden]) ~ #duration-options[hidden] { display: flex !important; visibility: hidden; }
   .quote-filter-trigger { min-height: var(--space-10); }
 
-  .measure-row { flex-direction: column; align-items: stretch; gap: var(--space-4); }
-  .live-stats { justify-content: space-between; gap: var(--space-4); }
-  body[data-session="practice"] .live-stats { gap: var(--space-8); }
-  .live-stat strong { font-size: 40px; }
   body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
   body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 26px; }
   body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 32px; }
@@ -4233,17 +4230,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .release-notes { padding: var(--space-2) var(--space-4) var(--space-6) var(--space-8); }
   .page-heading { flex-direction: column; align-items: flex-start; }
   .page-heading h1, .section-heading h1 { font-size: 38px; }
-  #result-wpm { font-size: var(--text-numeral-mobile); }
-  /* The run card stacks: the score over its facts, the conditions line under the actions. */
-  .run-card { padding: var(--space-6); gap: var(--space-6); }
-  .run-card-head { grid-template-columns: minmax(0, 1fr); }
   /* The page's scroll padding already keeps the row clear of the dock. */
-  .result-actions { padding-top: var(--space-6); scroll-margin-bottom: 0; }
+  .result-actions { scroll-margin-bottom: 0; }
   /* Run again takes the row; the drill and the replay share the next, so the actions stay above the dock. */
   .result-buttons { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .result-buttons .btn, .result-buttons .btn:not(.btn-ghost) { min-width: 0; padding-inline: var(--space-2); }
   .result-buttons .btn-primary, .result-buttons .btn[hidden] + .btn, .result-buttons .btn:has(+ .btn[hidden]) { grid-column: 1 / -1; }
-  .result-actions .condition-copy { text-align: start; }
+  .result-context { text-align: start; }
   .history-summary { grid-template-columns: 1fr 1fr; gap: var(--space-3) var(--space-4); }
   .history-main { grid-column: 1 / -1; }
   .input-action { flex-direction: column; }
@@ -4267,19 +4260,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .nav-item { padding: 0 2px; font-size: 13px; }
   .nav-label-full { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
   .nav-label-short { display: inline; }
-}
-
-/* Phones: a word count ("100/100") beside a three-digit speed, or a four-digit cpm, is wider than the
-   column at practice's 32px gaps. The three figures spread across the column instead, as a drill's do,
-   and the gap only has to keep them apart. e2e/layout.spec.js measures the widest figures. */
-@media (max-width: 430px) {
-  .live-stats,
-  body[data-session="practice"] .live-stats { justify-content: space-between; gap: var(--space-2); }
-}
-
-/* At 40px a four-digit cpm beside a word count is wider than the column up to 371px. */
-@media (max-width: 374px) {
-  .live-stat strong { font-size: var(--text-title); }
 }
 
 /* Any coarse pointer keeps a 44px minimum target. any-pointer, not pointer: a touchscreen laptop or
@@ -4376,11 +4356,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 
 @media (max-width: 360px) {
-  #result-wpm { font-size: var(--text-numeral-narrow); }
   .lead-figure { font-size: var(--text-numeral-narrow); }
-  /* Three tracks are about 76px here: values step down a size so "120.0 s" fits. */
-  .run-card { padding: var(--space-4); }
-  .run-card-facts dd { font-size: var(--text-lead); }
 }
 
 

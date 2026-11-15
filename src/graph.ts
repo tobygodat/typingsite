@@ -74,9 +74,9 @@ export function speedSeries(attempt: ReplaySource) {
 }
 
 // The slowest and fastest points the run card's trace draws, for its consistency note. A display figure, never
-// stored or scored. Under three points (the floor consistency itself keeps) the swing means nothing: null.
-export function speedRange({ points }: SpeedSeries) {
-  if (points.length < 3) return null;
+// stored or scored. Under three seconds (the floor consistency itself keeps) the swing means nothing: null.
+export function speedRange({ points, durationS }: SpeedSeries) {
+  if (durationS < 3 || !points.length) return null;
   const speeds = points.map((point) => point.wpm);
 
   return { low: Math.min(...speeds), high: Math.max(...speeds) };

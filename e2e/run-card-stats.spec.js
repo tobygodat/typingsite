@@ -28,7 +28,7 @@ test('the run card shows consistency, the counts behind accuracy and the words t
   // The breakdown describes the finished text: the fixed slip is a first-try error, not "incorrect".
   await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('1'));
   await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', finalChars(`${text.length}/0/0/0`));
-  await expect(page.locator('.run-card-facts dt')).toHaveText(['accuracy', 'time', 'consistency']);
+  await expect(page.locator('.run-card-facts dt')).toHaveText(['wpm', 'accuracy', 'time', 'consistency']);
   // The print scrolls with the page.
   expect(await page.locator('#run-card').evaluate((node) => getComputedStyle(node).position)).toBe('static');
 
