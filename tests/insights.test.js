@@ -2,7 +2,7 @@ import { isAnalysisRun, isAttempt, isRunRecord } from '../src/domain-history.js'
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TRACE_BUDGET, retainTraces, KEY_COUNTS_VERSION, MAX_MISSED_WORDS, MAX_NON_COMPARABLE_RUNS, MAX_PATTERN_RUNS, MAX_RUN_SUMMARIES, bestRun, comparableKind, dailyPassage, dayKey, evidenceRun, filterRuns, goalMinutes, histogram, measuredKind, minutesByDay, missedAndSlowWords, CORRECTION_LABELS, conditionLabels, conditionParts, periodDays, periodStats, periodWindow, practiceLevel, practiceStats, practiceStreak, practiceTextConditions, practiceWordsPassage, quantile, recentAverage, recurringMissedWords, recurringTargets, retainHistory, retainRuns, runDay, runRecord, runsByDay, testShapes, trendRun, validRun, weeklyChange } from '../src/insights.js';
-import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, standardConditions, summarizePatterns, wordHistory } from '../src/typing.js';
+import { CORPUS_VERSION, INPUT_CLASSES, METRIC_VERSION, QUOTE_DIFFICULTIES, QUOTE_LENGTHS, TEST_COUNTS, TEST_DURATIONS, compareAttempts, completeAttempt, conditionKey, createAttempt, quoteCorpus, recommendTarget, selectPassage, summarizePatterns, wordHistory } from '../src/typing.js';
 import { CODE_LANGUAGES } from '../src/code-snippets.js';
 import { layoutIds, layoutLabel } from '../src/layouts.js';
 import { wordListIds } from '../src/words.js';
