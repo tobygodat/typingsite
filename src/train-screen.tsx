@@ -2,6 +2,7 @@ import { Component, Fragment, createRef, useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import type { LearningStore, StepDetail, TrainView } from './learning-store.js';
 import { costText, perMinuteText, plotAt, readText, wonText } from './train-cost.js';
+import { aheadCopy } from './train-path.js';
 import type { Drilled, Read, Timings, Todo } from './train-cost.js';
 import { formatSpeed, unitText } from './units.js';
 
@@ -12,7 +13,7 @@ import { formatSpeed, unitText } from './units.js';
 type Step =
   | { kind: 'current'; key: 'current' }
   | { kind: 'just'; key: 'just'; unit: string }
-  | { kind: 'ahead'; key: string; unit: string; figures: Todo; index: number }
+  | { kind: 'ahead'; key: string; unit: string; figures: Todo; index: number; evidence: string }
   | { kind: 'behind'; key: string; unit: string; figures: Drilled | undefined; state: string };
 
 const OPEN: Step = { kind: 'current', key: 'current' };
@@ -108,6 +109,17 @@ function OpenActions({ view, learning }: { view: TrainView | null; learning: Lea
   </>;
 }
 
+// The open step's evidence: the learner's line, what changed since it was last drilled, and the missed words holding it.
+function OpenEvidence({ view }: { view: TrainView | null }) {
+  const unit = view?.path.current.unit ?? null;
+
+  return <div id="train-next" className="train-evidence">
+    <p id="train-evidence" data-text={view?.evidence} hidden={!view?.evidence}><Figures text={view?.evidence ?? ''} /></p>
+    <p id="train-last" data-text={view?.since} hidden={!view?.since}><Figures text={view?.since ?? ''} /></p>
+    <p id="train-words" className="train-words" hidden={!view?.words.length}>{view?.words.map((word) => <Fragment key={word}><Marked word={word} unit={unit} /> </Fragment>)}</p>
+  </div>;
+}
+
 function Detail({ view, step, learning }: { view: TrainView | null; step: Step; learning: LearningStore }) {
   const current = view?.path.current;
   const unit = step.kind === 'current' ? current?.unit ?? null : step.unit;
@@ -119,6 +131,7 @@ function Detail({ view, step, learning }: { view: TrainView | null; step: Step; 
       <header className="train-step-head"><div><span className="cell-label">retest{step.unit.length <= 2 ? ` · ${kindOf(step.unit)}` : ''}</span><p id="comparison-unit" className={`train-step-unit${step.unit.length > 2 ? ' is-label' : ''}`}>{step.unit}</p></div></header>
       <Comparison learning={learning} />
       <div className="train-actions"><OpenActions view={view} learning={learning} />{starts}</div>
+      <OpenEvidence view={view} />
     </div>;
   }
 
@@ -150,11 +163,7 @@ function Detail({ view, step, learning }: { view: TrainView | null; step: Step; 
       {readCell('before', behind.figures.before)}
     </div>}
     {step.kind === 'current'
-      ? <div id="train-next" className="train-evidence">
-        <p id="train-evidence" data-text={view?.evidence} hidden={!view?.evidence}><Figures text={view?.evidence ?? ''} /></p>
-        <p id="train-last" data-text={view?.since} hidden={!view?.since}><Figures text={view?.since ?? ''} /></p>
-        <p id="train-words" className="train-words" hidden={!view?.words.length}>{view?.words.map((word) => <Fragment key={word}><Marked word={word} unit={unit} /> </Fragment>)}</p>
-      </div>
+      ? <OpenEvidence view={view} />
       : <div className="train-evidence">
         {detail?.evidence ? <p data-text={detail.evidence}><Figures text={detail.evidence} /></p> : null}
         {detail?.words.length ? <p className="train-words">{detail.words.map((word) => <Fragment key={word}><Marked word={word} unit={unit} /> </Fragment>)}</p> : null}
@@ -187,7 +196,7 @@ class TrainSteps extends Component<StepsProps, StepsState, StepsSnapshot | null>
 
     if (!view) return [OPEN];
     const { path, figures } = view;
-    const ahead = figures.ahead.map((todo, index): Step => ({ kind: 'ahead', key: `ahead:${todo.unit}`, unit: todo.unit, figures: todo, index }));
+    const ahead = figures.ahead.map((todo, index): Step => ({ kind: 'ahead', key: `ahead:${todo.unit}`, unit: todo.unit, figures: todo, index, evidence: aheadCopy(path.ahead[index]?.was ?? { errors: 0, observations: 0 }) }));
     const behind = path.behind.map((item, index): Step => ({ kind: 'behind', key: `behind:${item.unit}`, unit: item.unit ?? '', figures: figures.behind[index], state: item.state }));
     const just: Step[] = path.just ? [{ kind: 'just', key: 'just', unit: this.justUnit() }] : [];
 
@@ -258,7 +267,7 @@ class TrainSteps extends Component<StepsProps, StepsState, StepsSnapshot | null>
             </button>
           </li>
           {steps.flatMap((step) => (step.kind === 'ahead' ? [<li key={step.key} className="queue-step is-ahead" data-key={step.key} data-unit={step.unit}>
-            <button className="q-row" type="button" aria-pressed={pressed(step)} onClick={() => this.choose(step.key)}>
+            <button className="q-row" type="button" aria-pressed={pressed(step)} title={step.evidence} onClick={() => this.choose(step.key)}>
               <span className="q-n" aria-hidden="true">{step.index + 2}</span>
               <b className="q-unit">{step.unit}</b>
               <span className="q-why">{step.figures.basis === 'slow' ? 'slow' : 'missed'}</span>
@@ -274,7 +283,7 @@ class TrainSteps extends Component<StepsProps, StepsState, StepsSnapshot | null>
           <ol id="train-drilled" className="queue is-done" aria-label="drilled" hidden={!open}>
             {drilled.map((step) => (step.kind === 'behind'
               ? <li key={step.key} className={`queue-step is-behind is-${step.state}`} data-key={step.key} data-unit={step.unit}>
-                <button className="q-row" type="button" aria-pressed={pressed(step)} onClick={() => this.choose(step.key)}>
+                <button className="q-row" type="button" aria-pressed={pressed(step)} title={view?.details.get(step.unit)?.lines.join(' · ')} onClick={() => this.choose(step.key)}>
                   <span className="q-n" aria-hidden="true">{step.state === 'fixed' ? <svg className="q-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" /></svg> : <i className="q-ring"></i>}</span>
                   <b className="q-unit">{step.unit}</b>
                   <span className="q-why"><span className="q-state">{step.state}</span></span>
