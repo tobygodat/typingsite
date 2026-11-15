@@ -114,7 +114,8 @@ test('a slow pair says how much slower than the pace, and its plot has one dot p
   assert.equal(timings.intervals, 20);
   assert.deepEqual([timings.pace, timings.own], [84, 120]);
   assert.deepEqual(timings.dots.map((dot) => dot.ms), [117, 130, 110]);
-  // The axis runs from a step below the fastest to at least a hundred ms on: 60 to 160.
+  // The axis leaves 15% of the 46 ms from the pace to the slowest run, or half a step, past each end, and spans at
+  // least a hundred ms: 60 to 160.
   assert.deepEqual([timings.low, timings.high], [60, 160]);
   close(plotAt(timings, 84), 24);
   assert.ok(timings.dots.every((dot) => dot.left >= 0 && dot.left <= 100 && dot.stack === 0));
@@ -125,8 +126,8 @@ test('dots in one slot stack, and a stall far past the pace is drawn at the edge
   const timings = timingsOf('th', rows, 20);
   assert.deepEqual(timings.dots.slice(0, 5).map((dot) => dot.stack), [0, 1, 2, 3, 4]);
   assert.equal(timings.tall, 5);
-  // Four times the pace at most: 320, rounded up past the margin to 340.
-  assert.equal(timings.high, 340);
+  // Four times the pace at most: 320, with 15% of the 240 ms from 80 past it, rounded up a step: 360.
+  assert.deepEqual([timings.low, timings.high], [40, 360]);
   assert.equal(timings.dots[5].left, 100);
   assert.equal(timingsOf('th', [], 20), null);
 });
@@ -186,7 +187,9 @@ test('costs print in the unit on screen: cpm is five times wpm, and a cost too s
   assert.equal(wonText(1.44, 'wpm'), '+1.4');
   assert.equal(wonText(1.44, 'cpm'), '+7.2');
   assert.equal(wonText(-0.22, 'cpm'), '−1.1');
-  assert.equal(wonText(0.004, 'wpm'), '0');
+  assert.equal(wonText(0.004, 'wpm'), '<0.1');
+  assert.equal(wonText(-0.004, 'wpm'), '<0.1');
+  assert.equal(wonText(0, 'cpm'), '0');
 });
 
 // Random histories: runs at random speeds and paces with six pairs missed and slowed at random, and loops on those

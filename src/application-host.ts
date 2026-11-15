@@ -977,9 +977,8 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (practice.sessionKind === 'retest') {
       switchView('train');
-      renderComparison(training.baseline, completed, saved);
-    
       scrollTo(0, 0);
+      renderComparison(training.baseline, completed, saved);
       $('comparison-status').focus({ preventScroll: true });
 
       return;
@@ -1123,20 +1122,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     const current = practice.result.getSnapshot();
 
     if (current) flushSync(() => practice.result.publish({ ...current, drillLabel: label }));
-  }
-
-  function scrollablePath() {
-    const list = $('train-path');
-
-    if (list.scrollWidth > list.clientWidth + 1) list.tabIndex = 0;
-    else list.removeAttribute('tabindex');
-    pathEdges();
-  }
-
-  function pathEdges() {
-    const list = $('train-path');
-    list.toggleAttribute('data-more-behind', list.scrollLeft > 1);
-    list.toggleAttribute('data-more-ahead', list.scrollLeft < list.scrollWidth - list.clientWidth - 1);
   }
 
   function switchView(view: AppView) {
@@ -1714,7 +1699,6 @@ export async function attachApplication({ practice, learning, palette, settings:
     learning.progress.commands.movers = progressHistory.movers;
 
     matchMedia('(pointer: coarse)').addEventListener('change', progressHistory.refreshKeys, { signal: lifetime.signal });
-    $('train-path').addEventListener('scroll', pathEdges, { ...{ passive: true }, signal: lifetime.signal });
   
     learning.commands.back = () => {
       if (practice.shownResult?.kind !== 'retest' || practice.shownResult !== practice.attempt) {
@@ -2297,7 +2281,6 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   addEventListener('resize', () => {
     relayoutText();
-    scrollablePath();
   }, { signal: lifetime.signal });
 
   document.fonts?.addEventListener?.('loadingdone', () => { measureTypingBaseline(); relayoutText(); }, { signal: lifetime.signal });

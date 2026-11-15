@@ -2716,247 +2716,168 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-more { min-width: 0; display: grid; gap: var(--space-8); }
 .result-more:not(:has(> :not([hidden]))) { display: none; }
 
-/* ── Train: the path ───────────────────────────────────────────────────── */
+/* ── Train: the queue and the step ──────────────────────────────────────── */
 
-/* One line of steps: behind you (accent, a ring, or a disc once fixed, with its status word), the open step (a larger
-   ring holding a dot, its target at display size) and the steps ahead (a smaller outline ring on a dashed line).
-   Position, node shape, the status word and the line's dash tell them apart without colour. From 901px the steps sit
-   in columns, six to a screen, with a gutter between them, and the line scrolls back through every step behind you.
-   The six leave room at the start for the tail of the step before them, so a line that holds more shows a part of
-   the next step behind you there, faded, while the first whole step stays clear; the end fades the same way while
-   more lies past it. app.js sets --columns, --open (the open step's column) and data-more-behind and data-more-ahead. */
-.train-path {
-  --columns: 6;
-  --open: 1;
-  --fade-behind: 0px;
-  --fade-ahead: 0px;
-  margin: 0 calc(var(--space-2) * -1);
-  padding: var(--space-10) var(--space-2) var(--space-2);
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(var(--columns), calc((100% - var(--space-8)) / 6));
-  align-items: start;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hairline-strong) transparent;
-}
-.train-path[data-more-behind] { --fade-behind: var(--space-8); }
-.train-path[data-more-ahead] { --fade-ahead: var(--space-8); }
-/* Focused for its arrow keys, the line drops the fade so its focus ring shows whole. */
-.train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, var(--text) var(--fade-behind), var(--text) calc(100% - var(--fade-ahead)), transparent 100%);
-}
+/* Two parts (TOB-470): the queue panel, one row per step still to do with what it costs and the drilled steps folded
+   under it with what each won back, and the chosen step's detail beside it (under it up to 900px). A row says what it
+   is in words and figures: its number, or a check once fixed and a ring while drilled, and its state word. Nothing
+   animates as the page opens or a step is chosen: it is opened many times a day. */
+.train-screen { padding-top: var(--space-6); }
+.train-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--space-3); align-items: start; }
 
-.path-step { grid-row: 1; min-width: 0; padding: 0 var(--space-4) var(--space-2) 0; display: grid; align-content: start; gap: var(--space-1); }
-.path-step.is-just { grid-column: span 2; }
-/* The open step lays its head on the line and its details under it, from its column to the end. */
-#train-current { display: contents; }
-#train-current > .path-head { grid-row: 1; grid-column: var(--open); margin-right: var(--space-4); }
-
-.path-head { position: relative; display: grid; justify-items: start; row-gap: var(--space-6); }
-/* Each step draws the line to the next one: travelled behind you, dashed from the open step on. */
-.path-head::before {
-  content: "";
-  position: absolute;
-  top: calc(var(--space-4) / 2 - 1px);
-  left: 0;
-  right: calc(var(--space-4) * -1);
-  height: 2px;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-}
-:is(#train-current, .is-ahead) .path-head::before {
-  background: repeating-linear-gradient(90deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
-}
-.train-path > :last-child .path-head::before { display: none; }
-
-.path-node {
-  position: relative;
-  z-index: 1;
-  width: var(--space-4);
-  height: var(--space-4);
-  border: 2px solid var(--accent);
-  border-radius: var(--radius-full);
-  background: var(--ground);
-}
-.is-fixed .path-node { background: var(--accent); }
-#train-current .path-node {
-  width: var(--space-6);
-  height: var(--space-6);
-  margin: calc((var(--space-4) - var(--space-6)) / 2);
-  box-shadow: inset 0 0 0 var(--space-1) var(--ground), inset 0 0 0 var(--space-6) var(--accent);
-}
-.is-ahead .path-node {
-  width: var(--space-3);
-  height: var(--space-3);
-  margin: calc((var(--space-4) - var(--space-3)) / 2);
-  border-color: var(--outline);
-}
-
-.path-unit { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; overflow-wrap: anywhere; }
-/* "drilled" or "fixed" beside the target, a status word whose dot is the step's own node. */
-.path-status { margin-left: var(--space-2); }
-/* A number stays with its unit, and each half of a before → after pair stays whole. */
-.path-figure { white-space: nowrap; }
-#train-unit { font-size: var(--text-display); line-height: 1; letter-spacing: -0.025em; white-space: nowrap; }
-.path-line { margin: 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-.is-behind .path-line:first-of-type { color: var(--text); }
-
-/* A step ahead is chosen as a whole; its target brightens on hover. */
-.path-choose {
+.train-queue { padding: 0; overflow: hidden; }
+.train-queue .panel-head { margin: 0; }
+.queue { margin: 0; padding: 0; list-style: none; }
+.queue-step + .queue-step { border-top: 1px solid var(--hairline); }
+.q-row {
   width: 100%;
-  padding: 0;
+  min-height: var(--control);
+  display: grid;
+  grid-template-columns: var(--space-4) var(--space-10) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
   border: 0;
-  border-radius: var(--radius-control);
-  background: none;
-  color: var(--muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
   font: inherit;
   text-align: start;
-  display: grid;
-  gap: var(--space-1);
+  transition: transform var(--dur-quick) var(--ease-out);
 }
-.path-choose .path-unit { transition: color var(--dur-quick) var(--ease-out); }
-.path-choose:hover .path-unit { color: var(--text); }
+.q-row:active { transform: scale(0.98); }
+.q-row[aria-pressed="true"] { background: var(--raised-2); box-shadow: inset 2px 0 var(--accent); }
+.q-row:focus-visible { outline-offset: -2px; }
+.q-n { display: grid; place-items: center; color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+.q-unit { font: 500 var(--text-lead)/1.2 var(--font-mono); white-space: nowrap; }
+.is-general .q-unit { grid-column: 2 / -1; font: inherit; }
+.q-why { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--text-small); }
+.q-cost { color: var(--text); font: 500 var(--text-mono)/1.4 var(--font-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.is-current .q-cost, .q-cost.is-up { color: var(--accent); }
+.q-cost [data-speed-unit] { color: var(--muted); font-weight: 400; }
+.q-cost.is-up [data-speed-unit] { color: inherit; }
+.is-fixed .q-state { color: var(--accent); }
+.q-check { width: var(--space-3); height: var(--space-3); fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.q-ring { width: 7px; height: 7px; border: 1.5px solid var(--outline); border-radius: var(--radius-full); }
 
-/* The open step's details: its evidence, the words it was missed in, and its one button. */
-.train-open {
-  grid-row: 2;
-  grid-column: var(--open) / -1;
-  min-width: 0;
-  margin-top: var(--space-8);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--hairline);
+/* The drilled steps fold away under the queue. Their column reads what they won back, not what they cost. */
+.q-fold {
+  width: 100%;
+  min-height: var(--control);
   display: grid;
-  justify-items: start;
-  gap: var(--space-4);
-}
-.train-evidence { margin: 0; font-size: var(--text-lead); font-variant-numeric: tabular-nums lining-nums; }
-.train-last { margin: calc(var(--space-3) * -1) 0 0; color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-/* Missed words that hold the target: the target in the text colour, the rest muted. Coral would say its letters
-   were the ones mistyped, which isn't known. */
-.train-words {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1) var(--space-4);
+  grid-template-columns: var(--space-4) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--panel-inset);
+  border: 0;
+  border-top: 1px solid var(--hairline-strong);
+  border-radius: 0;
+  background: transparent;
   color: var(--muted);
-  font-size: var(--text-title);
-  line-height: 1.3;
+  font: inherit;
+  font-size: var(--text-small);
+  text-align: start;
 }
-.train-words b { color: var(--text); font-weight: inherit; }
-.train-actions { margin-top: var(--space-2); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.q-fold[aria-expanded="true"] { color: var(--text); }
+.q-chevron { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.q-fold[aria-expanded="true"] .q-chevron { transform: rotate(90deg); }
+.q-count { justify-self: start; padding: 0 6px; border-radius: var(--radius-full); background: var(--raised-2); font: 500 var(--text-caption)/1.6 var(--font-mono); }
+.queue.is-done { border-top: 1px solid var(--hairline); }
 
-/* The comparison is the step just retested: its outcome, then its figures beside the baseline's, in three rows. */
+@media (hover: hover) and (pointer: fine) {
+  .q-row:hover, .q-fold:hover { background: var(--raised-2); }
+}
+
+/* The chosen step: what it is, its drill's first words and its button, then its measures, the learner's own words for
+   its evidence, and for a pair the run-by-run timings. */
+.train-detail { min-width: 0; scroll-margin-top: var(--space-4); }
+.train-step { display: grid; gap: var(--space-3); align-content: start; }
+.train-step-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: var(--space-4); padding: 2px 2px var(--space-1); }
+.train-step-head > div:first-child { min-width: 0; }
+.train-step-unit { margin: var(--space-1) 0 0; font: 500 56px/0.95 var(--font-mono); letter-spacing: -0.05em; overflow-wrap: anywhere; }
+.train-step-unit.is-label { font-size: var(--text-title); line-height: 1.15; letter-spacing: -0.015em; }
+.train-preview { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--text-small); line-height: 1.5; }
+.train-preview b { color: var(--text); font-weight: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 5px; }
+.train-actions { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2); }
+.train-starts { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); white-space: nowrap; }
+/* Three measures a row at every width, so the frame's two-a-row phone rule is undone here. */
+.train-cells { grid-auto-flow: column; grid-template-columns: none; }
+.train-cells .cell { border-top: 0; border-left: 1px solid var(--hairline); }
+.train-cells .cell:first-child, .train-cells [hidden] + .cell { border-left: 0; }
+.train-evidence { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--text-fine); font-variant-numeric: tabular-nums lining-nums; }
+.train-evidence:not(:has(> :not([hidden]))) { display: none; }
+.train-evidence p { margin: 0; }
+.train-figure { white-space: nowrap; }
+.train-words b { color: var(--text); font-weight: inherit; }
+
+/* One dot for each run that timed the pair, at its median interval in that run, against the person's pace. Dots that
+   share a slot stack, and a tall stack packs its dots closer so it stays inside the plot. */
+.train-timings .panel-head { margin-bottom: 0; }
+.train-timings .panel-note { color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+.timing-plot {
+  --plot-height: 150px;
+  --dot: 6px;
+  --dot-step: min(calc(var(--dot) + 2px), calc((var(--plot-height) - var(--space-10)) / var(--tall)));
+  position: relative;
+  height: var(--plot-height);
+  margin-top: var(--space-4);
+  border-bottom: 1px solid var(--hairline-strong);
+}
+.timing-dots { position: absolute; inset: 0; }
+.timing-dots i { position: absolute; bottom: calc(var(--stack) * var(--dot-step)); width: var(--dot); height: var(--dot); margin: 0 0 3px calc(var(--dot) / -2); border-radius: var(--radius-full); background: var(--accent); }
+.timing-mark { position: absolute; top: 0; bottom: 0; padding-left: 7px; border-left: 1px solid var(--accent); color: var(--muted); font: 400 var(--text-caption)/1.45 var(--font-mono); white-space: nowrap; }
+.timing-mark b { display: block; color: var(--text); font-weight: 400; }
+.timing-mark.is-pace, .is-flipped .timing-mark.is-own { padding: 0 7px 0 0; border-left: 0; border-right: 1px dashed var(--outline); text-align: right; transform: translateX(-100%); }
+.is-flipped .timing-mark.is-own { border-right-style: solid; border-right-color: var(--accent); }
+.is-flipped .timing-mark.is-pace { padding: 0 0 0 7px; border-right: 0; border-left: 1px dashed var(--outline); text-align: left; transform: none; }
+.timing-axis { display: flex; justify-content: space-between; padding-top: var(--space-2); color: var(--muted); font: 400 var(--text-caption)/1.4 var(--font-mono); }
+
+/* The comparison is the step just retested: its outcome, then its figures beside the baseline's. */
+.train-comparison { display: grid; gap: var(--space-3); }
 #comparison-status {
-  margin: var(--space-2) 0 0;
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  font-size: var(--text-body);
+  margin: 0;
+  font-size: var(--text-lead);
   font-weight: 400;
-  line-height: 1.4;
 }
 #comparison-status::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--muted); transform: translateY(-2px); }
 [data-outcome="improved"] > #comparison-status::before { background: var(--accent); }
 [data-outcome="mixed"] > #comparison-status::before { background: var(--warning); }
 [data-outcome="regressed"] > #comparison-status::before { background: var(--danger); }
-/* Focus lands on the outcome so it is read out; it isn't a control, so it draws no ring. */
 #comparison-status:focus-visible { outline: none; }
-.comparison-rows {
-  margin: var(--space-2) 0 0;
-  display: grid;
-  grid-template-columns: max-content max-content minmax(0, 1fr);
-  align-items: baseline;
-  gap: var(--space-1) var(--space-3);
-}
-.comparison-rows > div, .comparison-rows dd { display: contents; }
-.comparison-rows dt { color: var(--muted); font: var(--text-fine)/1.3 var(--font-mono); letter-spacing: 0.02em; }
-.comparison-rows strong { font-size: var(--text-body); font-weight: 400; font-variant-numeric: tabular-nums lining-nums; }
-.comparison-rows strong b { color: var(--muted); font-size: var(--text-small); font-weight: 400; margin-left: 1px; }
-.comparison-rows dd > span { color: var(--muted); font-size: var(--text-small); font-variant-numeric: tabular-nums lining-nums; }
-#comparison-panel.is-uncompared .comparison-rows { display: none; }
-#comparison-conditions { margin: var(--space-2) 0 0; }
-#comparison-conditions:empty { display: none; }
-#comparison-caveat { max-width: 60ch; margin: var(--space-1) 0 0; color: var(--muted); font-size: var(--text-small); }
-#comparison-caveat:empty { display: none; }
+.comparison-rows { margin: 0; }
+.comparison-rows dd { margin: var(--space-1) 0 0; }
+.comparison-rows .cell-note { display: block; }
+.train-comparison.is-uncompared .comparison-rows { display: none; }
+#comparison-conditions, #comparison-caveat { margin: 0; }
+#comparison-conditions:empty, #comparison-caveat:empty { display: none; }
+#comparison-caveat { max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
+.is-just > .train-actions { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--space-2) var(--space-4); }
 
-/* As a retest's comparison opens, the path moves on one step and the next step opens. */
-@keyframes path-advance { from { transform: translateX(var(--advance)); } }
-@keyframes path-open { from { opacity: 0; transform: translateY(var(--space-2)); } }
-.train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head {
-  animation: path-advance var(--dur-fast) var(--ease-out);
-}
-.train-path.is-advancing .train-open { animation: path-open var(--dur-fast) var(--ease-out); }
-
-/* Up to 900px the path runs down the page, its line on the left: the two newest steps behind you (a line fading in
-   from above when there are more), then the open step with its details under its target, then the steps ahead. */
+/* Up to 900px the detail sits under the queue; up to 480px its head stacks and its measures shrink to fit three. */
 @media (max-width: 900px) {
-  .train-path { margin: 0; padding: var(--space-4) 0 0; grid-template-columns: minmax(0, 1fr); overflow: visible; }
-  .train-path:is([data-more-behind], [data-more-ahead]):not(:focus-visible) { -webkit-mask-image: none; mask-image: none; }
-  .path-step, .path-step.is-just, #train-current { grid-row: auto; grid-column: 1; position: relative; display: grid; padding: 0 0 var(--space-6); }
-  #train-current > .path-head, .train-open { grid-row: auto; grid-column: auto; }
-  .path-step:is([data-early], .is-place) { display: none; }
-  .path-head { margin-right: 0; grid-template-columns: var(--space-6) minmax(0, 1fr); align-items: center; column-gap: var(--space-4); }
-  .path-head::before { display: none; }
-  .path-node { justify-self: center; }
-  :is(.path-line, #comparison-status, .comparison-rows, #comparison-conditions, #comparison-caveat, .train-open) { margin-left: var(--space-10); }
-  .path-choose { gap: 0; }
-  .path-choose .path-line { margin-left: var(--space-10); }
-  .train-open { margin-top: var(--space-3); padding-top: 0; border-top: 0; }
-  .train-last { margin-top: calc(var(--space-2) * -1); }
-  .train-words { font-size: var(--text-lead); }
-  #train-unit { white-space: normal; }
-
-  /* Each step's line runs from its node's centre to the next node's. */
-  .path-step { --mid: calc(var(--text-title) * 0.575); }
-  #train-current { --mid: calc(var(--text-display) / 2); }
-  .path-step::before {
-    content: "";
-    position: absolute;
-    top: var(--mid);
-    bottom: calc(var(--text-title) * -0.575);
-    left: calc(var(--space-6) / 2 - 1px);
-    width: 2px;
-    border-radius: var(--radius-full);
-    background: var(--accent);
-  }
-  .path-step:has(+ #train-current)::before { bottom: calc(var(--text-display) / -2); }
-  :is(#train-current, .is-ahead)::before {
-    background: repeating-linear-gradient(180deg, var(--hairline-strong) 0 var(--space-2), transparent var(--space-2) var(--space-3));
-  }
-  .train-path > :last-child::before, #train-current:has(+ .is-place)::before { display: none; }
-  /* A target that wraps keeps its node on its first line. */
-  #train-current > .path-head { align-items: start; }
-  #train-current .path-node { margin: calc(var(--mid) - var(--space-6) / 2) 0 0; }
-  .path-step[data-early] + .path-step::after {
-    content: "";
-    position: absolute;
-    top: calc(var(--space-4) * -1);
-    height: calc(var(--mid) + var(--space-4));
-    left: calc(var(--space-6) / 2 - 1px);
-    width: 2px;
-    background: linear-gradient(transparent, var(--accent));
-  }
-
-  .train-path.is-advancing > .path-step:not(#train-current), .train-path.is-advancing > #train-current > .path-head, .train-path.is-advancing .train-open { animation: none; }
-  .train-path.is-advancing > #train-current { animation: path-open var(--dur-fast) var(--ease-out); }
+  .train-layout { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Forced colours would draw every node as the same ring and drop the open step's dot and the line: draw them in system
-   colours. Behind you a CanvasText ring, or a CanvasText disc once fixed, on a solid CanvasText line; the open step a
-   Highlight ring holding a Highlight dot; ahead a smaller GrayText ring on a dashed GrayText line. */
+@media (max-width: 480px) {
+  .train-step-head { flex-direction: column; align-items: stretch; }
+  .train-actions { align-items: flex-start; }
+  .train-step-unit { font-size: var(--text-display); }
+  .train-cells .cell { padding-inline: var(--space-3); }
+  .train-cells .cell-figure { font-size: var(--text-lead); }
+  .train-cells .cell-unit { margin-left: var(--space-1); }
+}
+
+/* Forced colours drop the chosen row's tint and the dots' fill: draw them in system colours. */
 @media (forced-colors: active) {
-  .path-node, .path-head::before, .path-step::before, .path-step[data-early] + .path-step::after { forced-color-adjust: none; }
-  .path-node { border-color: CanvasText; background: Canvas; }
-  .is-fixed .path-node { background: CanvasText; }
-  #train-current .path-node { border-color: Highlight; box-shadow: inset 0 0 0 var(--space-1) Canvas, inset 0 0 0 var(--space-6) Highlight; }
-  .is-ahead .path-node { border-color: GrayText; }
-  .path-head::before, .path-step::before { background: CanvasText; }
-  :is(#train-current, .is-ahead) .path-head::before { background: repeating-linear-gradient(90deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
-  :is(#train-current, .is-ahead)::before { background: repeating-linear-gradient(180deg, GrayText 0 var(--space-2), transparent var(--space-2) var(--space-3)); }
-  .path-step[data-early] + .path-step::after { background: linear-gradient(transparent, CanvasText); }
+  .q-row[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .q-check, .q-ring, .timing-dots i, .timing-mark { forced-color-adjust: none; }
+  .q-check { stroke: CanvasText; }
+  .q-ring { border-color: CanvasText; }
+  .timing-dots i { background: CanvasText; }
+  .timing-mark { border-color: CanvasText; color: CanvasText; }
 }
 
 .run-card-graph { margin: 0; }

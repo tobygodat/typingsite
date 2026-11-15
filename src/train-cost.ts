@@ -47,10 +47,11 @@ interface Interval { pairMs: number; runMs: number; timed: number }
 const MS_PER_MINUTE = 60_000;
 const wpmAt = (ms: number) => MS_PER_MINUTE / CHARS_PER_WORD / ms;
 
-// The dot plot: its axis steps and margin, the narrowest span it draws, how far past the pace a run's median may sit
-// before it is drawn at the edge, and how wide a stack of dots is, as a share of the axis.
+// The dot plot: its axis steps, the room past the outermost mark as a share of the span (so a mark's label stays
+// inside), the narrowest span it draws, how far past the pace a run's median may sit before it is drawn at the edge,
+// and how wide a stack of dots is, as a share of the axis.
 const PLOT_STEP = 20;
-const PLOT_MARGIN = 10;
+const PLOT_ROOM = 0.15;
 const PLOT_SPAN = 100;
 const PLOT_REACH = 4;
 const DOT_SLOT = 1.6;
@@ -122,9 +123,11 @@ export function timingsOf(unit: string, intervals: Interval[] | undefined, slowe
   const pace = Math.round(intervals.reduce((sum, row) => sum + row.timed * row.runMs, 0) / timed);
   const own = pace + Math.round(slowerMs ?? intervals.reduce((sum, row) => sum + row.timed * (row.pairMs - row.runMs), 0) / timed);
   const medians = intervals.map((row) => row.pairMs);
-  const low = Math.max(0, Math.floor((Math.min(pace, own, ...medians) - PLOT_MARGIN) / PLOT_STEP) * PLOT_STEP);
+  const bottom = Math.min(pace, own, ...medians);
   const top = Math.max(pace, own, Math.min(pace * PLOT_REACH, Math.max(...medians)));
-  const high = Math.max(low + PLOT_SPAN, Math.ceil((top + PLOT_MARGIN) / PLOT_STEP) * PLOT_STEP);
+  const room = Math.max(PLOT_STEP / 2, (top - bottom) * PLOT_ROOM);
+  const low = Math.max(0, Math.floor((bottom - room) / PLOT_STEP) * PLOT_STEP);
+  const high = Math.max(low + PLOT_SPAN, Math.ceil((top + room) / PLOT_STEP) * PLOT_STEP);
   const stacks = new Map<number, number>();
 
   const dots = medians.map((ms) => {
@@ -224,11 +227,13 @@ export function costText(wpm: number | null, unit: string) {
   return value > 0 && value < 0.05 ? '<0.1' : String(Number(value.toFixed(1)));
 }
 
-// Speed won back, signed, in the unit on screen: "+1.4", "−0.2", "0".
+// Speed won back, signed, in the unit on screen: "+1.4", "−0.2", "<0.1" for an amount too small to print either way.
 export function wonText(wpm: number, unit: string) {
   const rounded = Number(speedValue(wpm, unit).toFixed(1));
 
-  return `${rounded > 0 ? '+' : rounded < 0 ? '−' : ''}${Math.abs(rounded)}`;
+  if (!rounded) return wpm ? '<0.1' : '0';
+
+  return `${rounded > 0 ? '+' : '−'}${Math.abs(rounded)}`;
 }
 
 // How often a unit comes up, per minute at the person's speed: whole from ten, else to one decimal.
