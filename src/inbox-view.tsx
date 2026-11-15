@@ -77,6 +77,7 @@ export function Inbox({ controller }: { controller: InboxController }) {
   }}>
     <summary ref={trigger} id="inbox-trigger" className="corner-trigger" aria-label={view.unread ? `Inbox, ${view.unread} unread` : 'Inbox'}>
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4.5 7 7.5 6 7.5-6" /></svg>
+      <span className="corner-label" aria-hidden="true">inbox</span>
       <span id="inbox-count" className="inbox-count num" hidden={view.unread === 0}>{view.unread > 9 ? '9+' : view.unread}</span>
     </summary>
     <div className="corner-popover inbox-popover">
