@@ -10,7 +10,7 @@
 // jobs compute the same split, and each test lands in exactly one shard. A test with no recorded
 // duration counts as the median one. Anything that could drop or repeat a test stops the job.
 import { spawnSync } from 'node:child_process';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -111,6 +111,7 @@ function writeShard(spec, file) {
 
   if (!mine.tests.length && tests.length >= total) throw new Error(`shard ${spec} is empty`);
 
+  mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, mine.tests.map((test) => `[${test.project}]${SEPARATOR}${testKey(test)}`).join('\n') + '\n');
 
   // Playwright's own reading of the file must select exactly the planned tests, no more and no fewer.
