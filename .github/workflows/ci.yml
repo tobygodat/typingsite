@@ -153,6 +153,15 @@ jobs:
       - run: npx playwright install --with-deps ${{ matrix.engine }}
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
       - run: npx playwright test --shard=${{ matrix.shard }}/${{ matrix.total }}${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
+      # Per-test durations, whether the tests passed or not; scripts/e2e-shards.mjs --refresh reads them.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-timings-${{ matrix.engine }}-${{ matrix.total }}-${{ matrix.shard }}
+          path: e2e-timings/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
