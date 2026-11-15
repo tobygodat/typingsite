@@ -281,5 +281,5 @@ test('each block says what it does at a glance: the rating and its gauge, the fr
   await expect(page.locator('.challenge-tiles .tile:visible .tile-name')).toHaveText(['Race by link', 'Daily passage', 'One keyboard']);
   await expect(page.locator('#quick-match .quick-figure-label')).toHaveText('rating · Gale III');
   await expect(page.locator('#quick-match [data-quick-part="gauge"]')).toHaveAttribute('data-lit', '3');
-  await expect(page.locator('#quick-match .quick-gauge-note')).toHaveText('65 to Gale II');
+  await expect(page.locator('#quick-match .quick-gauge-note')).toHaveText('65 to Gale II · 24 rated races');
 });

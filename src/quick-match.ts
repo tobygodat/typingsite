@@ -132,7 +132,7 @@ const along = (rating: number, step: RatingStep) => (step.hi === step.lo ? 1 : M
 
 // Quick match's gauge: as many segments as the rated races that earn a rank. While provisional it counts those
 // races; once ranked it fills through the 100-point step the rating sits in, as the result card's bar does,
-// and its note says how far the next line is.
+// and its note says how far the next line is. The rating is always shown with its count (ADR 0014).
 export const GAUGE_SEGMENTS = RATING.provisional;
 
 export interface RatingGauge { rating: number; rank: string | null; lit: number; note: string }
@@ -145,8 +145,9 @@ export function ratingGauge(rating: unknown): RatingGauge | null {
   }
 
   const step = stepOf(rating);
+  const count = `${rating.races} rated races`;
 
-  return { rating: rating.rating, rank: step.label, lit: Math.floor(along(rating.rating, step) * GAUGE_SEGMENTS), note: step.next ? `${step.hi - rating.rating} to ${step.next}` : '' };
+  return { rating: rating.rating, rank: step.label, lit: Math.floor(along(rating.rating, step) * GAUGE_SEGMENTS), note: step.next ? `${step.hi - rating.rating} to ${step.next} · ${count}` : count };
 }
 
 // One stage of the bar: the step it draws, where the fill starts and ends as fractions of it, and how far the

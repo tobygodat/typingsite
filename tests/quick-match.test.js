@@ -144,19 +144,19 @@ test('the rank ladder: Whisper under 1200, Hurricane from 2400, and three 100-po
   assert.equal(rankLabel(null), '');
 });
 
-test('the gauge counts rated races toward a rank, then fills through the step the rating sits in', () => {
+test('the gauge counts rated races toward a rank, then fills through the step the rating sits in, the count always shown', () => {
   assert.equal(ratingGauge(null), null);
   assert.equal(ratingGauge({ rating: 1500 }), null);
   assert.deepEqual(ratingGauge({ rating: 1500, races: 0 }), { rating: 1500, rank: null, lit: 0, note: '0/10 races to a rank' });
   assert.deepEqual(ratingGauge({ rating: 1520, races: 1 }), { rating: 1520, rank: null, lit: 1, note: '1/10 races to a rank' });
   assert.deepEqual(ratingGauge({ rating: 1480, races: 9 }), { rating: 1480, rank: null, lit: 9, note: '9/10 races to a rank' });
   // Gale III runs 1800 to 1900: 1805 has barely begun it, 1895 has nine segments of ten.
-  assert.deepEqual(ratingGauge({ rating: 1805, races: 21 }), { rating: 1805, rank: 'Gale III', lit: 0, note: '95 to Gale II' });
-  assert.deepEqual(ratingGauge({ rating: 1895, races: 40 }), { rating: 1895, rank: 'Gale III', lit: 9, note: '5 to Gale II' });
-  assert.deepEqual(ratingGauge({ rating: 2110, races: 230 }), { rating: 2110, rank: 'Tempest III', lit: 1, note: '90 to Tempest II' });
-  assert.deepEqual(ratingGauge({ rating: 1000, races: 12 }), { rating: 1000, rank: 'Whisper', lit: 3, note: '200 to Breeze III' });
-  assert.deepEqual(ratingGauge({ rating: 800, races: 12 }), { rating: 800, rank: 'Whisper', lit: 0, note: '400 to Breeze III' });
-  assert.deepEqual(ratingGauge({ rating: 2500, races: 99 }), { rating: 2500, rank: 'Hurricane', lit: 10, note: '' });
+  assert.deepEqual(ratingGauge({ rating: 1805, races: 21 }), { rating: 1805, rank: 'Gale III', lit: 0, note: '95 to Gale II · 21 rated races' });
+  assert.deepEqual(ratingGauge({ rating: 1895, races: 40 }), { rating: 1895, rank: 'Gale III', lit: 9, note: '5 to Gale II · 40 rated races' });
+  assert.deepEqual(ratingGauge({ rating: 2110, races: 230 }), { rating: 2110, rank: 'Tempest III', lit: 1, note: '90 to Tempest II · 230 rated races' });
+  assert.deepEqual(ratingGauge({ rating: 1000, races: 12 }), { rating: 1000, rank: 'Whisper', lit: 3, note: '200 to Breeze III · 12 rated races' });
+  assert.deepEqual(ratingGauge({ rating: 800, races: 12 }), { rating: 800, rank: 'Whisper', lit: 0, note: '400 to Breeze III · 12 rated races' });
+  assert.deepEqual(ratingGauge({ rating: 2500, races: 99 }), { rating: 2500, rank: 'Hurricane', lit: 10, note: '99 rated races' });
 });
 
 test('a ranked rating line leads with the rank, and a rated race that moves the rank or step says from where', () => {
