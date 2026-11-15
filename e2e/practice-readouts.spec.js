@@ -29,7 +29,6 @@ test('the readouts and the card agree on the average, measured before the run ju
   const first = number(await page.locator('#result-wpm').textContent());
   // A first run has nothing to compare with.
   await expect(page.locator('#result-versus')).toHaveCount(0);
-  await expect(page.locator('#result-standing')).toBeHidden();
 
   await page.locator('#run-again').click();
   await expect(page.locator('#live-standing .cell-figure')).toHaveText(`${Math.round(first)} · ${Math.round(first)}`);
@@ -43,9 +42,8 @@ test('the readouts and the card agree on the average, measured before the run ju
   expect(number(versus.split(' vs avg ')[0])).toBeCloseTo(second - Math.round(first), 1);
   await expect(page.locator('#result-versus .is-up, #result-versus .is-down')).toHaveClass(second >= Math.round(first) ? 'is-up' : 'is-down');
 
-  // The standing line holds this run too, and Practice's readout says the same once back.
+  // Back on Practice, the readout's average holds this run too.
   const average = Math.round((first + second) / 2);
-  await expect(page.locator('#result-standing')).toHaveText(`average ${average} · best ${Math.round(Math.max(first, second))}`);
   await page.locator('#run-again').click();
   await expect(page.locator('#live-standing .cell-figure')).toHaveText(`${average} · ${Math.round(Math.max(first, second))}`);
 });

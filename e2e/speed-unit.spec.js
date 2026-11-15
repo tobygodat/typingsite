@@ -98,8 +98,8 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-delta')).toHaveText(new RegExp(`^(Matched your best of|[+−]\\d+ vs your best of) ${first * 5} cpm$`));
   await expect(page.locator('#announcement')).toHaveText(`${second} cpm, ${accuracy}% accuracy.`);
   await expect(page.locator('#best')).toHaveText(`Best · ${Math.max(first * 5, second)} cpm`);
-  // Two counted runs at these conditions: the card's average and best read in cpm too.
-  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2) * 5} · best ${Math.max(first * 5, second)}`);
+  // A counted run before this one: the card's change against its average reads in cpm too.
+  await expect(page.locator('#result-versus')).toHaveText(new RegExp(`^[+−]?${Math.abs(second - first * 5)} vs avg ${first * 5}$`));
   await shot(page, testInfo, 'results-dark');
 
   await openView(page, 'Progress');
@@ -121,7 +121,7 @@ test('cpm changes only the display: the run card, best, graph and Progress read 
   await expect(page.locator('#result-wpm')).toHaveText(String(second / 5));
   await expect(page.locator('.run-card-unit')).toHaveText('wpm');
   await expect(page.locator('#speed-graph')).toHaveAttribute('aria-label', /average \d+ wpm/);
-  await expect(page.locator('#result-standing')).toHaveText(`average ${Math.round((first + second / 5) / 2)} · best ${Math.max(first, second / 5)}`);
+  await expect(page.locator('#result-versus')).toHaveText(new RegExp(`^[+−]?${Math.abs(second / 5 - first)} vs avg ${first}$`));
 });
 
 test('light theme: the run card and the palette command in cpm', async ({ page }, testInfo) => {

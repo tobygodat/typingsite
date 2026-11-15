@@ -79,7 +79,6 @@ export function ResultsCard({ practice }: { practice: PracticeSession }) {
           <button id="watch-replay" className="btn btn-ghost" type="button" data-action="watch-replay" hidden={!result?.replay} onClick={commands.watchReplay}>Watch replay</button>
         </div>
         <div className="result-context">
-          <p id="result-standing" className="run-card-standing" hidden={!result?.standing.length}>{result && <Copy parts={result.standing} />}</p>
           <p className="condition-copy" id="result-conditions">{result ? <Copy parts={result.conditions} /> : 'english · common words'}</p>
         </div>
       </div>

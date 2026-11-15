@@ -1068,9 +1068,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     const chars = characterBreakdown(completed, replay);
     const errors = replay.firstAttempts.filter((item) => !item.correct).length;
     const key = conditionKey(completed.conditions);
-    const recent = trendRun(completed) ? recentAverage(learning.profile.runs, key) : null;
     const before = trendRun(completed) && rateShown(completed) ? recentAverage(learning.profile.runs, key, { excluding: completed.id }) : null;
-    const best = learning.profile.bests[key]?.wpm;
     const mined = evidenceRun(completed);
     const { missed, slow } = mined ? missedAndSlowWords(completed) : { missed: [], slow: [] };
     const words = [...missed, ...slow.map((item) => item.word)];
@@ -1081,7 +1079,6 @@ export async function attachApplication({ practice, learning, palette, settings:
       accuracy: replay.score.accuracy, seconds: (replay.elapsedMs / 1000).toFixed(1),
       consistency: consistency(completed, replay) ?? null,
       accuracyTitle: plural(errors, 'first-try error') + ' · final c/i/e/m ' + chars.correct + '/' + chars.incorrect + '/' + chars.extra + '/' + chars.missed,
-      standing: !recent || recent.runs < 2 || !best ? [] : copyParts(['average ', speedFigure(recent.wpm, { bare: true, whole: true }), ' · best ', speedFigure(best, { bare: true, whole: true })]),
       versus: before && { change: replay.score.wpm - before.wpm, average: before.wpm },
       range: rateShown(completed) ? speedRange(speedSeries(completed)) : null,
       headline: copyParts(resultHeadline(completed)), conditions: copyParts(describeRun(completed)),

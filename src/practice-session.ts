@@ -33,7 +33,6 @@ export interface ResultView {
   seconds: string;
   consistency: number | null;
   accuracyTitle: string;
-  standing: CopyPart[];
   // This run's wpm against the average before it, at its conditions: none without an earlier run.
   versus: { change: number; average: number } | null;
   // The trace's slowest and fastest point, a display figure only.

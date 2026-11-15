@@ -2667,7 +2667,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-buttons .btn:not(.btn-ghost) { padding-inline: var(--space-4); }
 .result-context { flex: 1 1 var(--result-conditions); display: grid; gap: var(--space-1); text-align: end; }
 .result-context .condition-copy { letter-spacing: 0.02em; }
-.run-card-standing { margin: 0; color: var(--muted); font: var(--text-mono)/1.5 var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* Two figures to a row on a phone, and a shorter trace, so the score and the actions fit one screen. */
 @media (max-width: 760px) {
