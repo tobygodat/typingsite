@@ -3,6 +3,8 @@
 //
 //   node scripts/e2e-shards.mjs <current>/<total> <file>   write shard <current>'s tests to <file>,
 //                                                          then: npx playwright test --test-list <file>
+//                                                          E2E_SPECS='["e2e/a.spec.js"]' keeps only those
+//                                                          files' tests (scripts/e2e-scope.mjs)
 //   node scripts/e2e-shards.mjs --refresh <dir>...         rewrite scripts/e2e-durations.json from the
 //                                                          e2e-timings artifacts of a Chromium run
 //
@@ -11,7 +13,7 @@
 // duration counts as the median one. Anything that could drop or repeat a test stops the job. It splits
 // single tests, so it would scatter a serial group; tests/e2e-shards.test.js fails if a spec adds one.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -96,13 +98,22 @@ function playwright(args) {
   return testsInReport(JSON.parse(result.stdout));
 }
 
+const report = (count) => {
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tests=${count}\n`);
+};
+
 function writeShard(spec, file) {
   const [current, total] = spec.split('/').map(Number);
 
   if (!(Number.isInteger(current) && Number.isInteger(total) && current >= 1 && current <= total)) throw new Error(`shard must be <current>/<total>, got ${spec}`);
 
-  const tests = playwright(['--list']);
+  const specs = process.env.E2E_SPECS ? JSON.parse(process.env.E2E_SPECS).map((file) => path.relative('e2e', file)) : null;
+  const tests = playwright(['--list']).filter((test) => !specs || specs.includes(test.file));
   const problems = ambiguities(tests);
+
+  const unlisted = specs?.filter((file) => !tests.some((test) => test.file === file)) ?? [];
+
+  if (unlisted.length) throw new Error(`E2E_SPECS names files Playwright lists no tests in: ${unlisted.join(', ')}`);
 
   if (!tests.length) throw new Error('playwright listed no tests');
 
@@ -115,6 +126,16 @@ function writeShard(spec, file) {
   if (!mine.tests.length && tests.length >= total) throw new Error(`shard ${spec} is empty`);
 
   mkdirSync(path.dirname(file), { recursive: true });
+
+  // Fewer tests than shards: this shard has nothing to run, which the workflow reads from tests=0.
+  if (!mine.tests.length) {
+    writeFileSync(file, '');
+    report(0);
+    console.log(`Shard ${spec}: no tests. The run selects ${tests.length} tests for ${total} shards`);
+
+    return;
+  }
+
   writeFileSync(file, mine.tests.map((test) => `[${test.project}]${SEPARATOR}${testKey(test)}`).join('\n') + '\n');
 
   // Playwright's own reading of the file must select exactly the planned tests, no more and no fewer.
@@ -127,6 +148,7 @@ function writeShard(spec, file) {
 
   const seconds = (ms) => `${Math.round(ms / 1000)}s`;
 
+  report(mine.tests.length);
   console.log(`Shard ${spec}: ${mine.tests.length} of ${tests.length} tests, ${seconds(mine.ms)} recorded. All shards: ${shards.map((shard) => seconds(shard.ms)).join(' ')}`);
 }
 

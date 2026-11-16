@@ -26,12 +26,22 @@ jobs:
     concurrency:
       group: unit-${{ github.ref }}
       cancel-in-progress: true
+    # Which browser tests every e2e job of this run runs (scripts/e2e-scope.mjs).
+    outputs:
+      e2e-scope: ${{ steps.scope.outputs.scope }}
+      e2e-specs: ${{ steps.scope.outputs.specs }}
+      e2e-summary: ${{ steps.scope.outputs.summary }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # A PR's merge commit and both its parents, so the scope can diff it against the base.
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+      - id: scope
+        run: node scripts/e2e-scope.mjs
       - run: npm ci --no-audit --no-fund
       - run: npm run lint
       - run: npm run typecheck
@@ -135,29 +145,46 @@ jobs:
             {"engine": "chromium", "shard": 6, "total": 6}
           ]') }}
     env:
+      E2E_SCOPE: ${{ needs.unit.outputs.e2e-scope }}
+      # Only on a PR that changes nothing but e2e specs; otherwise every test runs.
+      E2E_SPECS: ${{ needs.unit.outputs.e2e-scope == 'specs' && needs.unit.outputs.e2e-specs || '' }}
       E2E_BROWSERS: ${{ matrix.engine }}
       E2E_FULL: ${{ inputs.browsers == 'all' && '1' || '0' }}
       # Serve the unit job's dist/ instead of building one per job (playwright.config.js).
       E2E_PREBUILT: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # A PR that changes no file the browser tests can see passes every e2e job here, and runs nothing else.
+      - if: env.E2E_SCOPE == 'none'
+        run: echo "$SUMMARY"
+        env:
+          SUMMARY: ${{ fromJSON(needs.unit.outputs.e2e-summary) }}
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/checkout@v4
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
-      - run: npm ci --no-audit --no-fund
-      - uses: actions/download-artifact@v4
+      - if: env.E2E_SCOPE != 'none'
+        run: npm ci --no-audit --no-fund
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - if: env.E2E_SCOPE != 'none'
+        run: npx playwright install --with-deps ${{ matrix.engine }}
       # This job's share of the tests by recorded duration (scripts/e2e-durations.json), not Playwright's
-      # equal counts in file order. It stops the job if the list could drop or repeat a test.
-      - run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
+      # equal counts in file order. It stops the job if the list could drop or repeat a test, and reports
+      # tests=0 when a PR selects fewer tests than there are shards.
+      - if: env.E2E_SCOPE != 'none'
+        id: shard
+        run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
-      - run: npx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
+      - if: env.E2E_SCOPE != 'none' && steps.shard.outputs.tests != '0'
+        run: npx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
       # Per-test durations, whether the tests passed or not; scripts/e2e-shards.mjs --refresh reads them.
-      - if: ${{ !cancelled() }}
+      - if: ${{ !cancelled() && env.E2E_SCOPE != 'none' }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-timings-${{ matrix.engine }}-${{ matrix.total }}-${{ matrix.shard }}
