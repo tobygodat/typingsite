@@ -28,7 +28,7 @@ test('every page is plain printable ASCII the engine can type, and pages keep ev
     assert.ok(pages.length > 20, id);
     pages.forEach((page, index) => {
       assert.equal(page.page, index);
-      assert.match(page.text, /^[\x21-\x7e]+(?: [\x21-\x7e]+)*$/, page.id);
+      assert.match(page.text, /^[\u0021-\u007E]+(?: [\u0021-\u007E]+)*$/, page.id);
       const words = page.text.split(' ').length;
       assert.ok(words >= PAGE_WORDS.min && words <= PAGE_WORDS.max, `${page.id}: ${words} words`);
       assert.ok(!ids.has(page.id), page.id);

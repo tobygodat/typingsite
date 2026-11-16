@@ -61,7 +61,7 @@ test('a recorded run encodes to whole milliseconds and replays to the same text,
 test('a slip onto a key the passage can\u2019t contain is sent as a stand-in that replays to the same score', () => {
   const text = 'hello world again';
 
-  for (const slip of ['ö', '\u00a0', 'é']) {
+  for (const slip of ['ö', '\u00A0', 'é']) {
     const attempt = run(`he${slip}\bllo world again`, { text });
     const trace = encodeTrace(attempt);
     assert.ok(trace && validTrace(trace), slip);

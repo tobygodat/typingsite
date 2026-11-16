@@ -109,13 +109,13 @@ export function normalise(raw) {
 
   for (const [pattern, value] of REPLACEMENTS) text = text.replace(pattern, value);
 
-  const paragraphs = text.normalize('NFD').replaceAll(/[\u0300-\u036f]/g, '')
+  const paragraphs = text.normalize('NFD').replaceAll(/[\u0300-\u036F]/g, '')
     .split(/\n\s*\n/)
     .map((paragraph) => paragraph.replaceAll(/\s+/g, ' ').trim())
     .filter(Boolean);
 
   const joined = paragraphs.join(' ');
-  const unsupported = [...new Set(joined.match(/[^\x20-\x7e]/g) || [])];
+  const unsupported = [...new Set(joined.match(/[^\u0020-\u007E]/g) || [])];
 
   if (unsupported.length) throw new Error(`Unsupported characters: ${unsupported.map((c) => `U+${c.codePointAt(0).toString(16)}`).join(' ')}`);
 

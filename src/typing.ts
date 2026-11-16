@@ -589,7 +589,7 @@ export const deadMark = (char: string) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.
 // punctuation, vertical, small and full-width forms), anything invisible (soft hyphen) or a pictograph
 // (© ❤), which emoji pickers commit through compositions too. An astral character is two UTF-16 units, so
 // it would move the caret two letters.
-const LATIN_KEY = /^(?:[\x20-\x7E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
+const LATIN_KEY = /^(?:[\u0020-\u007E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
 const NOT_A_KEY = /[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\u3000-\u303F\uFE10-\uFE6F\uFF00-\uFFEF]/u;
 const keyChar = (char: string) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
 
@@ -626,7 +626,7 @@ export function carriedKey(attempt: Attempt, char: string, offsetMs: number): At
 // which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
 // run, so a longer passage makes late keys lag (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
 export const CUSTOM_MAX = 3000;
-const TYPABLE = /^[\x20-\x7E]$/;
+const TYPABLE = /^[\u0020-\u007E]$/;
 
 // Smart punctuation becomes ASCII; NFKC folds compatibility forms (full-width letters, ligatures, no-break
 // spaces); invisible code points go (every default-ignorable, such as ZWSP, ZWJ, CGJ, variation selectors,
@@ -643,7 +643,7 @@ export function normalizeCustomText(value: unknown, max = CUSTOM_MAX) {
     .replaceAll(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
     .replaceAll(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
     .normalize('NFD')
-    .replaceAll(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .replaceAll(/([\u0020-\u007E])[\u0300-\u036F]+/g, '$1')
     .normalize('NFC')
     .replaceAll(/\s+/g, ' ')
     .trim()

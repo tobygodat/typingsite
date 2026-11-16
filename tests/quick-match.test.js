@@ -9,7 +9,7 @@ import { FakeRaces } from '../e2e/fake-races.js';
 import { quickPassage } from '../e2e/fake-quick-match.js';
 
 // The rating line keeps its count and "provisional" together with no-break spaces; the assertions read it plain.
-const plain = (text) => text.replaceAll('\u00a0', ' ');
+const plain = (text) => text.replaceAll('\u00A0', ' ');
 const ratingLine = (...args) => plain(rawLine(...args));
 const ratingChangeLine = (...args) => plain(changeLine(...args));
 
@@ -85,7 +85,7 @@ test('the rating line says the count and whether the rating is provisional', () 
   assert.equal(ratingLine({ rating: 1612, races: 10 }), 'Gust II · 1612 · 10 rated races');
   assert.equal(ratingLine(null), '');
   // On a narrow screen the line breaks only before the count, never before "provisional".
-  assert.equal(rawLine({ rating: 1500, races: 0 }), 'Race rating 1500 · 0\u00a0rated\u00a0races\u00a0·\u00a0provisional');
+  assert.equal(rawLine({ rating: 1500, races: 0 }), 'Race rating 1500 · 0\u00A0rated\u00A0races\u00A0·\u00A0provisional');
   const rated = (reason, outcome, delta) => ({ rated: true, reason, outcome, after: 1500 + delta, delta, races: 1 });
   const line = 'Race rating 1520 · 1 rated race · provisional (+20)';
   assert.equal(ratingChangeLine(rated(null, 'lost', -20)), 'Rated loss. Race rating 1480 · 1 rated race · provisional (−20)');
@@ -164,8 +164,8 @@ test('a ranked rating line leads with the rank, and a rated race that moves the 
   assert.equal(ratingLine({ rating: 1199, races: 40 }), 'Whisper · 1199 · 40 rated races');
   assert.equal(ratingLine({ rating: 2450, races: 80 }), 'Hurricane · 2450 · 80 rated races');
   // The provisional line is unchanged, and neither half of a rank breaks across lines.
-  assert.equal(rawLine({ rating: 1500, races: 9 }), 'Race rating 1500 · 9\u00a0rated\u00a0races\u00a0·\u00a0provisional');
-  assert.equal(rawLine({ rating: 1840, races: 23 }), 'Gale\u00a0III · 1840 · 23\u00a0rated\u00a0races');
+  assert.equal(rawLine({ rating: 1500, races: 9 }), 'Race rating 1500 · 9\u00A0rated\u00A0races\u00A0·\u00A0provisional');
+  assert.equal(rawLine({ rating: 1840, races: 23 }), 'Gale\u00A0III · 1840 · 23\u00A0rated\u00A0races');
   const race = (outcome, after, delta, races) => ratingChangeLine({ rated: true, reason: null, outcome, after, delta, races });
 
   assert.equal(race('won', 1840, 16, 23), 'Rated win. Gale III · 1840 · 23 rated races (+16)');
@@ -182,7 +182,7 @@ test('a ranked rating line leads with the rank, and a rated race that moves the 
   // A forfeit's lead keeps its own words, and the movement goes at the end.
   assert.equal(ratingChangeLine({ rated: true, reason: 'forfeit', outcome: 'lost', after: 1795, delta: -13, races: 13 }),
     'Rated loss: you left the race. Gust I · 1795 · 13 rated races (−13), down from Gale III.');
-  assert.match(changeLine({ rated: true, reason: null, outcome: 'won', after: 1808, delta: 16, races: 23 }), /, up from Gust\u00a0I\.$/);
+  assert.match(changeLine({ rated: true, reason: null, outcome: 'won', after: 1808, delta: 16, races: 23 }), /, up from Gust\u00A0I\.$/);
 });
 
 // The result card's model, read the way the card draws it: the bar stages as [left label, from, to, right label].
