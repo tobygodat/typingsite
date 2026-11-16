@@ -1,11 +1,11 @@
 // Evaluates the recommendation policies on simulated typists, and applies ADR 0013's decision rule v2 to pick
 // the default. Deterministic from its seeds. See docs/adr/0013-learning-core.md.
 //
-//   npm run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--naming out.json] [--profile path/to/profile.json]
-//   npm run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
-//   npm run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
-//   npm run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
-//   npm run evaluate:learner -- --rule 0019 --json out.json           (ADR 0019's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
+//   bun run evaluate:learner -- [--typists 8] [--runs 40] [--json out.json] [--naming out.json] [--profile path/to/profile.json]
+//   bun run evaluate:learner -- --errors-at-pace --json out.json      (sensitivity: planted error pairs at the typist's pace)
+//   bun run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
+//   bun run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
+//   bun run evaluate:learner -- --rule 0019 --json out.json           (ADR 0019's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.

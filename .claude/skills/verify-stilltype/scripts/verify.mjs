@@ -18,7 +18,7 @@ const home = os.homedir();
 const stateDir = path.join(process.env.XDG_STATE_HOME || path.join(home, '.local/state'), 'stilltype-verify', slug);
 const evidenceRoot = process.env.STILLTYPE_EVIDENCE_DIR || path.join(process.env.XDG_DATA_HOME || path.join(home, '.local/share'), 'stilltype-verify', slug);
 const serverFile = path.join(stateDir, 'server.json');
-// One port per checkout, away from npm run dev (5173) and the e2e suite (4173), so worktrees never collide.
+// One port per checkout, away from bun run dev (5173) and the e2e suite (4173), so worktrees never collide.
 const defaultPort = 5200 + [...slug].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 600;
 
 const USAGE = `verify.mjs — drive Stilltype in Chromium, evidence under ${evidenceRoot}
@@ -87,7 +87,7 @@ async function chromiumApi(pw) {
 }
 
 // The first Chromium that runs: $CHROMIUM, the desktop's /usr/bin/chromium, the cloud machines'
-// /usr/local/bin/chromium, then Playwright's own download (npx playwright install chromium).
+// /usr/local/bin/chromium, then Playwright's own download (bunx playwright install chromium).
 async function findChromium(pw) {
   const candidates = [
     process.env.CHROMIUM && { path: process.env.CHROMIUM, from: 'CHROMIUM' },
@@ -122,20 +122,20 @@ function compiledBuild() {
   const directory = path.join(root, 'dist');
   const manifestFile = path.join(directory, '.serve-manifest.json');
   const manifest = readJson(manifestFile);
-  if (!manifest) throw new Error('no readable dist/.serve-manifest.json; run serve or npm run build');
+  if (!manifest) throw new Error('no readable dist/.serve-manifest.json; run serve or bun run build');
   const files = manifest.files.map((file) => ({ file, bytes: fs.readFileSync(path.join(directory, file)) }));
   const hash = createHash('sha256');
   for (const { file, bytes } of files.filter(({ file }) => file !== 'sw.js')) hash.update(file).update(bytes);
   const version = `stilltype-shell-${hash.digest('hex').slice(0, 12)}`;
-  if (version !== manifest.version) throw new Error(`dist bytes do not match manifest version ${manifest.version}; run serve or npm run build`);
+  if (version !== manifest.version) throw new Error(`dist bytes do not match manifest version ${manifest.version}; run serve or bun run build`);
   const builtAt = fs.statSync(manifestFile).mtimeMs;
   function newerInput(file) {
     const info = fs.statSync(path.join(root, file));
     if (info.isDirectory()) return fs.readdirSync(path.join(root, file)).map((name) => newerInput(`${file}/${name}`)).find(Boolean);
     return info.mtimeMs > builtAt ? file : null;
   }
-  const stale = ['index.html', 'src', 'icons', 'manifest.webmanifest', 'scripts/build-static.mjs', 'package.json', 'package-lock.json', 'tsconfig.json', 'tsconfig.worker.json'].map(newerInput).find(Boolean);
-  if (stale) throw new Error(`${stale} is newer than dist/.serve-manifest.json; run serve or npm run build`);
+  const stale = ['index.html', 'src', 'icons', 'manifest.webmanifest', 'scripts/build-static.mjs', 'package.json', 'bun.lock', 'tsconfig.json', 'tsconfig.worker.json'].map(newerInput).find(Boolean);
+  if (stale) throw new Error(`${stale} is newer than dist/.serve-manifest.json; run serve or bun run build`);
   return { version, files };
 }
 
@@ -168,7 +168,7 @@ async function servesThisCheckout(url, build) {
 
 async function startServer(port, { managed }) {
   if (!(await portFree(port))) fail(`port ${port} is taken by something serve did not start; pass --port N`);
-  execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit' });
+  execFileSync('bun', ['run', 'build'], { cwd: root, stdio: 'inherit' });
   const build = compiledBuild();
   fs.mkdirSync(stateDir, { recursive: true });
   const log = fs.openSync(path.join(stateDir, managed ? 'server.log' : `server-${port}.log`), 'a');
@@ -227,12 +227,12 @@ async function doctor(opts) {
   const [major, minor] = process.versions.node.split('.').map(Number);
   line((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22, 'node', process.version);
   const pw = loadPlaywright();
-  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run npm ci');
+  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run bun install --frozen-lockfile');
   const browser = await findChromium(pw);
   const skipped = browser.skipped.length ? `; skipped ${browser.skipped.join(', ')}` : '';
   line(Boolean(browser.path), 'chromium', browser.path
     ? `${browser.version} (${browser.path}, from ${browser.from}${skipped})`
-    : `none runs (tried ${browser.skipped.join(', ')}); set CHROMIUM or run npx playwright install chromium`);
+    : `none runs (tried ${browser.skipped.join(', ')}); set CHROMIUM or run bunx playwright install chromium`);
   const dirty = git('status', '--porcelain') ? ' + uncommitted changes' : '';
   line(true, 'checkout', `${root} @ ${branch} ${git('rev-parse', '--short', 'HEAD')}${dirty}`);
   let build;
@@ -419,10 +419,10 @@ function plan(names, opts) {
 
 async function run(items, opts, label) {
   const pw = loadPlaywright();
-  if (!pw) fail('playwright not found; run npm ci in this checkout (or the main checkout)');
+  if (!pw) fail('playwright not found; run bun install --frozen-lockfile in this checkout (or the main checkout)');
   const chromium = await chromiumApi(pw);
   const browserPath = (await findChromium(pw)).path;
-  if (!browserPath) fail('no Chromium runs; set CHROMIUM or run npx playwright install chromium. Run doctor.');
+  if (!browserPath) fail('no Chromium runs; set CHROMIUM or run bunx playwright install chromium. Run doctor.');
   const { FakeSupabase } = await import(pathToFileURL(path.join(root, 'e2e/fake-supabase.js')).href);
 
   let url = opts.url;

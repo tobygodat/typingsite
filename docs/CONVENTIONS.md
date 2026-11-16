@@ -2,32 +2,32 @@
 
 ## Run, test, deploy
 
-Use Node.js 24, as CI does, or a supported newer release. Run `npm ci` to install the pinned React, Effect, TypeScript and Vite stack, Playwright and oxlint.
+Use Bun 1.4.2 and Node.js 24, as CI does, or a supported newer Node. Bun installs the packages and runs the scripts ([ADR 0023](adr/0023-bun.md)); Node still runs `server.mjs`, the build, the unit tests and Playwright. Run `bun install --frozen-lockfile` to install the pinned React, Effect, TypeScript and Vite stack, Playwright and oxlint from `bun.lock`.
 
 ```sh
-npm run dev           # build, then serve dist/ at http://localhost:5173
-npm test              # build, then unit tests in tests/ through tsx
-npm run typecheck     # strict client and worker checks
-npm run lint          # oxlint with the anti-slop plugin, warnings fail
-npm run build         # strict typecheck, then compile and precache dist/
-npm run build:dist    # compile and precache dist/ without the typecheck (CI, Playwright)
-npm run test:unit     # unit tests against the dist/ already built (CI)
-npm run test:e2e:quick    # the core practice loop, layout and chrome specs, in a few minutes
-npm run test:e2e:changed  # the specs your branch changed against origin/master
-npm run test:e2e:compat   # selected Firefox and WebKit input/rendering cases
-npm run test:e2e          # all of Chromium; CI runs it on master and on PRs it affects, so run it only when CI can't
+bun run dev           # build, then serve dist/ at http://localhost:5173
+bun run test          # build, then unit tests in tests/ through tsx
+bun run typecheck     # strict client and worker checks
+bun run lint          # oxlint with the anti-slop plugin, warnings fail
+bun run build         # strict typecheck, then compile and precache dist/
+bun run build:dist    # compile and precache dist/ without the typecheck (CI, Playwright)
+bun run test:unit     # unit tests against the dist/ already built (CI)
+bun run test:e2e:quick    # the core practice loop, layout and chrome specs, in a few minutes
+bun run test:e2e:changed  # the specs your branch changed against origin/master
+bun run test:e2e:compat   # selected Firefox and WebKit input/rendering cases
+bun run test:e2e          # all of Chromium; CI runs it on master and on PRs it affects, so run it only when CI can't
 ```
 
-`npm run dev` builds once before starting the server. After changing source, restart it to rebuild. `npm start` serves an existing build. Playwright compiles its own `dist/` (`npm run build:dist`, no typecheck) before starting its server, unless `E2E_PREBUILT=1` tells it to serve the `dist/` already there, as CI does.
+`bun run dev` builds once before starting the server. After changing source, restart it to rebuild. `bun run start` serves an existing build. Use `bun run test`, not `bun test`, which is Bun's own test runner and skips the build. Playwright compiles its own `dist/` (`bun run build:dist`, no typecheck) before starting its server, unless `E2E_PREBUILT=1` tells it to serve the `dist/` already there, as CI does.
 
 ### Browser tests
 
-- **Chromium.** The suite uses `CHROMIUM` when it is set, and Playwright's own browser otherwise. Without `npx playwright install chromium`, point it at a system build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud machines (which have no `/usr/bin/chromium`).
+- **Chromium.** The suite uses `CHROMIUM` when it is set, and Playwright's own browser otherwise. Without `bunx playwright install chromium`, point it at a system build: `CHROMIUM=/usr/bin/chromium` on the desktop, `CHROMIUM=/usr/local/bin/chromium` on cloud machines (which have no `/usr/bin/chromium`).
 - **Port.** e2e serves on `E2E_PORT` (default 4173) and fakes Supabase, so no account or network is touched. On a shared machine, set your own port, or Playwright reuses another worktree's server.
 - **Quick, changed and full runs.** `test:e2e:quick` and `test:e2e:changed` are for iterating. `test:e2e:changed` compares with `origin/master`, so `git fetch origin master` first. The full Chromium run is CI's "Browser e2e", in six shards on hosted runners, 3 to 7 minutes each, once per head that can affect it. Don't repeat it locally, where it competes with every other run on the desktop.
 - **Other engines.** Firefox and WebKit select existing tests tagged `@compat` by default. Keep this set representative of browser-dependent behavior, not a second product matrix. It covers physical typing and corrections, timed finish, paste, composition event order and IME refusal, native dialog keyboard/focus, 320px layout, caret geometry and reduced motion. Playwright cannot start native composition in WebKit; event-order tests simulate it, and physical layouts still need a device check.
-- **Compatibility runs.** `npm run test:e2e:compat` runs only the selected Firefox/WebKit cases locally. For input, layout, motion or engine-specific changes, request them once when the PR is otherwise ready with `gh workflow run ci.yml --ref <branch> -f browsers=compat`. This manual run does not repeat Chromium. Report its evidence in the PR.
-- **Full diagnostics.** `npm run test:e2e:firefox`, `test:e2e:webkit` and `test:e2e:all` set `E2E_FULL=1` and retain full-engine coverage. Use them only for an explicit diagnosis or when CI cannot provide the needed evidence. To chase an untagged failure, run `E2E_FULL=1 E2E_BROWSERS=firefox npx playwright test e2e/<spec> -g <case>`. Install the engines first with `npx playwright install firefox webkit`.
+- **Compatibility runs.** `bun run test:e2e:compat` runs only the selected Firefox/WebKit cases locally. For input, layout, motion or engine-specific changes, request them once when the PR is otherwise ready with `gh workflow run ci.yml --ref <branch> -f browsers=compat`. This manual run does not repeat Chromium. Report its evidence in the PR.
+- **Full diagnostics.** `bun run test:e2e:firefox`, `test:e2e:webkit` and `test:e2e:all` set `E2E_FULL=1` and retain full-engine coverage. Use them only for an explicit diagnosis or when CI cannot provide the needed evidence. To chase an untagged failure, run `E2E_FULL=1 E2E_BROWSERS=firefox bunx playwright test e2e/<spec> -g <case>`. Install the engines first with `bunx playwright install firefox webkit`.
 - **Workers.** A run takes the cores nobody is using when it starts, read from the load average: at most two thirds of the machine (16 on tobygdesktop) and never fewer than 4 (`scripts/e2e-workers.mjs`). Traces are off locally. Leave `--workers` unset. Two runs started in the same second both see an idle machine, so start them a minute apart.
 - **Debugging.** Inspect the failing case and its trace. After diagnosis, allow at most one targeted rerun with `--trace=on` by default. Classify retries as product failures, test flakes or infrastructure failures. A retry does not justify rerunning green CI or starting a repeated 20-, 100- or 200-run campaign.
 - **Screenshots.** For a quick screenshot or a one-off flow, `.claude/skills/verify-stilltype/scripts/verify.mjs` drives the app in headless Chromium against the fake Supabase.
@@ -36,9 +36,9 @@ npm run test:e2e          # all of Chromium; CI runs it on master and on PRs it 
 
 `.github/workflows/ci.yml` runs every job on GitHub's hosted `ubuntu-latest` runners ([ADR 0018](adr/0018-ci-on-hosted-runners.md)).
 
-- **Unit job.** Every PR gets "Unit and build checks" (`npm ci`, `npm run lint`, `npm run typecheck`, `npm run build:dist`, `npm run test:unit`). It typechecks and builds once, then uploads `dist/` as the run's `dist` artifact. The e2e jobs and the deploy download that artifact instead of building, so the deploy ships the bytes the run tested.
+- **Unit job.** Every PR gets "Unit and build checks" (`bun install --frozen-lockfile`, `bun run lint`, `bun run typecheck`, `bun run build:dist`, `bun run test:unit`). It typechecks and builds once, then uploads `dist/` as the run's `dist` artifact. The e2e jobs and the deploy download that artifact instead of building, so the deploy ships the bytes the run tested.
 - **Affected tests.** The unit job also decides which browser tests the run needs (`scripts/e2e-scope.mjs`, [ADR 0022](adr/0022-affected-browser-tests-on-prs.md)) and logs why. On a PR it reads the files the merge commit changes against the base. A PR that changes only `docs/`, root `*.md` files, `tests/`, `design/`, `supabase/`, `.entire/`, `.claude/`, `.agents/` or `scripts/e2e-durations.json` runs no browser tests. A PR that changes only those and `e2e/*.spec.js` files runs only the specs it changes. Anything else, a file no rule names, every master push and every manual run test everything. Each e2e job still reports under its name; a job with nothing to run logs why and passes.
-- **e2e job.** Then it gets "Browser e2e": the selected Chromium tests, all of them unless the PR's scope says otherwise, split into six shards, "Browser e2e (chromium 1/6)" to "(chromium 6/6)", each on its own runner with Playwright's bundled browser. `scripts/e2e-shards.mjs` splits the tests by their recorded hosted durations (`scripts/e2e-durations.json`) rather than Playwright's equal counts in file order, writes the job's share to a `--test-list` file, and stops the job if that list could drop or repeat a test. A full run's shard is never empty; a spec-only PR with fewer tests than shards leaves some shards with nothing to run. A test with no recorded duration counts as the median one. To run a CI shard locally: `node scripts/e2e-shards.mjs 2/6 /tmp/shard.txt && npx playwright test --test-list /tmp/shard.txt`. The unit job and every shard must be green at the PR head before the independent final proof can approve it. That run is the e2e evidence for the author and for whoever checks the PR: read it with `gh run list --workflow=ci.yml --commit <sha>` and don't repeat it.
+- **e2e job.** Then it gets "Browser e2e": the selected Chromium tests, all of them unless the PR's scope says otherwise, split into six shards, "Browser e2e (chromium 1/6)" to "(chromium 6/6)", each on its own runner with Playwright's bundled browser. `scripts/e2e-shards.mjs` splits the tests by their recorded hosted durations (`scripts/e2e-durations.json`) rather than Playwright's equal counts in file order, writes the job's share to a `--test-list` file, and stops the job if that list could drop or repeat a test. A full run's shard is never empty; a spec-only PR with fewer tests than shards leaves some shards with nothing to run. A test with no recorded duration counts as the median one. To run a CI shard locally: `node scripts/e2e-shards.mjs 2/6 /tmp/shard.txt && bunx playwright test --test-list /tmp/shard.txt`. The unit job and every shard must be green at the PR head before the independent final proof can approve it. That run is the e2e evidence for the author and for whoever checks the PR: read it with `gh run list --workflow=ci.yml --commit <sha>` and don't repeat it.
 - **On master.** After the deploy, six full Chromium shards and one selected compatibility job per alternate engine run without gating the deploy. WebKit keeps one worker, as recorded in ADR 0018. A new push cancels each job of the ref's older e2e run, but never a deploy.
 - **On request.** Manual runs default to `browsers=compat`, which runs only two browser jobs, Firefox and WebKit. `browsers=chromium` runs six full Chromium shards. `browsers=all` explicitly runs the full 18-job diagnostic matrix with `E2E_FULL=1`. Every manual request also runs the unit job and never deploys. It tests the branch as it is, not merged with master as a PR run is. [ADR 0020](adr/0020-selected-browser-compatibility.md) supersedes only ADR 0018's alternate-engine selection.
 - **Forks.** A PR from a fork runs only after a maintainer approves it, and gets no secrets.
@@ -63,11 +63,11 @@ Batch all findings into that proof. Demonstrated in-scope correctness, security 
 ### Deploy
 
 - **App.** Every push to master deploys from a hosted runner after the unit job passes (`ci.yml` "Deploy to Cloudflare", repo secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). The site is https://stilltype.tobygodat.workers.dev (the Cloudflare Worker `stilltype`, `wrangler.jsonc`).
-- **By hand, if CI can't deploy.** On tobylaptop in `~/Projects/typingsite`, run `git pull --ff-only && npm test && npm run build && npx wrangler@4.151.0 deploy`. Then check that live `/` and its emitted script and stylesheet URLs match the files in `dist/`.
+- **By hand, if CI can't deploy.** On tobylaptop in `~/Projects/typingsite`, run `git pull --ff-only && bun install --frozen-lockfile && bun run test && bun run build && bunx wrangler@4.151.0 deploy`. Then check that live `/` and its emitted script and stylesheet URLs match the files in `dist/`.
 - **Database.** Supabase project `bicbyljexprkaedakofa` has every file in `supabase/migrations/`. Its history uses other timestamps, so apply a new migration alone (`supabase db query --remote=bicbyljexprkaedakofa --yes -f <file>`), not with `db push`. Deploy the frontend only after its migration is applied.
 - **Edge Functions.** `supabase functions deploy delete-account` deploys account deletion, with the default JWT verification. Until it is deployed, Delete my account reports that deletion isn't switched on and deletes nothing. `supabase functions deploy generate-theme` deploys theme generation, which needs the `ANTHROPIC_API_KEY` secret.
 - **Vercel.** It is retired. `vercel.json` only turns its deploys off (TOB-221).
-- **Release.** Bump the version in `package.json`, its lock and the React footer (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
+- **Release.** Bump the version in `package.json` and the React footer (`tests/release.test.js` checks), and rewrite the What's new bullets (six at most).
 
 ## Layout and naming
 

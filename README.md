@@ -4,12 +4,12 @@ Focused typing, explained practice, and friendly online and local competition. T
 
 ## Run locally
 
-Node.js 20 or newer. The app itself has no dependencies; `npm install` brings in only the browser tests and the linter.
+Bun 1.4.2 and Node.js 20 or newer. Bun installs the packages and runs the scripts; Node runs the server, the build and the tests. `bun install --frozen-lockfile` installs React, Effect, Vite, TypeScript, Playwright and the linter.
 
 ```sh
-npm run dev        # http://localhost:5173
-npm test
-npm run test:e2e   # Playwright, after npm install
+bun run dev        # http://localhost:5173
+bun run test       # not `bun test`, which is Bun's own test runner
+bun run test:e2e   # Playwright
 ```
 
 The interface and solo practice run in the browser. Accounts and online races use Supabase. Fonts are bundled: Literata (OFL, `src/fonts/OFL-literata.txt`) and Geist Mono. [Conventions](docs/CONVENTIONS.md) covers the browser tests, CI and deploys.

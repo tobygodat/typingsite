@@ -16,7 +16,7 @@ $V                                                     # usage
 
 It loads Playwright from this checkout's `node_modules`, or the main checkout's when this is a worktree
 without one. Browser commands register this checkout's `tsx/esm/api` loader before importing the fake backend
-and custom flows, so `.js` import specifiers resolve converted TypeScript modules. Run `npm ci` in this
+and custom flows, so `.js` import specifiers resolve converted TypeScript modules. Run `bun install --frozen-lockfile` in this
 checkout first for the build and loader dependencies. It drives the first Chromium that runs
 (see Chromium below), and always attaches the in-memory Supabase from `e2e/fake-supabase.js`, so nothing reaches the real project.
 
@@ -24,7 +24,7 @@ checkout first for the build and loader dependencies. It drives the first Chromi
 
 You usually don't need to. `$V shot …` and `$V drive …` start a private server on a free port, use it, and
 kill it when they exit (including on failure or Ctrl-C). Each new managed or private server runs
-`npm run build` before starting, including the TypeScript check. A failed build stops the launch.
+`bun run build` before starting, including the TypeScript check. A failed build stops the launch.
 
 For several commands in a row, or to look at the app yourself, start a managed server:
 
@@ -41,7 +41,7 @@ same artifact check. Source edits need a rebuild.
 Run `$V stop` then `$V serve` to rebuild and restart. Calling `serve` with an existing managed server
 checks it without rebuilding. Stop it first if its build is stale.
 
-Don't drive someone else's server. `npm run dev` (5173) and other worktrees' servers (5175, …) may be
+Don't drive someone else's server. `bun run dev` (5173) and other worktrees' servers (5175, …) may be
 running and serving other code; `--url` is only accepted when doctor passes for it.
 
 ## Chromium
@@ -52,7 +52,7 @@ nothing set:
 1. `CHROMIUM`, when set (a path that doesn't run is skipped, and doctor names it).
 2. `/usr/bin/chromium` (the desktop).
 3. `/usr/local/bin/chromium` (cloud machines, where it links to Google Chrome).
-4. Playwright's own download, after `npx playwright install chromium`.
+4. Playwright's own download, after `bunx playwright install chromium`.
 
 `$V doctor` prints which one it picked and what it skipped; `run.json` records it as `chromium`. If none
 runs, `shot` and `drive` stop and say so.
@@ -158,18 +158,18 @@ Train, Progress, Challenge, Commands (below 360px the names are "type practice",
 and radio-group fieldsets such as `#theme-select input[value=…]` (system, dark, light) and `#dark-theme` /
 `#light-theme` (each mode's pick).
 
-Running tests is separate from driving the app. In a worktree, run `npm ci` first. Set a private
+Running tests is separate from driving the app. In a worktree, run `bun install --frozen-lockfile` first. Set a private
 `E2E_PORT` and use `CHROMIUM=/usr/bin/chromium` on the desktop or `/usr/local/bin/chromium` in the cloud.
-Run `npm run test:e2e:quick` and the changed specs while iterating, with the load-based worker default.
+Run `bun run test:e2e:quick` and the changed specs while iterating, with the load-based worker default.
 The full Chromium suite runs once per PR head in hosted CI. Cite that run with
 `gh run list --workflow=ci.yml --commit <sha>` instead of repeating it locally or on the desktop.
 Before asking to merge, run dependency install, lint, unit tests and build as `AGENTS.md` requires.
 
 For input, layout, motion or engine-specific changes, request the selected `@compat` Firefox/WebKit set
 once with `gh workflow run ci.yml --ref <branch> -f browsers=compat`. It does not repeat Chromium.
-`npm run test:e2e:compat` runs that set locally. Full alternate-engine suites remain explicit diagnostics
+`bun run test:e2e:compat` runs that set locally. Full alternate-engine suites remain explicit diagnostics
 through `browsers=all`, or `test:e2e:firefox`, `test:e2e:webkit` and `test:e2e:all`, which set `E2E_FULL=1`.
-To diagnose an untagged case, use `E2E_FULL=1 E2E_BROWSERS=firefox npx playwright test e2e/<spec> -g <case>`.
+To diagnose an untagged case, use `E2E_FULL=1 E2E_BROWSERS=firefox bunx playwright test e2e/<spec> -g <case>`.
 
 One independent checker proves the final head in its own worktree and returns `PASS`, `PASS+NOTES` or
 `FAIL` with evidence. Keep real-artifact proof and batch findings into this one final check. Demonstrated
@@ -185,7 +185,7 @@ Repeated 20-, 100- or 200-run campaigns need an explicit diagnostic request.
 
 The screenshots committed under `docs/screenshots/` are a different thing from this skill's evidence. They
 come from the specs' screenshot tests, which write there only when `SCREENSHOTS=1` is set. Refresh them
-locally (`SCREENSHOTS=1 CHROMIUM=/usr/bin/chromium npx playwright test e2e/<spec>`).
+locally (`SCREENSHOTS=1 CHROMIUM=/usr/bin/chromium bunx playwright test e2e/<spec>`).
 
 ## Evidence
 

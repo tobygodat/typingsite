@@ -8,10 +8,7 @@ test('the footer version and What’s new match the package version', async () =
   const html = releaseMarkup();
   const app = await read('../src/app.tsx');
   const pkg = JSON.parse(await read('../package.json'));
-  const lock = JSON.parse(await read('../package-lock.json'));
   const version = `v${pkg.version}`;
-  assert.equal(lock.version, pkg.version);
-  assert.equal(lock.packages[''].version, pkg.version);
   const trigger = app.match(/<button\b[\s\S]*?<\/button>/g)?.find((button) => button.includes('id="release-trigger"'));
   assert.ok(trigger, 'the release trigger is present');
   assert.match(trigger, new RegExp(`aria-label="What’s new in ${version}"`));

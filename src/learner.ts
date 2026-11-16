@@ -55,7 +55,7 @@ export const BASELINE_POLICY = 'counting@1';
 // The policy that picks targets (ADR 0013): counts-gain with decay and the timing term, a miss priced at two
 // intervals. Timing is in by product call, not by evidence: it passed rule v2's guards only because the simulator
 // types its missed pairs slowly too, and with them at the typist's pace it pushes missed pairs out of the top
-// four and fails them. Decay is in by rule v2 on thirty test seeds of simulated typists (`npm run
+// four and fails them. Decay is in by rule v2 on thirty test seeds of simulated typists (`bun run
 // evaluate:learner`) whose miss costs 2 intervals on average: it let go of fixed pairs and picked up slipping
 // ones sooner, and was really worse on nothing it must not lose. At a miss cost of 8 intervals it was really
 // worse on captured gain at 10 runs, by 0.3 points, and rule v2 would leave it out. It replaced counting@1

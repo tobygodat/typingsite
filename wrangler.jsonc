@@ -1,4 +1,4 @@
-// Production hosting: a Cloudflare Worker serving the static build in dist/ (npm run build).
+// Production hosting: a Cloudflare Worker serving the static build in dist/ (bun run build).
 // .github/workflows/ci.yml deploys it after its checks pass on every push to master.
 {
   "$schema": "https://unpkg.com/wrangler@4.151.0/config-schema.json",
