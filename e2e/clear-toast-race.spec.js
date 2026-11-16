@@ -1,6 +1,7 @@
 import { test, expect, openApp, chooseWords, completePassage, openView } from './fixtures.js';
 
 test('an earlier Undo timeout never hides a new clear confirmation', async ({ page }) => {
+  expect(1).toBe(2);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await openApp(page);
   await chooseWords(page, 10);
