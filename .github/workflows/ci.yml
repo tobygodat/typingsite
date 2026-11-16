@@ -22,7 +22,7 @@ jobs:
   # Builds dist/ once per run, as soon as the packages are installed, so the e2e jobs need not wait for
   # lint, typecheck and the unit tests. The unit tests, the e2e jobs and the deploy all use this dist/.
   # A manual run reports its gated jobs under "(manual)" names, so it can never replace a PR or push run's
-  # checks in Entire's merge gate, which keeps the latest check of each name at a commit.
+  # required checks in the master ruleset (docs/adr/0025-merge-gate-on-github.md).
   build:
     name: ${{ github.event_name == 'workflow_dispatch' && 'Build (manual)' || 'Build' }}
     runs-on: ubuntu-latest
@@ -144,7 +144,7 @@ jobs:
       specs: ${{ needs.build.outputs.e2e-specs }}
       summary: ${{ needs.build.outputs.e2e-summary }}
 
-  # The one browser check Entire's merge gate names, so the gate's list stays the same whatever the shard
+  # The one browser check the master ruleset requires, so the ruleset stays the same whatever the shard
   # count (docs/adr/0024-shorter-browser-run.md). It passes only when the build, the unit job and this
   # event's browser jobs all succeeded. It always runs, so a failed or skipped dependency fails it.
   e2e-summary:

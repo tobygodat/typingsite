@@ -26,15 +26,15 @@ Every run ran each of the 1,030 tests exactly once and skipped the same 32. The 
 - The deploy needs the build and the unit job, so master never deploys a commit that failed lint, typecheck or the unit tests.
 - On master, "Browser after deploy" runs whether or not the unit job passed, where the old workflow skipped the browser jobs after a failed unit job. That is more coverage, not less. It still skips them when a newer push cancelled the unit job, because that push's run tests master again.
 - A "Browser e2e" job needs the build, the unit job and both browser calls, and always runs. It passes only when the build, the unit job and the browser call for this event (on a push "Browser after deploy", otherwise "Browser") all succeeded. A skipped, failed or cancelled one fails it.
-- The gate keeps the latest check of each name at a commit, and a manual run on a PR branch reports on the PR head. So on a manual run the build, unit and summary jobs are named "Build (manual)", "Unit and build checks (manual)" and "Browser e2e (manual)". A manual run can't replace a PR run's gated checks, and a compat run's green summary, which ran no Chromium, can't hide a red shard.
-- Entire's merge gate requires checks by name. The list lives in Entire's trail gate settings, not in this repo, and it names "Build", "Unit and build checks" and "Browser e2e". The summary job keeps that list the same when the shard count changes.
+- A manual run on a PR branch reports its checks on the PR head, beside the PR run's. So on a manual run the build, unit and summary jobs are named "Build (manual)", "Unit and build checks (manual)" and "Browser e2e (manual)". A manual run can't satisfy or replace a PR run's required checks, and a compat run's green summary, which ran no Chromium, can't hide a red shard.
+- The merge gate requires checks by name: "Build", "Unit and build checks" and "Browser e2e" ([ADR 0025](0025-merge-gate-on-github.md)). The summary job keeps that list the same when the shard count changes.
 - The checks on a PR or push are "Build", "Unit and build checks", "Browser e2e", "Browser / e2e (chromium n/12)", and on master "Browser after deploy / e2e (chromium n/12)" and "Browser after deploy / compat (firefox|webkit)".
 
 ## Consequences
 
 - A PR that tests all of Chromium takes about 4 minutes, and its browser jobs start about 15s into the run instead of 47s.
-- A failed build fails the run and skips every job after it. A failed unit job fails the run while the browser jobs finish. The repo has no branch protection.
-- Changing the shard count again changes only the shard checks' names, which the gate doesn't list. Adding or renaming "Build", "Unit and build checks" or "Browser e2e" means editing the gate list in Entire by hand.
+- A failed build fails the run and skips every job after it. A failed unit job fails the run while the browser jobs finish.
+- Changing the shard count again changes only the shard checks' names, which the gate doesn't list. Adding or renaming "Build", "Unit and build checks" or "Browser e2e" means editing the `master` ruleset.
 - On master the unit job starts after the build, so the deploy starts about 15s later than before.
 - A master run holds 14 browser jobs at once, under the 20 GitHub runs at once on the free plan. A master run and a PR run together can pass 20, and the later jobs queue.
 - More shards don't make the slowest one shorter by the same share: each pays its setup, install and split again. Workers per shard stay at 3, and WebKit at one ([ADR 0018](0018-ci-on-hosted-runners.md)).
