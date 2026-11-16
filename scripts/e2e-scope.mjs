@@ -1,4 +1,4 @@
-// Which browser tests a CI run needs, from the files it changes. The unit job runs it once per run and
+// Which browser tests a CI run needs, from the files it changes. The build job runs it once per run and
 // passes the answer to every e2e job (.github/workflows/ci.yml).
 //
 //   node scripts/e2e-scope.mjs   in CI: write scope, specs and summary to $GITHUB_OUTPUT

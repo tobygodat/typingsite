@@ -1,0 +1,150 @@
+name: Browser e2e
+
+# The browser jobs of a CI run. ci.yml calls this once per run: on a PR or a manual run as soon as the build
+# job's dist/ exists, and on master after the deploy (docs/adr/0024-shorter-browser-run.md). A job that
+# needs the deploy waits for the unit job even when the deploy is skipped, so the two cases are two calls.
+on:
+  workflow_call:
+    inputs:
+      # The build job's scripts/e2e-scope.mjs outputs.
+      scope:
+        type: string
+        required: true
+      specs:
+        type: string
+        required: true
+      summary:
+        type: string
+        required: true
+      # The manual run's engines (ci.yml's workflow_dispatch input); empty on a PR or a push.
+      browsers:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: ${{ matrix.total == 1 && format('compat ({0})', matrix.engine) || format('e2e ({0} {1}/{2})', matrix.engine, matrix.shard, matrix.total) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # One group per engine and shard: in a shared group the jobs would cancel each other.
+    concurrency:
+      group: e2e-${{ github.ref }}-${{ matrix.engine }}-${{ matrix.shard }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON(
+            inputs.browsers == 'all' && '[
+            {"engine": "chromium", "shard": 1, "total": 6},
+            {"engine": "chromium", "shard": 2, "total": 6},
+            {"engine": "chromium", "shard": 3, "total": 6},
+            {"engine": "chromium", "shard": 4, "total": 6},
+            {"engine": "chromium", "shard": 5, "total": 6},
+            {"engine": "chromium", "shard": 6, "total": 6},
+            {"engine": "firefox", "shard": 1, "total": 6},
+            {"engine": "firefox", "shard": 2, "total": 6},
+            {"engine": "firefox", "shard": 3, "total": 6},
+            {"engine": "firefox", "shard": 4, "total": 6},
+            {"engine": "firefox", "shard": 5, "total": 6},
+            {"engine": "firefox", "shard": 6, "total": 6},
+            {"engine": "webkit", "shard": 1, "total": 6},
+            {"engine": "webkit", "shard": 2, "total": 6},
+            {"engine": "webkit", "shard": 3, "total": 6},
+            {"engine": "webkit", "shard": 4, "total": 6},
+            {"engine": "webkit", "shard": 5, "total": 6},
+            {"engine": "webkit", "shard": 6, "total": 6}
+          ]' ||
+            github.event_name == 'push' && '[
+            {"engine": "chromium", "shard": 1, "total": 12},
+            {"engine": "chromium", "shard": 2, "total": 12},
+            {"engine": "chromium", "shard": 3, "total": 12},
+            {"engine": "chromium", "shard": 4, "total": 12},
+            {"engine": "chromium", "shard": 5, "total": 12},
+            {"engine": "chromium", "shard": 6, "total": 12},
+            {"engine": "chromium", "shard": 7, "total": 12},
+            {"engine": "chromium", "shard": 8, "total": 12},
+            {"engine": "chromium", "shard": 9, "total": 12},
+            {"engine": "chromium", "shard": 10, "total": 12},
+            {"engine": "chromium", "shard": 11, "total": 12},
+            {"engine": "chromium", "shard": 12, "total": 12},
+            {"engine": "firefox", "shard": 1, "total": 1},
+            {"engine": "webkit", "shard": 1, "total": 1}
+          ]' ||
+            inputs.browsers == 'compat' && '[
+            {"engine": "firefox", "shard": 1, "total": 1},
+            {"engine": "webkit", "shard": 1, "total": 1}
+          ]' || '[
+            {"engine": "chromium", "shard": 1, "total": 12},
+            {"engine": "chromium", "shard": 2, "total": 12},
+            {"engine": "chromium", "shard": 3, "total": 12},
+            {"engine": "chromium", "shard": 4, "total": 12},
+            {"engine": "chromium", "shard": 5, "total": 12},
+            {"engine": "chromium", "shard": 6, "total": 12},
+            {"engine": "chromium", "shard": 7, "total": 12},
+            {"engine": "chromium", "shard": 8, "total": 12},
+            {"engine": "chromium", "shard": 9, "total": 12},
+            {"engine": "chromium", "shard": 10, "total": 12},
+            {"engine": "chromium", "shard": 11, "total": 12},
+            {"engine": "chromium", "shard": 12, "total": 12}
+          ]') }}
+    env:
+      E2E_SCOPE: ${{ inputs.scope }}
+      # Only on a PR that changes nothing but e2e specs; otherwise every test runs.
+      E2E_SPECS: ${{ inputs.scope == 'specs' && inputs.specs || '' }}
+      E2E_BROWSERS: ${{ matrix.engine }}
+      E2E_FULL: ${{ inputs.browsers == 'all' && '1' || '0' }}
+      # Serve the build job's dist/ instead of building one per job (playwright.config.js).
+      E2E_PREBUILT: '1'
+    steps:
+      # A PR that changes no file the browser tests can see passes every e2e job here, and runs nothing else.
+      - if: env.E2E_SCOPE == 'none'
+        run: echo "$SUMMARY"
+        env:
+          SUMMARY: ${{ fromJSON(inputs.summary) }}
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/checkout@v4
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: env.E2E_SCOPE != 'none'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - if: env.E2E_SCOPE != 'none'
+        run: bun install --frozen-lockfile
+      - if: env.E2E_SCOPE != 'none'
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - if: env.E2E_SCOPE != 'none'
+        run: bunx playwright install --with-deps ${{ matrix.engine }}
+      # This job's share of the tests by recorded duration (scripts/e2e-durations.json), not Playwright's
+      # equal counts in file order. It stops the job if the list could drop or repeat a test, and reports
+      # tests=0 when a PR selects fewer tests than there are shards.
+      - if: env.E2E_SCOPE != 'none'
+        id: shard
+        run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
+      # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
+      - if: env.E2E_SCOPE != 'none' && steps.shard.outputs.tests != '0'
+        run: bunx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
+      # Per-test durations, whether the tests passed or not; scripts/e2e-shards.mjs --refresh reads them.
+      - if: ${{ !cancelled() && env.E2E_SCOPE != 'none' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-timings-${{ matrix.engine }}-${{ matrix.total }}-${{ matrix.shard }}
+          path: e2e-timings/
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 7
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failures-${{ matrix.engine }}-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
