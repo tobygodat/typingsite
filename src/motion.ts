@@ -191,7 +191,7 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
   function measure() {
     const lineHeight = parseFloat(getComputedStyle(display).lineHeight) || 48;
     const current = characters[position];
-    const last = characters[characters.length - 1];
+    const last = characters.at(-1);
     let x = 0;
     let top = 0;
 

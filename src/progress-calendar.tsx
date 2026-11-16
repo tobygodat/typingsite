@@ -70,7 +70,7 @@ class Calendar extends Component<{ view: CalendarView }, CalendarState, Calendar
     if (!snapshot) return;
     const { view } = this.props;
     const selected = view.days.some((day) => day.day === this.state.selected) ? this.state.selected : view.today;
-    const last = view.days[view.days.length - 1]?.day ?? '';
+    const last = view.days.at(-1)?.day ?? '';
     this.setState({ selected, active: last, shown: snapshot.picker ? selected : '' }, () => { if (snapshot.grid && !view.coarse) this.cells.get(last)?.focus(); });
   }
   // The tip stands over its day, kept inside the calendar's width. It moves at once and never animates.
@@ -105,7 +105,7 @@ class Calendar extends Component<{ view: CalendarView }, CalendarState, Calendar
   render() {
     const { view } = this.props;
     const selected = view.days.some((day) => day.day === this.state.selected) ? this.state.selected : view.today;
-    const active = view.days.some((day) => day.day === this.state.active) ? this.state.active : view.days[view.days.length - 1]?.day;
+    const active = view.days.some((day) => day.day === this.state.active) ? this.state.active : view.days.at(-1)?.day;
     const style: CSSProperties & { '--weeks': number } = { '--weeks': view.weeks };
     const shown = view.days.find((day) => day.day === this.state.shown);
 
