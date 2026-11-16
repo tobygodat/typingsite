@@ -136,9 +136,9 @@ export function bookPlace(inputRuns: readonly unknown[], id: unknown) {
 }
 
 // "page 12": a page's place in its book, or null for a text that isn't a current book page.
-export function bookPage(textId: string | null | undefined) {
-  const id = /^book-([a-z]+)-/.exec(textId || '')?.[1];
-  const index = (id ? openBook(id) : null)?.findIndex((page) => page.id === textId) ?? -1;
+export function bookPage(pageTextId: string | null | undefined) {
+  const id = /^book-([a-z]+)-/.exec(pageTextId || '')?.[1];
+  const index = (id ? openBook(id) : null)?.findIndex((page) => page.id === pageTextId) ?? -1;
 
   return index < 0 ? null : index + 1;
 }

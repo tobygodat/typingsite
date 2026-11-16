@@ -117,11 +117,11 @@ export function queueFriendRequests<T>(apply: (list: T) => void, { load, limit =
   let waitingReload: Promise<T> | null = null;
   let unsure = false; // a change failed or gave up, and no list has answered since
 
-  async function go(request: (signal: AbortSignal) => PromiseLike<T>, change: boolean, lifetime: ReturnType<typeof accountLifetime>): Promise<T> {
+  async function go(task: (signal: AbortSignal) => PromiseLike<T>, change: boolean, lifetime: ReturnType<typeof accountLifetime>): Promise<T> {
     if (unsure && change && load) await go(load, false, lifetime).catch(() => {});
 
     try {
-      const list = await lifetime.run(within(abortable(request, errorDetails), limit,
+      const list = await lifetime.run(within(abortable(task, errorDetails), limit,
         () => new AuthError('The friend list is taking too long to answer. Try again.')));
 
       unsure = false;
@@ -134,14 +134,14 @@ export function queueFriendRequests<T>(apply: (list: T) => void, { load, limit =
     }
   }
 
-  function queue(request: (signal: AbortSignal) => PromiseLike<T>, change = false): Promise<T> {
+  function queue(job: (signal: AbortSignal) => PromiseLike<T>, change = false): Promise<T> {
     waiting += 1;
     const lifetime = accountLifetime();
 
     const applied = last.then(() => {
       waiting -= 1;
 
-      return go(request, change, lifetime);
+      return go(job, change, lifetime);
     });
 
     last = applied.catch(() => { if (lifetime.active && change && !waiting) requests.reload().catch(() => {}); });

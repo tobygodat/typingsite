@@ -38,6 +38,7 @@
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-array-filter-map": "error",
+    "eslint/no-shadow": "error",
     "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
     "eslint/no-warning-comments": "error",
     "unicorn/no-array-fill-with-reference-type": "error",
@@ -200,6 +201,13 @@
         // JSON reply bodies and header maps are open records by nature.
         "anti-slop/no-unsafe-dictionary-type": "off",
         "anti-slop/no-known-value-widening": "off"
+      }
+    },
+    {
+      "files": ["e2e/**", "tests/**", "scripts/**"],
+      "rules": {
+        // page.evaluate callbacks take a value under its outside name, and test helpers reuse fixture names on purpose.
+        "eslint/no-shadow": "off"
       }
     },
     {

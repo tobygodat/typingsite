@@ -68,8 +68,8 @@ export function createPalette() {
 
   function publish(next: PaletteView) { flushSync(() => view.publish(next)); }
 
-  function filtered(query: string) {
-    const q = query.trim().toLowerCase();
+  function filtered(typed: string) {
+    const q = typed.trim().toLowerCase();
     const commands = options.getCommands(q);
     const groups = [...new Set(commands.map((command) => command.group))];
 

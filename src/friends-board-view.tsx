@@ -5,10 +5,10 @@ import type { BoardRow, FriendsBoardController } from './friends-board.js';
 import { Copy } from './results-card.js';
 import { unitText } from './units.js';
 
-function BoardItem({ entry, value, unit, detail }: { entry: BoardRow; value: ReactNode; unit?: ReactNode; detail: string }) {
+function BoardItem({ entry, value, unit: unitLabel, detail }: { entry: BoardRow; value: ReactNode; unit?: ReactNode; detail: string }) {
   return <li className="board-row" data-self={entry.self ? 'true' : undefined}>
     <span className="board-name">{entry.self ? 'You' : entry.name || 'Friend'}</span>{' '}
-    <span className="board-value"><strong className="num">{value}</strong>{unit && <>{' '}<span className="board-unit">{unit}</span></>}</span>{' '}
+    <span className="board-value"><strong className="num">{value}</strong>{unitLabel && <>{' '}<span className="board-unit">{unitLabel}</span></>}</span>{' '}
     <span className="board-detail num">{detail}</span>
   </li>;
 }

@@ -717,10 +717,10 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     // The shared start on this tab's clock. The service stamps serverNow before its reply leaves, so a reply that
     // took long (a join that landed late) puts the start late by that long, and this tab would race on after the
     // service's clock ran out. Every reply bounds the start again, and the earliest is kept.
-    const start = room.startAt ? performance.now() + stamp(room.startAt) - stamp(room.serverNow) : null;
+    const startsAt = room.startAt ? performance.now() + stamp(room.startAt) - stamp(room.serverNow) : null;
 
-    if (start !== null && (startPerf === null || start < startPerf)) {
-      startPerf = start;
+    if (startsAt !== null && (startPerf === null || startsAt < startPerf)) {
+      startPerf = startsAt;
       clearTimeout(startTimer);
       startTimer = window.setTimeout(updateClock, startPerf - performance.now());
     }

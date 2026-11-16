@@ -165,10 +165,10 @@ export async function attachApplication({ practice, learning, palette, settings:
   lifetime.observeResize(() => placePreviewGlide({ instant: true }), $('settings-preview-passage'));
 
   function placePreviewGlide({ instant = false, from = 0 } = {}) {
-    const passage = $('settings-preview-passage');
+    const previewPassage = $('settings-preview-passage');
 
-    if (!learning.preferences.wordHighlightSlide || learning.preferences.wordHighlight === 'off' || !$('settings-dialog').open || !passage.offsetWidth) return;
-    const word = (offset: number) => passage.querySelectorAll<HTMLElement>(':scope > *')[(learning.preferences.wordHighlight === 'next' ? 3 : 2) + offset] ?? null;
+    if (!learning.preferences.wordHighlightSlide || learning.preferences.wordHighlight === 'off' || !$('settings-dialog').open || !previewPassage.offsetWidth) return;
+    const word = (offset: number) => previewPassage.querySelectorAll<HTMLElement>(':scope > *')[(learning.preferences.wordHighlight === 'next' ? 3 : 2) + offset] ?? null;
 
     if (from) previewGlide.follow(word(from), { instant: true });
     previewGlide.follow(word(0), { instant });
@@ -294,7 +294,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const untouchedPractice = () => practice.sessionKind === 'practice' && practice.attempt?.status === 'ready' && !practice.attempt.events.length;
 
-  function followStoredPreferences({ conditions = !attemptPrepared() } = {}) {
+  function followStoredPreferences({ conditions: followConditions = !attemptPrepared() } = {}) {
     commitPreferences();
 
     if (runInProgress()) {
@@ -311,7 +311,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     for (const key of new Set([...Object.keys(stored), ...Object.keys(learning.preferences)])) {
       if (key === 'keybindings' ? JSON.stringify(next[key]) === JSON.stringify(stored[key]) : next[key] === stored[key]) continue;
 
-      if (!conditions && !DISPLAY_PREFERENCES.has(key)) {
+      if (!followConditions && !DISPLAY_PREFERENCES.has(key)) {
         preferencesWaiting = true;
         continue;
       }
@@ -1507,7 +1507,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   function importSettings(result: ImportedSettings) {
     const keys = Object.keys(result.preferences);
-    const conditions = keys.some((key) => !DISPLAY_PREFERENCES.has(key) && !['paceCaret', 'paceWpm'].includes(key));
+    const conditionsChanged = keys.some((key) => !DISPLAY_PREFERENCES.has(key) && !['paceCaret', 'paceWpm'].includes(key));
     learning.preferences = validPreferences({ ...learning.preferences, ...result.preferences });
 
     if (keys.includes('mode')) editors.customOpen = false;
@@ -1516,7 +1516,7 @@ export async function attachApplication({ practice, learning, palette, settings:
   
     saveChoice(...keys, ...(keys.includes('correction') ? ['stopOnError'] : []));
 
-    if (conditions && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
+    if (conditionsChanged && !runInProgress()) resetSession(keys.includes('mode') ? 'practice' : restartKind(), { leaveCompose: keys.includes('mode') });
 
   }
 

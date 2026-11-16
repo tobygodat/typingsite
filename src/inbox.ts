@@ -143,12 +143,12 @@ export function createInbox(initial?: InboxOptions) {
 
   function syncIdentity() {
     if (disposed) return;
-    const current = getSession();
+    const currentSession = getSession();
 
-    if (identity === null ? current === null : sameSignIn(identity, current)) return;
+    if (identity === null ? currentSession === null : sameSignIn(identity, currentSession)) return;
     void lifetime.close();
     lifetime = new AsyncLifetime(accountLifetime());
-    identity = current;
+    identity = currentSession;
     forgotten = false;
     polling = false;
     pendingToast = null;
@@ -402,7 +402,7 @@ export function createInbox(initial?: InboxOptions) {
 
       if (listed.status === 'rejected') throw listed.reason;
       invites = listed.value;
-      const open = new Set<unknown>(invites.map((invite) => `invite:${invite.id}`));
+      const stillOpen = new Set<unknown>(invites.map((invite) => `invite:${invite.id}`));
 
       for (const invite of [...invites].reverse()) {
         // Once the service lists an invitation it decides when the entry closes.
@@ -414,7 +414,7 @@ export function createInbox(initial?: InboxOptions) {
       let changed = false;
 
       for (const entry of entries) {
-        if (entry.kind === 'invite' && !entry.closed && !entry.local && !open.has(entry.id)) { entry.closed = true; changed = true; }
+        if (entry.kind === 'invite' && !entry.closed && !entry.local && !stillOpen.has(entry.id)) { entry.closed = true; changed = true; }
       }
 
       if (changed) { save(); render(); }

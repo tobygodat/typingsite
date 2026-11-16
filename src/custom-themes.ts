@@ -57,7 +57,7 @@ export const normalizeHex = (value: unknown) => {
   return HEX.test(hex) ? hex : null;
 };
 
-const channels = (hex: string) => [1, 3, 5].map((at) => parseInt(hex.slice(at, at + 2), 16));
+const channels = (hex: string) => [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16));
 
 const linear = (value: number) => {
   const s = value / 255;

@@ -96,15 +96,15 @@ export function createReplayView() {
     const done = position >= length();
     const second = done ? Infinity : Math.floor(position / 1000);
     const due = misses.filter((offsetMs) => offsetMs <= span.start + position).length;
-    const tick = !scored || scored.second !== second || position < scored.position;
+    const advances = !scored || scored.second !== second || position < scored.position;
 
-    if (!tick && scored?.due === due) return;
+    if (!advances && scored?.due === due) return;
     scored = { second, due, position };
     const { wpm, accuracy, errors, elapsedMs } = replayScoreAt(attempt, span.start + position);
     const rated = done || elapsedMs >= RATE_FLOOR_MS;
 
     const current = view.getSnapshot();
-    view.publish({ ...current, wpm: tick ? rated ? wpm : null : current.wpm, accuracy: rated ? String(accuracy) : '—', errors });
+    view.publish({ ...current, wpm: advances ? rated ? wpm : null : current.wpm, accuracy: rated ? String(accuracy) : '—', errors });
   }
 
   function draw() {
@@ -178,7 +178,7 @@ export function createReplayView() {
       attempt = finished;
       span = replaySpan(finished);
       typedAt = replayCursor(finished);
-      misses = finished.summary.firstAttempts.filter((first) => !first.correct).map((first) => first.offsetMs);
+      misses = finished.summary.firstAttempts.filter((entry) => !entry.correct).map((missed) => missed.offsetMs);
       position = 0;
       scored = null;
       // Open first: mounting measures where the lines break.

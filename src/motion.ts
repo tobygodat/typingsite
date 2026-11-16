@@ -93,17 +93,17 @@ export function createWordGlide() {
       const top = box.top - origin.top - container.clientTop;
 
       if (shown && left === shown.left && top === shown.top && box.width === shown.width) return;
-      const snap = instant || !shown || Math.abs(top - shown.top) > box.height / 2 || reducedMotion.matches;
+      const jump = instant || !shown || Math.abs(top - shown.top) > box.height / 2 || reducedMotion.matches;
       cap ||= end.offsetWidth;
 
-      if (snap) element.classList.add('is-snapping');
+      if (jump) element.classList.add('is-snapping');
 
       if (box.height !== shown?.height) element.style.height = `${box.height}px`;
       element.style.transform = `translate3d(${left}px, ${top}px, 0)`;
       fill.style.transform = `scaleX(${Math.max(0, box.width - 2 * cap)})`;
       end.style.transform = `translateX(${box.width - cap}px)`;
 
-      if (snap) {
+      if (jump) {
         element.getBoundingClientRect();
         element.classList.remove('is-snapping');
       }

@@ -208,8 +208,8 @@ export function composeSummary({ keys = [], text = '', elapsedMs = 0 }: { keys?:
 const COUNTS: (keyof Pick<CompositionRecord, 'characters' | 'words' | 'keystrokes' | 'backspaces' | 'activeMs' | 'elapsedMs' | 'wpm' | 'backspaceRate'>)[] = ['characters', 'words', 'keystrokes', 'backspaces', 'activeMs', 'elapsedMs', 'wpm', 'backspaceRate'];
 
 // The stored record: numbers and labels only. There is no field that could carry the writing.
-export function compositionRecord(summary: CompositionCounts & { version?: unknown }, { id, at, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }: { id: unknown; at?: unknown; promptId?: unknown; inputClass?: unknown; endedBy?: unknown }) {
-  const record: Omit<CompositionRecord, keyof CompositionCounts> = { id: String(id), at: typeof at === 'string' ? at : null,
+export function compositionRecord(summary: CompositionCounts & { version?: unknown }, { id, at: recordedAt, promptId, inputClass = 'physical-keyboard', endedBy = 'done' }: { id: unknown; at?: unknown; promptId?: unknown; inputClass?: unknown; endedBy?: unknown }) {
+  const record: Omit<CompositionRecord, keyof CompositionCounts> = { id: String(id), at: typeof recordedAt === 'string' ? recordedAt : null,
     version: typeof summary.version === 'string' ? summary.version : COMPOSE_VERSION,
     promptId: typeof promptId === 'string' && promptText(promptId) ? promptId : null,
     inputClass: inputClass === 'touch' ? 'touch' : 'physical-keyboard',
