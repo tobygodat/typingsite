@@ -37,3 +37,5 @@ Every run ran each of the 1,030 tests exactly once and skipped the same 32. The 
 - On master the unit job starts after the build, so the deploy starts about 15s later than before.
 - A master run holds 14 browser jobs at once, under the 20 GitHub runs at once on the free plan. A master run and a PR run together can pass 20, and the later jobs queue.
 - More shards don't make the slowest one shorter by the same share: each pays its setup, install and split again. Workers per shard stay at 3, and WebKit at one ([ADR 0018](0018-ci-on-hosted-runners.md)).
+
+Throwaway line.
