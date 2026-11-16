@@ -36,6 +36,8 @@ jobs:
       e2e-specs: ${{ steps.scope.outputs.specs }}
       e2e-summary: ${{ steps.scope.outputs.summary }}
     steps:
+      - name: Fail on purpose (throwaway gate check, do not merge)
+        run: exit 1
       - uses: actions/checkout@v4
         with:
           # A PR's merge commit and both its parents, so the scope can diff it against the base.
