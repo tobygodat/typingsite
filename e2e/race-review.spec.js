@@ -346,7 +346,7 @@ for (const { name, failing = 0, dropTrace = false } of [
       await expect(lin.locator('#online-review')).toBeVisible({ timeout: 10000 });
       expect(room.players.map((player) => [player.typed.length, player.trace?.k.length])).toEqual([[21, 21], [20, 20]]);
       // The tab's own finish (all 22 keys) went first, as many times as it failed and once more, then the settled trace.
-      expect(sent.slice(1, 2 + failing)).toEqual(Array(1 + failing).fill([22, 22]));
+      expect(sent.slice(1, 2 + failing)).toEqual(Array.from({ length: 1 + failing }, () => [22, 22]));
       expect(sent.filter(([, keys]) => keys === 21)).toHaveLength(dropTrace ? 2 : 1);
     } finally { await context.close(); }
   });

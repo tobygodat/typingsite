@@ -16,7 +16,7 @@ import {
 // A Web Audio stand-in that records what was built and started. As in a browser, suspend() and resume()
 // change state only once the audio thread has acted, on a later task (settle). With autostart, a new
 // context reports 'suspended' and starts running by itself on the next task, as Firefox and WebKit do.
-const settle = () => new Promise((resolve) => setImmediate(resolve));
+const settle = () => new Promise((resolve) => { setImmediate(resolve); });
 
 function fakeAudio({ state = 'running', failOn = null, autostart = false } = {}) {
   const log = { created: 0, closed: 0, resumed: 0, suspended: 0, started: [], gains: [], ramps: [], options: [], contexts: [] };

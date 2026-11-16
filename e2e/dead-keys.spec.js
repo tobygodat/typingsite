@@ -122,11 +122,11 @@ const recordHelp = (page) => page.evaluate(() => {
 // sends the key that ended a composition after it, and Tab, or focus moving, drops the mark.
 const COMMIT_KEY_WAIT_MS = 100;
 
-const readScore = (page, wait, display = '#text-display', field = '#typing-input') => page.evaluate(([ms, d, f]) => new Promise((resolve) => setTimeout(() => resolve({
+const readScore = (page, wait, display = '#text-display', field = '#typing-input') => page.evaluate(([ms, d, f]) => new Promise((resolve) => { setTimeout(() => resolve({
   correct: document.querySelectorAll(`${d} .char.correct`).length,
   wrong: document.querySelectorAll(`${d} .char.wrong`).length,
   value: document.querySelector(f).value,
-}), ms)), [wait, display, field]);
+}), ms); }), [wait, display, field]);
 
 // Read once a commit's wait is over. Timers run in order of when they are due, so the read is deterministic.
 const scored = (page) => readScore(page, COMMIT_KEY_WAIT_MS + 50);
@@ -141,7 +141,7 @@ const safariOrder = (page, { field = '#typing-input', commit = '"', key = ' ', n
   const input = document.querySelector(o.field);
   const composition = (type, data) => input.dispatchEvent(new CompositionEvent(type, { bubbles: true, data }));
   const keydown = (key) => input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key }));
-  const nextTask = () => new Promise((resolve) => setTimeout(resolve));
+  const nextTask = () => new Promise((resolve) => { setTimeout(resolve); });
   composition('compositionstart', '');
   composition('compositionupdate', '"');
   input.value += '"';
@@ -1467,7 +1467,7 @@ test('an online race scores a mark typed before its limit with the key that come
       const input = document.querySelector('#online-input');
       const key = (type, value) => input.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: value }));
       const type = (data) => input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }));
-      const until = async (time) => { while (Date.now() < time) await new Promise((resolve) => setTimeout(resolve, 2)); };
+      const until = async (time) => { while (Date.now() < time) await new Promise((resolve) => { setTimeout(resolve, 2); }); };
 
       await until(end - 30);
       key('keydown', 'Dead');

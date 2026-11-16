@@ -8,7 +8,7 @@ Use Bun 1.4.2 and Node.js 24, as CI does, or a supported newer Node. Bun install
 bun run dev           # build, then serve dist/ at http://localhost:5173
 bun run test          # build, then unit tests in tests/ through tsx
 bun run typecheck     # strict client and worker checks
-bun run lint          # oxlint with the anti-slop plugin, warnings fail
+bun run lint          # oxlint's correctness, suspicious, perf and pedantic rules plus anti-slop, warnings fail
 bun run build         # strict typecheck, then compile and precache dist/
 bun run build:dist    # compile and precache dist/ without the typecheck (CI, Playwright)
 bun run test:unit     # unit tests against the dist/ already built (CI)
@@ -17,6 +17,8 @@ bun run test:e2e:changed  # the specs your branch changed against origin/master
 bun run test:e2e:compat   # selected Firefox and WebKit input/rendering cases
 bun run test:e2e          # all of Chromium; CI runs it on master and on PRs it affects, so run it only when CI can't
 ```
+
+Lint leaves oxlint's `style`, `restriction` and `nursery` categories off: they hold preferences, opt-in bans and unstable rules. `.oxlintrc.json` gives the reason for each rule turned off in the categories it runs.
 
 `bun run dev` builds once before starting the server. After changing source, restart it to rebuild. `bun run start` serves an existing build. Use `bun run test`, not `bun test`, which is Bun's own test runner and skips the build. Playwright compiles its own `dist/` (`bun run build:dist`, no typecheck) before starting its server, unless `E2E_PREBUILT=1` tells it to serve the `dist/` already there, as CI does.
 

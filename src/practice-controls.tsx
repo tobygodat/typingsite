@@ -63,7 +63,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
               </div>
               <div id="duration-options" className="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed" hidden={special || !hasLength}>
                 <span className="glide-pill" aria-hidden="true"></span>
-                {spec.presets.map((length, index) => <button key={index} type="button" data-length={length} aria-pressed={length === current} aria-label={`${length} ${spec.unit}`} className={length === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(length)}>{length}</button>)}
+                {spec.presets.map((preset, index) => <button key={index} type="button" data-length={preset} aria-pressed={preset === current} aria-label={`${preset} ${spec.unit}`} className={preset === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(preset)}>{preset}</button>)}
                 <CustomLengthField controller={lengthEditor} mode={view.lengthMode} current={current} />
               </div>
               <div id="quote-options" onClick={() => { if (more.current) more.current.open = false; }} className="segmented quote-options" role="group" aria-label="Quote filters" hidden={special || view.mode !== 'quote'}>

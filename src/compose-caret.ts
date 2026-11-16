@@ -141,7 +141,7 @@ export function drawCaret(input: HTMLTextAreaElement) {
       range.setStart(mirror.firstChild, value.lastIndexOf('\n', at - 1) + 1);
       range.setEnd(mirror.firstChild, at);
       const rects = range.getClientRects();
-      const last = rects[rects.length - 1];
+      const last = rects.item(rects.length - 1);
 
       if (last) endRect = { left: last.right, top: last.top, height: last.height };
     }

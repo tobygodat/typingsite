@@ -18,7 +18,6 @@
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, SLOW_FLOOR_MS, fitLearner, learnerEvidence, learnerRecommendation } from '../src/learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, isFixed } from '../src/train-path.js';
 import { KEYBOARD, SKILLS, START, makeTypist, seeded, typeRun } from './evaluate-learner.mjs';
@@ -131,7 +130,7 @@ if (!isMainThread) parentPort.on('message', ({ id, job }) => parentPort.postMess
 async function runAll(seeds, workers) {
   const jobs = seeds.flatMap((seed) => CELLS.map((cell) => ({ seed, cell: cell.index })));
   const results = new Array(jobs.length);
-  const pool = Array.from({ length: Math.min(workers, jobs.length) }, () => new Worker(fileURLToPath(import.meta.url)));
+  const pool = Array.from({ length: Math.min(workers, jobs.length) }, () => new Worker(import.meta.filename));
   let next = 0;
 
   await Promise.all(pool.map((worker) => new Promise((resolve, reject) => {
@@ -183,7 +182,7 @@ function summarize(rows) {
   }));
 }
 
-if (isMainThread && process.argv[1] === fileURLToPath(import.meta.url)) {
+if (isMainThread && process.argv[1] === import.meta.filename) {
   const arg = (name, fallback) => {
     const at = process.argv.indexOf(`--${name}`);
 

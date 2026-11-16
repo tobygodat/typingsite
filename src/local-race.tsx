@@ -150,8 +150,7 @@ export function createLocalRace() {
       markEndFailure(attempt);
       ports.clearInput();
       const valid = !attempt.interrupted && !attempt.unsupportedInput;
-      const completed: SealedRun = { ...completeAttempt(attempt, { endedAt: ports.offset() }), status: valid ? 'complete' : 'interrupted' };
-      completed.interrupted = attempt.interrupted;
+      const completed: SealedRun = { ...completeAttempt(attempt, { endedAt: ports.offset() }), status: valid ? 'complete' : 'interrupted', interrupted: attempt.interrupted };
 
       if (attempt.failed) completed.failed = attempt.failed;
       state.attempt = completed;

@@ -24,10 +24,10 @@ export function setParts(node: Element, value: NativeCopy) {
 
 export const plain = (value: NativeCopy) => pieces(value).map((part) => part instanceof Node ? part.textContent : part).join('');
 
-export function setText(element: HTMLElement, value: string | number) {
+export function setText(target: HTMLElement, value: string | number) {
   const text = String(value);
 
-  if (element.textContent !== text) element.textContent = text;
+  if (target.textContent !== text) target.textContent = text;
 }
 
 export function element<K extends keyof HTMLElementTagNameMap>(tag: K, text: NativeCopy, className = '') {

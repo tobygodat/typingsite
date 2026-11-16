@@ -293,7 +293,7 @@ for (const [label, viewport] of VIEWPORTS) {
   }
 }
 
-const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
+const DARK_THEMES = new Set(['dark', 'terminal', 'midnight', 'nord']);
 const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 
 const channel = (v) => {
@@ -416,7 +416,7 @@ async function passageContrast(page) {
 }
 
 for (const theme of THEMES) {
-  const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
+  const mode = DARK_THEMES.has(theme) ? 'dark' : 'light';
 
   for (const [label, viewport, style] of CASES) {
     test(`${theme} theme, ${label}, ${style}: at full height the passage and mistakes keep their contrast over the brightest image, outlined where they need it, the caret bare`, async ({ page }) => {

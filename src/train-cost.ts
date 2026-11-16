@@ -11,9 +11,9 @@ import { speedValue } from './units.js';
 // Train's figures (TOB-470): what each step still to do costs in speed, and what each drilled step won back. Pure: no
 // DOM, clock, storage or randomness. It labels the learner's queue and never reorders it.
 //
-//   TrainFigures = { pace, current: Todo | null, ahead: Todo[], behind: Drilled[], won }
-//   Todo    = { unit, kind, basis, cost, missed, slower, frequency, timings }, for the open step and each step ahead
-//   Drilled = { unit, state, basis, won, now, before }, for each step behind you, in trainPath's order
+//   type TrainFigures = { pace, current: Todo | null, ahead: Todo[], behind: Drilled[], won }
+//   type Todo    = { unit, kind, basis, cost, missed, slower, frequency, timings }, for the open step and each step ahead
+//   type Drilled = { unit, state, basis, won, now, before }, for each step behind you, in trainPath's order
 //
 // Cost is speed: the wpm a unit takes from the person, the wpm they would gain if it took no longer than any other
 // letter. `pace` is their ms a character at their recent median speed and `lost` the ms the unit costs on every letter

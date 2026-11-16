@@ -234,10 +234,10 @@ test('the custom pace is entered in cpm, kept in wpm, and the caret runs at the 
       }).length;
     };
 
-    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+    const frame = () => new Promise((resolve) => { requestAnimationFrame(resolve); });
     const t1 = await frame();
     const i1 = index();
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
     const t2 = await frame();
     const i2 = index();
 

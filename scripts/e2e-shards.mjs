@@ -181,7 +181,7 @@ function refresh(dirs) {
   console.log(`Wrote ${Object.keys(durations).length} test durations from ${reports.length} reports to ${path.relative(process.cwd(), DURATIONS)}`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === import.meta.filename) {
   const [first, ...rest] = process.argv.slice(2);
 
   if (first === '--refresh' && rest.length) refresh(rest);

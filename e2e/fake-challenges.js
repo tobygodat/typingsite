@@ -82,7 +82,7 @@ export class FakeChallenges {
     const answer = (json) => {
       if (this.lost.delete(action)) return drop();
 
-      if (this.held && this.holding.has(action)) return new Promise((release) => this.held.push(release)).then(() => reply(200, json));
+      if (this.held && this.holding.has(action)) return new Promise((release) => { this.held.push(release); }).then(() => reply(200, json));
 
       return reply(200, json);
     };

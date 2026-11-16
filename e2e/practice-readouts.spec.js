@@ -2,7 +2,7 @@
 // missed and typed, and the trace's range.
 import { test, expect, openApp, passageText, typeInto, chooseWords, chooseSetting } from './fixtures.js';
 
-const number = (text) => Number(text.replace('−', '-').replace(/[^\d.-]/g, ''));
+const number = (text) => Number(text.replace('−', '-').replaceAll(/[^\d.-]/g, ''));
 
 // A 10-word run at a person's pace, with one letter missed and fixed when asked. Ten words can be under 40
 // characters, so 90 ms a key keeps every run past the 3 s that consistency and the range need.

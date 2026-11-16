@@ -24,7 +24,7 @@ interface ConditionsPorts {
   race(): Conditions;
 }
 
-const FIXED_RULE_KINDS: readonly RuleKind[] = ['daily', 'retest', 'custom', 'lesson', 'missed', 'challenge'];
+const FIXED_RULE_KINDS: ReadonlySet<RuleKind> = new Set(['daily', 'retest', 'custom', 'lesson', 'missed', 'challenge']);
 
 export function createSessionRules(learning: LearningStore, practice: PracticeSession, training: TrainingMemory,
   local: ReturnType<typeof createLocalRace>, online: OnlineRaceController, ghost: ReturnType<typeof createGhostResult>,
@@ -52,7 +52,7 @@ export function createSessionRules(learning: LearningStore, practice: PracticeSe
     return null;
   }
 
-  function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.includes(kind) }: RuleSession): RuleLimits {
+  function ruleLimits({ kind, run, fixed = FIXED_RULE_KINDS.has(kind) }: RuleSession): RuleLimits {
     return {
       fixed: run.mode === 'standard' ? 'standard' : fixed ? kind : '',
       quickEnd: sessionDurationMs(kind) !== null ? kind === 'drill' ? 'drill' : 'timed'

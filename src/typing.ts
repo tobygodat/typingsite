@@ -191,10 +191,10 @@ function drawnPassage(draw: () => string, mode: unknown, count: unknown, punctua
 
   const add = (length: number) => {
     for (let i = 0; i < length; i += 1) {
-      const recent = drawn.slice(-2);
+      const recent = new Set(drawn.slice(-2));
       let word = draw();
 
-      for (let tries = 0; tries < 100 && (recent.includes(word) || (!punctuation && word === 'i')); tries += 1) word = draw();
+      for (let tries = 0; tries < 100 && (recent.has(word) || (!punctuation && word === 'i')); tries += 1) word = draw();
       drawn.push(word);
 
       if (punctuation) word = punctuateWord(word === 'i' ? 'I' : word, words.at(-1), words.length, end, random);
@@ -589,7 +589,7 @@ export const deadMark = (char: string) => DEAD_MARKS.has(char) || (/^[̀-ͯ]$/u.
 // punctuation, vertical, small and full-width forms), anything invisible (soft hyphen) or a pictograph
 // (© ❤), which emoji pickers commit through compositions too. An astral character is two UTF-16 units, so
 // it would move the caret two letters.
-const LATIN_KEY = /^(?:[\x20-\x7E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
+const LATIN_KEY = /^(?:[\u0020-\u007E\u00A0-\u00FF]|\p{Script=Latin}|(?=[\p{N}\p{P}\p{S}\p{Zs}])[\p{scx=Common}\p{scx=Inherited}\p{scx=Latin}])$/u;
 const NOT_A_KEY = /[\p{Default_Ignorable_Code_Point}\p{Extended_Pictographic}\u3000-\u303F\uFE10-\uFE6F\uFF00-\uFFEF]/u;
 const keyChar = (char: string) => char.length === 1 && (deadMark(char) || LATIN_KEY.test(char)) && !NOT_A_KEY.test(char);
 
@@ -626,7 +626,7 @@ export function carriedKey(attempt: Attempt, char: string, offsetMs: number): At
 // which is how replay indexes the passage. About ten minutes of typing: each keystroke replays the whole
 // run, so a longer passage makes late keys lag (measured: ~2 ms per key at 3,000 characters, ~9 ms at 9,000).
 export const CUSTOM_MAX = 3000;
-const TYPABLE = /^[\x20-\x7E]$/;
+const TYPABLE = /^[\u0020-\u007E]$/;
 
 // Smart punctuation becomes ASCII; NFKC folds compatibility forms (full-width letters, ligatures, no-break
 // spaces); invisible code points go (every default-ignorable, such as ZWSP, ZWJ, CGJ, variation selectors,
@@ -635,17 +635,17 @@ const TYPABLE = /^[\x20-\x7E]$/;
 // applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
 export function normalizeCustomText(value: unknown, max = CUSTOM_MAX) {
   return String(value || '')
-    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
-    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
-    .replace(/\u2026/g, '...')
+    .replaceAll(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replaceAll(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replaceAll(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replaceAll('…', '...')
     .normalize('NFKC')
-    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
-    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
+    .replaceAll(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replaceAll(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
     .normalize('NFD')
-    .replace(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .replaceAll(/([\u0020-\u007E])[\u0300-\u036F]+/g, '$1')
     .normalize('NFC')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim()
     .slice(0, max)
     .trim();
@@ -1002,7 +1002,7 @@ export function recommendTarget(attempts: readonly unknown[], compatibleConditio
 }
 
 export function normalizeManualTarget(value: unknown) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
+  return String(value || '').trim().toLowerCase().replaceAll(/[^a-z]/g, '').slice(0, 8);
 }
 
 // Every real word a drill can draw on: the word list, the drill words and the quotes' words.
@@ -1156,13 +1156,13 @@ export function compareAttempts(before: ComparisonSource | null | undefined, aft
   const afterScore = comparisonScore(after);
   const wpmDelta = afterScore.wpm - beforeScore.wpm;
   const accuracyDelta = afterScore.accuracy - beforeScore.accuracy;
-  const directions = [Math.sign(wpmDelta), Math.sign(accuracyDelta)].filter(Boolean);
+  const directions = new Set([Math.sign(wpmDelta), Math.sign(accuracyDelta)].filter(Boolean));
 
-  const state = directions.includes(1) && directions.includes(-1)
+  const state = directions.has(1) && directions.has(-1)
     ? 'mixed'
-    : directions.includes(1)
+    : directions.has(1)
       ? 'improved'
-      : directions.includes(-1)
+      : directions.has(-1)
         ? 'regressed'
         : 'steady';
 

@@ -6,7 +6,7 @@ import { scoreTrace } from '../src/ghost-race.js';
 import { wordList } from '../src/words.js';
 import { PAIRING, RATING, REPEAT, pickOpponent, quickConditions, ratingChanges, traceCheck } from '../src/quick-match.js';
 
-const LIVE = ['countdown', 'racing'];
+const LIVE = new Set(['countdown', 'racing']);
 
 // As race_private.quick_passage: the 200 words drawn at random, none equal to either of the two before, cut at a
 // word's end to at most 1000 characters.
@@ -57,7 +57,7 @@ export class FakeQuickMatch {
   rating(user) { return this.ratings.get(user) || { rating: RATING.start, races: 0 }; }
 
   liveRoom(user) {
-    return [...this.races.rooms.values()].find((room) => room.quick && LIVE.includes(room.status)
+    return [...this.races.rooms.values()].find((room) => room.quick && LIVE.has(room.status)
       && Date.now() < Date.parse(room.expiresAt) && room.players.some((p) => p.userId === user)) || null;
   }
 

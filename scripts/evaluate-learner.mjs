@@ -746,7 +746,7 @@ export function naming({ constants, seeds = TEST_SEEDS, ...options }) {
       for (const t of NAMING_RUNS) {
         const model = fitLearner(learnerEvidence(history.slice(0, t).map((h) => h.run), KEYBOARD), START + t * RUN_MS, variant);
         const recommendation = learnerRecommendation(model);
-        const loss = [...trueLoss(typist, t)].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, LEAN_UNITS).map(([unit]) => unit);
+        const loss = new Set([...trueLoss(typist, t)].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, LEAN_UNITS).map(([unit]) => unit));
         const current = recommendation.target ? { unit: recommendation.target, basis: recommendation.was.basis || 'errors' } : null;
 
         for (const [rule, target] of [['earlier', earlierRuleTarget(model)], ['current', current]]) {
@@ -755,7 +755,7 @@ export function naming({ constants, seeds = TEST_SEEDS, ...options }) {
 
           if (!target) continue;
           cell.named += 1;
-          cell.topFour += loss.includes(target.unit) ? 1 : 0;
+          cell.topFour += loss.has(target.unit) ? 1 : 0;
           cell.slow += target.basis === 'slow' ? 1 : 0;
         }
       }

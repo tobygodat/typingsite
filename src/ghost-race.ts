@@ -43,7 +43,7 @@ export const CHALLENGE_DAYS = 7;
 // Runs a challenge can be made from. Drills are exercises; a ghost race is already a reply.
 export const SENDABLE_KINDS = ['test', 'retest', 'daily'];
 const DELETE = '\b';
-const TIMED = [15, 30, 60, 120];
+const TIMED = new Set([15, 30, 60, 120]);
 
 // A timed challenge keeps enough text for someone typing 400 wpm for the whole clock.
 const CHARS_PER_SECOND = 400 * 5 / 60;
@@ -115,7 +115,7 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
       if (event.accepted === false || typeof event.text !== 'string' || !event.text || /[\r\n]/.test(event.text) || ASTRAL.test(event.text)) return null;
       chars = event.text;
     } else continue;
-    const at = Math.max(last, Math.round(Number(event.offsetMs) - Number(origin)));
+    const offset = Math.max(last, Math.round(Number(event.offsetMs) - Number(origin)));
 
     for (const char of chars) {
       let key = char;
@@ -131,8 +131,8 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
       }
 
       keys += key;
-      steps.push(at - last);
-      last = at;
+      steps.push(offset - last);
+      last = offset;
     }
   }
 
@@ -171,20 +171,20 @@ export function validTrace(trace: unknown): trace is CompactTrace {
 // The trace as an attempt the shared replay can score: exactly what the service computes.
 export function traceAttempt<T>(trace: CompactTrace, text: T) {
   const events: AttemptEvent[] = [];
-  let at = 0;
+  let reached = 0;
   let typed = 0;
   [...trace.k].forEach((key, index) => {
-    at += trace.t[index] ?? 0;
+    reached += trace.t[index] ?? 0;
 
     if (key === DELETE) {
       typed = Math.max(0, typed - 1);
-      events.push({ type: 'delete', count: 1, offsetMs: at });
+      events.push({ type: 'delete', count: 1, offsetMs: reached });
 
       return;
     }
 
     // Where the key landed, as a recorded run keeps it: the speed graph reads it to tell hits from misses.
-    events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs: at });
+    events.push({ type: 'insert', text: key, position: typed, accepted: true, offsetMs: reached });
 
     if (typed < Number(rawField(text, 'length'))) typed += 1;
   });
@@ -208,14 +208,14 @@ export function scoreTrace(trace: CompactTrace, text: unknown, { relaxed = false
 // Where the sender's caret was after each key: [ms from the first key, characters typed].
 export function ghostPoints(trace: CompactTrace, textLength: number) {
   const points: [number, number][] = [];
-  let at = 0;
+  let elapsed = 0;
   let typed = 0;
   [...trace.k].forEach((key, index) => {
-    at += trace.t[index] ?? 0;
+    elapsed += trace.t[index] ?? 0;
 
     if (key === DELETE) typed = Math.max(0, typed - 1);
     else if (typed < textLength) typed += 1;
-    points.push([at, typed]);
+    points.push([elapsed, typed]);
   });
 
   return points;
@@ -225,7 +225,7 @@ const challengeDuration = (conditions: unknown = {}) => {
   if (rawField(conditions, 'mode') !== 'time') return null;
   const duration = rawField(conditions, 'duration');
 
-  return typeof duration === 'number' && TIMED.includes(duration || 0) ? duration : null;
+  return typeof duration === 'number' && TIMED.has(duration || 0) ? duration : null;
 };
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
@@ -240,7 +240,7 @@ interface ConditionRules { [key: string]: ((value: unknown) => boolean) | undefi
 const CONDITION_RULES: ConditionRules = {
   mode: oneOf('time', 'words', 'quote'),
   // Checked against the challenge's own clock in challengeConditions.
-  duration: orNull((value) => typeof value === 'number' && TIMED.includes(value)),
+  duration: orNull((value) => typeof value === 'number' && TIMED.has(value)),
   count: orNull((value) => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 1000),
   punctuation: isBoolean,
   numbers: isBoolean,
@@ -263,7 +263,7 @@ const CONDITION_RULES: ConditionRules = {
 export function challengeConditions(conditions: unknown, duration: number | null = null): RaceConditions | null {
   if (!isRecord(conditions)) return null;
 
-  if (duration !== null && !TIMED.includes(duration)) return null;
+  if (duration !== null && !TIMED.has(duration)) return null;
   const known = Object.entries(conditions).every(([key, value]) => Object.hasOwn(CONDITION_RULES, key) && (CONDITION_RULES[key]?.(value) ?? false));
 
   if (!known || (conditions.mode === 'time') !== (duration !== null) || (conditions.duration ?? null) !== duration) return null;

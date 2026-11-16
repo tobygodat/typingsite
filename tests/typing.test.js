@@ -508,7 +508,7 @@ test('every code snippet unindents to a non-empty single line the engine accepts
     for (const snippet of CODE_SNIPPETS[language]) {
       const text = unindent(snippet);
       assert.ok(text.length > 0, snippet);
-      assert.match(text, /^[\x20-\x7e]+$/u, text);
+      assert.match(text, /^[\u0020-\u007E]+$/u, text);
       assert.doesNotMatch(text, /^ | $| {2}/u, text);
 
       for (const token of text.split(' ')) assert.ok(token.length <= MAX_CODE_TOKEN, token);
@@ -793,13 +793,13 @@ test('standard text is fresh per seed, reproducible from it, and follows the v1 
     assert.equal(passage.id, `standard-v1-${seed.toString(36)}`);
     assert.equal(passage.recipe, 'standard-v1');
     // Printable ASCII only. (Where " is a dead key, browsers report composition, which isn't scored.)
-    assert.match(passage.text, /^[\x20-\x7e]+$/, 'printable ASCII only');
+    assert.match(passage.text, /^[\u0020-\u007E]+$/, 'printable ASCII only');
     assert.ok(!passage.text.includes('  '));
     assert.ok(passage.text.length >= 2500, 'enough text for a full minute');
     // One quote segment: the second sentence, in double quotation marks, generated like the rest.
     assert.equal(passage.text.split('"').length, 3);
     assert.match(passage.text, /^[A-Z][^.?"]*[.?] "[A-Z][^"]*[.?]" [A-Z]/);
-    const generated = passage.text.replace(/"/g, '').split(' ');
+    const generated = passage.text.replaceAll('"', '').split(' ');
     assert.ok(generated.some((word) => /^\d+[,.?]?$/.test(word)), 'some numbers');
     assert.ok(generated.some((word) => word.endsWith(',')) && generated.some((word) => word.endsWith('.')), 'commas and full stops');
     const words = generated.map((word) => word.replace(/[,.?]$/, '')).filter((word) => !/^\d+$/.test(word));

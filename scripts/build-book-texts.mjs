@@ -105,17 +105,17 @@ export function normalise(raw) {
     .split('\n')
     .filter((line) => !/^[\s*]+$/.test(line) || !line.includes('*'))
     .join('\n')
-    .replace(/_([^_]+)_/g, '$1');
+    .replaceAll(/_([^_]+)_/g, '$1');
 
   for (const [pattern, value] of REPLACEMENTS) text = text.replace(pattern, value);
 
-  const paragraphs = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const paragraphs = text.normalize('NFD').replaceAll(/[\u0300-\u036F]/g, '')
     .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .map((paragraph) => paragraph.replaceAll(/\s+/g, ' ').trim())
     .filter(Boolean);
 
   const joined = paragraphs.join(' ');
-  const unsupported = [...new Set(joined.match(/[^\x20-\x7e]/g) || [])];
+  const unsupported = [...new Set(joined.match(/[^\u0020-\u007E]/g) || [])];
 
   if (unsupported.length) throw new Error(`Unsupported characters: ${unsupported.map((c) => `U+${c.codePointAt(0).toString(16)}`).join(' ')}`);
 
@@ -128,7 +128,7 @@ async function build(dir) {
   const books = {};
 
   for (const source of SOURCES) {
-    const raw = (await readFile(path.join(dir, source.file), 'utf8')).replace(/\r/g, '');
+    const raw = (await readFile(path.join(dir, source.file), 'utf8')).replaceAll('\r', '');
     const all = raw.split('\n');
     const start = findLine(all, /^\*\*\* START OF THE PROJECT GUTENBERG EBOOK /);
     const stop = findLine(all, /^\*\*\* END OF THE PROJECT GUTENBERG EBOOK /, start);

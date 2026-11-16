@@ -21,10 +21,10 @@ const item = (id, n, extra = {}) => ({ id, at: n === null ? null : minute(n), ..
 const ids = (items) => items.map((entry) => entry.id);
 
 // A field mergeSynced has no rule for: version, and any field a newer build added.
-const MERGED_FIELDS = [...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt', 'historyClearedAt',
-  'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId'];
+const MERGED_FIELDS = new Set([...Object.keys(HISTORY), 'bests', 'seenTextIds', 'preferences', 'preferencesAt', 'historyClearedAt',
+  'appliedClears', 'heardClears', 'historyClearedIds', 'undoneClears', 'updatedAt', 'profileId']);
 
-const passThrough = (copy) => JSON.stringify(Object.keys(copy).filter((key) => !MERGED_FIELDS.includes(key) && copy[key] !== undefined)
+const passThrough = (copy) => JSON.stringify(Object.keys(copy).filter((key) => !MERGED_FIELDS.has(key) && copy[key] !== undefined)
   .sort().map((key) => [key, copy[key]]));
 
 test('history is a union by id, ordered by date, before the caps apply', () => {

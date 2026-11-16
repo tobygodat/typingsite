@@ -153,7 +153,7 @@ test('account invitations appear only in the invited account inbox', async ({ pa
     await expect.poll(() => room.players.length).toBe(2);
     await expect(page.locator('#online-players')).toContainText(room.players[1].name);
     const outsider = supabase.addUser('outsider@stilltype.test');
-    expect(await new Promise((resolve) => supabase.races.handle(outsider.id, { p_action: 'invites' }, (_, body) => resolve(body)))).toEqual([]);
+    expect(await new Promise((resolve) => { supabase.races.handle(outsider.id, { p_action: 'invites' }, (_, body) => resolve(body)); })).toEqual([]);
   } finally { await context.close(); }
 });
 

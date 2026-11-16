@@ -12,7 +12,7 @@ const stylesheet = readFileSync(new URL('../src/styles.css', import.meta.url), '
 
 // Flat rules as { selectors, declarations }. Rules nested in @media are included; at-rule preludes are not.
 function parseRules(css) {
-  const source = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const source = css.replaceAll(/\/\*[\s\S]*?\*\//g, '');
   const rules = [];
 
   for (const [, prelude, body] of source.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
@@ -27,7 +27,7 @@ function parseRules(css) {
       if (match) declarations[match[1]] = match[2];
     }
 
-    rules.push({ selectors: selectorText.split(',').map((s) => s.trim().replace(/\s+/g, ' ')), declarations });
+    rules.push({ selectors: selectorText.split(',').map((s) => s.trim().replaceAll(/\s+/g, ' ')), declarations });
   }
 
   return rules;
@@ -49,7 +49,7 @@ function themeTokens(css) {
 function resolve(value, tokens, depth = 0) {
   assert.ok(depth < 10, `var() cycle in ${value}`);
 
-  return value.replace(/var\(\s*(--[-\w]+)\s*(?:,\s*([^()]*))?\)/g, (_, name, fallback) => {
+  return value.replaceAll(/var\(\s*(--[-\w]+)\s*(?:,\s*([^()]*))?\)/g, (_, name, fallback) => {
     const next = tokens[name] ?? fallback;
     assert.ok(next !== undefined, `${name} is not defined`);
 

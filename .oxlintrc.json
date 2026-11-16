@@ -20,6 +20,12 @@
   "jsPlugins": [
     { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
   ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "pedantic": "error"
+  },
   "rules": {
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",
@@ -38,6 +44,74 @@
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-array-filter-map": "error",
+    // Null comparisons (x != null) check for null and undefined together.
+    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+
+    // suspicious
+    // Helpers sit beside their one caller; hoisting 252 of them moves code away from its use for no measurable gain.
+    "unicorn/consistent-function-scoping": "off",
+    // toSorted() and toReversed() are ES2023, and the build and TypeScript lib target ES2022.
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    // Dunder names are build-time defines (__VERSION__) and test hooks on window, and _tag is Effect's.
+    "eslint/no-underscore-dangle": "off",
+    // IndexedDB and FileReader handlers are assigned so cleanup can null them in one statement.
+    "unicorn/prefer-add-event-listener": "off",
+    // It reads a Date advanced by setDate() and constant guards beside a loop counter as stuck loops.
+    "eslint/no-unmodified-loop-condition": "off",
+    // Every postMessage here is a Worker's, MessagePort's or BroadcastChannel's, which take no targetOrigin.
+    "unicorn/require-post-message-target-origin": "off",
+
+    // perf
+    // Sequential awaits are the intent: e2e steps, ordered sync and retries, and build steps run one after another.
+    "eslint/no-await-in-loop": "off",
+    // Its fix mutates the mapped objects, and records here are copied on purpose.
+    "oxc/no-map-spread": "off",
+    // Its fix for filter().at(-1) is findLast(), which is ES2023.
+    "unicorn/prefer-array-find": "off",
+
+    // pedantic
+    // The u flag changes how ., classes and case-insensitive matches treat astral and some Latin letters, so 717 regexes can't switch unproven.
+    "eslint/require-unicode-regexp": "off",
+    // Size and nesting limits would mean restructuring 300 files and functions, which isn't a lint fix.
+    "eslint/max-lines": "off",
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-depth": "off",
+    // Small classes (Effect errors, React components) sit beside the code that uses them.
+    "eslint/max-classes-per-file": "off",
+    // if (list.length) is idiomatic, and the fix changes truthiness where plain-JS parsers read a length that can be undefined.
+    "unicorn/explicit-length-check": "off",
+    // Named predicates and normalizers (isRecord, Number.isFinite) are passed directly; none misreads the index argument.
+    "unicorn/no-array-callback-reference": "off",
+    // Dropping async turns a rejection into a synchronous throw, and node:test and Playwright callbacks are async by contract.
+    "eslint/require-await": "off",
+    // parseFloat reads 12 from computed styles such as '12px', where Number() returns NaN.
+    "unicorn/prefer-number-coercion": "off",
+    // getElementById looks up an id directly; querySelector needs CSS-escaped ids.
+    "unicorn/prefer-query-selector": "off",
+    // Branch order follows the case the code handles first; swapping branches is preference.
+    "eslint/no-negated-condition": "off",
+    "unicorn/no-negated-condition": "off",
+    // Trailing comments label a value on its own line, mostly in test fixtures.
+    "eslint/no-inline-comments": "off",
+    // Tests pass undefined to normalizers to name the missing-value case they check.
+    "unicorn/no-useless-undefined": "off",
+    // Object(value) returns any, which boundary parsers keep unknown; new Object(value) returns Object and trips anti-slop's widening rules.
+    "unicorn/new-for-builtins": "off",
+    // charCodeAt and fromCharCode read UTF-16 units on purpose: FNV hashes that seed passages, and base64 bytes.
+    "unicorn/prefer-code-point": "off",
+    // Merging pushes evaluates every argument first, and evaluate-learner's picks read the array between pushes.
+    "unicorn/prefer-single-call": "off",
+    // Each site uses appendChild's return value, which append() doesn't give.
+    "unicorn/prefer-dom-node-append": "off",
+    // It reads Playwright's locator.getAttribute() as the DOM method.
+    "unicorn/prefer-dom-node-dataset": "off",
+    // x | 0 wraps to 32 bits in the seeded PRNGs; Math.trunc() doesn't.
+    "unicorn/prefer-math-trunc": "off",
+    // A whole default viewport object is the intended argument.
+    "unicorn/no-object-as-default-parameter": "off",
+    // Callbacks in loops read outer let state on purpose; none closes over a var.
+    "eslint/no-loop-func": "off",
 
     // "Shape" is Stilltype's term for a test's mode and length, shared with docs/ui-contract.md, DOM ids (#board-shape) and UI copy; renaming 356 symbols would split the code from that contract.
     "anti-slop/no-shape-in-symbol-names": "off",
@@ -188,6 +262,27 @@
         // JSON reply bodies and header maps are open records by nature.
         "anti-slop/no-unsafe-dictionary-type": "off",
         "anti-slop/no-known-value-widening": "off"
+      }
+    },
+    {
+      "files": ["src/sw.ts"],
+      "rules": {
+        // export {} keeps the service worker a module for TypeScript.
+        "unicorn/require-module-specifiers": "off"
+      }
+    },
+    {
+      "files": ["src/wallpaper-image.ts"],
+      "rules": {
+        // FileReader lets an interrupted decode abort the read, which Blob#arrayBuffer() can't.
+        "unicorn/prefer-blob-reading-methods": "off"
+      }
+    },
+    {
+      "files": ["e2e/**", "tests/**", "scripts/**"],
+      "rules": {
+        // page.evaluate callbacks take a value under its outside name, and test helpers reuse fixture names on purpose.
+        "eslint/no-shadow": "off"
       }
     },
     {

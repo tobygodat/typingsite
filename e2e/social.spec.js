@@ -103,9 +103,9 @@ test('the challenge toast leaves on its own after about eighteen seconds', async
   await page.clock.install();
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
-  await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+  await new Promise((resolve) => { supabase.races.handle(host.id, { p_action: 'create', p_data: {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
-  } }, resolve));
+  } }, resolve); });
   await page.clock.fastForward(11000);
   await expect(page.locator('#challenge-toast')).toBeVisible();
   await page.mouse.move(5, 400);
@@ -132,9 +132,9 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await page.mouse.move(10, 10);
   await page.mouse.move(80, 80);
   await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
-  await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+  await new Promise((resolve) => { supabase.races.handle(host.id, { p_action: 'create', p_data: {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: 'lin@stilltype.test',
-  } }, resolve));
+  } }, resolve); });
   await page.clock.fastForward(11000);
   // Give a poll, had one started, time to come back.
   await page.waitForTimeout(1500);
@@ -154,9 +154,9 @@ test('a challenge that arrives mid-run waits for the run to end, even with the c
   await page.locator('#start-local-race').click();
   const racePassage = await page.locator('#race-accessible-passage').textContent();
   await typeInto(page, racePassage.slice(0, 3), '#race-input');
-  await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+  await new Promise((resolve) => { supabase.races.handle(host.id, { p_action: 'create', p_data: {
     passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Kai', inviteEmail: 'lin@stilltype.test',
-  } }, resolve));
+  } }, resolve); });
   await page.clock.fastForward(11000);
   await page.waitForTimeout(1500);
   await expect(page.locator('#challenge-toast')).toBeHidden();

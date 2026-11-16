@@ -114,7 +114,7 @@ export function createInputController(owner: InputOwner) {
     if (failure) { current.interrupted = true; current.failed = failure; }
 
     const first = changes[0];
-    const last = changes[changes.length - 1];
+    const last = changes.at(-1);
 
     if (first && last) owner.refresh(type, first.previousLength, last.blocked, at);
 

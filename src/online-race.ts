@@ -116,7 +116,7 @@ const DISMISSED = 'stilltype-dismissed-invites-v1:';
 const PEOPLE_CHANNEL = 'stilltype-people';
 
 // The views of the Challenge screen besides a race: the people list and what its foot links open.
-const VIEWS: readonly OnlineRaceMode[] = ['people', 'add', 'setup', 'daily', 'local'];
+const VIEWS: ReadonlySet<OnlineRaceMode> = new Set(['people', 'add', 'setup', 'daily', 'local']);
 const VIEW_FOCUS: Partial<Record<OnlineRaceMode, string>> = { add: 'people-add-heading', setup: 'people-setup-heading', daily: 'daily-heading', local: 'local-heading' };
 const OPENERS: Partial<Record<OnlineRaceMode, string>> = { add: 'people-add', setup: 'people-setup', daily: 'open-daily', local: 'open-local' };
 
@@ -284,7 +284,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   const live = () => Boolean(room && !terminal(room));
 
   function show(next: OnlineRaceMode, { focus: moveFocus = false } = {}) {
-    if (!VIEWS.includes(next) || (next !== 'people' && live())) return;
+    if (!VIEWS.has(next) || (next !== 'people' && live())) return;
     const from = view;
     view = next;
     setRunning(false);
@@ -717,10 +717,10 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     // The shared start on this tab's clock. The service stamps serverNow before its reply leaves, so a reply that
     // took long (a join that landed late) puts the start late by that long, and this tab would race on after the
     // service's clock ran out. Every reply bounds the start again, and the earliest is kept.
-    const start = room.startAt ? performance.now() + stamp(room.startAt) - stamp(room.serverNow) : null;
+    const startsAt = room.startAt ? performance.now() + stamp(room.startAt) - stamp(room.serverNow) : null;
 
-    if (start !== null && (startPerf === null || start < startPerf)) {
-      startPerf = start;
+    if (startsAt !== null && (startPerf === null || startsAt < startPerf)) {
+      startPerf = startsAt;
       clearTimeout(startTimer);
       startTimer = window.setTimeout(updateClock, startPerf - performance.now());
     }
@@ -893,7 +893,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
         const prefixErrors = [...baseTyped].filter((char, index) => char !== target[index]).length;
         // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
         // mistake, sent as a stand-in that differs from the letter expected there.
-        const typed = replay.typed.replace(/[^ -~]/g, (char, index) => standIn(target[index] ?? ''));
+        const typed = replay.typed.replaceAll(/[^ -~]/g, (char, index) => standIn(target[index] ?? ''));
         // A finished run sends its keystroke trace for the graph and replay; a race resumed after a reload
         // has no record of the keys before it, so it sends none.
         const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;

@@ -18,7 +18,7 @@ export function HistoryLoops({ learning }: { learning: LearningStore }) {
         </summary>
         <div className="history-detail">
           <dl>{loop.facts.map((fact) => <div key={fact.label}><dt>{fact.label}</dt><dd className="num"><Copy parts={fact.parts} /></dd></div>)}</dl>
-          {loop.notes.map((note, index) => <p key={index}><Copy parts={note} /></p>)}
+          {loop.notes.map((note, noteIndex) => <p key={noteIndex}><Copy parts={note} /></p>)}
           {loop.target && <button type="button" className="btn btn-secondary" onClick={loop.practice}>Practice “{loop.target}” again</button>}
         </div>
       </details>)}

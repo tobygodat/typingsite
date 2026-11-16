@@ -12,7 +12,7 @@
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { writeFileSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { DECAY_TIMING_POLICY, DEFAULT_POLICY, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, LEARNER_VARIANTS, drillSplit, drilledTargets, fitLearner, learnerEvidence,
   learnerRecommendation, letGo, letGoIndex, recommendFor } from '../src/learner.js';
 import { trainPath } from '../src/train-path.js';
@@ -203,7 +203,7 @@ if (!isMainThread) {
 async function pool(kind, tasks, workers) {
   const results = new Array(tasks.length);
   let next = 0;
-  const threads = Array.from({ length: Math.min(workers, tasks.length) }, () => new Worker(fileURLToPath(import.meta.url)));
+  const threads = Array.from({ length: Math.min(workers, tasks.length) }, () => new Worker(import.meta.filename));
 
   await Promise.all(threads.map((thread) => new Promise((resolve, reject) => {
     const send = () => {

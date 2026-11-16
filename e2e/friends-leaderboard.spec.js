@@ -163,7 +163,7 @@ function circle(supabase) {
 }
 
 // Each row as it reads aloud: name, value and unit, then the detail.
-const rowTexts = (page, list) => page.locator(`#${list} .board-row`).evaluateAll((rows) => rows.map((row) => row.textContent.replace(/\s+/g, ' ').trim()));
+const rowTexts = (page, list) => page.locator(`#${list} .board-row`).evaluateAll((rows) => rows.map((row) => row.textContent.replaceAll(/\s+/g, ' ').trim()));
 
 async function openBoard(page) {
   await openView(page, 'Challenge');

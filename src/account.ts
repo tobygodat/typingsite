@@ -67,7 +67,7 @@ function base64url(bytes: Uint8Array) {
 
   for (const byte of bytes) text += String.fromCharCode(byte);
 
-  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return btoa(text).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 }
 
 function createVerifier() {
@@ -84,7 +84,7 @@ export function parseAuthRedirect(href: string) {
   const hash = new URLSearchParams(url.hash.slice(1));
   const error = url.searchParams.get('error_description') || hash.get('error_description') || url.searchParams.get('error') || hash.get('error');
 
-  if (error) return { kind: 'error', message: error.replace(/\+/g, ' ') };
+  if (error) return { kind: 'error', message: error.replaceAll('+', ' ') };
 
   if (url.searchParams.get('code')) return { kind: 'code', code: url.searchParams.get('code') };
 

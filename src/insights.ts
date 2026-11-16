@@ -729,7 +729,7 @@ export function practiceLevel(minutes: number, goal = 0) {
 // run order, since older summaries can lack a date).
 // One word across runs: lower case, without punctuation before or after it (inner marks, as in "9:30"
 // or "don't", stay). A token that is all punctuation keeps itself.
-const missedWordKey = (word: string) => word.toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
+const missedWordKey = (word: string) => word.toLowerCase().replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '') || word;
 
 export function recurringMissedWords(inputRuns: readonly unknown[], limit = 8) {
   const runs = analysisRuns(inputRuns);
@@ -819,7 +819,7 @@ export const MIN_PATTERN_SAMPLES = 10;
 // `lead` is where the bare word starts in `raw`.
 function bareWord(raw: string) {
   const lead = raw.search(/[\p{L}\p{N}]/u);
-  const word = raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+  const word = raw.replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
   const same = Array.from({ length: raw.length }, (_, k) => lead >= 0 && k >= lead && word[k - lead] === raw[k]);
 
   return { word, same, lead };

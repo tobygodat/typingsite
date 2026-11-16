@@ -343,9 +343,9 @@ export function shapeDescription(shapes: readonly BoardShape[], key: string | nu
   const { described, differs } = tellApart(shapes);
   const index = shapes.findIndex((shape) => shape.key === key);
   const part = described[index] || {};
-  const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
+  const shown = new Set(['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name)));
 
-  return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
+  return Object.entries(part).filter(([name, value]) => !shown.has(name) && !['setting', 'corpus', 'metric'].includes(name)
     && !lookup(USUAL, name)?.some((usual) => usual === value)).map(([name, value]) => named(name, value ?? '', true)).join(' · ');
 }
 
@@ -573,7 +573,7 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
   const known = identity ? knownSharing(identity) : { sharing: null, version: null };
   let sharing = known.sharing;
   // The sharing version that went with it (see versionOf): the newest this tab has taken, or null.
-  let latest = known.version;
+  let latestVersion = known.version;
   // Signed out: this device stops keeping whether the account shares.
   let closed = false;
   const isSharing = () => sharing === true;
@@ -582,7 +582,7 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
   function setSharing(value: boolean | null, at: number | null = null) {
     sharing = value;
 
-    if (at !== null) latest = at;
+    if (at !== null) latestVersion = at;
     const session = getSession();
 
     if (session && !closed) rememberSharing(session, value, at);
@@ -595,7 +595,7 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
   function held() {
     const kept = keptHere().version;
 
-    return latest === null ? kept : kept === null ? latest : Math.max(latest, kept);
+    return latestVersion === null ? kept : kept === null ? latestVersion : Math.max(latestVersion, kept);
   }
 
   // Sharing state only moves forward. A reply's state counts only if its version is newer than any this
@@ -615,9 +615,9 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
 
     const kept = keptHere();
 
-    if (kept.sharing !== null && kept.version !== null && (latest === null || kept.version > latest)) {
+    if (kept.sharing !== null && kept.version !== null && (latestVersion === null || kept.version > latestVersion)) {
       sharing = kept.sharing;
-      latest = kept.version;
+      latestVersion = kept.version;
 
       if (!sharesWaiting) version = kept.version;
     }
@@ -947,10 +947,10 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
   // waiting to go (see version). One no newer than what this tab took changes nothing (see adoptReply).
   // True when it counted.
   function adopt(kept: SharingState) {
-    if (kept.version !== null && latest !== null && kept.version <= latest) return false;
+    if (kept.version !== null && latestVersion !== null && kept.version <= latestVersion) return false;
     sharing = kept.sharing;
 
-    if (kept.version !== null) latest = kept.version;
+    if (kept.version !== null) latestVersion = kept.version;
 
     if (!sharesWaiting) version = kept.version;
 
@@ -1006,10 +1006,10 @@ export function createFriendsBoard(initial?: FriendsBoardOptions) {
       void lifetime.close();
       lifetime = new AsyncLifetime(accountLifetime());
       identity = session;
-      const known = session ? knownSharing(session) : { sharing: null, version: null };
-      sharing = known.sharing;
-      latest = known.version;
-      version = known.version;
+      const knownNow = session ? knownSharing(session) : { sharing: null, version: null };
+      sharing = knownNow.sharing;
+      latestVersion = knownNow.version;
+      version = knownNow.version;
       closed = false;
       generation += 1;
       toggles += 1;

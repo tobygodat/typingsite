@@ -31,7 +31,7 @@ interface GhostResultPorts { announce(message: string): void; repeat(): void }
 const CONDITION_KEYS = ['mode', 'duration', 'count', 'punctuation', 'numbers', 'quoteLength', 'difficulty', 'wordList',
   'correctionPolicy', 'language', 'corpus', 'metricVersion'] as const;
 
-const RACE_AGAIN: readonly GhostState[] = ['interrupted', 'unsendable', 'unreplayable', 'other-input', 'own'];
+const RACE_AGAIN: ReadonlySet<GhostState> = new Set(['interrupted', 'unsendable', 'unreplayable', 'other-input', 'own']);
 const inputOf = (value: { inputClass?: unknown }) => value.inputClass === 'touch' ? 'touch' : 'physical-keyboard';
 
 export function createGhostResult(accounts: AccountSession, practice: PracticeSession, inbox: InboxController) {
@@ -79,7 +79,7 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
       own: 'The ghost was your own recording.',
     };
 
-    const again = RACE_AGAIN.includes(ghost.state);
+    const again = RACE_AGAIN.has(ghost.state);
 
     publish({ visible: true, heading, rows, rule: outcomeRule(ghost), status: status[ghost.state] || '', action: again ? 'Race again' : retry ? 'Send again' : null });
   }
@@ -162,7 +162,7 @@ export function createGhostResult(accounts: AccountSession, practice: PracticeSe
       if (disposed) return;
 
       if (race?.state === 'failed') void submit();
-      else if (race && RACE_AGAIN.includes(race.state)) { race.run = null; ports?.repeat(); }
+      else if (race && RACE_AGAIN.has(race.state)) { race.run = null; ports?.repeat(); }
     },
     dispose() { disposed = true; },
   };
