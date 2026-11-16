@@ -365,9 +365,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 640 }
       await page.locator('#daily-history-panel summary').click();
       small.push(...await sweep(page, 'challenge, daily results'));
 
-      await new Promise((resolve) => supabase.races.handle(host.id, { p_action: 'create', p_data: {
+      await new Promise((resolve) => { supabase.races.handle(host.id, { p_action: 'create', p_data: {
         passage: 'The quick brown fox jumps over the lazy dog, twice over.', conditions: {}, displayName: 'Ada', inviteEmail: user.email,
-      } }, resolve));
+      } }, resolve); });
       await page.clock.fastForward(11000);
       await expect(page.locator('#challenge-toast')).toBeVisible();
       small.push(...await sweep(page, 'challenge toast', '#challenge-toast'));

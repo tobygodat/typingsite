@@ -21,7 +21,7 @@ async function ownServer() {
   const url = `http://127.0.0.1:${port}/`;
   await expect.poll(() => fetch(url).then((response) => response.status, () => 0)).toBe(200);
 
-  return { url, stop: () => new Promise((resolve) => (server.exitCode === null ? server.once('exit', resolve).kill() : resolve())) };
+  return { url, stop: () => new Promise((resolve) => { if (server.exitCode === null) server.once('exit', resolve).kill(); else resolve(); }) };
 }
 
 async function goOffline(page) {

@@ -692,7 +692,12 @@ function answerAfter(init, ms, answer) {
   return new Promise((resolve, reject) => {
     const { signal } = init;
 
-    if (signal?.aborted) return reject(signal.reason);
+    if (signal?.aborted) {
+      reject(signal.reason);
+
+      return;
+    }
+
     signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
 
     if (ms !== undefined) setTimeout(() => { try { resolve(answer()); } catch (error) { reject(error); } }, ms);
@@ -702,7 +707,7 @@ function answerAfter(init, ms, answer) {
 // Starts a deletion on a mocked clock and reports whether it has settled after each advance.
 async function timedDeletion(t, handler, session) {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: Date.now() });
-  const flush = async () => { for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
+  const flush = async () => { for (let turn = 0; turn < 5; turn += 1) await new Promise((resolve) => { setImmediate(resolve); }); };
   const outcome = { settled: false, error: null };
   const calls = [];
   const store = new Map();

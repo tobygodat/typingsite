@@ -67,7 +67,7 @@ class Cdp {
   close() { this.socket.close(); }
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 async function waitFor(fn, limitMs = 10000) {
   const end = Date.now() + limitMs;

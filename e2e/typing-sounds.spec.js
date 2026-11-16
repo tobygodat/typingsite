@@ -33,11 +33,11 @@ async function stubAudio(page) {
       resume() { return this.settle('running'); }
       suspend() { return this.settle('suspended'); }
       settle(state) {
-        return new Promise((resolve) => setTimeout(() => {
+        return new Promise((resolve) => { setTimeout(() => {
           if (this.state !== 'closed') { this.state = state; log.state = state; log.states.push(state); }
 
           resolve();
-        }));
+        }); });
       }
       close() {
         log.closed += 1;

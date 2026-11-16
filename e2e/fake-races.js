@@ -215,7 +215,7 @@ export class FakeRaces {
     if (once) this.holds.delete(action);
 
     const answer = (status, json) => (status === 200 && this.held && this.holding.has(action)
-      ? new Promise((release) => this.held.push(release)).then(() => send(status, json)) : send(status, json));
+      ? new Promise((release) => { this.held.push(release); }).then(() => send(status, json)) : send(status, json));
 
     const reply = once ? async (status, json) => {
       await once;

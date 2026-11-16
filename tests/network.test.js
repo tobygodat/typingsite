@@ -21,7 +21,7 @@ async function service(run) {
     }
   });
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
   const origin = `http://127.0.0.1:${server.address().port}`;
   const signals = [];
   globalThis.fetch = (url, options) => {
@@ -34,12 +34,12 @@ async function service(run) {
   finally {
     globalThis.fetch = nativeFetch;
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => { server.close(resolve); });
   }
 }
 
 const until = async (predicate) => {
-  for (let n = 0; n < 100 && !predicate(); n += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  for (let n = 0; n < 100 && !predicate(); n += 1) await new Promise((resolve) => { setTimeout(resolve, 5); });
   assert.ok(predicate(), 'request reached the local service');
 };
 
@@ -130,7 +130,7 @@ test('a remotely committed friend mutation is reconciled by a read before the ne
     }
   });
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
   const origin = `http://127.0.0.1:${server.address().port}`;
   globalThis.fetch = (url, options) => nativeFetch(origin + new URL(url).pathname, options);
   const session = { user: { id: 'owner' }, access_token: 'token', refresh_token: 'refresh', expires_at: 9999999999 };
@@ -148,7 +148,7 @@ test('a remotely committed friend mutation is reconciled by a read before the ne
   } finally {
     globalThis.fetch = nativeFetch;
     server.closeAllConnections();
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => { server.close(resolve); });
   }
 });
 
@@ -164,7 +164,7 @@ test('an identity replacement cancels queued friend changes before they send or 
     signal = received;
     sent += 1;
 
-    return new Promise((resolve, reject) => received.addEventListener('abort', () => reject(received.reason), { once: true }));
+    return new Promise((resolve, reject) => { received.addEventListener('abort', () => reject(received.reason), { once: true }); });
   });
 
   const second = queue.change(async () => { sent += 1;

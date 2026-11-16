@@ -15,7 +15,7 @@ async function finishRun(page) {
 
 async function resize(page, viewport) {
   await page.setViewportSize(viewport);
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); }));
 }
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth);

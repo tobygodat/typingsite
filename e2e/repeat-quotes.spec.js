@@ -7,7 +7,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
 async function shot(page, name) {
   if (!process.env.SCREENSHOTS) return;
   // Let theme cross-fades and screen fades finish (the idle caret's breathing never does).
-  await page.evaluate(() => Promise.race([new Promise((done) => setTimeout(done, 1000)), Promise.all(document.getAnimations()
+  await page.evaluate(() => Promise.race([new Promise((done) => { setTimeout(done, 1000); }), Promise.all(document.getAnimations()
     .filter((animation) => (animation instanceof CSSTransition || animation instanceof CSSAnimation) && animation.effect?.getComputedTiming().iterations !== Infinity)
     .map((animation) => animation.finished.catch(() => undefined)))]));
   await page.screenshot({ path: `docs/screenshots/repeat-quotes/${name}.png` });

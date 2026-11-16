@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Effect } from 'effect';
 import { AsyncLifetime, abortable, deadline, within, WorkCancelled } from '../src/async-runtime.js';
 
-const turn = () => new Promise((resolve) => setImmediate(resolve));
+const turn = () => new Promise((resolve) => { setImmediate(resolve); });
 
 function stalled() {
   let observed;
@@ -80,7 +80,7 @@ test('disposing an account releases the shared deadline signal and its in-flight
   const pending = account.run(deadline((received) => {
     signal = received;
 
-    return new Promise((resolve, reject) => received.addEventListener('abort', () => reject(received.reason), { once: true }));
+    return new Promise((resolve, reject) => { received.addEventListener('abort', () => reject(received.reason), { once: true }); });
   }, 30000, (cause) => cause));
 
   const rejected = assert.rejects(pending, WorkCancelled);

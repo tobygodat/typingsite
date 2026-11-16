@@ -19,7 +19,7 @@ async function setTape(page, on) {
 }
 
 // The tape and caret after the next frames have measured, in px from the visible left edge.
-const tapeState = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+const tapeState = (page) => page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => {
   const display = document.getElementById('text-display');
 
   const leftOf = (node) => {
@@ -43,13 +43,13 @@ const tapeState = (page) => page.evaluate(() => new Promise((resolve) => request
     caret: current ? leftOf(current) - offset : null,
     word: word ? { left: leftOf(word) - offset, right: leftOf(word) + word.offsetWidth - offset, start: current === word.firstElementChild } : null,
   });
-}))));
+})); }));
 
 // The x along the line (untransformed) of every mounted word in view or a line-width behind it, the
 // scroll, and where the trim spacer ends. Words past the right edge are left out: WebKit rounds each
 // letter's width to its layout unit, so a word ahead of the view can shift by a pixel or two as
 // letters before it change, while nothing in view moves.
-const lineState = (page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+const lineState = (page) => page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => {
   const display = document.getElementById('text-display');
   const origin = display.getBoundingClientRect().left;
   const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
@@ -65,7 +65,7 @@ const lineState = (page) => page.evaluate(() => new Promise((resolve) => request
 
   const spacer = display.querySelector('.passage-spacer');
   resolve({ typed: document.getElementById('typing-input').value.length, offset, spacerEnd: spacer ? spacer.getBoundingClientRect().right - origin : null, words });
-}))));
+})); }));
 
 // The largest move of any word mounted in both states.
 const drift = (a, b) => Math.max(0, ...Object.keys(b.words).filter((key) => key in a.words).map((key) => Math.abs(b.words[key] - a.words[key])));
@@ -387,14 +387,14 @@ test('the pace caret rides the tape and keeps gliding through a step', async ({ 
   expect(states.some((state) => state.stepped)).toBe(true);
 
   // On screen, the pace caret sits at its place on the line less the tape's scroll: it moves with the line.
-  const ride = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => {
+  const ride = () => page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => {
     const display = document.getElementById('text-display');
     const node = display.querySelector('.ghost-caret');
     const scroll = new DOMMatrix(getComputedStyle(display).transform).m41;
     const along = Number(/translate3d\((-?[\d.]+)px/.exec(node.style.transform)?.[1]);
     const screen = node.getBoundingClientRect().left - document.getElementById('typing-wrap').getBoundingClientRect().left;
     resolve({ along, expected: along + scroll, screen });
-  })));
+  }); }));
 
   const first = await ride();
   expect(Math.abs(first.screen - first.expected)).toBeLessThanOrEqual(1);
@@ -451,14 +451,14 @@ test.describe('narrow phone with large text', () => {
       await page.keyboard.press('Backspace');
 
       // The letter Backspace would delete next, in px from the visible left edge.
-      const left = await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => {
+      const left = await page.evaluate(() => new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(() => {
         const display = document.getElementById('text-display');
         const match = /translateX\((-?[\d.]+)px\)/.exec(display.style.transform);
         const offset = match ? -Number(match[1]) : 0;
         const letters = [...display.querySelectorAll('.char')];
         const before = letters[letters.indexOf(display.querySelector('.char.current')) - 1];
         resolve(before ? before.getBoundingClientRect().left - display.getBoundingClientRect().left - offset : null);
-      }))));
+      })); }));
 
       if (left !== null) expect(left, `after ${index + 1} backspaces`).toBeGreaterThanOrEqual(11.5);
     }

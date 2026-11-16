@@ -12,7 +12,7 @@ const tinted = (page) => page.locator('#text-display .word').evaluateAll((nodes)
 // The highlighted word, how far the glide's edges are from it, and whether the glide is moving, two frames
 // on: the caret measure (and with it the glide) runs on the next animation frame after a key.
 const glide = (page, display = '#text-display') => page.locator(display).evaluate(async (node) => {
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); });
   const shape = node.querySelector('.word-glide');
   const word = node.querySelector(document.body.dataset.wordHighlight === 'next' ? '.word-next' : '.word-current');
   const start = shape.getBoundingClientRect();
