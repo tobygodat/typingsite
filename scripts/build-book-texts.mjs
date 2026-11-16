@@ -105,13 +105,13 @@ export function normalise(raw) {
     .split('\n')
     .filter((line) => !/^[\s*]+$/.test(line) || !line.includes('*'))
     .join('\n')
-    .replace(/_([^_]+)_/g, '$1');
+    .replaceAll(/_([^_]+)_/g, '$1');
 
   for (const [pattern, value] of REPLACEMENTS) text = text.replace(pattern, value);
 
-  const paragraphs = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const paragraphs = text.normalize('NFD').replaceAll(/[\u0300-\u036f]/g, '')
     .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+    .map((paragraph) => paragraph.replaceAll(/\s+/g, ' ').trim())
     .filter(Boolean);
 
   const joined = paragraphs.join(' ');
@@ -128,7 +128,7 @@ async function build(dir) {
   const books = {};
 
   for (const source of SOURCES) {
-    const raw = (await readFile(path.join(dir, source.file), 'utf8')).replace(/\r/g, '');
+    const raw = (await readFile(path.join(dir, source.file), 'utf8')).replaceAll('\r', '');
     const all = raw.split('\n');
     const start = findLine(all, /^\*\*\* START OF THE PROJECT GUTENBERG EBOOK /);
     const stop = findLine(all, /^\*\*\* END OF THE PROJECT GUTENBERG EBOOK /, start);

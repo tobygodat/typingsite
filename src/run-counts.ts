@@ -98,7 +98,7 @@ export function runCountTotals(value: unknown, { from = null, to = null }: { fro
 const mintCounter = () => {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(6));
 
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_');
 };
 
 // One tab's counter. It remembers what it has written, so it can tell when a clear (here or merged in from

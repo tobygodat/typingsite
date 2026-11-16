@@ -30,7 +30,7 @@ function measure({ root, exempt }) {
 
   const describe = (el) => {
     const classes = (el.getAttribute('class') || '').trim().split(/\s+/).filter(Boolean).map((c) => `.${c}`).join('');
-    const text = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || '').replace(/\s+/g, ' ').trim();
+    const text = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || '').replaceAll(/\s+/g, ' ').trim();
 
     return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${classes}${text ? ` “${text.slice(0, 36)}”` : ''}`;
   };

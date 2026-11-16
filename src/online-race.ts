@@ -893,7 +893,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
         const prefixErrors = [...baseTyped].filter((char, index) => char !== target[index]).length;
         // The service takes printable ASCII, as passages are: any other letter (an accent key's é) is a
         // mistake, sent as a stand-in that differs from the letter expected there.
-        const typed = replay.typed.replace(/[^ -~]/g, (char, index) => standIn(target[index] ?? ''));
+        const typed = replay.typed.replaceAll(/[^ -~]/g, (char, index) => standIn(target[index] ?? ''));
         // A finished run sends its keystroke trace for the graph and replay; a race resumed after a reload
         // has no record of the keys before it, so it sends none.
         const trace = finishRequested && !baseTyped ? encodeTrace(attempt) : null;

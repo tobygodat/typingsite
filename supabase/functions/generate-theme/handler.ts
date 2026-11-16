@@ -161,7 +161,7 @@ export function cleanTheme(raw: unknown): { name: string; mode: string; colors: 
     clean[token] = value.toLowerCase();
   }
 
-  const words = typeof name === 'string' ? name.replace(/[^A-Za-z0-9 '-]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME).trim() : '';
+  const words = typeof name === 'string' ? name.replaceAll(/[^A-Za-z0-9 '-]/g, '').replaceAll(/\s+/g, ' ').trim().slice(0, MAX_NAME).trim() : '';
   const fixed = repairContrast(clean);
 
   return { name: words || 'generated', mode: themeMode(fixed.ground), colors: fixed };
@@ -195,7 +195,7 @@ export async function handleGenerateTheme(request: Request, deps: ThemeDeps | nu
 
   try {
     const body = await request.json();
-    vibe = typeof body?.vibe === 'string' ? body.vibe.replace(/\s+/g, ' ').trim() : '';
+    vibe = typeof body?.vibe === 'string' ? body.vibe.replaceAll(/\s+/g, ' ').trim() : '';
   } catch {
     // Settled below.
   }
@@ -221,7 +221,7 @@ export async function handleGenerateTheme(request: Request, deps: ThemeDeps | nu
         model: MODEL,
         max_tokens: 4000,
         system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `<vibe>${vibe.replace(/[<>]/g, '')}</vibe>` }],
+        messages: [{ role: 'user', content: `<vibe>${vibe.replaceAll(/[<>]/g, '')}</vibe>` }],
         output_config: { effort: 'low', format: { type: 'json_schema', schema: THEME_SCHEMA } },
       }),
     });

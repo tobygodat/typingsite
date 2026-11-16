@@ -73,11 +73,11 @@ export function promptDeck(random = Math.random, avoid: string | null = null) {
 const FORMAT = /\p{Cf}/gu;
 
 export function countCharacters(text: unknown) {
-  return [...String(text).replace(FORMAT, '')].length;
+  return [...String(text).replaceAll(FORMAT, '')].length;
 }
 
 export function countWords(text: unknown) {
-  return String(text).replace(FORMAT, '').trim().split(/\s+/u).filter(Boolean).length;
+  return String(text).replaceAll(FORMAT, '').trim().split(/\s+/u).filter(Boolean).length;
 }
 
 // The edits one key makes at the caret, and so the only ones counted: a character, Enter,

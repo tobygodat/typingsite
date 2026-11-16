@@ -635,17 +635,17 @@ const TYPABLE = /^[\x20-\x7E]$/;
 // applies last, so a saved passage is stable across reloads; pass max = Infinity to measure the full text.
 export function normalizeCustomText(value: unknown, max = CUSTOM_MAX) {
   return String(value || '')
-    .replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
-    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
-    .replace(/\u2026/g, '...')
+    .replaceAll(/[\u2018\u2019\u201A\u201B\u2032]/g, "'")
+    .replaceAll(/[\u201C\u201D\u201E\u201F\u2033]/g, '"')
+    .replaceAll(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replaceAll('…', '...')
     .normalize('NFKC')
-    .replace(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
-    .replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
+    .replaceAll(/[\t\n\v\f\r\u0085\u2028\u2029]/g, ' ')
+    .replaceAll(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '')
     .normalize('NFD')
-    .replace(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
+    .replaceAll(/([\x20-\x7E])[\u0300-\u036F]+/g, '$1')
     .normalize('NFC')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim()
     .slice(0, max)
     .trim();
@@ -1002,7 +1002,7 @@ export function recommendTarget(attempts: readonly unknown[], compatibleConditio
 }
 
 export function normalizeManualTarget(value: unknown) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
+  return String(value || '').trim().toLowerCase().replaceAll(/[^a-z]/g, '').slice(0, 8);
 }
 
 // Every real word a drill can draw on: the word list, the drill words and the quotes' words.

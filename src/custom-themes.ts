@@ -112,7 +112,7 @@ export function contrastIssues(colors: ThemeColors) {
   return issues;
 }
 
-export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');
+export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? value.replaceAll(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');
 
 // A stored theme as this build uses it: hex colours for every base token and any derived ones
 // overridden, nothing else. Anything short of that is dropped, as are repeats and any past the cap.
@@ -166,4 +166,4 @@ export function readCustomThemes(text: string) {
   return lastList;
 }
 
-export const newThemeId = () => `${CUSTOM_PREFIX}${(globalThis.crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`).replace(/[^a-z0-9]/gi, '').slice(0, 12)}`;
+export const newThemeId = () => `${CUSTOM_PREFIX}${(globalThis.crypto?.randomUUID?.() || `${Date.now()}${Math.random()}`).replaceAll(/[^a-z0-9]/gi, '').slice(0, 12)}`;

@@ -10,7 +10,7 @@ const seeded = (seed) => () => {
 };
 
 // A word as the repeat rule sees it: lowercase, without the marks around it. Numbers and dashes have none.
-const bare = (word) => word.toLowerCase().replace(/^[^a-z]+|[^a-z]+$/g, '');
+const bare = (word) => word.toLowerCase().replaceAll(/^[^a-z]+|[^a-z]+$/g, '');
 const repeats = (text) => text.split(' ').map(bare).filter((word, i, words) => word && (word === words[i - 1] || word === words[i - 2]));
 const settings = [[false, false], [true, false], [false, true], [true, true]];
 

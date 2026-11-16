@@ -128,7 +128,7 @@ export function createThemeEditor(initial?: ThemeEditorCallbacks) {
 
     if (!callbacks.signedIn()) return callbacks.signIn();
     const current = view.getSnapshot();
-    const vibe = current.vibe.replace(/\s+/g, ' ').trim();
+    const vibe = current.vibe.replaceAll(/\s+/g, ' ').trim();
 
     if (!vibe || current.generating) return host?.focusVibe();
     const request = new AbortController();

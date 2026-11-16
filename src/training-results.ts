@@ -215,7 +215,7 @@ function evidenceWords(target: string | null, source: ConditionLabelSource) {
     if (!evidenceRun(run) || keyboardOf(run.conditions) !== keyboard) continue;
 
     for (const word of run.missedWords || []) {
-      const bare = word.toLowerCase().replace(/[^a-z]/g, '');
+      const bare = word.toLowerCase().replaceAll(/[^a-z]/g, '');
 
       if (bare.includes(String(target)) && !words.includes(bare)) words.push(bare);
 

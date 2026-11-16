@@ -50,7 +50,7 @@ export function formatSpeed(wpm: number, { bare = false, signed = false, whole =
 
 // A unit word in a template: {unit} is the unit, and {wpm:…} or {cpm:…} is text only that unit shows.
 export function unitText(template: string, unit: string = shown) {
-  return template.replace(/\{(unit|wpm|cpm)(?::([^}]*))?\}/g, (_, key, text) => (key === 'unit' ? unit : key === unit ? text : ''));
+  return template.replaceAll(/\{(unit|wpm|cpm)(?::([^}]*))?\}/g, (_, key, text) => (key === 'unit' ? unit : key === unit ? text : ''));
 }
 
 // Shows a speed kept in wpm on an element in the form its data-bare, data-signed and data-whole ask for, or a dash

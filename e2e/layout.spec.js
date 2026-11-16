@@ -264,7 +264,7 @@ test('Literata and Geist Mono load from this origin', async ({ page }) => {
   const fonts = [];
   page.on('response', (response) => { if (/\/(?:src\/fonts|assets)\/.*\.(?:ttf|woff2)$/.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
   await openApp(page);
-  const loaded = await page.evaluate(() => [...document.fonts].flatMap((face) => (face.status === 'loaded' ? [face.family.replace(/"/g, '')] : [])));
+  const loaded = await page.evaluate(() => [...document.fonts].flatMap((face) => (face.status === 'loaded' ? [face.family.replaceAll('"', '')] : [])));
   expect(loaded).toEqual(expect.arrayContaining(['Literata', 'Geist Mono']));
   await expect(page.locator('#text-display')).toHaveCSS('font-family', /^"?Literata/);
   expect(fonts.length).toBeGreaterThan(0);

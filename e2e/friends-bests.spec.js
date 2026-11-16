@@ -131,7 +131,7 @@ function circle(supabase) {
 }
 
 // Each row as it reads aloud: name, value and unit, then the detail.
-const rowTexts = (page) => page.locator('#board-bests .board-row').evaluateAll((rows) => rows.map((row) => row.textContent.replace(/\s+/g, ' ').trim()));
+const rowTexts = (page) => page.locator('#board-bests .board-row').evaluateAll((rows) => rows.map((row) => row.textContent.replaceAll(/\s+/g, ' ').trim()));
 
 const scrollBelow = (page, selector, offset) => page.evaluate(([css, gap]) => {
   window.scrollTo(0, document.querySelector(css).getBoundingClientRect().top + window.scrollY - gap);

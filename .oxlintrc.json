@@ -38,6 +38,7 @@
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-array-filter-map": "error",
+    "unicorn/prefer-string-replace-all": "error",
 
     // "Shape" is Stilltype's term for a test's mode and length, shared with docs/ui-contract.md, DOM ids (#board-shape) and UI copy; renaming 356 symbols would split the code from that contract.
     "anti-slop/no-shape-in-symbol-names": "off",

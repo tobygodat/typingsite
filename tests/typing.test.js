@@ -799,7 +799,7 @@ test('standard text is fresh per seed, reproducible from it, and follows the v1 
     // One quote segment: the second sentence, in double quotation marks, generated like the rest.
     assert.equal(passage.text.split('"').length, 3);
     assert.match(passage.text, /^[A-Z][^.?"]*[.?] "[A-Z][^"]*[.?]" [A-Z]/);
-    const generated = passage.text.replace(/"/g, '').split(' ');
+    const generated = passage.text.replaceAll('"', '').split(' ');
     assert.ok(generated.some((word) => /^\d+[,.?]?$/.test(word)), 'some numbers');
     assert.ok(generated.some((word) => word.endsWith(',')) && generated.some((word) => word.endsWith('.')), 'commas and full stops');
     const words = generated.map((word) => word.replace(/[,.?]$/, '')).filter((word) => !/^\d+$/.test(word));

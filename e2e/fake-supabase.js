@@ -27,7 +27,7 @@ const eqFilter = (url, column) => {
 
 const pick = (row, select) => (select ? Object.fromEntries(select.split(',').map((column) => [column, row[column]])) : row);
 
-const base64url = (buffer) => buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const base64url = (buffer) => buffer.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
 
 export class FakeSupabase {
   constructor() {

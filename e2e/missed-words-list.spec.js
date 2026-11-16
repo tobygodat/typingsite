@@ -4,7 +4,7 @@ import { test, expect, openApp, openView, passageText, typeInto, finishDrill, si
 
 // Common words that recur from quote to quote, so the same word gets missed in more than one run.
 const TARGETS = ['the', 'and', 'a', 'of', 'to', 'in', 'it', 'that', 'for', 'was'];
-const bare = (raw) => raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
+const bare = (raw) => raw.replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
 
 // Types `text` at `delay` ms a key, with one wrong-then-fixed lowercase letter in the
 // first occurrence of each target word, and returns the words missed.
