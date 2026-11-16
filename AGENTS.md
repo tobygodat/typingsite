@@ -15,18 +15,18 @@ A typing-practice web app built around one loop: type a test, see which letter p
 
 ## Before asking to merge
 
-- `npm ci`
-- `npm run lint`
-- `npm test`
-- `npm run build`
-- While iterating, run `npm run test:e2e:quick` and `npm run test:e2e:changed` (the specs your branch changed). Set `CHROMIUM` and `E2E_PORT` as `docs/CONVENTIONS.md` says.
+- `bun install --frozen-lockfile`
+- `bun run lint`
+- `bun run test` (not `bun test`, which is Bun's own test runner)
+- `bun run build`
+- While iterating, run `bun run test:e2e:quick` and `bun run test:e2e:changed` (the specs your branch changed). Set `CHROMIUM` and `E2E_PORT` as `docs/CONVENTIONS.md` says.
 - Open a trail, not a bare PR: `entire trail create`, then `entire trail ci-pr` (`docs/CONVENTIONS.md`, Trails). Its gates must pass before you ask to merge.
-- Don't run the full suite locally. Push, and CI runs it once at your head: "Unit and build checks" and the six "Browser e2e (chromium n/6)" shards run on GitHub's hosted runners, and must be green at your head. The shards run all of Chromium, unless your PR changes only files no browser test can see (then none) or only e2e specs (then those). Run `npm run test:e2e` yourself only when CI can't.
-- When a change touches input, layout, motion or anything engine-specific, request the selected Firefox/WebKit compatibility set once, when the PR is otherwise ready: `gh workflow run ci.yml --ref <branch> -f browsers=compat`. This does not repeat Chromium. Report that run in the PR. Reserve `browsers=all` for explicit full-engine diagnostics. To chase an untagged failure, run that case alone with `E2E_FULL=1 E2E_BROWSERS=firefox npx playwright test e2e/<spec> -g <case>`.
+- Don't run the full suite locally. Push, and CI runs it once at your head: "Unit and build checks" and the six "Browser e2e (chromium n/6)" shards run on GitHub's hosted runners, and must be green at your head. The shards run all of Chromium, unless your PR changes only files no browser test can see (then none) or only e2e specs (then those). Run `bun run test:e2e` yourself only when CI can't.
+- When a change touches input, layout, motion or anything engine-specific, request the selected Firefox/WebKit compatibility set once, when the PR is otherwise ready: `gh workflow run ci.yml --ref <branch> -f browsers=compat`. This does not repeat Chromium. Report that run in the PR. Reserve `browsers=all` for explicit full-engine diagnostics. To chase an untagged failure, run that case alone with `E2E_FULL=1 E2E_BROWSERS=firefox bunx playwright test e2e/<spec> -g <case>`.
 - One independent checker proves the final head in its own worktree and returns `PASS`, `PASS+NOTES` or `FAIL` with evidence. It cites existing CI runs (`gh run list --workflow=ci.yml --commit <sha>`) without repeating passing suites. For test-policy changes, prove the real selection and execution. For product changes, check the affected cases and drive the flows below. Green CI alone is not the independent verdict.
 - Batch findings into that one final proof. Demonstrated in-scope correctness, security or data failures block. Optional tests, wording and unrelated existing flakes are notes. After a fix, check the affected case and its impact. Reopen independent review only for a demonstrated blocker in the changed behavior. Never repeat passing whole suites at the same head.
 - Classify retries as product failures, test flakes or infrastructure failures. A retry is not a reason to rerun green CI. Diagnose the specific failure and allow at most one targeted rerun by default. Do not start repeated 20-, 100- or 200-run campaigns without an explicit diagnostic request.
-- Drive these flows with `agent-browser` against `npm run dev`, and attach screenshots:
+- Drive these flows with `agent-browser` against `bun run dev`, and attach screenshots:
   - **Practice.** Open `/`, pick words 10, and type the passage. The results card shows wpm, accuracy, time and the speed trace, and Run again starts a fresh passage.
   - **Train.** Start Train. It runs a 30-second drill, then a retest on fresh text, and shows the comparison.
   - Any flow your change touches.

@@ -2,7 +2,7 @@
 // Playwright's --shard cuts them into equal counts in file order and leaves the slow specs together.
 //
 //   node scripts/e2e-shards.mjs <current>/<total> <file>   write shard <current>'s tests to <file>,
-//                                                          then: npx playwright test --test-list <file>
+//                                                          then: bunx playwright test --test-list <file>
 //                                                          E2E_SPECS='["e2e/a.spec.js"]' keeps only those
 //                                                          files' tests (scripts/e2e-scope.mjs)
 //   node scripts/e2e-shards.mjs --refresh <dir>...         rewrite scripts/e2e-durations.json from the

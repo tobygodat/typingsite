@@ -2,8 +2,8 @@
 // the shipped learner-decay-timing@1. Deterministic from its seeds: the work is split across worker threads by seed and
 // cell, and every result is put back in seed and cell order before anything is summed.
 //
-//   npm run evaluate:learner -- --rule 0019 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go.mjs ...)
-//   npm run evaluate:learner -- --rule 0019 --validation-only
+//   bun run evaluate:learner -- --rule 0019 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go.mjs ...)
+//   bun run evaluate:learner -- --rule 0019 --validation-only
 //
 // Two simulators. The guard world is ADR 0015's, with drills saved at run 20, scored on ADR 0015's measures. The season
 // is months of practice, light and heavy, careful and careless, with and without bad days, in which a drill fixes a
