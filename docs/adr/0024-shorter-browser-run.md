@@ -26,8 +26,9 @@ Every run ran each of the 1,030 tests exactly once and skipped the same 32. The 
 - The deploy needs the build and the unit job, so master never deploys a commit that failed lint, typecheck or the unit tests.
 - On master, "Browser after deploy" runs whether or not the unit job passed, where the old workflow skipped the browser jobs after a failed unit job. That is more coverage, not less. It still skips them when a newer push cancelled the unit job, because that push's run tests master again.
 - A "Browser e2e" job needs the build, the unit job and both browser calls, and always runs. It passes only when the build, the unit job and the browser call for this event (on a push "Browser after deploy", otherwise "Browser") all succeeded. A skipped, failed or cancelled one fails it.
+- The gate keeps the latest check of each name at a commit, and a manual run on a PR branch reports on the PR head. So on a manual run the build, unit and summary jobs are named "Build (manual)", "Unit and build checks (manual)" and "Browser e2e (manual)". A manual run can't replace a PR run's gated checks, and a compat run's green summary, which ran no Chromium, can't hide a red shard.
 - Entire's merge gate requires checks by name. The list lives in Entire's trail gate settings, not in this repo, and it names "Build", "Unit and build checks" and "Browser e2e". The summary job keeps that list the same when the shard count changes.
-- The checks are "Build", "Unit and build checks", "Browser e2e", "Browser / e2e (chromium n/12)", and on master "Browser after deploy / e2e (chromium n/12)" and "Browser after deploy / compat (firefox|webkit)".
+- The checks on a PR or push are "Build", "Unit and build checks", "Browser e2e", "Browser / e2e (chromium n/12)", and on master "Browser after deploy / e2e (chromium n/12)" and "Browser after deploy / compat (firefox|webkit)".
 
 ## Consequences
 

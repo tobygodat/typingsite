@@ -21,8 +21,10 @@ permissions:
 jobs:
   # Builds dist/ once per run, as soon as the packages are installed, so the e2e jobs need not wait for
   # lint, typecheck and the unit tests. The unit tests, the e2e jobs and the deploy all use this dist/.
+  # A manual run reports its gated jobs under "(manual)" names, so it can never replace a PR or push run's
+  # checks in Entire's merge gate, which keeps the latest check of each name at a commit.
   build:
-    name: Build
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Build (manual)' || 'Build' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
@@ -62,7 +64,7 @@ jobs:
           retention-days: 7
 
   unit:
-    name: Unit and build checks
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Unit and build checks (manual)' || 'Unit and build checks' }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -146,7 +148,7 @@ jobs:
   # count (docs/adr/0024-shorter-browser-run.md). It passes only when the build, the unit job and this
   # event's browser jobs all succeeded. It always runs, so a failed or skipped dependency fails it.
   e2e-summary:
-    name: Browser e2e
+    name: ${{ github.event_name == 'workflow_dispatch' && 'Browser e2e (manual)' || 'Browser e2e' }}
     needs: [build, unit, e2e, e2e-after-deploy]
     if: always()
     runs-on: ubuntu-latest
