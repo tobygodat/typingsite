@@ -282,8 +282,8 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
 
-  const DISPLAY_PREFERENCES = ['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
-    ...TRAINING_PREFERENCES];
+  const DISPLAY_PREFERENCES = new Set(['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
+    ...TRAINING_PREFERENCES]);
 
   const runInProgress = () => runActive || localRaceRunning();
 
@@ -311,14 +311,14 @@ export async function attachApplication({ practice, learning, palette, settings:
     for (const key of new Set([...Object.keys(stored), ...Object.keys(learning.preferences)])) {
       if (key === 'keybindings' ? JSON.stringify(next[key]) === JSON.stringify(stored[key]) : next[key] === stored[key]) continue;
 
-      if (!conditions && !DISPLAY_PREFERENCES.includes(key)) {
+      if (!conditions && !DISPLAY_PREFERENCES.has(key)) {
         preferencesWaiting = true;
         continue;
       }
 
       next[key] = stored[key];
 
-      if (!DISPLAY_PREFERENCES.includes(key)) changedConditions = true;
+      if (!DISPLAY_PREFERENCES.has(key)) changedConditions = true;
     }
 
     const json = JSON.stringify(next);
@@ -1507,7 +1507,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   function importSettings(result: ImportedSettings) {
     const keys = Object.keys(result.preferences);
-    const conditions = keys.some((key) => !DISPLAY_PREFERENCES.includes(key) && !['paceCaret', 'paceWpm'].includes(key));
+    const conditions = keys.some((key) => !DISPLAY_PREFERENCES.has(key) && !['paceCaret', 'paceWpm'].includes(key));
     learning.preferences = validPreferences({ ...learning.preferences, ...result.preferences });
 
     if (keys.includes('mode')) editors.customOpen = false;

@@ -3,7 +3,7 @@ import { runRecord } from '../src/insights.js';
 import { test, expect, openApp, openView, passageText, typeInto, finishDrill, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
 
 // Common words that recur from quote to quote, so the same word gets missed in more than one run.
-const TARGETS = ['the', 'and', 'a', 'of', 'to', 'in', 'it', 'that', 'for', 'was'];
+const TARGETS = new Set(['the', 'and', 'a', 'of', 'to', 'in', 'it', 'that', 'for', 'was']);
 const bare = (raw) => raw.replaceAll(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').toLowerCase();
 
 // Types `text` at `delay` ms a key, with one wrong-then-fixed lowercase letter in the
@@ -17,7 +17,7 @@ async function typeWithMisses(page, text, delay) {
     const typed = index < words.length - 1 ? `${raw} ` : raw;
     const word = bare(raw);
     // A lowercase letter, so the miss is recorded as the bare word (a capital would keep "The").
-    const at = TARGETS.includes(word) && !missed.has(word) ? [...raw].findIndex((char) => /\p{Ll}/u.test(char)) : -1;
+    const at = TARGETS.has(word) && !missed.has(word) ? [...raw].findIndex((char) => /\p{Ll}/u.test(char)) : -1;
 
     if (at < 0) {
       await page.keyboard.type(typed, { delay });

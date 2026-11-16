@@ -656,11 +656,11 @@ test('a row an older build saved later keeps the settings it lacks from the copy
 // Builds from before merging synced whole copies (the copy saved later replaced the other) and cleared
 // history by saving an empty copy, with no marker. A copy as one of them saved it: none of the fields
 // only merging writes, and its own updatedAt.
-const MERGE_ONLY = ['preferencesAt', 'mergeStamp', 'legacyClearedAt', 'historyClearedAt', 'appliedClears', 'heardClears',
-  'historyClearedIds', 'undoneClears'];
+const MERGE_ONLY = new Set(['preferencesAt', 'mergeStamp', 'legacyClearedAt', 'historyClearedAt', 'appliedClears', 'heardClears',
+  'historyClearedIds', 'undoneClears']);
 
 const savedByOlderBuild = (data, updatedAt, over = {}) => ({
-  ...Object.fromEntries(Object.entries(data).filter(([key]) => !MERGE_ONLY.includes(key))), ...over, updatedAt,
+  ...Object.fromEntries(Object.entries(data).filter(([key]) => !MERGE_ONLY.has(key))), ...over, updatedAt,
 });
 
 const CLEARED = { attempts: [], runs: [], loops: [], seenTextIds: [], bests: {} };

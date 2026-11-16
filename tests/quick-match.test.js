@@ -822,7 +822,7 @@ function interleave(seed, names, steps = 1200) {
 
     for (const user of quick.ratings.keys()) assert.deepEqual(quick.rating(user), now(user), `${user}'s rating is not the sum of its changes (seed ${seed})`);
 
-    const settled = [...quick.results.values()].map((list) => list.find((row) => row.rated && !row.reason) ? 'decided' : list.some((row) => row.rated) ? 'walkover' : 'unrated');
+    const settled = [...quick.results.values()].map((list) => list.some((row) => row.rated && !row.reason) ? 'decided' : list.some((row) => row.rated) ? 'walkover' : 'unrated');
 
     return { rooms: rooms.length, started: started.length, decided: settled.filter((kind) => kind === 'decided').length,
       walkover: settled.filter((kind) => kind === 'walkover').length, unrated: settled.filter((kind) => kind === 'unrated').length, late, afterClock, oneSided, repeats };

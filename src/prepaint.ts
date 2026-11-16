@@ -22,8 +22,8 @@ try {
   const user = isRecord(session) && isRecord(session.user) ? session.user.id : undefined;
   const profile = user ? parse(localStorage.getItem('stilltype-profile-v2:' + String(user)) ?? 'null') : null;
   const preferences = isRecord(profile) && isRecord(profile.preferences) ? profile.preferences : undefined;
-  const dark = ['dark', 'terminal', 'midnight', 'nord'];
-  const light = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
+  const dark = new Set(['dark', 'terminal', 'midnight', 'nord']);
+  const light = new Set(['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink']);
   let customs: PaintTheme[] = [];
 
   try {
@@ -41,7 +41,7 @@ try {
   };
 
   const modeOf = (id: unknown) => {
-    if (typeof id === 'string' && (dark.includes(id) || light.includes(id))) return dark.includes(id) ? 'dark' : 'light';
+    if (typeof id === 'string' && (dark.has(id) || light.has(id))) return dark.has(id) ? 'dark' : 'light';
     const ground = custom(id)?.colors.ground;
 
     if (!ground) return null;

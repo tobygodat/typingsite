@@ -96,11 +96,11 @@ const seedRandom = () => {
   };
 };
 
-const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
+const DARK_THEMES = new Set(['dark', 'terminal', 'midnight', 'nord']);
 const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 
 for (const theme of THEMES) {
-  const mode = DARK_THEMES.includes(theme) ? 'dark' : 'light';
+  const mode = DARK_THEMES.has(theme) ? 'dark' : 'light';
 
   for (const [label, viewport] of [['desktop', { width: 1280, height: 800 }], ['phone', { width: 390, height: 844 }]]) {
     test(`${theme} theme, ${label}: untyped, typed and mistyped letters and the caret stay readable`, async ({ page }) => {

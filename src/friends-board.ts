@@ -343,9 +343,9 @@ export function shapeDescription(shapes: readonly BoardShape[], key: string | nu
   const { described, differs } = tellApart(shapes);
   const index = shapes.findIndex((shape) => shape.key === key);
   const part = described[index] || {};
-  const shown = ['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name));
+  const shown = new Set(['length', 'text', 'setting', ...differs].filter((name) => name === 'length' || name === 'text' || differs.has(name)));
 
-  return Object.entries(part).filter(([name, value]) => !shown.includes(name) && !['setting', 'corpus', 'metric'].includes(name)
+  return Object.entries(part).filter(([name, value]) => !shown.has(name) && !['setting', 'corpus', 'metric'].includes(name)
     && !lookup(USUAL, name)?.some((usual) => usual === value)).map(([name, value]) => named(name, value ?? '', true)).join(' · ');
 }
 

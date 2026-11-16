@@ -43,7 +43,7 @@ export const CHALLENGE_DAYS = 7;
 // Runs a challenge can be made from. Drills are exercises; a ghost race is already a reply.
 export const SENDABLE_KINDS = ['test', 'retest', 'daily'];
 const DELETE = '\b';
-const TIMED = [15, 30, 60, 120];
+const TIMED = new Set([15, 30, 60, 120]);
 
 // A timed challenge keeps enough text for someone typing 400 wpm for the whole clock.
 const CHARS_PER_SECOND = 400 * 5 / 60;
@@ -225,7 +225,7 @@ const challengeDuration = (conditions: unknown = {}) => {
   if (rawField(conditions, 'mode') !== 'time') return null;
   const duration = rawField(conditions, 'duration');
 
-  return typeof duration === 'number' && TIMED.includes(duration || 0) ? duration : null;
+  return typeof duration === 'number' && TIMED.has(duration || 0) ? duration : null;
 };
 
 // Every test condition a challenge may carry, with the values this app sends and can set up again. The
@@ -240,7 +240,7 @@ interface ConditionRules { [key: string]: ((value: unknown) => boolean) | undefi
 const CONDITION_RULES: ConditionRules = {
   mode: oneOf('time', 'words', 'quote'),
   // Checked against the challenge's own clock in challengeConditions.
-  duration: orNull((value) => typeof value === 'number' && TIMED.includes(value)),
+  duration: orNull((value) => typeof value === 'number' && TIMED.has(value)),
   count: orNull((value) => typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 1000),
   punctuation: isBoolean,
   numbers: isBoolean,
@@ -263,7 +263,7 @@ const CONDITION_RULES: ConditionRules = {
 export function challengeConditions(conditions: unknown, duration: number | null = null): RaceConditions | null {
   if (!isRecord(conditions)) return null;
 
-  if (duration !== null && !TIMED.includes(duration)) return null;
+  if (duration !== null && !TIMED.has(duration)) return null;
   const known = Object.entries(conditions).every(([key, value]) => Object.hasOwn(CONDITION_RULES, key) && (CONDITION_RULES[key]?.(value) ?? false));
 
   if (!known || (conditions.mode === 'time') !== (duration !== null) || (conditions.duration ?? null) !== duration) return null;

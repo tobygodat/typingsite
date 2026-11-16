@@ -116,7 +116,7 @@ const DISMISSED = 'stilltype-dismissed-invites-v1:';
 const PEOPLE_CHANNEL = 'stilltype-people';
 
 // The views of the Challenge screen besides a race: the people list and what its foot links open.
-const VIEWS: readonly OnlineRaceMode[] = ['people', 'add', 'setup', 'daily', 'local'];
+const VIEWS: ReadonlySet<OnlineRaceMode> = new Set(['people', 'add', 'setup', 'daily', 'local']);
 const VIEW_FOCUS: Partial<Record<OnlineRaceMode, string>> = { add: 'people-add-heading', setup: 'people-setup-heading', daily: 'daily-heading', local: 'local-heading' };
 const OPENERS: Partial<Record<OnlineRaceMode, string>> = { add: 'people-add', setup: 'people-setup', daily: 'open-daily', local: 'open-local' };
 
@@ -284,7 +284,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   const live = () => Boolean(room && !terminal(room));
 
   function show(next: OnlineRaceMode, { focus: moveFocus = false } = {}) {
-    if (!VIEWS.includes(next) || (next !== 'people' && live())) return;
+    if (!VIEWS.has(next) || (next !== 'people' && live())) return;
     const from = view;
     view = next;
     setRunning(false);

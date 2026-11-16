@@ -42,9 +42,9 @@ test('preset condition keys are byte-identical to master, so existing bests and 
 test('a custom length is its own condition, and a custom value equal to a preset is that preset', () => {
   assert.equal(conditionKey(shape('time', 45)), 'time:45::plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
   assert.equal(conditionKey(shape('words', 75)), 'words::75:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1');
-  const presetKeys = [...LENGTHS.time.presets.map((n) => conditionKey(shape('time', n))), ...LENGTHS.words.presets.map((n) => conditionKey(shape('words', n)))];
-  assert.equal(presetKeys.includes(conditionKey(shape('time', 45))), false);
-  assert.equal(presetKeys.includes(conditionKey(shape('words', 75))), false);
+  const presetKeys = new Set([...LENGTHS.time.presets.map((n) => conditionKey(shape('time', n))), ...LENGTHS.words.presets.map((n) => conditionKey(shape('words', n)))]);
+  assert.equal(presetKeys.has(conditionKey(shape('time', 45))), false);
+  assert.equal(presetKeys.has(conditionKey(shape('words', 75))), false);
   assert.notEqual(conditionKey(shape('time', 45)), conditionKey(shape('time', 450)));
   const custom = parseCustomLength('time', '60');
   assert.equal(conditionKey(shape('time', custom.value)), conditionKey(shape('time', 60)));

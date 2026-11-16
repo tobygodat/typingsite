@@ -191,10 +191,10 @@ function drawnPassage(draw: () => string, mode: unknown, count: unknown, punctua
 
   const add = (length: number) => {
     for (let i = 0; i < length; i += 1) {
-      const recent = drawn.slice(-2);
+      const recent = new Set(drawn.slice(-2));
       let word = draw();
 
-      for (let tries = 0; tries < 100 && (recent.includes(word) || (!punctuation && word === 'i')); tries += 1) word = draw();
+      for (let tries = 0; tries < 100 && (recent.has(word) || (!punctuation && word === 'i')); tries += 1) word = draw();
       drawn.push(word);
 
       if (punctuation) word = punctuateWord(word === 'i' ? 'I' : word, words.at(-1), words.length, end, random);
@@ -1156,13 +1156,13 @@ export function compareAttempts(before: ComparisonSource | null | undefined, aft
   const afterScore = comparisonScore(after);
   const wpmDelta = afterScore.wpm - beforeScore.wpm;
   const accuracyDelta = afterScore.accuracy - beforeScore.accuracy;
-  const directions = [Math.sign(wpmDelta), Math.sign(accuracyDelta)].filter(Boolean);
+  const directions = new Set([Math.sign(wpmDelta), Math.sign(accuracyDelta)].filter(Boolean));
 
-  const state = directions.includes(1) && directions.includes(-1)
+  const state = directions.has(1) && directions.has(-1)
     ? 'mixed'
-    : directions.includes(1)
+    : directions.has(1)
       ? 'improved'
-      : directions.includes(-1)
+      : directions.has(-1)
         ? 'regressed'
         : 'steady';
 

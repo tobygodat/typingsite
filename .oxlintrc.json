@@ -38,6 +38,8 @@
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-array-filter-map": "error",
+    "unicorn/prefer-array-some": "error",
+    "unicorn/prefer-set-has": "error",
     "unicorn/escape-case": "error",
     "unicorn/no-hex-escape": "error",
     "unicorn/prefer-string-replace-all": "error",
