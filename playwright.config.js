@@ -5,9 +5,9 @@ import { workersFor } from './scripts/e2e-workers.mjs';
 // Browser verification for the shipped build. The app is served on 127.0.0.1 (not localhost), so
 // generated runs never land in a real localhost profile, and Supabase is always faked (e2e/fake-supabase.js).
 // CHROMIUM points at a system browser, as in scripts/measure-latency.mjs; otherwise run
-// `npx playwright install chromium` once.
+// `bunx playwright install chromium` once.
 // Chromium runs by default. E2E_BROWSERS picks engines (comma-separated, or `all`), so a plain
-// `npx playwright test` stays Chromium-only; Firefox and WebKit need `npx playwright install firefox webkit`.
+// `bunx playwright test` stays Chromium-only; Firefox and WebKit need `bunx playwright install firefox webkit`.
 const port = Number(process.env.E2E_PORT || 4173);
 
 // WebKit runs slowest, so it goes first and holds at most a third of the cores (the per-project cap below).
@@ -53,7 +53,7 @@ export default defineConfig({
   webServer: {
     // Compiles dist/ first (no typecheck: lint and the unit job cover it). CI's e2e jobs set E2E_PREBUILT=1
     // to serve the dist/ the unit job built and tested in the same run; server.mjs exits if it is missing.
-    command: process.env.E2E_PREBUILT === '1' ? 'node server.mjs' : 'npm run build:dist && node server.mjs',
+    command: process.env.E2E_PREBUILT === '1' ? 'node server.mjs' : 'bun run build:dist && node server.mjs',
     env: { PORT: String(port) },
     url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: !process.env.CI,

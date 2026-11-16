@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build && node server.mjs",
+    "dev": "bun run build && node server.mjs",
     "start": "node server.mjs",
     "build": "node scripts/build-static.mjs",
     "build:dist": "node scripts/build-static.mjs",
@@ -20,8 +20,8 @@
     "test:e2e:changed": "playwright test --only-changed=origin/master --pass-with-no-tests",
     "test:e2e:quick": "playwright test e2e/typing.spec.js e2e/layout.spec.js e2e/chrome.spec.js e2e/practice-more.spec.js e2e/touch-targets.spec.js e2e/learning-loop.spec.js e2e/quick-restart.spec.js e2e/light-contrast.spec.js e2e/code-mode.spec.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
-    "pretest": "npm run build",
-    "prebuild": "npm run typecheck"
+    "pretest": "bun run build",
+    "prebuild": "bun run typecheck"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.90.0",
