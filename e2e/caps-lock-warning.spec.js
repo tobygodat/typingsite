@@ -1,3 +1,4 @@
+// Throwaway comment to prove the specs scope (TOB-491).
 // Caps Lock warning: a quiet label near the passage that never moves it and survives the running fade.
 import { test, expect, openApp, typeInto } from './fixtures.js';
 
