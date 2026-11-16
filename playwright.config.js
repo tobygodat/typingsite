@@ -50,7 +50,9 @@ export default defineConfig({
     use: { ...engines[name], viewport: { width: 1280, height: 800 } },
   })),
   webServer: {
-    command: 'npm run build && node server.mjs',
+    // Compiles dist/ first (no typecheck: lint and the unit job cover it). CI's e2e jobs set E2E_PREBUILT=1
+    // to serve the dist/ the unit job built and tested in the same run; server.mjs exits if it is missing.
+    command: process.env.E2E_PREBUILT === '1' ? 'node server.mjs' : 'npm run build:dist && node server.mjs',
     env: { PORT: String(port) },
     url: `http://127.0.0.1:${port}/`,
     reuseExistingServer: !process.env.CI,
