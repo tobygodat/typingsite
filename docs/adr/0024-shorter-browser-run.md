@@ -1,6 +1,6 @@
 # 0024. Twelve Chromium shards that start once dist/ is built
 
-Status: Accepted, 2026-11-16 (TOB-491). Supersedes only the Chromium shard count in [0018](0018-ci-on-hosted-runners.md), [0020](0020-selected-browser-compatibility.md) and [0022](0022-affected-browser-tests-on-prs.md), and, for PR and manual runs, the order that put the browser jobs after the unit job.
+Status: Accepted, 2026-11-16 (TOB-491). Supersedes only the Chromium shard count in [0018](0018-ci-on-hosted-runners.md), [0020](0020-selected-browser-compatibility.md) and [0022](0022-affected-browser-tests-on-prs.md), and the order that put the browser jobs after the unit job: on PR and manual runs they start once `dist/` is built, and on master they no longer wait for the unit job to pass.
 
 ## Context
 
@@ -24,12 +24,16 @@ Every run ran each of the 1,030 tests exactly once and skipped the same 32. The 
 - A "Build" job installs the packages, builds `dist/`, uploads it, and decides the run's e2e scope (`scripts/e2e-scope.mjs`). "Unit and build checks" needs it, and runs lint, typecheck and the unit tests against that `dist/`.
 - The e2e jobs live in a reusable workflow, `.github/workflows/e2e.yml`, that `ci.yml` calls twice. On a PR or a manual run, "Browser" needs only the build job. On a push to master, "Browser after deploy" needs the deploy, as ADR 0018 set. A job that needs the deploy waits for the unit job even when the deploy is skipped, so one job can't do both.
 - The deploy needs the build and the unit job, so master never deploys a commit that failed lint, typecheck or the unit tests.
-- The checks are "Build", "Unit and build checks", "Browser / e2e (chromium n/12)", and on master "Browser after deploy / e2e (chromium n/12)" and "Browser after deploy / compat (firefox|webkit)".
+- On master, "Browser after deploy" runs whether or not the unit job passed, where the old workflow skipped the browser jobs after a failed unit job. That is more coverage, not less. It still skips them when a newer push cancelled the unit job, because that push's run tests master again.
+- A "Browser e2e" job needs the build, the unit job and both browser calls, and always runs. It passes only when the build, the unit job and the browser call for this event (on a push "Browser after deploy", otherwise "Browser") all succeeded. A skipped, failed or cancelled one fails it.
+- Entire's merge gate requires checks by name. The list lives in Entire's trail gate settings, not in this repo, and it names "Build", "Unit and build checks" and "Browser e2e". The summary job keeps that list the same when the shard count changes.
+- The checks are "Build", "Unit and build checks", "Browser e2e", "Browser / e2e (chromium n/12)", and on master "Browser after deploy / e2e (chromium n/12)" and "Browser after deploy / compat (firefox|webkit)".
 
 ## Consequences
 
 - A PR that tests all of Chromium takes about 4 minutes, and its browser jobs start about 15s into the run instead of 47s.
-- A failed build fails the run and skips every job after it. A failed unit job fails the run while the browser jobs finish. Nothing gates on a check's name: Entire's merge gate needs every check at the head to pass, and the repo has no branch protection.
+- A failed build fails the run and skips every job after it. A failed unit job fails the run while the browser jobs finish. The repo has no branch protection.
+- Changing the shard count again changes only the shard checks' names, which the gate doesn't list. Adding or renaming "Build", "Unit and build checks" or "Browser e2e" means editing the gate list in Entire by hand.
 - On master the unit job starts after the build, so the deploy starts about 15s later than before.
 - A master run holds 14 browser jobs at once, under the 20 GitHub runs at once on the free plan. A master run and a PR run together can pass 20, and the later jobs queue.
 - More shards don't make the slowest one shorter by the same share: each pays its setup, install and split again. Workers per shard stay at 3, and WebKit at one ([ADR 0018](0018-ci-on-hosted-runners.md)).

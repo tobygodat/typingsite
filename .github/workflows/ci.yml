@@ -133,10 +133,35 @@ jobs:
   e2e-after-deploy:
     name: Browser after deploy
     # After the deploy, so on master it reports without delaying it, and whether or not the deploy passed.
-    needs: [build, deploy]
-    if: ${{ !cancelled() && github.event_name == 'push' && needs.build.result == 'success' }}
+    # Not when a newer push cancelled this run's unit job: that push's own run tests master again.
+    needs: [build, unit, deploy]
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.build.result == 'success' && needs.unit.result != 'cancelled' }}
     uses: ./.github/workflows/e2e.yml
     with:
       scope: ${{ needs.build.outputs.e2e-scope }}
       specs: ${{ needs.build.outputs.e2e-specs }}
       summary: ${{ needs.build.outputs.e2e-summary }}
+
+  # The one browser check Entire's merge gate names, so the gate's list stays the same whatever the shard
+  # count (docs/adr/0024-shorter-browser-run.md). It passes only when the build, the unit job and this
+  # event's browser jobs all succeeded. It always runs, so a failed or skipped dependency fails it.
+  e2e-summary:
+    name: Browser e2e
+    needs: [build, unit, e2e, e2e-after-deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          BUILD: ${{ needs.build.result }}
+          UNIT: ${{ needs.unit.result }}
+          BROWSER: ${{ needs.e2e.result }}
+          AFTER_DEPLOY: ${{ needs.e2e-after-deploy.result }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "Build: $BUILD"
+          echo "Unit and build checks: $UNIT"
+          echo "Browser: $BROWSER"
+          echo "Browser after deploy: $AFTER_DEPLOY"
+          if [ "$EVENT" = push ]; then browser=$AFTER_DEPLOY; else browser=$BROWSER; fi
+          [ "$BUILD" = success ] && [ "$UNIT" = success ] && [ "$browser" = success ]
