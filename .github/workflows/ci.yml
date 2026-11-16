@@ -43,6 +43,7 @@ jobs:
           node-version: 24
       - id: scope
         run: node scripts/e2e-scope.mjs
+      - run: exit 1
       # Bun installs the packages and runs the scripts, which still run on Node 24 (docs/adr/0023-bun.md).
       - uses: oven-sh/setup-bun@v2
         with:
