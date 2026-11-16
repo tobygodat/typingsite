@@ -7,7 +7,6 @@
 // run whose changed files can't be listed, tests everything.
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 // First match wins. A file no rule matches can change what the e2e jobs serve or run, so it runs everything.
 // Nothing outside src/, index.html, manifest.webmanifest, icons/, scripts/ and e2e/ is read by the build
@@ -60,7 +59,7 @@ function decide(event) {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+if (process.argv[1] === import.meta.filename) {
   const { scope, changed } = decide(process.env.GITHUB_EVENT_NAME);
 
   const summary = {
