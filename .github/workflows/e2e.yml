@@ -59,12 +59,18 @@ jobs:
             {"engine": "webkit", "shard": 6, "total": 6}
           ]' ||
             github.event_name == 'push' && '[
-            {"engine": "chromium", "shard": 1, "total": 6},
-            {"engine": "chromium", "shard": 2, "total": 6},
-            {"engine": "chromium", "shard": 3, "total": 6},
-            {"engine": "chromium", "shard": 4, "total": 6},
-            {"engine": "chromium", "shard": 5, "total": 6},
-            {"engine": "chromium", "shard": 6, "total": 6},
+            {"engine": "chromium", "shard": 1, "total": 12},
+            {"engine": "chromium", "shard": 2, "total": 12},
+            {"engine": "chromium", "shard": 3, "total": 12},
+            {"engine": "chromium", "shard": 4, "total": 12},
+            {"engine": "chromium", "shard": 5, "total": 12},
+            {"engine": "chromium", "shard": 6, "total": 12},
+            {"engine": "chromium", "shard": 7, "total": 12},
+            {"engine": "chromium", "shard": 8, "total": 12},
+            {"engine": "chromium", "shard": 9, "total": 12},
+            {"engine": "chromium", "shard": 10, "total": 12},
+            {"engine": "chromium", "shard": 11, "total": 12},
+            {"engine": "chromium", "shard": 12, "total": 12},
             {"engine": "firefox", "shard": 1, "total": 1},
             {"engine": "webkit", "shard": 1, "total": 1}
           ]' ||
@@ -72,12 +78,18 @@ jobs:
             {"engine": "firefox", "shard": 1, "total": 1},
             {"engine": "webkit", "shard": 1, "total": 1}
           ]' || '[
-            {"engine": "chromium", "shard": 1, "total": 6},
-            {"engine": "chromium", "shard": 2, "total": 6},
-            {"engine": "chromium", "shard": 3, "total": 6},
-            {"engine": "chromium", "shard": 4, "total": 6},
-            {"engine": "chromium", "shard": 5, "total": 6},
-            {"engine": "chromium", "shard": 6, "total": 6}
+            {"engine": "chromium", "shard": 1, "total": 12},
+            {"engine": "chromium", "shard": 2, "total": 12},
+            {"engine": "chromium", "shard": 3, "total": 12},
+            {"engine": "chromium", "shard": 4, "total": 12},
+            {"engine": "chromium", "shard": 5, "total": 12},
+            {"engine": "chromium", "shard": 6, "total": 12},
+            {"engine": "chromium", "shard": 7, "total": 12},
+            {"engine": "chromium", "shard": 8, "total": 12},
+            {"engine": "chromium", "shard": 9, "total": 12},
+            {"engine": "chromium", "shard": 10, "total": 12},
+            {"engine": "chromium", "shard": 11, "total": 12},
+            {"engine": "chromium", "shard": 12, "total": 12}
           ]') }}
     env:
       E2E_SCOPE: ${{ inputs.scope }}
