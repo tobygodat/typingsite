@@ -52,7 +52,8 @@ export default defineConfig({
   })),
   webServer: {
     // Compiles dist/ first (no typecheck: lint and the unit job cover it). CI's e2e jobs set E2E_PREBUILT=1
-    // to serve the dist/ the unit job built and tested in the same run; server.mjs exits if it is missing.
+    // to serve the dist/ the build job built in the same run, the one the unit tests read; server.mjs exits
+    // if it is missing.
     command: process.env.E2E_PREBUILT === '1' ? 'node server.mjs' : 'bun run build:dist && node server.mjs',
     env: { PORT: String(port) },
     url: `http://127.0.0.1:${port}/`,

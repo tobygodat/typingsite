@@ -8,8 +8,8 @@
 //   node scripts/e2e-shards.mjs --refresh <dir>...         rewrite scripts/e2e-durations.json from the
 //                                                          e2e-timings artifacts of a Chromium run
 //
-// Every job lists the same tests (same commit and E2E_* env) and reads the same durations, so the six
-// jobs compute the same split, and each test lands in exactly one shard. A test with no recorded
+// Every job lists the same tests (same commit and E2E_* env) and reads the same durations, so every
+// job computes the same split, and each test lands in exactly one shard. A test with no recorded
 // duration counts as the median one. Anything that could drop or repeat a test stops the job. It splits
 // single tests, so it would scatter a serial group; tests/e2e-shards.test.js fails if a spec adds one.
 import { spawnSync } from 'node:child_process';

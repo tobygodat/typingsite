@@ -19,12 +19,14 @@ permissions:
   contents: read
 
 jobs:
-  unit:
-    name: Unit and build checks
+  # Builds dist/ once per run, as soon as the packages are installed, so the e2e jobs need not wait for
+  # lint, typecheck and the unit tests. The unit tests, the e2e jobs and the deploy all use this dist/.
+  build:
+    name: Build
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: unit-${{ github.ref }}
+      group: build-${{ github.ref }}
       cancel-in-progress: true
     # Which browser tests every e2e job of this run runs (scripts/e2e-scope.mjs).
     outputs:
@@ -46,12 +48,8 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run typecheck
-      # One build per run, without bun run test's and bun run build's repeat typecheck. The unit tests read it,
-      # and the e2e jobs and the deploy reuse it from this run instead of building their own.
+      # Without bun run build's typecheck: the unit job runs it.
       - run: bun run build:dist
-      - run: bun run test:unit
       - uses: actions/upload-artifact@v4
         with:
           name: dist
@@ -63,9 +61,36 @@ jobs:
           overwrite: true
           retention-days: 7
 
+  unit:
+    name: Unit and build checks
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: unit-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      # The unit tests read the build job's dist/, the one the e2e jobs and the deploy use.
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - run: bun run test:unit
+
   deploy:
     name: Deploy to Cloudflare
-    needs: unit
+    # Master never deploys a commit that failed lint, typecheck or the unit tests.
+    needs: [build, unit]
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -81,7 +106,7 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      # The dist/ the unit job built and tested at this commit.
+      # The dist/ the build job built and the unit tests ran against at this commit.
       - uses: actions/download-artifact@v4
         with:
           name: dist
@@ -93,117 +118,25 @@ jobs:
           wranglerVersion: "4.151.0"
           packageManager: bun
 
+  # The same jobs twice: a PR or manual run starts them once dist/ is built, and master after the deploy.
   e2e:
-    name: ${{ matrix.total == 1 && format('Browser compat ({0})', matrix.engine) || format('Browser e2e ({0} {1}/6)', matrix.engine, matrix.shard) }}
-    # After the deploy, so on master it reports without delaying it.
-    needs: [unit, deploy]
-    if: ${{ !cancelled() && needs.unit.result == 'success' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # One group per engine and shard: in a shared group the jobs would cancel each other.
-    concurrency:
-      group: e2e-${{ github.ref }}-${{ matrix.engine }}-${{ matrix.shard }}
-      cancel-in-progress: true
-    strategy:
-      fail-fast: false
-      matrix:
-        include: >-
-          ${{ fromJSON(
-            inputs.browsers == 'all' && '[
-            {"engine": "chromium", "shard": 1, "total": 6},
-            {"engine": "chromium", "shard": 2, "total": 6},
-            {"engine": "chromium", "shard": 3, "total": 6},
-            {"engine": "chromium", "shard": 4, "total": 6},
-            {"engine": "chromium", "shard": 5, "total": 6},
-            {"engine": "chromium", "shard": 6, "total": 6},
-            {"engine": "firefox", "shard": 1, "total": 6},
-            {"engine": "firefox", "shard": 2, "total": 6},
-            {"engine": "firefox", "shard": 3, "total": 6},
-            {"engine": "firefox", "shard": 4, "total": 6},
-            {"engine": "firefox", "shard": 5, "total": 6},
-            {"engine": "firefox", "shard": 6, "total": 6},
-            {"engine": "webkit", "shard": 1, "total": 6},
-            {"engine": "webkit", "shard": 2, "total": 6},
-            {"engine": "webkit", "shard": 3, "total": 6},
-            {"engine": "webkit", "shard": 4, "total": 6},
-            {"engine": "webkit", "shard": 5, "total": 6},
-            {"engine": "webkit", "shard": 6, "total": 6}
-          ]' ||
-            github.event_name == 'push' && '[
-            {"engine": "chromium", "shard": 1, "total": 6},
-            {"engine": "chromium", "shard": 2, "total": 6},
-            {"engine": "chromium", "shard": 3, "total": 6},
-            {"engine": "chromium", "shard": 4, "total": 6},
-            {"engine": "chromium", "shard": 5, "total": 6},
-            {"engine": "chromium", "shard": 6, "total": 6},
-            {"engine": "firefox", "shard": 1, "total": 1},
-            {"engine": "webkit", "shard": 1, "total": 1}
-          ]' ||
-            inputs.browsers == 'compat' && '[
-            {"engine": "firefox", "shard": 1, "total": 1},
-            {"engine": "webkit", "shard": 1, "total": 1}
-          ]' || '[
-            {"engine": "chromium", "shard": 1, "total": 6},
-            {"engine": "chromium", "shard": 2, "total": 6},
-            {"engine": "chromium", "shard": 3, "total": 6},
-            {"engine": "chromium", "shard": 4, "total": 6},
-            {"engine": "chromium", "shard": 5, "total": 6},
-            {"engine": "chromium", "shard": 6, "total": 6}
-          ]') }}
-    env:
-      E2E_SCOPE: ${{ needs.unit.outputs.e2e-scope }}
-      # Only on a PR that changes nothing but e2e specs; otherwise every test runs.
-      E2E_SPECS: ${{ needs.unit.outputs.e2e-scope == 'specs' && needs.unit.outputs.e2e-specs || '' }}
-      E2E_BROWSERS: ${{ matrix.engine }}
-      E2E_FULL: ${{ inputs.browsers == 'all' && '1' || '0' }}
-      # Serve the unit job's dist/ instead of building one per job (playwright.config.js).
-      E2E_PREBUILT: '1'
-    steps:
-      # A PR that changes no file the browser tests can see passes every e2e job here, and runs nothing else.
-      - if: env.E2E_SCOPE == 'none'
-        run: echo "$SUMMARY"
-        env:
-          SUMMARY: ${{ fromJSON(needs.unit.outputs.e2e-summary) }}
-      - if: env.E2E_SCOPE != 'none'
-        uses: actions/checkout@v4
-      - if: env.E2E_SCOPE != 'none'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - if: env.E2E_SCOPE != 'none'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - if: env.E2E_SCOPE != 'none'
-        run: bun install --frozen-lockfile
-      - if: env.E2E_SCOPE != 'none'
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - if: env.E2E_SCOPE != 'none'
-        run: bunx playwright install --with-deps ${{ matrix.engine }}
-      # This job's share of the tests by recorded duration (scripts/e2e-durations.json), not Playwright's
-      # equal counts in file order. It stops the job if the list could drop or repeat a test, and reports
-      # tests=0 when a PR selects fewer tests than there are shards.
-      - if: env.E2E_SCOPE != 'none'
-        id: shard
-        run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
-      # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
-      - if: env.E2E_SCOPE != 'none' && steps.shard.outputs.tests != '0'
-        run: bunx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}
-      # Per-test durations, whether the tests passed or not; scripts/e2e-shards.mjs --refresh reads them.
-      - if: ${{ !cancelled() && env.E2E_SCOPE != 'none' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-timings-${{ matrix.engine }}-${{ matrix.total }}-${{ matrix.shard }}
-          path: e2e-timings/
-          if-no-files-found: ignore
-          overwrite: true
-          retention-days: 7
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-failures-${{ matrix.engine }}-${{ matrix.shard }}
-          path: test-results/
-          retention-days: 7
+    name: Browser
+    needs: build
+    if: github.event_name != 'push'
+    uses: ./.github/workflows/e2e.yml
+    with:
+      scope: ${{ needs.build.outputs.e2e-scope }}
+      specs: ${{ needs.build.outputs.e2e-specs }}
+      summary: ${{ needs.build.outputs.e2e-summary }}
+      browsers: ${{ inputs.browsers }}
+
+  e2e-after-deploy:
+    name: Browser after deploy
+    # After the deploy, so on master it reports without delaying it, and whether or not the deploy passed.
+    needs: [build, deploy]
+    if: ${{ !cancelled() && github.event_name == 'push' && needs.build.result == 'success' }}
+    uses: ./.github/workflows/e2e.yml
+    with:
+      scope: ${{ needs.build.outputs.e2e-scope }}
+      specs: ${{ needs.build.outputs.e2e-specs }}
+      summary: ${{ needs.build.outputs.e2e-summary }}
