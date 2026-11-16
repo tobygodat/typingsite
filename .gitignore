@@ -1,6 +1,7 @@
 dist/
 node_modules/
 test-results/
+e2e-timings/
 playwright-report/
 supabase/.temp/
 .wrangler/
