@@ -172,8 +172,20 @@ jobs:
         with:
           name: dist
           path: dist/
+      # The browsers for this engine at the installed Playwright's revision. A hit still installs the system deps.
       - if: env.E2E_SCOPE != 'none'
+        id: playwright
+        run: echo "version=$(node -p "require('./node_modules/playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - if: env.E2E_SCOPE != 'none'
+        id: browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.engine }}-${{ steps.playwright.outputs.version }}
+      - if: env.E2E_SCOPE != 'none' && steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps ${{ matrix.engine }}
+      - if: env.E2E_SCOPE != 'none' && steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps ${{ matrix.engine }}
       # This job's share of the tests by recorded duration (scripts/e2e-durations.json), not Playwright's
       # equal counts in file order. It stops the job if the list could drop or repeat a test, and reports
       # tests=0 when a PR selects fewer tests than there are shards.
