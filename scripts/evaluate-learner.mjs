@@ -852,7 +852,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 
   // ADR 0019's rule runs in its own process, on worker threads, because it imports this module.
   if (option('rule', null) === '0019') {
-    const child = spawnSync(process.execPath, [fileURLToPath(new URL('./evaluate-let-go.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
+    const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(new URL('./evaluate-let-go.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
     process.exit(child.status ?? 1);
   }
 
