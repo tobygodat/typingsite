@@ -20,6 +20,16 @@ The dataset's `readme.txt` says: "You are free to use this data for non-commerci
 
 Before this rule was written I read the dataset's `readme.txt`, counted `metadata_participants.txt` by layout, keyboard type and native language, and read the first 45 keystroke rows of participant 100001. Participants 100001, 3, 5 and 7, the only ones whose rows I have seen, all fall in the training split below.
 
+### Amended on 2026-11-18, before any model was fitted
+
+Building the pipeline showed three things the rule above had not allowed for. Each was found on training participants only, in the 30 files matching `1000*_keystrokes.txt`, and no model had been fitted and no validation or test participant's keystrokes read. The pipeline's printed report did show me drop counts for the 5 validation and test participants among those 30.
+
+- **`LETTER` is unreliable.** It is sometimes empty, sometimes the wrong character for a letter key (a comma logged for key code 77), and sometimes the backspace control character. Read as written, 20 of 375 sentences had no typing key at all. So a key is now read from its key code where the two can disagree. The replay check still decides whether a reading was right.
+- **A slip left in the submitted text moves every later position.** The app compares each try with the letter at its position, so one omitted letter makes the rest of the sentence read as misses. The app shows a wrong letter at once and the dataset's test did not. So a sentence now counts only when what was submitted is the sentence. First tries that were wrong and then corrected are still counted, which is what the learner reads.
+- **The log itself loses keystrokes.** About 3 in 10 sentences in those files fail the replay check, most because a key the participant must have pressed is not in the log. They are dropped, as the rule already said. This lowers how many participants reach 10 sentences, and the report states the count.
+
+The pipeline also reports, for training participants, the share of wrong first tries that sit in a run of three or more in a row. Those are a slip that was corrected late, not three misses, and they are the remaining way this data differs from typing in the app.
+
 ## The data
 
 ### Who is kept
@@ -32,7 +42,9 @@ Each sentence is turned into the app's attempt record and read by `replayAttempt
 
 - The text is `SENTENCE`. Offsets are `PRESS_TIME` minus the sentence's first press.
 - A key whose `LETTER` is one printable character is an `insert` at the end of what is typed. `BKSP` is a `delete` of one. Every other key (`SHIFT`, `CAPS_LOCK`, arrows and the rest) adds no event.
-- **Replay check.** A sentence is kept only when the replayed text equals `USER_INPUT`. This drops sentences edited with the mouse, a selection, arrow keys or a word delete, where positions cannot be recovered. The pipeline reports how many are dropped and why.
+- **Reading a key (amended, see below).** A letter key (`KEYCODE` 65 to 90) is read from its key code, with its case from `LETTER` when that names the same letter and from a held Shift otherwise. `KEYCODE` 8 is a backspace whatever `LETTER` holds. A key logged with no `LETTER` is read from a short US QWERTY table of its key code.
+- **Replay check.** A sentence is kept only when the replayed text equals `USER_INPUT`. This drops sentences edited with the mouse, a selection, arrow keys or a word delete, where positions cannot be recovered, and sentences whose log is missing a keystroke. The pipeline reports how many are dropped and why.
+- **The sentence was typed (amended, see below).** A sentence is kept only when `USER_INPUT` equals `SENTENCE`.
 - Runs are ordered by their first press. The keyboard is `physical-keyboard:qwerty`. The run kind is one the learner counts as evidence.
 
 The learner reads a–z pairs and keys only, so capitals, digits and punctuation in the sentences add no units, as in the app.
