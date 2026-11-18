@@ -251,7 +251,7 @@ export const VARIANTS = [
 ];
 
 // A run's timing for a pair: the log of its median clean interval over the run's median, and the intervals behind it.
-function timingRows(run) {
+export function timingRows(run) {
   return (run.patterns || []).flatMap(([pair, , , timed, pairMs, slowdownMs]) => {
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
 
@@ -315,7 +315,7 @@ function replay(history, policy, loops = []) {
 }
 
 // Expected calibration error over ten equal-count bins of predicted probability, weighted by tries.
-function calibration(predictions) {
+export function calibration(predictions) {
   const sorted = [...predictions].sort((a, b) => a.p - b.p);
   const total = sorted.reduce((s, item) => s + item.n, 0);
   let error = 0;
