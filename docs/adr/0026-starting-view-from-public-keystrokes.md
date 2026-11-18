@@ -28,7 +28,19 @@ Building the pipeline showed three things the rule above had not allowed for. Ea
 - **A slip left in the submitted text moves every later position.** The app compares each try with the letter at its position, so one omitted letter makes the rest of the sentence read as misses. The app shows a wrong letter at once and the dataset's test did not. So a sentence now counts only when what was submitted is the sentence. First tries that were wrong and then corrected are still counted, which is what the learner reads.
 - **The log itself loses keystrokes.** About 3 in 10 sentences in those files fail the replay check, most because a key the participant must have pressed is not in the log. They are dropped, as the rule already said. This lowers how many participants reach 10 sentences, and the report states the count.
 
-The pipeline also reports, for training participants, the share of wrong first tries that sit in a run of three or more in a row. Those are a slip that was corrected late, not three misses, and they are the remaining way this data differs from typing in the app.
+The pipeline also reports the share of wrong first tries that sit in a run of three or more in a row. Those are a slip that was corrected late, not three misses, and they are the remaining way this data differs from typing in the app.
+
+### What the pipeline kept
+
+The full conversion ran once, on 2026-11-18, in 85 seconds. Its report gives the same counts for every split, so I have seen the validation and test participants' drop counts, first-try miss rate and shifted share below. No model existed when I did.
+
+| split | participants on QWERTY, full or laptop | kept (10 or more sentences) | runs | sentences failing the replay check | sentences not typed as shown | first-try miss rate | misses in a run of 3 or more |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| train | 129,737 | 58,057 (44.7%) | 679,880 | 23.5% | 19.7% | 3.27% | 24.8% |
+| validation | 16,153 | 7,242 (44.8%) | 84,817 | 23.6% | 19.6% | 3.33% | 24.9% |
+| test | 16,166 | 7,148 (44.2%) | 83,782 | 23.8% | 19.7% | 3.21% | 24.4% |
+
+6,537 participants were on another layout or keyboard, and 360 rows could not be read. A kept participant has 11.7 runs at the mean, so the last band of k (10 to 14) holds fewer people than the first. A quarter of the wrong first tries are late-corrected slips, which inflates every pair's miss rate about evenly and is the main caution on the miss half of the model.
 
 ## The data
 
