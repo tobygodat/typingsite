@@ -1,0 +1,119 @@
+# 0026. learner-start@3: a starting view trained on public keystrokes
+
+Status: Proposed, 2026-11-17. TOB-513. The rule below is written before any model is fitted and before any validation or test participant is read. It is not changed after its results are seen.
+
+## Context
+
+The learner knows nothing about a new person. `learner-decay-timing@1` ([ADR 0013](0013-learning-core.md)) pulls every pair's first-try miss rate toward the person's own pooled rate and every pair's pace toward the person's own pace, so before the evidence arrives every pair looks the same. A prior built by hand from keyboard geometry made calibration worse in ADR 0013 and was deleted. Every learner result so far is on simulated typists.
+
+Aalto University's 136M Keystrokes dataset (Dhakal, Feit, Kristensson and Oulasvirta, CHI 2018) holds the key-by-key log of 168,594 volunteers who each typed 15 English sentences in a browser. A model fitted to it can say which pairs tend to be missed or slow for a typist of a given speed. This ADR asks one question: does starting from that view, in place of "every pair is the same", predict a real person's next run better in their first runs, without hurting later ones?
+
+### What this supersedes
+
+[ADR 0013](0013-learning-core.md) and `docs/ml-data-evaluation.md` say no population data is involved. Toby decided on 2026-11-17 that a model may be fitted to **public** data. Nothing from Stilltype's own users is collected, shared or trained on by this ADR (that is TOB-514, undecided). Recordings stay on the device ([ADR 0006](0006-recordings-stay-on-the-device.md)).
+
+### Licence
+
+The dataset's `readme.txt` says: "You are free to use this data for non-commercial use in your own research or projects with attribution to the authors." Stilltype is free and has no paid tier. The raw data is never committed or redistributed. The shipped file holds fitted coefficients only. `docs/ml-data-evaluation.md` and the app's credits cite the paper. If Stilltype ever charges money, the authors are asked first.
+
+### Disclosure
+
+Before this rule was written I read the dataset's `readme.txt`, counted `metadata_participants.txt` by layout, keyboard type and native language, and read the first 45 keystroke rows of participant 100001. Participants 100001, 3, 5 and 7, the only ones whose rows I have seen, all fall in the training split below.
+
+## The data
+
+### Who is kept
+
+Participants whose metadata says `qwerty` and a `full` or `laptop` keyboard: 162,057 of 168,594. Every native language is kept, because the app's users are not all native English speakers. A participant is kept when at least 10 of their sentences pass the replay check below.
+
+### One sentence becomes one run, by the app's own code
+
+Each sentence is turned into the app's attempt record and read by `replayAttempt` and `runRecord`, the code that reads a real Stilltype run. No miss or interval is defined a second time ([ADR 0003](0003-versioned-metric-contract.md)).
+
+- The text is `SENTENCE`. Offsets are `PRESS_TIME` minus the sentence's first press.
+- A key whose `LETTER` is one printable character is an `insert` at the end of what is typed. `BKSP` is a `delete` of one. Every other key (`SHIFT`, `CAPS_LOCK`, arrows and the rest) adds no event.
+- **Replay check.** A sentence is kept only when the replayed text equals `USER_INPUT`. This drops sentences edited with the mouse, a selection, arrow keys or a word delete, where positions cannot be recovered. The pipeline reports how many are dropped and why.
+- Runs are ordered by their first press. The keyboard is `physical-keyboard:qwerty`. The run kind is one the learner counts as evidence.
+
+The learner reads a–z pairs and keys only, so capitals, digits and punctuation in the sentences add no units, as in the app.
+
+### Splits
+
+By participant, never by keystroke: `sha256(PARTICIPANT_ID) mod 100`. 0 to 79 is training, 80 to 89 validation, 90 to 99 test. Validation chooses every constant and the model. Test participants are read once, after the constants are fixed and committed.
+
+## The candidate: `learner-start@3`
+
+`learner-decay-timing@1`, unchanged in every constant, with two changes to what a unit is pulled toward.
+
+- **Misses.** Today a unit's miss rate is its own counts plus 40 tries at the person's pooled rate p. The candidate uses `Km` tries at `sigmoid(logit(p) + a(unit, person))`. With no evidence at all, p is the training participants' pooled rate.
+- **Pace.** Today a pair's slowdown is pulled toward none with the weight of 5 intervals. The candidate pulls it toward `b(unit, person)`, a log ratio to the person's pace, with the weight of `Kt` intervals.
+
+`a` and `b` come from the fitted model. `person` is at most two numbers the learner already has: the person's pace and their pooled miss rate. Before the first run both are the training participants' medians.
+
+Ranking, decay, the frequency table, the miss cost and the focus are unchanged.
+
+**Naming is unchanged.** A unit is named, on Train or anywhere else, only from the person's own observed counts or timing (`PRODUCT.md` principle 1, `stated` in `src/learner.ts`). The starting view moves the ranking and what adaptive text leans toward. It is never shown as evidence.
+
+### The models compared, fixed now
+
+- **S0, none.** The shipped learner.
+- **S1, a table.** One `a` and one `b` per unit: the training participants' mean log odds of a miss and mean log slowdown for that unit, each relative to the participant's own, pulled toward zero for rare units by a strength chosen on validation.
+- **S2, a regression.** An L2-regularized logistic regression for `a` and a ridge regression for `b`, over features of the unit (hand, finger, row and column of each key on QWERTY, same finger, same hand, row jump, English frequency of the pair and of each letter) and their products with the person's log pace and logit of pooled miss rate. Regularization is chosen on validation.
+- **Reported, not shippable: S3**, gradient-boosted trees over S2's features. It shows whether S2 leaves a gap. It cannot be chosen by this rule.
+
+S1 and S2 ship as one static JSON file read by plain TypeScript. Models are fitted in Python (`ml/`, pinned with `uv`) on the run summaries the pipeline writes. Every judged number comes from the TypeScript evaluation running the app's own learner, so a difference between the Python fit and the shipped arithmetic cannot hide.
+
+### Constants, chosen on validation participants only
+
+1. `Km` from {10, 20, 40, 80} and `Kt` from {2, 5, 10, 20}, per model, by the lowest log loss and the lowest pace error in bands 0 and 1–2 below.
+2. S1's shrink strength and S2's regularization, by the same measures.
+3. **The model.** S2 is the candidate only when its log loss in bands 0 and 1–2 beats S1's by more than the log-loss margin below. Otherwise S1 is, because it is simpler to read and to ship.
+
+## Measures
+
+For each participant, in run order, the learner is fitted on their first k runs and predicts run k + 1, for k = 0 to the run before their last. Results are grouped in bands of k: **0**, **1–2**, **3–5**, **6–9**, **10–14**.
+
+- **Log loss** of first-try misses on a–z tries in the predicted run, and **calibration error** in ten equal-count bins, both computed as `scripts/evaluate-learner.mjs` computes them today.
+- **Pace error**: the mean absolute error, in log ratio, between each timed pair's predicted and observed interval over the run's median.
+- **Captured share.** The time a unit loses in a set of runs is its misses times the miss cost times the person's interval, plus the sum over its timed intervals of the interval less the run's median, floored at zero. For each participant and k, the share is the time lost in all runs after k by the learner's top four units, over the time lost there by the best four in hindsight. This is noisy for one person and is read only as a mean over participants.
+- **Named top-four rate**: how often the unit Train would name after k runs is in the hindsight top four. Reported, deciding nothing, because naming is unchanged by design.
+
+Each comparison is the mean per-participant difference, candidate minus S0, with a 95% bootstrap interval over participants (2,000 resamples, seed 513). Slices are reported and decide nothing: native English or not, full or laptop keyboard, and thirds of typing speed.
+
+### Margins
+
+ADR 0015 found that a rule with no margin lets a trivial loss block a real gain. With about 16,000 test participants every interval will be narrow, so each guard has a margin stated here.
+
+- Log loss: 0.5% of S0's log loss in that band.
+- Calibration error: 0.002.
+- Pace error: 0.5% of S0's in that band.
+- Captured share: 0.5 points.
+
+"Worse" below means the interval lies wholly beyond the margin on the worse side. "Better" means the interval lies wholly beyond zero on the better side.
+
+## Decision
+
+`learner-start@3` becomes the default when all of these hold on the test participants.
+
+- **(a) It predicts the first runs better.** Log loss is better in band 0 and in band 1–2.
+- **(b) It ranks the first runs better.** Captured share is better in band 1–2 by at least 2 points at the mean. Band 0 is reported only: with no evidence the shipped learner ranks every person the same, and nothing can be named yet, so a gain there is not one a person sees.
+- **(c) It does not hurt later.** In bands 3–5, 6–9 and 10–14 it is worse on none of log loss, calibration error, pace error and captured share.
+- **(d) It does not break forgetting.** On ADR 0015's guard world, test seeds 401 to 430 (never used), with the prior switched on: pick-up and let-go are each no more than 1.0 run slower at the mean than S0. The simulator plants weak pairs without regard to the keyboard, so it cannot reward the starting view. It can only show whether the view makes the learner slow to follow a person who differs from it. Log loss and captured gain on the simulator are reported and decide nothing, for the same reason.
+- **(e) It is cheap.** The shipped file adds at most 30 KB gzipped. A recommendation on 1,000 runs and 200 loops is at most 2 ms slower at the median than S0 on the same machine.
+- **(f) Every earlier version computes exactly what it did**, by the pinned test.
+
+**Mixed results.** If (a) and (c) to (f) hold and (b) fails, the candidate stays a named, non-default version and this ADR says so. If the miss half passes and the pace half is worse in (c), `learner-start-misses@3`, the same with the pace pull left at none, is judged in the same run by the same clauses and becomes the default if it passes. Otherwise the default stays `learner-decay-timing@1`, no threshold moves, and this ADR says what failed.
+
+### Reported, deciding nothing
+
+- Toby's exported history (TOB-511), n = 1: the same measures for S0 and the candidate.
+- How many sentences and participants each filter drops.
+- S3's measures beside S2's.
+
+### What a pass would and would not show
+
+A pass shows that, for people like the dataset's volunteers typing one sitting of sentences, the learner predicts and ranks better in its first runs. It does not show that anyone learns faster (`PRODUCT.md` principle 4 holds, and the learning study in `docs/ml-data-evaluation.md` has not run). The dataset is one sitting per person, so it says nothing about weeks of practice, drills or forgetting. The volunteers chose to take a typing test in 2017 on a site for measuring speed, and are not a sample of Stilltype's users.
+
+## Results
+
+Not run.
