@@ -58,6 +58,7 @@ In `src/`:
 - `motion.ts`: the caret, line scroll, pace and ghost carets, and the sliding word highlight. Presentational only.
 - `tape.ts`: one-line tape geometry.
 - `word-highlight.ts`: word highlight.
+- `caret-glide.ts`: how long the Smooth caret glides between letters.
 - `display-preferences.ts`, `control-glide.ts`: synchronous appearance application and geometry for explicit native control hosts.
 - `fonts.ts`: typing and app font choices. `prepaint.ts` applies an account's fonts before first paint.
 - `wallpaper.ts`, `wallpaper-image.ts`, `wallpaper-layer.ts`, `wallpaper-settings.tsx`: background-image state, scoped device codecs, native geometry/halo and React settings controls.

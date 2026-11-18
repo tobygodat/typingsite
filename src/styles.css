@@ -126,7 +126,8 @@
 
   /* Motion: every duration scales from one place and drops to zero for reduced motion. */
   --motion-scale: 1;
-  --dur-caret: calc(55ms * var(--motion-scale));
+  /* The Smooth caret's glide; application-host.ts sets it from the caret glide setting (src/caret-glide.ts). */
+  --caret-glide: 80ms;
   --dur-micro: calc(80ms * var(--motion-scale));
   --dur-quick: calc(150ms * var(--motion-scale));
   --dur-base: calc(200ms * var(--motion-scale));
@@ -2116,7 +2117,7 @@ body[data-word-highlight="off"] .word-glide { display: none; }
   width: 0;
   height: var(--typing-line);
   pointer-events: none;
-  transition: transform var(--dur-caret) var(--ease-out);
+  transition: transform calc(var(--caret-glide) * var(--motion-scale)) var(--ease-out);
   will-change: transform;
 }
 
