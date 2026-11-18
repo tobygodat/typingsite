@@ -119,7 +119,15 @@ const TYPICAL_FLOOR = 0.01;
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare: SLOW_SHARE, returnOdds: RETURN_ODDS };
 
-export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[] } & Partial<typeof LET_GO>;
+// What a version believes before a person's own evidence arrives (ADR 0026), fitted on public typing and never
+// on Stilltype's users. `rate` is the fitted first-try miss rate of a pair and of a key, and a person's pooled rate
+// is pulled toward it with the weight of `rateTries` tries. A unit's `miss` is added to the log odds its miss rate
+// is pulled toward, and a pair's `pace` is the log slowdown its pace is pulled toward, with the weights of
+// `missTries` tries and `paceTries` intervals. Each is a list of coefficients over the person: [1, how far the
+// log odds of their pooled rate sit from `rate.pair`]. A unit with no entry is pulled as every unit was before.
+export interface StartingView { rate: { pair: number; key: number }; rateTries: number; missTries: number; paceTries: number; units: Record<string, { miss?: readonly number[]; pace?: readonly number[] }> }
+
+export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[]; start?: StartingView } & Partial<typeof LET_GO>;
 
 interface LearnerVariants { [policy: string]: LearnerVariant; [DECAY_TIMING_POLICY]: LearnerVariant }
 
@@ -141,6 +149,8 @@ export const DEFAULT_FOCUS = 'balanced';
 // Before any evidence, a first try is taken to miss this often (about 3%), the rate the evaluation ran with.
 // It ranks nothing: every unit starts level.
 const FIRST_RATE = 1 / (1 + Math.exp(3.4));
+const logit = (p: number) => Math.log(p / (1 - p));
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
 // Gains are computed half a standard deviation below each posterior mean, so thin evidence ranks lower.
 const UNCERTAINTY_Z = 0.5;
@@ -364,7 +374,7 @@ export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, sp
 // mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
 export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: AnalysisLoop[] = []) {
   const settings = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
-  const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections } = settings;
+  const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections, start } = settings;
   const records = orderedEvidence(evidence);
   const table = englishFrequency();
   const tally = new Map<string, Tally>();
@@ -438,21 +448,32 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
     const counted = names.filter((unit) => unit.length === kind).map((unit) => own(tally.get(unit)));
     const n = counted.reduce((sum, c) => sum + c.n, 0);
 
+    if (start) return [kind, (counted.reduce((sum, c) => sum + c.e, 0) + start.rateTries * (kind === 1 ? start.rate.key : start.rate.pair)) / (n + start.rateTries)];
+
     return [kind, n > 0 ? counted.reduce((sum, c) => sum + c.e, 0) / n : FIRST_RATE];
   }));
+
+  // The person, as a starting view reads them, and what it adds for a unit: nothing without a view or an entry.
+  const person = start ? [1, logit(pooled.get(2) ?? NaN) - logit(start.rate.pair)] : [];
+  const viewed = (coefficients: readonly number[] | undefined) => (coefficients ?? []).reduce((sum, c, i) => sum + c * (person[i] ?? 0), 0);
 
   const estimates = names.map((unit) => {
     const t = tally.get(unit);
     const { n, e } = own(t);
-    const a = pooledTries * (pooled.get(unit.length) ?? NaN) + e;
-    const b = pooledTries * (1 - (pooled.get(unit.length) ?? NaN)) + n - e;
+    const view = start?.units[unit];
+    const typical = pooled.get(unit.length) ?? NaN;
+    const toward = view?.miss ? sigmoid(logit(typical) + viewed(view.miss)) : typical;
+    const tries = start ? start.missTries : pooledTries;
+    const a = tries * toward + e;
+    const b = tries * (1 - toward) + n - e;
     const mean = a / (a + b);
     const [map, rarest] = shares.get(unit.length) ?? [new Map<string, number>(), NaN];
 
     const observed = t ? { seen: t.seen, errors: t.errors, runs: t.runs, errorRuns: t.errorRuns, timed: t.timed, timedRuns: t.timedRuns, slowRuns: t.slowRuns,
       slowMs: t.timed ? t.slowMs / t.timed : null } : { seen: 0, errors: 0, runs: 0, errorRuns: 0, timed: 0, timedRuns: 0, slowRuns: 0, slowMs: null };
 
-    const slowdown = timing && unit.length === 2 ? (t?.tr || 0) / ((t?.tn || 0) + timingTries) : null;
+    const paceTries = start ? start.paceTries : timingTries;
+    const slowdown = timing && unit.length === 2 ? ((t?.tr || 0) + (view?.pace ? paceTries * viewed(view.pace) : 0)) / ((t?.tn || 0) + paceTries) : null;
 
     const estimate: Omit<Estimate, 'gain' | 'basis'> = { unit, kind: unit.length === 1 ? 'key' : 'pair', frequency: map.get(unit) ?? rarest, error: { mean, sd: Math.sqrt((mean * (1 - mean)) / (a + b + 1)) },
       slowdown, observed };

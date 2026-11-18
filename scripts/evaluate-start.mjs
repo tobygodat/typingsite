@@ -3,13 +3,16 @@
 // their first k runs and predicts run k + 1. See docs/adr/0026-starting-view-from-public-keystrokes.md, which
 // fixes the measures, the bands of k and the rule this serves.
 //
-//   bun run evaluate:start -- --runs <dir> --split validation [--limit 500] [--json out.json]
+//   bun run evaluate:start -- --runs <dir> --split validation [--limit 500] [--json out.json] [--views views.json]
 //   bun run evaluate:start -- --runs <dir> --split test --judge       (the test participants, read once, by the rule)
+//
+// --views names a JSON list of { name, start }: each is the shipped learner with that starting view (StartingView in
+// src/learner.ts), scored beside S0 and against it.
 //
 // What it shows: how well a version predicts and ranks a real person's next sentences in one sitting. It says
 // nothing about practice over weeks, drills or forgetting, and nothing about whether anyone learns faster.
 
-import { createReadStream, writeFileSync } from 'node:fs';
+import { createReadStream, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
@@ -31,8 +34,9 @@ const INTERVAL_HIGH = 0.975;
 
 export const bandOf = (k) => BANDS.findIndex((band) => k >= band.from && k <= band.to);
 
-// The versions compared. S0 is the shipped learner; ADR 0026's candidates are added here as they are built.
-export const VERSIONS = [{ name: 'S0', variant: LEARNER_VARIANTS[DEFAULT_POLICY] }];
+// The versions compared: S0, the shipped learner, then the shipped learner with each starting view given.
+export const versionsOf = (views = []) => [{ name: 'S0', variant: LEARNER_VARIANTS[DEFAULT_POLICY] },
+  ...views.map(({ name, start }) => ({ name, variant: { ...LEARNER_VARIANTS[DEFAULT_POLICY], policy: name, start } }))];
 
 // The time each unit loses in a set of runs, in ms (ADR 0026, "captured share"). A pair loses its first-try misses
 // at MISS_INTERVALS of the run's own interval each, plus its timed tries at its median less the run's median. A
@@ -152,7 +156,7 @@ async function* participants(path, limit) {
 
 // Every version over every participant of a split: each measure per band as a mean with its interval, each
 // candidate's paired difference from S0, and the pooled calibration error.
-export async function evaluate(path, { versions = VERSIONS, limit = Infinity } = {}) {
+export async function evaluate(path, { versions = versionsOf(), limit = Infinity } = {}) {
   const figures = versions.map(() => []);
   const pooled = versions.map(() => BANDS.map(() => []));
   let count = 0;
@@ -185,6 +189,8 @@ export async function evaluate(path, { versions = VERSIONS, limit = Infinity } =
 }
 
 const FORMATS = { logLoss: (v) => v.toFixed(4), paceError: (v) => v.toFixed(4), captured: (v) => `${(100 * v).toFixed(1)}%`, namedTopFour: (v) => `${(100 * v).toFixed(1)}%` };
+const signed = (format) => (v) => `${v > 0 ? '+' : ''}${format(v)}`;
+const SIGNED = Object.fromEntries(Object.entries(FORMATS).map(([measure, format]) => [measure, signed(format)]));
 const cell = (format, { mean, low, high }) => (mean === null ? 'n/a' : `${format(mean)} [${format(low)}, ${format(high)}]`);
 
 export function report(record) {
@@ -196,6 +202,13 @@ export function report(record) {
     for (const measure of MEASURES) lines.push(`| ${measure} | ${version.measures[measure].map((figure) => cell(FORMATS[measure], figure)).join(' | ')} |`);
     lines.push(`| calibration error | ${version.calibration.map((value) => (value === null ? 'n/a' : value.toFixed(4))).join(' | ')} |`,
       `| participants | ${version.measures.logLoss.map((figure) => figure.n).join(' | ')} |`, '');
+
+    if (version.againstS0) {
+      lines.push(`${version.name} less S0`, `| measure | ${record.bands.join(' | ')} |`, `| --- | ${record.bands.map(() => '---').join(' | ')} |`);
+
+      for (const measure of MEASURES) lines.push(`| ${measure} | ${version.againstS0[measure].map((figure) => cell(SIGNED[measure], figure)).join(' | ')} |`);
+      lines.push('');
+    }
   }
 
   return lines.join('\n');
@@ -214,7 +227,9 @@ async function main() {
   if (!runs) throw new Error('usage: --runs <dir of runs-<split>.jsonl.gz> [--split train|validation|test] [--limit n] [--json out.json]');
 
   if (split === 'test' && !process.argv.includes('--judge')) throw new Error('ADR 0026 reads the test participants once, after the constants are fixed: pass --judge to do that.');
-  const record = { split, ...await evaluate(join(runs, `runs-${split}.jsonl.gz`), { limit: Number(option('limit', Infinity)) }) };
+  const views = option('views', null);
+  const versions = versionsOf(views ? JSON.parse(readFileSync(views, 'utf8')) : []);
+  const record = { split, ...await evaluate(join(runs, `runs-${split}.jsonl.gz`), { versions, limit: Number(option('limit', Infinity)) }) };
   const json = option('json', null);
 
   if (json) writeFileSync(json, `${JSON.stringify(record, null, 2)}\n`);

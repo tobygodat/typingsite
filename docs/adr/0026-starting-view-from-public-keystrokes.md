@@ -168,4 +168,25 @@ With no runs the shipped learner leans on nothing, so its captured share is zero
 
 ## Results
 
-No candidate has been fitted.
+In progress. The test participants have not been read.
+
+### Validation: the rate alone (S0r)
+
+`fitLearner` takes a starting view (`StartingView` in `src/learner.ts`); a version without one computes exactly what it did. The training participants' pooled first-try miss rate is 3.40% for a pair (16,553,241 tries) and 3.86% for a key at the start of a word (5,326,707 tries).
+
+Log loss on the 7,242 validation participants, by runs seen, with the pooled calibration error in band 1–2:
+
+| version | 0 | 1–2 | 3–5 | 6–9 | 10–14 | calibration, 1–2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| S0 | 0.14596 | 0.27042 | 0.18847 | 0.16174 | 0.15498 | 0.0291 |
+| S0r, `Kr` = 20 | 0.14595 | 0.14617 | 0.15242 | 0.15197 | 0.15136 | 0.0145 |
+| S0r, `Kr` = 50 | 0.14595 | 0.14264 | 0.14998 | 0.15064 | 0.15057 | 0.0073 |
+| S0r, `Kr` = 100 | 0.14595 | 0.14171 | 0.14909 | 0.14995 | 0.15009 | 0.0024 |
+| **S0r, `Kr` = 200** | 0.14595 | **0.14161** | 0.14902 | 0.14981 | 0.14998 | 0.0020 |
+| S0r, `Kr` = 400 | 0.14595 | 0.14182 | 0.14945 | 0.15021 | 0.15035 | 0.0038 |
+
+**`Kr` = 200**, the lowest log loss in band 1–2 (band 0 is the same for all). Against S0 it is lower by 0.129 [0.123, 0.135] in band 1–2 and lower in every later band. Captured share and pace error do not move, as they should not: the rate alone says nothing about which pair is hard. So nearly half of the shipped learner's log loss after one or two runs was the zero pooled rate, and the per-pair models are now judged against 0.1416, not 0.2704.
+
+### The per-pair models
+
+Not fitted.
