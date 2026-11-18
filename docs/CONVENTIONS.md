@@ -49,12 +49,12 @@ Lint leaves oxlint's `style`, `restriction` and `nursery` categories off: they h
 
 ### Pull requests
 
-`origin` and `gh` are both GitHub (`https://github.com/tobygodat/typingsite`). `entire` is Entire's old mirror and `entire-native` the retired native Entire repo, both kept for history; don't push to them. Merging moved from Entire trails back to GitHub ([ADR 0025](adr/0025-merge-gate-on-github.md)).
+`origin` is GitHub, `https://github.com/tobygodat/typingsite.git`, and it is the only remote. Every change is a GitHub pull request, and GitHub gates the merge ([ADR 0025](adr/0025-merge-gate-on-github.md)).
 
-- **Open one.** Push your issue branch to `origin`, then `gh pr create --title "<title> (TOB-n)" --body "<PR body>"`. `ci.yml` runs on PRs and master pushes.
+- **Open one.** Branch from `master`, push your issue branch to `origin`, then `gh pr create --title "<title> (TOB-n)" --body "<PR body>"`. `ci.yml` runs on PRs and master pushes.
 - **Required checks.** The `master` ruleset (`gh api repos/tobygodat/typingsite/rulesets`) requires "Build", "Unit and build checks" and "Browser e2e" from GitHub Actions, a PR for every change, and squash merges. Nobody can bypass it, and only Toby changes it. On a PR or push run, "Browser e2e" passes only when the build, the unit job and that run's browser jobs passed, so changing the shard count leaves the ruleset alone ([ADR 0024](adr/0024-shorter-browser-run.md)). Adding or renaming one of those three jobs means editing the ruleset in the same change. A manual run reports "(manual)" names, which the ruleset ignores, so it can't stand in for a PR run. A full run takes about 4 minutes, and a PR that changes no app file passes the shards at once. Firefox/WebKit compat is still requested by hand and isn't required. Entire may still post an "Entire Gates" check; it isn't required, so ignore it.
-- **Merge.** Only on Toby's word: `gh pr checks <n> --required` must be all green, then `gh pr merge <n> --squash`. A merge to master deploys.
-- **Sessions and memory.** Claude Code sessions are saved as checkpoints in the private `tobygodat/typingsite-checkpoints` repo, never in this public one. Codex sessions are saved too once `.codex/hooks.json` is on master and you have approved the hooks in Codex (`/hooks`); `entire status` says whether they are active. Brain memories are public, so never save secrets or personal data with `entire brain remember`.
+- **Merge.** Only on Toby's word: `gh pr checks <n> --required` must be all green at the head and the independent checker must have passed it ([Bounded final proof](#bounded-final-proof)), then `gh pr merge <n> --squash`. A merge to master deploys.
+- **Sessions and memory.** Claude Code sessions are saved as checkpoints in the private `tobygodat/typingsite-checkpoints` repo, never in this public one. Codex sessions are saved too once `.codex/hooks.json` is on master and you have approved the hooks in Codex (`/hooks`); `entire status` says whether they are active. Nothing in this repo records where Brain memories are stored, so treat them as public: never save secrets or personal data with `entire brain remember`.
 
 ### Bounded final proof
 
