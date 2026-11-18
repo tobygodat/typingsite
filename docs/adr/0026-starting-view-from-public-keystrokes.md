@@ -1,6 +1,6 @@
 # 0026. learner-start@3: a starting view trained on public keystrokes
 
-Status: Proposed, 2026-11-17. TOB-513. The rule below is written before any model is fitted and before any validation or test participant is read. It is not changed after its results are seen.
+Status: Proposed, 2026-11-17. TOB-513. The rule below is written before any model is fitted. Toby accepted its thresholds on 2026-11-18. Its amendments are dated, each was made before any candidate was fitted, and it is not changed after a candidate's results are seen.
 
 ## Context
 
@@ -126,7 +126,7 @@ ADR 0015 found that a rule with no margin lets a trivial loss block a real gain.
 - **(e) It is cheap.** The shipped file adds at most 30 KB gzipped. A recommendation on 1,000 runs and 200 loops is at most 2 ms slower at the median than S0 on the same machine.
 - **(f) Every earlier version computes exactly what it did**, by the pinned test.
 
-**Mixed results.** If (a) and (c) to (f) hold and (b) fails, the candidate stays a named, non-default version and this ADR says so. If the miss half passes and the pace half is worse in (c), `learner-start-misses@3`, the same with the pace pull left at none, is judged in the same run by the same clauses and becomes the default if it passes. Otherwise the default stays `learner-decay-timing@1`, no threshold moves, and this ADR says what failed.
+**Mixed results.** If (a) and (c) to (f) hold and (b) fails, the candidate stays a named, non-default version and this ADR says so. If the miss half passes and the pace half is worse in (c), `learner-start-misses@3`, the same with the pace pull left at none, is judged in the same run by the same clauses and becomes the default if it passes. If the pace half passes and the miss half fails (a) or is worse in (c), `learner-start-pace@3`, the same with the miss pull left at the person's own rate, is judged the same way, with pace error standing in for log loss in (a) (added 2026-11-18 with Toby's agreement, because a quarter of the recorded misses are late-corrected slips and the miss half is the noisier one). Otherwise the default stays `learner-decay-timing@1`, no threshold moves, and this ADR says what failed.
 
 ### Reported, deciding nothing
 
@@ -136,8 +136,36 @@ ADR 0015 found that a rule with no margin lets a trivial loss block a real gain.
 
 ### What a pass would and would not show
 
-A pass shows that, for people like the dataset's volunteers typing one sitting of sentences, the learner predicts and ranks better in its first runs. It does not show that anyone learns faster (`PRODUCT.md` principle 4 holds, and the learning study in `docs/ml-data-evaluation.md` has not run). The dataset is one sitting per person, so it says nothing about weeks of practice, drills or forgetting. The volunteers chose to take a typing test in 2017 on a site for measuring speed, and are not a sample of Stilltype's users.
+A pass shows that, for people like the dataset's volunteers typing one sitting of sentences, the learner predicts and ranks better in its first runs. It does not show that anyone learns faster (`PRODUCT.md` principle 4 holds, and the learning study in `docs/ml-data-evaluation.md` has not run). The dataset is one sitting per person, so it says nothing about weeks of practice, drills or forgetting. The volunteers chose to take a typing test in 2016 on a site for measuring speed, and are not a sample of Stilltype's users.
+
+## Amended on 2026-11-18, with the evaluation harness, before any candidate was fitted
+
+`bun run evaluate:start` (`scripts/evaluate-start.mjs`) computes the measures. Building it settled three details and found one thing about the shipped learner. I had run it for S0 only, on 400 training participants and then on every validation participant, when these were written.
+
+- **Captured share reads medians.** A run record keeps each pair's median clean interval and the run's, not every interval. So a pair's time lost to slowness is its timed tries times its median less the run's median. A key loses only its misses outside a pair. A miss costs two of the run's own intervals (12,000 ms over its wpm).
+- **Calibration error is one pooled figure a band**, as `evaluate-learner.mjs` computes it, with no interval. Its guard compares the two pooled figures against the 0.002 margin.
+- **The test split needs `--judge`**, so it cannot be read by accident.
+- **The shipped learner predicts worse after one run than after none.** Its pooled rate is the person's own misses over their own tries, with nothing behind it. After one clean sentence that rate is exactly zero, so every pair is predicted never to be missed, and the next miss costs the most a prediction can. On validation its log loss is 0.146 with no runs and 0.270 after one or two.
+
+That last point changes what a fair comparison is. Any pull on the pooled rate would fix it, with no knowledge of which pairs are hard. So a third comparator is added, and a clause:
+
+- **S0r, the rate alone.** The shipped learner with one change: the person's pooled rate is their misses plus `Kr` tries at the training participants' pooled rate. No unit differs from another before the evidence. `Kr` is chosen on validation from {20, 50, 100, 200, 400} by log loss in bands 0 and 1–2. S1 and S2 use the same pull on the pooled rate, with the same `Kr`.
+- **(a2) The view of each pair must earn its place.** In band 1–2 the candidate's log loss or its captured share is better than S0r's. If it is not, and S0r passes (a) and (c) to (f) against S0, then `learner-start-rate@3` (S0r) becomes the default and the per-pair model stays a named variant.
+
+### The shipped learner on the validation participants
+
+7,242 participants (5,414 reach the last band). Mean over participants with a 95% bootstrap interval, by runs seen before the predicted run.
+
+| measure | 0 | 1–2 | 3–5 | 6–9 | 10–14 |
+| --- | --- | --- | --- | --- | --- |
+| log loss | 0.1460 [0.1417, 0.1503] | 0.2704 [0.2628, 0.2784] | 0.1885 [0.1846, 0.1926] | 0.1617 [0.1591, 0.1647] | 0.1550 [0.1506, 0.1596] |
+| pace error | 0.3303 [0.3281, 0.3323] | 0.3276 [0.3260, 0.3293] | 0.3243 [0.3227, 0.3258] | 0.3194 [0.3180, 0.3209] | 0.3125 [0.3105, 0.3145] |
+| captured share | 0.0% | 16.3% [16.0, 16.6] | 16.1% [15.8, 16.4] | 12.6% [12.3, 12.8] | 8.3% [8.1, 8.7] |
+| named in the top four | none named | 4.0% [1.8, 6.6] | 5.2% [4.5, 6.0] | 4.3% [3.8, 4.7] | 2.7% [2.3, 3.1] |
+| calibration error | 0.0019 | 0.0291 | 0.0150 | 0.0102 | 0.0074 |
+
+With no runs the shipped learner leans on nothing, so its captured share is zero there. Captured share falls in the later bands because fewer runs are left to count time lost in, so the best four in hindsight are set by fewer tries. That affects every version alike, and the rule reads paired differences.
 
 ## Results
 
-Not run.
+No candidate has been fitted.
