@@ -59,7 +59,25 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
   }
 
   return (
-<dialog ref={dialog} id="settings-dialog" onCancel={(event) => { event.preventDefault(); settings.close(); }} onClose={() => { themeEditor.close({ focus: false }); settings.closed(); }} aria-labelledby="settings-title">
+<dialog
+  ref={dialog}
+  id="settings-dialog"
+  aria-labelledby="settings-title"
+  onCancel={(event) => { event.preventDefault(); settings.close(); }}
+  onClose={(event) => {
+    event.currentTarget.removeAttribute('data-radio-keyboard-focus');
+    themeEditor.close({ focus: false });
+    settings.closed();
+  }}
+  onKeyDownCapture={(event) => {
+    const target = event.target;
+
+    if (event.key.startsWith('Arrow') && target instanceof HTMLInputElement && target.type === 'radio') {
+      event.currentTarget.setAttribute('data-radio-keyboard-focus', '');
+    }
+  }}
+  onPointerDownCapture={(event) => event.currentTarget.removeAttribute('data-radio-keyboard-focus')}
+>
     <header className="settings-header">
       <h2 id="settings-title">Settings</h2>
       <button id="settings-close" type="button" onClick={() => settings.close()} aria-label="Close settings"><span className="key-hint">esc</span><span aria-hidden="true">×</span></button>

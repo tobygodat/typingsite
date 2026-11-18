@@ -816,10 +816,11 @@ kbd {
 .setting-option span { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--settings-control); padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); font: var(--text-label)/var(--settings-option-line) var(--font-app); overflow-wrap: anywhere; }
 .setting-option:hover span { color: var(--text); background: var(--raised-2); }
 .setting-option input:checked + span { color: var(--accent); background: var(--accent-soft); }
-.setting-option input:focus-visible + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--settings-selection-line); }
+/* WebKit moves focus on radio arrows without matching :focus-visible on the new radio. */
+.setting-option input:is(:focus-visible, [data-radio-keyboard-focus] input[type="radio"]:focus) + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--settings-selection-line); }
 @media (forced-colors: active) {
   .setting-option input:checked + span { forced-color-adjust: none; color: HighlightText; background: Highlight; }
-  .setting-option input:focus-visible + span { outline-color: CanvasText; }
+  .setting-option input:is(:focus-visible, [data-radio-keyboard-focus] input[type="radio"]:focus) + span { outline-color: CanvasText; }
 }
 button.setting-option { border: 0; padding: 0; background: none; outline: none; }
 button.setting-option:focus-visible span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }

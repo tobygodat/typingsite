@@ -86,7 +86,9 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await openApp(page);
   const text = await passageText(page);
   await openSettings(page, 'appearance');
-  await page.locator('#font-size input:checked').focus();
+  await page.locator('#app-font input:checked').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#font-size input:checked')).toBeFocused();
   await page.keyboard.press('ArrowRight');
   const large = page.locator('#font-size input[value="36"]');
   await expect(large).toBeFocused();
@@ -99,6 +101,7 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('font-size', '36px');
   await chooseSetting(page, 'word-highlight', 'next');
+  await expect(page.locator('#word-highlight input:checked + span')).toHaveCSS('outline-style', 'none');
   const previewWord = page.locator('#settings-preview-passage span').nth(3);
   await expect(previewWord).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await chooseSetting(page, 'tape-toggle', true);
