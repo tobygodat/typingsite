@@ -5,6 +5,7 @@ import { fontAssetName } from './built-assets.js';
 import { test, expect, openApp, openSettings, closeSettings, chooseSetting, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 const family = (page, selector) => page.locator(selector).first().evaluate((node) => getComputedStyle(node).fontFamily.split(',')[0].replaceAll('"', ''));
+const typingFont = (page) => page.getByRole('combobox', { name: 'typing font', exact: true });
 const fontFiles = (requests) => [...new Set(requests.map(fontAssetName).filter(Boolean))].sort();
 
 async function runPalette(page, label) {
@@ -46,11 +47,13 @@ test('Literata by default with no other font fetched; each pick changes only its
   page.on('request', (request) => requests.push(request.url()));
   await openApp(page);
   await openSettings(page, 'appearance');
-  await expect(page.locator('#typing-font input:checked')).toHaveValue('literata');
+  await expect(typingFont(page)).toHaveValue('literata');
   await expect(page.locator('#app-font input:checked')).toHaveValue('literata');
   expect(fontFiles(requests).every((file) => /^(literata|geist-mono)-/.test(file))).toBe(true);
 
-  await chooseSetting(page, 'typing-font', 'jetbrains-mono');
+  await typingFont(page).press('j');
+  await expect(typingFont(page)).toHaveValue('jetbrains-mono');
+  await expect(typingFont(page)).toBeFocused();
   await expect(page.locator('html')).toHaveAttribute('data-typing-font', 'jetbrains-mono');
   await expect.poll(() => fontFiles(requests)).toContain('jetbrains-mono-400.woff2');
   expect(await family(page, '#text-display')).toBe('JetBrains Mono');
@@ -79,7 +82,7 @@ test('the palette lists both fonts like theme and marks the current one', async 
   await expect(page.locator('#palette-list [role="option"]', { hasText: 'typing font · fira code' })).toContainText('current');
   await page.keyboard.press('Escape');
   await openSettings(page, 'appearance');
-  await expect(page.locator('#typing-font input:checked')).toHaveValue('fira-code');
+  await expect(typingFont(page)).toHaveValue('fira-code');
   await expect(page.locator('#app-font input:checked')).toHaveValue('source-serif');
 });
 
@@ -88,7 +91,8 @@ for (const font of ['literata', 'fira-code']) {
     test(`${font}${tape ? ' on the tape' : ''}: the caret stays on the letter and the baseline past the line scroll`, { tag: font === 'literata' && !tape ? '@compat' : [] }, async ({ page, browserName }) => {
       test.fail(font === 'fira-code' && browserName === 'webkit' && !process.env.CI, 'TOB-22: WebKit on the Arch desktop sets the Fira Code caret 1.32 px off the baseline, and Ubuntu\'s WebKit on CI does not');
       await openApp(page);
-      await chooseSetting(page, 'typing-font', font);
+      await openSettings(page, 'appearance');
+      await typingFont(page).selectOption(font);
       await chooseSetting(page, 'tape-toggle', String(tape));
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
       const text = await passageText(page);
@@ -111,7 +115,8 @@ test('an account keeps both picks and applies them before first paint', async ({
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
-  await chooseSetting(page, 'typing-font', 'roboto-mono');
+  await openSettings(page, 'appearance');
+  await typingFont(page).selectOption('roboto-mono');
   await chooseSetting(page, 'app-font', 'inter');
   await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences.typingFont, { timeout: 8000 }).toBe('roboto-mono');
   await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences.appFont, { timeout: 8000 }).toBe('inter');

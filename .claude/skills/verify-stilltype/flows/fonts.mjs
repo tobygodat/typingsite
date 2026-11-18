@@ -18,7 +18,7 @@ export default async ({ page, h, shot, note, check }) => {
     for (const tape of [false, true]) {
       await h.openApp();
       await h.openSettings('appearance');
-      await pick('typing-font', font);
+      await page.getByRole('combobox', { name: 'typing font' }).selectOption(font);
       await pick('app-font', APP[font] || 'literata');
       await pick('tape-toggle', String(tape));
       await h.openSettings('practice');

@@ -23,7 +23,7 @@ its mode. A guest's choices last for the tab, a signed-in person's persist.
 - `theme-pick` checks a radio in `#dark-theme` (`dark`, `terminal`, `midnight`, `nord`) or `#light-theme`
   (`light`, `paper`, `shadcn`, `soft`, `swiss`, `e-ink`). Outside system mode the pick shows at once, in its
   own mode; in system mode it shows when the system is in that mode.
-- `font-pick` checks a radio in `#typing-font` or `#app-font`; `html[data-typing-font]` / `html[data-app-font]`
+- `font-pick` selects an option in `#typing-font` or checks a radio in `#app-font`. The attributes `html[data-typing-font]` / `html[data-app-font]`
   follow, and the font file is fetched then (nothing but Literata and Geist Mono loads by default). A signed-in
   pick is applied before first paint by the inline script in `index.html`.
 - `theme-system` switches between the two picks as the system's light or dark preference changes, while
