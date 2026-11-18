@@ -145,6 +145,39 @@ test('typing motion changes without restarting and remembers the choice', { tag:
   await expect(caret).toHaveCSS('transition-property', 'none');
 });
 
+test('glide speed adjusts the running caret and is saved for Smooth', { tag: '@compat' }, async ({ page, supabase }) => {
+  await openApp(page);
+  const user = supabase.addUser('glide@stilltype.test');
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 1));
+  await openSettings(page, 'appearance');
+  const slider = page.getByRole('slider', { name: /glide speed/i });
+  await expect(slider).toHaveValue('80');
+  await slider.fill('120');
+  await slider.press('ArrowRight');
+  await expect(slider).toHaveValue('130');
+
+  await chooseSetting(page, 'typing-motion', 'instant');
+  await expect(slider).toBeDisabled();
+  await chooseSetting(page, 'typing-motion', 'smooth');
+  await expect(slider).toBeEnabled();
+  await expect(slider).toHaveValue('130');
+  await closeSettings(page);
+
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 1));
+  expect(await passageText(page)).toBe(text);
+  await typeInto(page, text[1]);
+  await expect(page.locator('#text-display .caret')).toHaveCSS('transition-duration', '0.13s');
+
+  await page.keyboard.type(text.slice(2));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await openApp(page);
+  await openSettings(page, 'appearance');
+  await expect(slider).toHaveValue('130');
+});
+
 test('dependent controls explain their disabled states', async ({ page }) => {
   await openApp(page);
   await openSettings(page, 'practice');
