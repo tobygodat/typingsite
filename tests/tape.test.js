@@ -75,21 +75,21 @@ test('the result is whole pixels and degenerate input falls back to the start', 
 });
 
 // A 320px phone with large text: a 288px line, 32px letters (56px line height, so the margin is
-// 33.6px), a 12px left fade. A typical letter is 16px, the space 8px, and "m" the widest at 31px.
-const phone = { width: 288, margin: 33.6, fade: 12 };
+// 33.6px), and 12px of extra room for corrections. A typical letter is 16px, the space 8px, and "m" the widest at 31px.
+const phone = { width: 288, margin: 33.6, inset: 12 };
 
 test('on a narrow screen with large text, a correction just after a step holds the line still', () => {
   const word = at(1000, 80);
   const offset = tapeOffset({ offset: 760, caret: 1000, word, ...phone });
   assert.ok(offset > 760, 'stepped');
-  // The space and an "m" before the new word sit clear of the fade.
-  assert.ok(1000 - 8 - 31 - offset >= phone.fade, `${1000 - 8 - 31 - offset}`);
+  // The space and an "m" before the new word sit clear of the left edge.
+  assert.ok(1000 - 8 - 31 - offset >= phone.inset, `${1000 - 8 - 31 - offset}`);
 
   // Backspace onto the space, then onto that last letter, then type both again: no step back.
   for (const caret of [992, 961, 992, 1000]) assert.equal(tapeOffset({ offset, caret, ...phone }), offset, `caret ${caret}`);
 });
 
-test('on a narrow screen with large text, backspacing keeps the letter before the caret clear of the fade', () => {
+test('on a narrow screen with large text, backspacing keeps the letter before the caret clear of the edge', () => {
   let offset = 2000;
   let steps = 0;
 
@@ -98,8 +98,7 @@ test('on a narrow screen with large text, backspacing keeps the letter before th
 
     if (next !== offset) steps += 1;
     offset = next;
-    // Room for one more glyph (about the margin) between the fade and the caret.
-    assert.ok(caret - offset >= phone.fade + phone.margin - 0.5, `caret ${caret} at ${caret - offset}`);
+    assert.ok(caret - offset >= phone.inset + phone.margin - 0.5, `caret ${caret} at ${caret - offset}`);
   }
 
   // A step at a time, each one at least a third of the line apart.
@@ -108,7 +107,7 @@ test('on a narrow screen with large text, backspacing keeps the letter before th
 
 test('text too large for the line still steps by chunks, never on every key', () => {
   // Text scaled far past the settings: the glyph-based lead and guard are capped by the line.
-  const huge = { width: 288, margin: 100, fade: 12 };
+  const huge = { width: 288, margin: 100, inset: 12 };
   let offset = 3000;
   let previousStep = Infinity;
 

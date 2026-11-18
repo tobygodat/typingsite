@@ -102,6 +102,49 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await expect(page.locator('#typing-input')).toHaveValue('');
 });
 
+test('typing motion changes without restarting and remembers the choice', { tag: '@compat' }, async ({ page, supabase }) => {
+  await openApp(page);
+  const user = supabase.addUser('typing-motion@stilltype.test');
+  await signInWithEmail(page, user.email);
+  await chooseWords(page, 10);
+  const text = await passageText(page);
+  await typeInto(page, text.slice(0, 1));
+  await chooseSetting(page, 'typing-motion', 'instant');
+  await expect(page.locator('#typing-motion input:checked')).toHaveValue('instant');
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, 1));
+  expect(await passageText(page)).toBe(text);
+  await closeSettings(page);
+
+  const caret = page.locator('#text-display .caret');
+
+  const distanceFromLetter = () => caret.evaluate(async (node) => {
+    await new Promise((resolve) => { requestAnimationFrame(() => requestAnimationFrame(resolve)); });
+    const current = node.parentElement.querySelector('.char.current');
+
+    return Math.abs(node.getBoundingClientRect().left - current.getBoundingClientRect().left);
+  });
+
+  await typeInto(page, text[1]);
+  expect(await distanceFromLetter()).toBeLessThan(1);
+  await expect(caret).toHaveCSS('transition-property', 'none');
+  await expect(page.locator('#text-display')).toHaveCSS('transition-property', 'none');
+  await expect(page.locator('#text-display .word-glide')).toHaveCSS('transition-property', 'none');
+
+  await page.keyboard.type(text.slice(2));
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect.poll(() => supabase.profileFor(user.email)?.preferences?.typingMotion).toBe('instant');
+  await openApp(page);
+  await openSettings(page, 'appearance');
+  await expect(page.locator('#typing-motion input:checked')).toHaveValue('instant');
+
+  await chooseSetting(page, 'typing-motion', 'smooth');
+  await closeSettings(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await typeInto(page, (await passageText(page))[0]);
+  expect(await distanceFromLetter()).toBeLessThan(1);
+  await expect(caret).toHaveCSS('transition-property', 'none');
+});
+
 test('dependent controls explain their disabled states', async ({ page }) => {
   await openApp(page);
   await openSettings(page, 'practice');

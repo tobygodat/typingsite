@@ -1,4 +1,4 @@
-import { allowsBackspace, awaitingSubmit, blocksOnError, carriedKey, failureFor, refusesSpace, replayAttempt } from './typing.js';
+import { allowsBackspace, awaitingSubmit, blocksOnError, carriedKey, failureFor, refusesSpace, replayCursor } from './typing.js';
 import type { Attempt, AttemptEvent } from './typing.js';
 import { KEY_OUTCOME, keyOutcome } from './sound.js';
 import type { KeyOutcome } from './sound.js';
@@ -24,8 +24,24 @@ interface InputOwner {
 // Scoring, timing and native composition share one attempt identity for each input surface.
 export function createInputController(owner: InputOwner) {
   let online: OnlineTypingSurface | null = null;
+  const cursors = new WeakMap<Attempt, ReturnType<typeof replayCursor>>();
   const now = () => performance.now();
   const attempt = (type: InputSurface) => type === 'online' ? online?.attempt ?? null : owner.attempt(type);
+
+  function typed(type: InputSurface) {
+    const current = attempt(type);
+
+    if (!current) return '';
+    let cursor = cursors.get(current);
+
+    if (!cursor) {
+      cursor = replayCursor(current);
+      cursors.set(current, cursor);
+    }
+
+    // Live attempts append events. The cursor consumes all new events since the previous read.
+    return cursor(Infinity);
+  }
 
   function required(type: InputSurface) { const current = attempt(type);
 
@@ -67,16 +83,16 @@ export function createInputController(owner: InputOwner) {
   function pushInsert(char: string, type: InputSurface, at: number, carried: boolean): InsertChange {
     const current = required(type);
     owner.start(current, type, at);
-    const replay = replayAttempt(current);
+    const prefix = typed(type);
     const offsetMs = offsetFor(type, at);
-    const position = replay.typed.length;
-    const unresolved = blocksOnError(current.conditions.correctionPolicy) && position > 0 && replay.typed.at(-1) !== current.text[position - 1];
+    const position = prefix.length;
+    const unresolved = blocksOnError(current.conditions.correctionPolicy) && position > 0 && prefix.at(-1) !== current.text[position - 1];
 
     if (unresolved) { current.events.push({ type: 'blocked-insert', text: char, position: position - 1, offsetMs });
 
  return { previousLength: position, blocked: 'unresolved' }; }
 
-    if (awaitingSubmit(current, replay.typed)) {
+    if (awaitingSubmit(current, prefix)) {
       if (char !== ' ') return { previousLength: position, blocked: 'submit' };
       current.events.push({ type: 'submit', offsetMs });
 
@@ -86,7 +102,7 @@ export function createInputController(owner: InputOwner) {
     if (refusesSpace(current.conditions, current.text, position, char)) {
       current.events.push({ type: 'insert', text: char, position, accepted: false, offsetMs });
 
-      return { previousLength: position, blocked: 'space', correct: false, failed: failureFor(current.conditions.correctionPolicy, current.text, replay.typed, char) };
+      return { previousLength: position, blocked: 'space', correct: false, failed: failureFor(current.conditions.correctionPolicy, current.text, prefix, char) };
     }
 
     let event: AttemptEvent | null = { type: 'insert', text: char, position, accepted: true, offsetMs };
@@ -96,13 +112,13 @@ export function createInputController(owner: InputOwner) {
     if (event) current.events.push(event);
     const correct = !event || ('accepted' in event && event.accepted === true && char === current.text[position]);
 
-    return { previousLength: position, blocked: false, correct, failed: failureFor(current.conditions.correctionPolicy, current.text, replay.typed, char) };
+    return { previousLength: position, blocked: false, correct, failed: failureFor(current.conditions.correctionPolicy, current.text, prefix, char) };
   }
 
   function typeKeys(keys: string[], type: InputSurface, at = now()) {
     if (!keys.length || !accepting(type, at)) return;
     const current = required(type);
-    const room = current.text.length - replayAttempt(current).typed.length;
+    const room = current.text.length - typed(type).length;
     const changes = keys.map((key, index) => pushInsert(key, type, at, room > 0 && index >= room));
     owner.play(keyOutcome(changes.map((change) => ({ correct: change.correct, blocked: Boolean(change.blocked) }))));
     const failure = changes.find((change) => change.failed)?.failed;
@@ -123,9 +139,7 @@ export function createInputController(owner: InputOwner) {
 
   const host = createTypingHost<Attempt>({
     attempt,
-    typed(type) { const current = attempt(type);
-
- return current ? replayAttempt(current).typed : ''; },
+    typed,
     accepting,
     inTime: (type, at) => type === 'online' ? online?.accepting(at) ?? false : !timeUp(at),
     typeKeys,
@@ -133,11 +147,11 @@ export function createInputController(owner: InputOwner) {
       const current = required(type);
 
       if (!allowsBackspace(current.conditions.correctionPolicy)) return;
-      const replay = replayAttempt(current);
+      const length = typed(type).length;
 
-      if (replay.typed.length) current.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
+      if (length) current.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
       owner.play(KEY_OUTCOME.delete);
-      owner.refresh(type, replay.typed.length);
+      owner.refresh(type, length);
     },
     refuseComposition(type) {
       if (type === 'online') { owner.notice(type, NOTICES.onlineComposition);
@@ -166,7 +180,7 @@ export function createInputController(owner: InputOwner) {
   return {
     attach: host.attach, forget: host.forget, clearFor: host.clearFor, pending: host.pending, keydown: host.keydown,
     get accentCompositionActive() { return host.accentCompositionActive; },
-    attempt, offsetFor, timeUp, accepting, finishIfTimeUp,
+    attempt, typed, offsetFor, timeUp, accepting, finishIfTimeUp,
     get online() { return online; },
     wireOnlineTyping(input: HTMLTextAreaElement, surface: OnlineTypingSurface): OnlineTypingLease {
       online = surface;

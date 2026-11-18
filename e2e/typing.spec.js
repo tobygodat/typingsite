@@ -16,10 +16,12 @@ test('a corrected mistake keeps its first-try error and visible tint', { tag: '@
   const errorCue = await wrong.evaluate((node) => ({
     background: getComputedStyle(node).backgroundColor,
     expected: getComputedStyle(document.documentElement).getPropertyValue('--danger-soft').trim(),
+    passageMask: getComputedStyle(node.closest('.typing-wrap')).maskImage,
   }));
 
   expect(errorCue.background).toBe(errorCue.expected);
   expect(errorCue.background).not.toBe('rgba(0, 0, 0, 0)');
+  expect(errorCue.passageMask).toBe('none');
 
   await page.keyboard.press('Backspace');
   await expect(wrong).toHaveCount(0);

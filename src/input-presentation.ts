@@ -75,19 +75,19 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
   const targetAttempt = input.attempt(type);
 
   if (!targetAttempt) throw new Error('No typing attempt to paint');
-  const replay = replayAttempt(targetAttempt);
+  const typed = input.typed(type);
   const online = input.online;
   const view = type === 'online' ? online?.view : ports.surface(type);
 
   if (!view || !view.textView) return;
   const { input: field, characters, textView, fx } = view;
 
-  field.value = replay.typed;
-  field.setSelectionRange(replay.typed.length, replay.typed.length);
-  textView.ensureAhead(replay.typed.length);
-  updateCharacterStates(characters, replay.typed, targetAttempt.text, previousLength);
-  const length = replay.typed.length;
-  const lastCorrect = length > 0 && replay.typed[length - 1] === targetAttempt.text[length - 1];
+  const length = typed.length;
+  field.value = typed;
+  field.setSelectionRange(length, length);
+  textView.ensureAhead(length);
+  updateCharacterStates(characters, typed, targetAttempt.text, previousLength);
+  const lastCorrect = length > 0 && typed[length - 1] === targetAttempt.text[length - 1];
   let outcome = 'delete';
 
   if (blocked) outcome = 'blocked';
@@ -104,7 +104,7 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
 
   fx.update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
   textView.trimBehind(length);
-  const waiting = awaitingSubmit(targetAttempt, replay.typed);
+  const waiting = awaitingSubmit(targetAttempt, typed);
   const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';
 
   // Said once when the space is refused or the run starts waiting, and again if a key is ignored.
@@ -117,13 +117,13 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
     elements.help.textContent = rule ? withRule(primaryNotice, rule) : blocked ? NOTICES.blocked : primaryNotice;
     updateLive(false, at);
 
-    if (ports.durationMs() === null && passageComplete(targetAttempt, replay.typed)) ports.finishPrimary();
+    if (ports.durationMs() === null && passageComplete(targetAttempt, typed)) ports.finishPrimary();
   } else if (type === 'online') {
     if (!online) return;
     online.notice(rule || (blocked ? NOTICES.onlineBlocked : ''));
     online.changed();
 
-    if (passageComplete(targetAttempt, replay.typed)) online.finish();
+    if (passageComplete(targetAttempt, typed)) online.finish();
   } else {
     const help = local.view.getSnapshot().help;
 
@@ -133,15 +133,14 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
       else local.restartHint();
     }
 
-    local.progress(replay);
+    local.progress(length);
 
-    if (passageComplete(targetAttempt, replay.typed)) local.finish();
+    if (passageComplete(targetAttempt, typed)) local.finish();
   }
 }
 
 function updateLive(reset = false, at = now()) {
   if (!practice.attempt) return;
-  const replay = replayAttempt(practice.attempt);
   const elapsed = practice.startTime === null ? 0 : now() - practice.startTime;
   const duration = ports.durationMs();
   const boundedElapsed = duration ? Math.min(elapsed, duration) : elapsed;
@@ -181,11 +180,12 @@ function updateLive(reset = false, at = now()) {
     progress = boundedElapsed / duration;
   } else {
     const wordTotal = practice.attempt.text.split(' ').length;
-    const wordCount = replay.typed.length === practice.attempt.text.length ? wordTotal : (replay.typed.match(/ /g) || []).length;
+    const typed = input.typed('primary');
+    const wordCount = typed.length === practice.attempt.text.length ? wordTotal : (typed.match(/ /g) || []).length;
     setText(elements.timer, wordCount);
     setText(elements.timerUnit, `/${wordTotal}`);
     setText(elements.timerLabel, 'words');
-    progress = replay.typed.length / practice.attempt.text.length;
+    progress = typed.length / practice.attempt.text.length;
   }
 
   const percent = Math.max(0, Math.min(100, progress * 100));

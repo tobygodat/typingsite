@@ -24,20 +24,20 @@ export const TAPE_BACK = 0.5;
  *          the word it is in; null otherwise
  * width    the visible width of the line
  * margin   how close the caret may come to the right edge, about one glyph
- * fade     the width of the left edge's fade
+ * inset   extra room at the left edge for corrections
  * realign  the layout changed (resize, text size, switching to tape): keep the current scroll
  *          if the caret is still comfortably in view, otherwise line its word up again
  */
-export interface TapeGeometry { offset?: number; caret?: number; word?: { left: number; right: number } | null; width?: number; margin?: number; fade?: number; realign?: boolean }
+export interface TapeGeometry { offset?: number; caret?: number; word?: { left: number; right: number } | null; width?: number; margin?: number; inset?: number; realign?: boolean }
 
-export function tapeOffset({ offset = 0, caret = 0, word = null, width = 0, margin = 0, fade = 0, realign = false }: TapeGeometry) {
+export function tapeOffset({ offset = 0, caret = 0, word = null, width = 0, margin = 0, inset = 0, realign = false }: TapeGeometry) {
   if (!(width > 0) || !Number.isFinite(caret)) return 0;
   // In glyphs as well as width, so a narrow screen with large text still works. Backspacing steps
-  // back before the letter left of the caret reaches the fade (guard), and a stepped word lands far
+  // back before the letter left of the caret reaches the edge (guard), and a stepped word lands far
   // enough in that the space and the letter before it can be corrected without a step back (lead).
   // Capped so a step back never lands inside the guard, which would step again on every key.
-  const lead = Math.min(width * TAPE_BACK, Math.max(width * TAPE_LEAD, fade + margin * 2.5));
-  const guard = Math.min(lead / 2, Math.max(width * TAPE_LEAD / 2, fade + margin));
+  const lead = Math.min(width * TAPE_BACK, Math.max(width * TAPE_LEAD, inset + margin * 2.5));
+  const guard = Math.min(lead / 2, Math.max(width * TAPE_LEAD / 2, inset + margin));
   const reach = width * TAPE_REACH;
   const edge = width - margin;
   let next = Math.max(0, Number.isFinite(offset) ? offset : 0);

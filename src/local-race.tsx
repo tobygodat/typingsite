@@ -5,8 +5,8 @@ import { flushSync } from 'react-dom';
 import { createStore } from './store.js';
 import { createTypingFx } from './motion.js';
 import { renderText } from './passage-view.js';
-import { completeAttempt, createAttempt, replayAttempt, selectPassage } from './typing.js';
-import type { Attempt, Conditions, Replay } from './typing.js';
+import { completeAttempt, createAttempt, selectPassage } from './typing.js';
+import type { Attempt, Conditions } from './typing.js';
 import type { SealedRun } from './practice-session.js';
 import { uid } from './profile.js';
 import { markEndFailure } from './practice-run.js';
@@ -51,9 +51,9 @@ export function createLocalRace() {
     publish({ ...view.getSnapshot(), help: binding ? `${bindingLabel(binding)} restarts.` : 'Restart shortcut is disabled.', hint: true });
   }
 
-  function progress(replay: Replay) {
+  function progress(typedLength: number) {
     if (!state.attempt) throw new Error('No local race attempt');
-    publish({ ...view.getSnapshot(), progress: Math.round(replay.typed.length / state.attempt.text.length * 100) });
+    publish({ ...view.getSnapshot(), progress: Math.round(typedLength / state.attempt.text.length * 100) });
   }
 
   function prepare() {
@@ -71,7 +71,7 @@ export function createLocalRace() {
     state.textView = renderText(host.display, passage.text);
     state.characters = state.textView.characters;
     fx.reset(state.characters);
-    progress(replayAttempt(state.attempt));
+    progress(0);
     restartHint();
     host.input.focus({ preventScroll: true });
   }

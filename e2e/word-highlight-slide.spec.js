@@ -115,8 +115,10 @@ test('on the one-line tape the glide rides the tape as it steps', async ({ page 
   await chooseSetting(page, 'tape-toggle', 'true');
   await turnOnSlide(page, 'next');
   const words = (await passageText(page)).split(' ');
+  const tapeLeft = () => page.locator('#text-display').evaluate((node) => node.getBoundingClientRect().left);
+  const start = await tapeLeft();
   await typeInto(page, `${words.slice(0, 24).join(' ')} `, '#typing-input', { delay: 20 });
-  await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
+  await expect.poll(tapeLeft).toBeLessThan(start);
   await expect.poll(async () => {
     const { index, off, moving } = await glide(page);
 

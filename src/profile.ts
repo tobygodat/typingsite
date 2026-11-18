@@ -61,6 +61,7 @@ export const defaultPreferences: Preferences = {
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   wordHighlightSlide: false,
+  typingMotion: 'smooth',
   tape: false,
   // Where the screens are listed: a side bar, or a bar across the top. Display only.
   navigation: 'side',
@@ -149,6 +150,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
     book: includes(bookIds, value.book) ? value.book : DEFAULT_BOOK,
     wordHighlight: normalizeWordHighlight(value.wordHighlight),
     wordHighlightSlide: value.wordHighlightSlide === true,
+    typingMotion: value.typingMotion === 'instant' ? 'instant' as const : 'smooth' as const,
     typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
     appFont: normalizeFont(value.appFont, APP_FONTS),
     tape: value.tape === true,
