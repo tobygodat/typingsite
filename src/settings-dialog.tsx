@@ -109,6 +109,13 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
+            <div className="preference-copy"><strong id="typing-motion-label">typing motion</strong><small className="preference-note" id="typing-motion-note">Instant skips caret, scroll, and word highlight animations.</small></div>
+            <fieldset className="setting-options" id="typing-motion" aria-labelledby="typing-motion-label" aria-describedby="typing-motion-note" onClick={(event) => choose('typing-motion', event)}>
+              <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'smooth', true)} /><span>smooth</span></label>
+              <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'instant')} /><span>instant</span></label>
+            </fieldset>
+          </div>
+          <div className="preference-row">
             <div className="preference-copy"><strong id="tape-toggle-label">one-line tape</strong></div>
             <fieldset className="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label" disabled={view.disabled['tape-toggle'] ?? false} onClick={(event) => choose('tape-toggle', event)}>
               <label className="setting-option"><input type="radio" name="tape-toggle" {...radio('tape-toggle', 'false', true)} /><span>off</span></label>

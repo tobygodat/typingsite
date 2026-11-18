@@ -13,7 +13,7 @@ These protect the people who use the app. Every change holds all of them.
 - **Contrast.** In every built-in theme, text holds 4.5:1 and carets, focus rings and input outlines hold 3:1, which is WCAG AA (`tests/contrast.test.js`).
 - **Reduced motion.** Everything animated has a reduced-motion path. CSS durations multiply by `--motion-scale`, which is 0 under `prefers-reduced-motion`, and motion driven from JavaScript checks the same media query.
 - **Touch targets.** A control is at least 44px on a coarse pointer. `e2e/touch-targets.spec.js` measures every visible control and lists the two exceptions.
-- **The letter being typed.** During a run, the letter someone is typing stays in view and clear of the edge fades, whatever else moves (`e2e/tape-mode.spec.js`).
+- **The letter being typed.** During a run, the letter someone is typing stays in view, whatever else moves (`e2e/tape-mode.spec.js`).
 - **Narrow screens.** The page never scrolls sideways at 320px (`e2e/layout.spec.js`).
 - **Scoring.** Scoring never reads presentational code (`src/motion.js`, `src/graph.js`).
 

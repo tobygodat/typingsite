@@ -133,7 +133,7 @@ test('an account with no valid tape value starts on three lines and keeps the ta
 
 test('the tape steps by whole words near the right edge, never per letter', async ({ page }) => {
   test.setTimeout(60_000);
-  // A line over about 1060px, so a tenth of it is the lead rather than the fade and margin (src/tape.js).
+  // A wide line, so its width determines the lead.
   await page.setViewportSize({ width: 1440, height: 720 });
   await openApp(page);
   await setTape(page, true);
@@ -162,8 +162,6 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
     const before = states[states.indexOf(step) - 1];
     expect(before.caret).toBeGreaterThan(before.width * 0.6);
   }
-
-  await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
 
   // A solid caret and instant letter states while typing.
   expect(states.at(-1)).toMatchObject({ caretState: 'typing', caretAnimation: 'none' });
@@ -437,7 +435,7 @@ test.describe('narrow phone with large text', () => {
     await page.screenshot({ path: shotPath(testInfo, 'tape-320-large') });
   });
 
-  test('backspacing keeps the letter before the caret clear of the left fade', async ({ page }) => {
+  test('backspacing keeps the letter before the caret clear of the left edge', async ({ page }) => {
     await openApp(page);
     await openSettings(page);
     await chooseSetting(page, 'font-size', '36');
@@ -601,7 +599,8 @@ async function midRun(page) {
   await page.mouse.move(5, 5);
   await page.mouse.move(400, 300, { steps: 4 });
   await expect(page.locator('.dock-zone')).toHaveCSS('opacity', '1');
-  await expect(page.locator('#typing-wrap')).toHaveAttribute('data-tape-scrolled', 'true');
+  await expect.poll(async () => (await tapeState(page)).offset).toBeGreaterThan(0);
+  await expect(page.locator('#typing-wrap')).toHaveCSS('mask-image', 'none');
 }
 
 for (const scheme of ['dark', 'light']) {

@@ -726,6 +726,7 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
   for (let run = 0; run < 40; run += 1) {
     const text = makePassage('words', 12, run % 2 === 0, random);
     const attempt = createAttempt({ id: `p${run}`, text });
+    const live = replayCursor(attempt);
     let offsetMs = 0;
     let length = 0;
 
@@ -742,7 +743,9 @@ test('replayCursor matches replayAttempt at every prefix of the events', () => {
         : { type: pick(['focus-lost', 'composition']) };
 
       attempt.events.push({ ...event, offsetMs });
-      length = replayAttempt(attempt).typed.length;
+      const expected = replayAttempt(attempt).typed;
+      assert.equal(live(Infinity), expected, `live run ${run}, event ${i}`);
+      length = expected.length;
     }
 
     const typedAt = replayCursor(attempt);
