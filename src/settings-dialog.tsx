@@ -66,18 +66,18 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
     </header>
     <div className="settings-body">
       <nav className="settings-nav" aria-label="Settings categories">
-        <button type="button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current={view.category === 'appearance' ? 'true' : undefined} onClick={() => settings.category('appearance')}>appearance</button>
-        <button type="button" data-settings-category="practice" aria-controls="settings-practice" aria-current={view.category === 'practice' ? 'true' : undefined} onClick={() => settings.category('practice')}>practice</button>
-        <button type="button" data-settings-category="keyboard" aria-controls="settings-keyboard" aria-current={view.category === 'keyboard' ? 'true' : undefined} onClick={() => settings.category('keyboard')}>keyboard</button>
-        <button type="button" data-settings-category="sound" aria-controls="settings-sound" aria-current={view.category === 'sound' ? 'true' : undefined} onClick={() => settings.category('sound')}>sound</button>
-        <button type="button" data-settings-category="shortcuts" aria-controls="settings-shortcuts" aria-current={view.category === 'shortcuts' ? 'true' : undefined} onClick={() => settings.category('shortcuts')}>shortcuts</button>
-        <button id="import-trigger" className="settings-import" type="button" aria-haspopup="dialog" aria-controls="import-dialog" onClick={() => importing?.open()}>Import Monkeytype settings</button>
+        <button type="button" id="settings-appearance-button" data-settings-category="appearance" aria-controls="settings-appearance" aria-current={view.category === 'appearance' ? 'true' : undefined} onClick={() => settings.category('appearance')}>Appearance</button>
+        <button type="button" id="settings-practice-button" data-settings-category="practice" aria-controls="settings-practice" aria-current={view.category === 'practice' ? 'true' : undefined} onClick={() => settings.category('practice')}>Practice</button>
+        <button type="button" id="settings-keyboard-button" data-settings-category="keyboard" aria-controls="settings-keyboard" aria-current={view.category === 'keyboard' ? 'true' : undefined} onClick={() => settings.category('keyboard')}>Keyboard</button>
+        <button type="button" id="settings-sound-button" data-settings-category="sound" aria-controls="settings-sound" aria-current={view.category === 'sound' ? 'true' : undefined} onClick={() => settings.category('sound')}>Sound</button>
+        <button type="button" id="settings-shortcuts-button" data-settings-category="shortcuts" aria-controls="settings-shortcuts" aria-current={view.category === 'shortcuts' ? 'true' : undefined} onClick={() => settings.category('shortcuts')}>Shortcuts</button>
       </nav>
       <div className="settings-content">
-        <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-title" hidden={view.category !== 'appearance'}>
-          <div className="settings-intro"><h3 id="settings-appearance-title">Appearance</h3></div>
+        <section id="settings-appearance" className="settings-category" aria-labelledby="settings-appearance-button" hidden={view.category !== 'appearance'}>
+          <h3 className="settings-group-title">Colors and background</h3>
           <ThemeSettings controller={themeEditor} settings={settings} />
           <WallpaperSettings controller={wallpaper} settings={settings} />
+          <h3 className="settings-group-title">Interface</h3>
           <div className="preference-row">
             <div className="preference-copy"><strong id="navigation-select-label">navigation</strong></div>
             <fieldset className="setting-options" id="navigation-select" aria-labelledby="navigation-select-label" disabled={view.disabled['navigation-select'] ?? false} onClick={(event) => choose('navigation-select', event)}>
@@ -85,6 +85,13 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'top')} /><span>top bar</span></label>
             </fieldset>
           </div>
+          <div className="preference-row">
+            <div className="preference-copy"><strong id="app-font-label">app font</strong></div>
+            <fieldset className="setting-options" id="app-font" aria-labelledby="app-font-label" disabled={view.disabled['app-font'] ?? false} onClick={(event) => choose('app-font', event)}>
+              {APP_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="app-font" {...radio('app-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
+            </fieldset>
+          </div>
+          <h3 className="settings-group-title">Typing display</h3>
           <div className="preference-row">
             <div className="preference-copy"><strong id="font-size-label">text size</strong></div>
             <fieldset className="setting-options" id="font-size" aria-labelledby="font-size-label" disabled={view.disabled['font-size'] ?? false} onClick={(event) => choose('font-size', event)}>
@@ -128,18 +135,12 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               {TYPING_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="typing-font" {...radio('typing-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
             </fieldset>
           </div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="app-font-label">app font</strong></div>
-            <fieldset className="setting-options" id="app-font" aria-labelledby="app-font-label" disabled={view.disabled['app-font'] ?? false} onClick={(event) => choose('app-font', event)}>
-              {APP_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="app-font" {...radio('app-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
-            </fieldset>
-          </div>
           <div className="settings-preview" aria-label="Passage preview">
             <p id="settings-preview-passage"><span>Find</span> <span>a</span> <span>little</span> <span>room</span> <span>for</span> <span>thought.</span></p>
           </div>
         </section>
-        <section id="settings-practice" className="settings-category" aria-labelledby="settings-practice-title" hidden={view.category !== 'practice'}>
-          <div className="settings-intro"><h3 id="settings-practice-title">Practice</h3></div>
+        <section id="settings-practice" className="settings-category" aria-labelledby="settings-practice-button" hidden={view.category !== 'practice'}>
+          <h3 className="settings-group-title">Test setup</h3>
           <div className="preference-row">
             <div className="preference-copy"><strong id="word-list-label">word list</strong><small id="word-list-lock" className="preference-lock" hidden={!view.presentation.standard}>{view.presentation.standard ? 'fixed for standard' : ''}</small></div>
             <fieldset className="setting-options" id="word-list" aria-labelledby="word-list-label" aria-describedby="word-list-lock" disabled={view.disabled['word-list'] ?? false} onClick={(event) => choose('word-list', event)}>
@@ -161,7 +162,8 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="repeat-quotes-toggle" {...radio('repeat-quotes-toggle', 'true')} /><span>on</span></label>
             </fieldset>
           </div>
-          <div className="preference-row preference-row-wide">
+          <h3 className="settings-group-title">Typing rules</h3>
+          <div className="preference-row">
             <div className="preference-copy"><strong id="correction-select-label">correction</strong><small id="correction-select-lock" className="preference-lock" hidden>fixed for standard</small></div>
             <fieldset className="setting-options" id="correction-select" aria-labelledby="correction-select-label" aria-describedby="correction-select-lock" disabled={view.disabled['correction-select'] ?? false} onClick={(event) => choose('correction-select', event)}>
               <label className="setting-option"><input type="radio" name="correction-select" {...radio('correction-select', 'relaxed', true)} /><span>free</span></label>
@@ -202,6 +204,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               {MIN_WPM_OPTIONS.filter((value) => value !== 0).map((value) => <label key={value} className="setting-option"><input type="radio" name="min-wpm" {...radio('min-wpm', String(value))} /><span data-wpm={value}>{formatSpeed(value)}</span></label>)}
             </fieldset>
           </div>
+          <h3 className="settings-group-title">During a test</h3>
           <div className="preference-row">
             <div className="preference-copy"><strong id="pace-select-label">pace caret</strong><PaceNote controller={settings.pace} /></div>
             <fieldset className="setting-options" id="pace-select" aria-labelledby="pace-select-label" aria-describedby="pace-note" disabled={view.disabled['pace-select'] ?? false} onClick={(event) => choose('pace-select', event)}>
@@ -220,6 +223,21 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="speed-unit" {...radio('speed-unit', 'cpm')} /><span>cpm</span></label>
             </fieldset>
           </div>
+          <div className="preference-row">
+            <div className="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">{unitText('live {unit} and accuracy')}</strong></div>
+            <fieldset className="setting-options" id="live-toggle" aria-labelledby="live-toggle-label" disabled={view.disabled['live-toggle'] ?? false} onClick={(event) => choose('live-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'true')} /><span>on</span></label>
+            </fieldset>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy"><strong id="focus-toggle-label">focus mode</strong></div>
+            <fieldset className="setting-options" id="focus-toggle" aria-labelledby="focus-toggle-label" disabled={view.disabled['focus-toggle'] ?? false} onClick={(event) => choose('focus-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'false', true)} /><span>off</span></label>
+              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'true')} /><span>on</span></label>
+            </fieldset>
+          </div>
+          <h3 className="settings-group-title">Training</h3>
           <div className="preference-row">
             <div className="preference-copy"><strong id="daily-goal-label">daily goal</strong></div>
             <fieldset className="setting-options" id="daily-goal" aria-labelledby="daily-goal-label" disabled={view.disabled['daily-goal'] ?? false} onClick={(event) => choose('daily-goal', event)}>
@@ -254,23 +272,8 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="retest-toggle" {...radio('retest-toggle', 'true', true)} /><span>on</span></label>
             </fieldset>
           </div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="live-toggle-label" data-speed-unit="live {unit} and accuracy">{unitText('live {unit} and accuracy')}</strong></div>
-            <fieldset className="setting-options" id="live-toggle" aria-labelledby="live-toggle-label" disabled={view.disabled['live-toggle'] ?? false} onClick={(event) => choose('live-toggle', event)}>
-              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'false', true)} /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="live-toggle" {...radio('live-toggle', 'true')} /><span>on</span></label>
-            </fieldset>
-          </div>
-          <div className="preference-row">
-            <div className="preference-copy"><strong id="focus-toggle-label">focus mode</strong></div>
-            <fieldset className="setting-options" id="focus-toggle" aria-labelledby="focus-toggle-label" disabled={view.disabled['focus-toggle'] ?? false} onClick={(event) => choose('focus-toggle', event)}>
-              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'false', true)} /><span>off</span></label>
-              <label className="setting-option"><input type="radio" name="focus-toggle" {...radio('focus-toggle', 'true')} /><span>on</span></label>
-            </fieldset>
-          </div>
         </section>
-        <section id="settings-keyboard" className="settings-category" aria-labelledby="settings-keyboard-title" hidden={view.category !== 'keyboard'}>
-          <div className="settings-intro"><h3 id="settings-keyboard-title">Keyboard</h3></div>
+        <section id="settings-keyboard" className="settings-category" aria-labelledby="settings-keyboard-button" hidden={view.category !== 'keyboard'}>
           <div className="preference-row">
             <div className="preference-copy"><strong id="layout-select-label">keyboard layout</strong><small id="layout-note" className="preference-note">Doesn’t remap keys; set the layout in your system.</small></div>
             <fieldset className="setting-options" id="layout-select" aria-labelledby="layout-select-label" aria-describedby="layout-note" disabled={view.disabled['layout-select'] ?? false} onClick={(event) => choose('layout-select', event)}>
@@ -296,8 +299,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
         </section>
-        <section id="settings-sound" className="settings-category" aria-labelledby="settings-sound-title" hidden={view.category !== 'sound'}>
-          <div className="settings-intro"><h3 id="settings-sound-title">Sound</h3></div>
+        <section id="settings-sound" className="settings-category" aria-labelledby="settings-sound-button" hidden={view.category !== 'sound'}>
           <div className="preference-row">
             <div className="preference-copy"><strong id="sound-select-label">sound</strong></div>
             <fieldset className="setting-options" id="sound-select" aria-labelledby="sound-select-label" disabled={view.disabled['sound-select'] ?? false} onClick={(event) => choose('sound-select', event)}>
@@ -308,8 +310,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
           </div>
           <SoundVolume settings={settings} />
         </section>
-        <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden={view.category !== 'shortcuts'}>
-          <div className="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3></div>
+        <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-button" hidden={view.category !== 'shortcuts'}>
           <p id="keybindings-help">Mod means Ctrl or ⌘. Leave blank to disable.</p>
           <KeybindingEditor editor={settings.keybindings} />
 
@@ -318,6 +319,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
     </div>
     <footer className="settings-footer">
       <AccountSaved controller={accounts} />
+      <button id="import-trigger" className="btn btn-ghost" type="button" aria-label="Import Monkeytype settings" aria-haspopup="dialog" aria-controls="import-dialog" onClick={() => importing?.open()}>Import Monkeytype</button>
       <button onClick={() => settings.close()} id="settings-done" className="btn btn-primary" type="button">Done</button>
     </footer>
   </dialog>

@@ -86,9 +86,17 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await openApp(page);
   const text = await passageText(page);
   await openSettings(page, 'appearance');
-  await page.locator('#font-size input:checked').focus();
+  const previousSize = page.locator('#font-size input:checked');
+  const checkmark = (option) => option.evaluate((input) => getComputedStyle(input.nextElementSibling, '::before').visibility);
+  expect(await checkmark(previousSize)).toBe('visible');
+  await previousSize.focus();
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('#font-size input[value="36"]')).toBeFocused();
+  const large = page.locator('#font-size input[value="36"]');
+  await expect(large).toBeFocused();
+  await expect(large).toBeChecked();
+  expect(await checkmark(large)).toBe('visible');
+  expect(await checkmark(page.locator('#font-size input[value="28"]'))).toBe('hidden');
+  await expect(page.locator('#font-size input[value="36"] + span')).toHaveCSS('outline-style', 'solid');
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('font-size', '36px');
   await chooseSetting(page, 'word-highlight', 'next');
@@ -280,7 +288,7 @@ test('palette opens shortcuts and import returns focus to a visible settings ope
 });
 
 for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'], [320, 568, 'dark'], [375, 420, 'light']]) {
-  test(`dialog fits ${width}×${height} ${theme} with a fixed footer`, async ({ page }, testInfo) => {
+  test(`dialog fits ${width}×${height} ${theme} with categories and actions in view`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
@@ -290,7 +298,6 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
       const bounds = await dialog(page).boundingBox();
       expect(bounds.width).toBe(1080);
       expect(bounds.height).toBe(704);
-      expect(await page.locator('.settings-nav').evaluate((node) => node.getBoundingClientRect().width)).toBe(216);
     }
 
     await page.screenshot({ path: testInfo.outputPath(`settings-${width}-${height}-${theme}.png`) });
@@ -304,10 +311,13 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
         expect(new Set(options).size).toBe(1);
         const label = await page.locator('#correction-select-label').boundingBox();
         const group = await page.locator('#correction-select').boundingBox();
-        expect(label.y + label.height).toBeLessThanOrEqual(group.y);
+        expect(label.x + label.width).toBeLessThanOrEqual(group.x);
+        expect(label.y).toBeGreaterThanOrEqual(group.y);
+        expect(label.y + label.height).toBeLessThanOrEqual(group.y + group.height);
       }
 
       const footer = await page.locator('.settings-footer').boundingBox();
+      const navigation = await page.getByRole('navigation', { name: 'Settings categories' }).boundingBox();
       const controls = page.locator(`#settings-${category} input, #settings-${category} button`);
 
       for (const control of await controls.all()) {
@@ -320,6 +330,8 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
       }
 
       expect(await page.locator('.settings-footer').boundingBox()).toEqual(footer);
+      expect(await page.getByRole('navigation', { name: 'Settings categories' }).boundingBox()).toEqual(navigation);
+      await expect(page.locator('#import-trigger')).toBeInViewport();
       await expect(page.locator('#settings-done')).toBeInViewport();
     }
 
