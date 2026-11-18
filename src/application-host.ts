@@ -65,6 +65,7 @@ import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
+import { normalizeCaretGlide } from './caret-glide.js';
 import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
 import { readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
@@ -282,7 +283,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const FOCUS_KEYWORDS = { balanced: 'both mix', accuracy: 'mistakes errors misses', speed: 'slow pace timing' };
 
-  const DISPLAY_PREFERENCES = new Set(['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'typingMotion', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
+  const DISPLAY_PREFERENCES = new Set(['theme', 'darkTheme', 'lightTheme', 'customThemes', 'fontSize', 'typingFont', 'appFont', 'wordHighlight', 'wordHighlightSlide', 'typingMotion', 'caretGlide', 'tape', 'navigation', 'liveMetrics', 'keyboard', 'fingerMap', 'focusMode', 'speedUnit', 'sound', 'soundVolume', 'keybindings', 'dailyGoal',
     ...TRAINING_PREFERENCES]);
 
   const runInProgress = () => runActive || localRaceRunning();
@@ -1633,7 +1634,8 @@ export async function attachApplication({ practice, learning, palette, settings:
     onSetting('navigation-select', (value) => setNavigation(value === 'top' ? 'top' : 'side'));
     onSetting('sound-select', (value) => setSound(value));
   
-    settingsView.onVolume((value) => setSoundVolume(value, { save: false }), () => saveChoice('soundVolume'));
+    settingsView.onRange('sound-volume', { edit: (value) => setSoundVolume(value, { save: false }), commit: () => saveChoice('soundVolume') });
+    settingsView.onRange('caret-glide', { edit: (value) => { learning.preferences.caretGlide = normalizeCaretGlide(value); applyTypingMotion(); }, commit: () => saveChoice('caretGlide') });
 
     practice.connectNative(typingHost);
 
@@ -2060,9 +2062,11 @@ export async function attachApplication({ practice, learning, palette, settings:
   }
 
   function applyTypingMotion() {
-    const mode = learning.preferences.typingMotion;
+    const { typingMotion: mode, caretGlide } = learning.preferences;
     document.body.dataset.typingMotion = mode;
+    document.documentElement.style.setProperty('--caret-glide', `${caretGlide}ms`);
     selectSetting('typing-motion', mode);
+    settingsView.present({ caretGlide, glideOff: mode === 'instant' });
   }
 
   function setTypingMotion(value: string) {

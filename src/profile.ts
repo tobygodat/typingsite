@@ -14,6 +14,7 @@ export type { Preferences, Profile, TrainingLoop, Best } from './profile-types.j
 
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
+import { CARET_GLIDE, normalizeCaretGlide } from './caret-glide.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
@@ -62,6 +63,7 @@ export const defaultPreferences: Preferences = {
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   wordHighlightSlide: false,
   typingMotion: 'smooth',
+  caretGlide: CARET_GLIDE.default,
   tape: false,
   // Where the screens are listed: a side bar, or a bar across the top. Display only.
   navigation: 'side',
@@ -151,6 +153,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
     wordHighlight: normalizeWordHighlight(value.wordHighlight),
     wordHighlightSlide: value.wordHighlightSlide === true,
     typingMotion: value.typingMotion === 'instant' ? 'instant' as const : 'smooth' as const,
+    caretGlide: normalizeCaretGlide(value.caretGlide),
     typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
     appFont: normalizeFont(value.appFont, APP_FONTS),
     tape: value.tape === true,

@@ -15,7 +15,8 @@ import { wordListIds } from './words.js';
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, InputHTMLAttributes, MouseEvent } from 'react';
 import { createSettings } from './settings.js';
-import type { SettingId, SettingsController } from './settings.js';
+import type { RangeId, SettingId, SettingsController } from './settings.js';
+import { CARET_GLIDE } from './caret-glide.js';
 
 export function SettingsDialog({ controller, themeEditor: providedTheme, wallpaper: providedWallpaper, accounts, importing }: { controller?: SettingsController; themeEditor?: ThemeEditorController; wallpaper?: WallpaperController; accounts?: AccountSession; importing?: SettingsImport } = {}) {
   const [localTheme] = useState(createThemeEditor);
@@ -115,6 +116,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'instant')} /><span>instant</span></label>
             </fieldset>
           </div>
+          <PreferenceRange settings={settings} id="caret-glide" label="glide speed" note="Shorter is faster." value={view.presentation.caretGlide} min={CARET_GLIDE.min} max={CARET_GLIDE.max} step={CARET_GLIDE.step} unit=" ms" disabled={view.presentation.glideOff} />
           <div className="preference-row">
             <div className="preference-copy"><strong id="tape-toggle-label">one-line tape</strong></div>
             <fieldset className="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label" disabled={view.disabled['tape-toggle'] ?? false} onClick={(event) => choose('tape-toggle', event)}>
@@ -306,7 +308,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
               <label className="setting-option"><input type="radio" name="sound-select" {...radio('sound-select', 'clicks-errors')} /><span>clicks + error tick</span></label>
             </fieldset>
           </div>
-          <SoundVolume settings={settings} />
+          <PreferenceRange settings={settings} id="sound-volume" label="volume" value={view.presentation.volume} min={0} max={100} step={5} unit="%" disabled={view.presentation.soundOff} />
         </section>
         <section id="settings-shortcuts" className="settings-category keybindings-category" aria-labelledby="settings-shortcuts-title" hidden={view.category !== 'shortcuts'}>
           <div className="settings-intro"><h3 id="settings-shortcuts-title">Shortcuts</h3></div>
@@ -324,18 +326,44 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
   );
 }
 
-function SoundVolume({ settings }: { settings: SettingsController }) {
-  const view = useSyncExternalStore(settings.view.subscribe, settings.view.getSnapshot, settings.view.getSnapshot).presentation;
+interface RangeProps { settings: SettingsController; id: RangeId; label: string; note?: string; value: number; min: number; max: number; step: number; unit: string; disabled: boolean }
+
+function PreferenceRange({ settings, id, label, note, value, min, max, step, unit, disabled }: RangeProps) {
   const input = useRef<HTMLInputElement>(null);
   useLayoutEffect(() => {
     const field = input.current;
 
     if (!field) return;
-    field.addEventListener('change', settings.commitVolume);
+    const commit = () => settings.commitRange(id);
+    field.addEventListener('change', commit);
 
-    return () => field.removeEventListener('change', settings.commitVolume);
-  }, [settings]);
-  const style: CSSProperties & { '--fill': string } = { '--fill': `${view.volume}%` };
+    return () => field.removeEventListener('change', commit);
+  }, [settings, id]);
+  const style: CSSProperties & { '--fill': string } = { '--fill': `${((value - min) / (max - min)) * 100}%` };
+  const shown = `${value}${unit}`;
 
-  return <label className="preference-row" id="sound-volume-row" htmlFor="sound-volume"><span className="preference-copy"><strong>volume</strong></span><span className="preference-range"><span id="sound-volume-value" className="preference-value num" aria-hidden="true">{view.volume}%</span><input ref={input} className="range" id="sound-volume" type="range" min="0" max="100" step="5" value={view.volume} aria-valuetext={`${view.volume}%`} disabled={view.soundOff} style={style} onInput={(event) => settings.editVolume(Number(event.currentTarget.value))} /></span></label>;
+  return (
+    <label className="preference-row" id={`${id}-row`} htmlFor={id}>
+      <span className="preference-copy"><strong id={`${id}-label`}>{label}</strong>{note && <small className="preference-note" id={`${id}-note`}>{note}</small>}</span>
+      <span className="preference-range">
+        <span id={`${id}-value`} className="preference-value num" aria-hidden="true">{shown}</span>
+        <input
+          ref={input}
+          className="range"
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-labelledby={`${id}-label`}
+          aria-valuetext={shown}
+          aria-describedby={note ? `${id}-note` : undefined}
+          disabled={disabled}
+          style={style}
+          onInput={(event) => settings.editRange(id, Number(event.currentTarget.value))}
+        />
+      </span>
+    </label>
+  );
 }
