@@ -836,6 +836,7 @@ button.setting-option:focus-visible span { outline: var(--settings-selection-lin
 .pace-note { color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); }
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: var(--settings-label); }
+#typing-font { min-height: var(--settings-control); max-width: 100%; padding-inline: var(--space-2); border: 1px solid var(--outline); border-radius: var(--radius-sm); background-color: var(--raised); color: var(--text); font: var(--text-label)/var(--settings-option-line) var(--font-app); }
 .settings-preview { padding-top: var(--space-4); display: grid; gap: var(--space-2); }
 #settings-preview-passage { margin: 0; border-left: var(--settings-selection-line) solid var(--accent); padding-left: var(--space-3); font-family: var(--font-typing); font-size: var(--settings-preview-medium); line-height: var(--settings-preview-line); }
 body[data-font-size="22"] #settings-preview-passage { font-size: var(--settings-preview-small); }

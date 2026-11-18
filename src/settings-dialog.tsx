@@ -10,7 +10,7 @@ import { createWallpaper } from './wallpaper.js';
 import type { WallpaperController } from './wallpaper.js';
 import { WallpaperSettings } from './wallpaper-settings.js';
 import { KeybindingEditor } from './keybinding-editor.js';
-import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
+import { APP_FONTS, DEFAULT_FONT, TYPING_FONTS, fontName } from './fonts.js';
 import { wordListIds } from './words.js';
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { CSSProperties, InputHTMLAttributes, MouseEvent } from 'react';
@@ -130,10 +130,10 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="typing-font-label">typing font</strong></div>
-            <fieldset className="setting-options" id="typing-font" aria-labelledby="typing-font-label" disabled={view.disabled['typing-font'] ?? false} onClick={(event) => choose('typing-font', event)}>
-              {TYPING_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="typing-font" {...radio('typing-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
-            </fieldset>
+            <label className="preference-copy" htmlFor="typing-font"><strong>typing font</strong></label>
+            <select id="typing-font" value={view.selected['typing-font'] ?? DEFAULT_FONT} disabled={view.disabled['typing-font']} onChange={(event) => settings.choose('typing-font', event.currentTarget.value)}>
+              {TYPING_FONTS.map((font) => <option key={font} value={font}>{fontName(font)}</option>)}
+            </select>
           </div>
           <div className="settings-preview" aria-label="Passage preview">
             <p id="settings-preview-passage"><span>Find</span> <span>a</span> <span>little</span> <span>room</span> <span>for</span> <span>thought.</span></p>
