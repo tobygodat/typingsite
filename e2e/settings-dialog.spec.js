@@ -93,9 +93,9 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await expect(large).toBeChecked();
   const selected = page.locator('#font-size input[value="36"] + span');
   await expect(selected).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect(selected).not.toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await expect(selected).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
   await expect(selected).toHaveCSS('outline-style', 'solid');
-  await expect(page.locator('#font-size input[value="28"] + span')).toHaveCSS('border-top-color', 'rgba(0, 0, 0, 0)');
+  await expect(page.locator('#font-size input[value="28"] + span')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('font-size', '36px');
   await chooseSetting(page, 'word-highlight', 'next');
