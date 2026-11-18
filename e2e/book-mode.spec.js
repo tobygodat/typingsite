@@ -95,7 +95,7 @@ test('a book page runs with tape mode, the word highlight, the pace caret and so
   await page.addInitScript(() => {
     window.__clicks = 0;
     const node = (extra) => ({ connect: (target) => target, disconnect() {}, ...extra });
-    const param = () => ({ value: 0, setValueAtTime() { return this; }, exponentialRampToValueAtTime() { return this; } });
+    const param = () => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime() { return this; }, exponentialRampToValueAtTime() { return this; }, setTargetAtTime() { return this; } });
     window.AudioContext = class {
       constructor() { this.state = 'running'; this.currentTime = 0; this.sampleRate = 48000; this.destination = node({}); }
       resume() { return Promise.resolve(); }

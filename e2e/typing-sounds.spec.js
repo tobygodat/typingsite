@@ -1,21 +1,21 @@
 // Typing sounds: off by default, a lazily created AudioContext, a click per key, a tick only for a
 // mistyped letter, volume (0 is silent), palette commands and the guest/member preference rules.
 // AudioContext is stubbed so each test can count what would have played. Choosing an audible sound
-// builds the context just after the change, so the next key clicks; a sound that arrives any other way
-// (a reload, an import) waits for the first key, which is silent. Never built inside an event.
+// or loading it with a profile builds the context just after the change, so the next key clicks.
+// Never built inside an event.
 import { test, expect, openApp, openView, passageText, typeInto, chooseWords, chooseMore, completePassage, openSettings, signInWithEmail, chooseSetting, setRaceName, openRaceLink } from './fixtures.js';
 
 async function stubAudio(page) {
   await page.addInitScript(() => {
-    const log = { created: 0, closed: 0, state: null, states: [], plays: [], clickGains: [], builtDuring: [] };
+    const log = { created: 0, closed: 0, state: null, states: [], plays: [], peaks: [], builtDuring: [] };
     window.__sound = log;
     const node = (extra) => ({ connect(target) { return target; }, disconnect() {}, ...extra });
 
-    const param = (record) => ({ value: 0, setValueAtTime(value) {
+    const param = (record) => ({ value: 0, setValueAtTime() { return this; }, linearRampToValueAtTime(value) {
       record?.(value);
 
       return this;
-    }, exponentialRampToValueAtTime() { return this; } });
+    }, exponentialRampToValueAtTime() { return this; }, setTargetAtTime() { return this; } });
 
     class FakeAudioContext {
       constructor() {
@@ -54,8 +54,8 @@ async function stubAudio(page) {
       createBufferSource() { return node({ buffer: null, start() { log.plays.push('click'); }, stop() {} }); }
       createOscillator() { return node({ type: 'sine', frequency: param(), start() { log.plays.push('tick'); }, stop() {} }); }
       createBiquadFilter() { return node({ type: 'lowpass', frequency: { value: 0 }, Q: { value: 0 } }); }
-      // The click sets its starting level once; the tick ramps, so only clicks are recorded here.
-      createGain() { return node({ gain: param((value) => { if (value > 0.001) log.clickGains.push(value); }) }); }
+      // Each voice fades in to its peak level, recorded here.
+      createGain() { return node({ gain: param((value) => { log.peaks.push(value); }) }); }
     }
 
     window.AudioContext = FakeAudioContext;
@@ -63,7 +63,7 @@ async function stubAudio(page) {
   });
 }
 
-const sound = (page) => page.evaluate(() => ({ ...window.__sound, states: [...window.__sound.states], plays: [...window.__sound.plays], clickGains: [...window.__sound.clickGains], builtDuring: [...window.__sound.builtDuring] }));
+const sound = (page) => page.evaluate(() => ({ ...window.__sound, states: [...window.__sound.states], plays: [...window.__sound.plays], peaks: [...window.__sound.peaks], builtDuring: [...window.__sound.builtDuring] }));
 const plays = async (page) => (await sound(page)).plays;
 const wrongFor = (char) => (char === 'x' ? 'z' : 'x');
 
@@ -74,12 +74,6 @@ async function soundReady(page) {
 
     return created - closed;
   }).toBe(1);
-}
-
-// Types the first audible key, which makes no sound itself, and waits for the context it asked for.
-async function firstKey(page, char) {
-  await typeInto(page, char);
-  await soundReady(page);
 }
 
 async function chooseSound(page, mode) {
@@ -359,9 +353,9 @@ test('volume 0 is silent and a lower volume plays more quietly', async ({ page }
   await page.keyboard.press('Escape');
   text = await passageText(page);
   await typeInto(page, text[0]);
-  const { plays: played, clickGains } = await sound(page);
+  const { plays: played, peaks } = await sound(page);
   expect(played).toEqual(['click', 'click', 'click']);
-  expect(clickGains[2]).toBeLessThan(clickGains[0]);
+  expect(peaks[2]).toBeLessThan(peaks[0]);
 });
 
 test('turning sound off closes the context; turning it on builds a fresh one for the next key', async ({ page }) => {
@@ -478,11 +472,13 @@ test('a member’s sound and volume follow the account', async ({ page, supabase
   await expect(page.locator('#text-display .char').first()).toBeVisible();
   await expect(page.locator('#sound-select input:checked')).toHaveValue('clicks-errors');
   await expect(page.locator('#sound-volume')).toHaveValue('75');
-  expect((await sound(page)).created, 'still no context until a key').toBe(0);
+  // The saved sound readies a context before any key, and it rests until the first one.
+  await soundReady(page);
+  await expect.poll(async () => (await sound(page)).state).toBe('suspended');
   const text = await passageText(page);
-  await firstKey(page, text[0]);
-  await page.keyboard.type(text[1]);
-  expect(await sound(page)).toMatchObject({ created: 1, plays: ['click'] });
+  await typeInto(page, `${text[0]}${wrongFor(text[1])}`);
+  expect(await sound(page), 'the first key after a reload is heard').toMatchObject({ created: 1, plays: ['click', 'tick'] });
+  await expect.poll(async () => (await sound(page)).state).toBe('running');
 });
 
 for (const theme of ['dark', 'light']) {

@@ -21,9 +21,9 @@ const KEY_OUTCOMES = Object.values(KEY_OUTCOME);
 
 // Peak gain at full volume. Both voices are short and sit well below full scale.
 const CLICK_PEAK = 0.9;
-const TICK_PEAK = 0.45;
+const TICK_PEAK = 0.36;
 
-// A key outside a run, and the end of a run, suspend the context once the last key's voice (0.1 s at
+// A key outside a run, and the end of a run, suspend the context once the last key's voice (0.11 s at
 // most) has played out.
 const REST_AFTER_MS = 250;
 
@@ -68,8 +68,10 @@ export function gainFor(volume: unknown) {
   return level * level;
 }
 
+const CLICK_SECONDS = 0.07;
+
 function noiseBuffer(context: AudioContext) {
-  const length = Math.max(1, Math.round(context.sampleRate * 0.04));
+  const length = Math.max(1, Math.round(context.sampleRate * CLICK_SECONDS));
   const buffer = context.createBuffer(1, length, context.sampleRate);
   const data = buffer.getChannelData(0);
 
@@ -78,41 +80,53 @@ function noiseBuffer(context: AudioContext) {
   return buffer;
 }
 
-// A short band-passed noise burst, like a key bottoming out. The band moves a little each time so a
-// run of keys doesn't sound machine-made.
+// Each voice fades in over a few milliseconds and dies away smoothly: a level that jumps or stops
+// dead is heard as a sharp snap across the whole spectrum.
+function envelope(param: AudioParam, at: number, peak: number, attack: number, decay: number) {
+  param.setValueAtTime(0, at);
+  param.linearRampToValueAtTime(peak, at + attack);
+  param.setTargetAtTime(0, at + attack, decay);
+}
+
+// A short, muffled noise burst, like a key bottoming out on a soft board. The band sits low and a
+// low-pass takes off the hiss above it. It moves a little each time so a run of keys doesn't sound
+// machine-made.
 function playClick(context: AudioContext, gain: number, noise: AudioBuffer | null) {
   const at = context.currentTime;
   const source = context.createBufferSource();
   source.buffer = noise;
   const band = context.createBiquadFilter();
   band.type = 'bandpass';
-  band.frequency.value = 2200 + Math.random() * 600;
-  band.Q.value = 0.8;
+  band.frequency.value = 1300 + Math.random() * 300;
+  band.Q.value = 0.9;
+  const soft = context.createBiquadFilter();
+  soft.type = 'lowpass';
+  soft.frequency.value = 2600;
+  soft.Q.value = 0.5;
   const amp = context.createGain();
-  amp.gain.setValueAtTime(CLICK_PEAK * gain, at);
-  amp.gain.exponentialRampToValueAtTime(0.0001, at + 0.03);
+  envelope(amp.gain, at, CLICK_PEAK * gain, 0.003, 0.011);
   source.connect(band);
-  band.connect(amp);
+  band.connect(soft);
+  soft.connect(amp);
   amp.connect(context.destination);
   source.start(at);
-  source.stop(at + 0.035);
+  source.stop(at + CLICK_SECONDS);
 }
 
-// A soft, falling low tone: different enough from the click to hear without looking.
+// A soft, falling low tone, a pure sine with no edge: different enough from the click to hear
+// without looking.
 function playTick(context: AudioContext, gain: number) {
   const at = context.currentTime;
   const tone = context.createOscillator();
-  tone.type = 'triangle';
-  tone.frequency.setValueAtTime(330, at);
-  tone.frequency.exponentialRampToValueAtTime(220, at + 0.07);
+  tone.type = 'sine';
+  tone.frequency.setValueAtTime(392, at);
+  tone.frequency.exponentialRampToValueAtTime(262, at + 0.08);
   const amp = context.createGain();
-  amp.gain.setValueAtTime(0.0001, at);
-  amp.gain.exponentialRampToValueAtTime(TICK_PEAK * gain, at + 0.004);
-  amp.gain.exponentialRampToValueAtTime(0.0001, at + 0.09);
+  envelope(amp.gain, at, TICK_PEAK * gain, 0.008, 0.012);
   tone.connect(amp);
   amp.connect(context.destination);
   tone.start(at);
-  tone.stop(at + 0.1);
+  tone.stop(at + 0.11);
 }
 
 // After the key's letter has painted: building an AudioContext can hold the main thread for tens of
@@ -127,8 +141,10 @@ function afterPaint(callback: () => void) {
 //   closed  no context: nothing has asked for sound yet, or sound is off or at volume 0;
 //   asleep  built and suspended: sound was chosen, the page is hidden, or no key for a while outside a run;
 //   awake   built and running: a key was just typed, or a run is in progress.
-// The context is built after the change that chooses an audible sound (prepare) or, failing that,
-// after the first audible key, which stays silent itself; it is never built inside an event.
+// The context is built after the settings first ask for an audible sound (sync), whether a person
+// chose it or a saved profile brought it, so the first key is heard. A key that finds no context, as
+// after the browser closed one, asks for one after itself and stays silent. It is never built inside
+// an event.
 export function createSounds({ settings = () => ({ mode: 'off', volume: 0 }), running = () => false, AudioContextClass = audioHost.AudioContext || audioHost.webkitAudioContext, defer = afterPaint, page = globalThis.document }: SoundsOptions = {}) {
   let want = 'closed';
   let context: AudioContext | null = null;
@@ -235,24 +251,16 @@ export function createSounds({ settings = () => ({ mode: 'off', volume: 0 }), ru
     }
   }
 
-  // The person chose an audible setting. The build runs just after the change, while the page still
-  // has the gesture's activation, and the context rests until the first key, which resumes it (and
-  // also starts a context the browser built suspended, as WebKit does). A context already built keeps
-  // its state, so moving the volume mid-run never delays the next click.
-  function prepare() {
-    try {
-      if (!audible()) return;
-
-      if (want === 'closed') want = 'asleep';
-      reconcile();
-    } catch {}
-  }
-
-  // Off or volume 0 closes the context, and a build still waiting finds nothing to do.
+  // The settings changed or were loaded. Off or volume 0 closes the context, and a build still waiting
+  // finds nothing to do. An audible setting queues the build for just after this change, never inside
+  // it, and the context rests until the first key resumes it. That key's event is a user gesture, so
+  // it also starts a context the browser built suspended for want of one, as Chrome does on a page
+  // that has had no gesture yet and WebKit always does. A context already built keeps its state, so
+  // moving the volume mid-run never delays the next click.
   function sync() {
     try {
-      if (audible()) return;
-      want = 'closed';
+      if (!audible()) want = 'closed';
+      else if (want === 'closed') want = 'asleep';
       reconcile();
     } catch {}
   }
@@ -284,5 +292,5 @@ export function createSounds({ settings = () => ({ mode: 'off', volume: 0 }), ru
     release();
   }
 
-  return { play, prepare, sync, rest, dispose, hasContext: () => Boolean(context) };
+  return { play, sync, rest, dispose, hasContext: () => Boolean(context) };
 }

@@ -1899,14 +1899,12 @@ export async function attachApplication({ practice, learning, palette, settings:
   function setSound(mode: string) {
     learning.preferences.sound = normalizeSoundMode(mode);
     applySoundPreferences();
-    sounds.prepare();
     saveChoice('sound');
   }
 
   function setSoundVolume(volume: number, { save = true } = {}) {
     learning.preferences.soundVolume = normalizeSoundVolume(volume);
     applySoundPreferences();
-    sounds.prepare();
 
     if (save) saveChoice('soundVolume');
   }
