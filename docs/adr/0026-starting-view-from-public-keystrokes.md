@@ -267,11 +267,11 @@ Almost all of the log-loss gain over S0 is the pull on the pooled rate (−0.125
 | --- | --- | --- | --- | --- |
 | `learner-start@3` | missed pairs slow | **+2.00** [1.19, 2.81] | −4.03 [−4.96, −3.11] | **fails** |
 | | missed pairs at pace | 0 | −0.58 [−1.25, 0.09] | |
-| `learner-start-pace@3` | missed pairs slow | +0.72 [0.33, 1.11] | −1.15 [−1.93, −0.37] | holds |
+| `learner-start-pace@3` | missed pairs slow | +0.72 [0.33, 1.10] | −1.15 [−1.93, −0.37] | holds |
 | | missed pairs at pace | 0 | −0.53 [−1.14, 0.08] | |
-| `learner-start-misses@3` | missed pairs slow | **+1.30** [0.69, 1.92] | −1.82 [−2.63, −1.01] | **fails** |
+| `learner-start-misses@3` | missed pairs slow | **+1.30** [0.68, 1.92] | −1.82 [−2.63, −1.01] | **fails** |
 | | missed pairs at pace | 0 | −0.58 [−1.25, 0.09] | |
-| `learner-start-rate@3` | missed pairs slow | −0.03 [−0.10, 0.04] | +0.02 [−0.06, 0.09] | holds |
+| `learner-start-rate@3` | missed pairs slow | −0.03 [−0.10, 0.03] | +0.02 [−0.06, 0.09] | holds |
 | | missed pairs at pace | 0 | −0.02 [−0.05, 0.02] | |
 
 Reported and deciding nothing, as the rule says: on the simulator the candidate's captured gain at 10 runs is lower by 12.2 and 15.7 points and the pace-only version's by 10.5 and 12.9. The simulator's weak pairs are planted without regard to the keyboard, so a view of the keyboard points at pairs that are not weak there.
