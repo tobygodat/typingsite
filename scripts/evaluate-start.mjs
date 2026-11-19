@@ -12,17 +12,24 @@
 // instead. --judge scores the four versions ADR 0026 names and prints its clauses (a), (a2), (b) and (c);
 // (d), (e) and (f) are not read from this data. --metadata adds the slices the ADR reports.
 //
+//   bun run evaluate:start -- --guard [--json out.json]
+//
+// Clauses (d) and (e), which read no participant: ADR 0015's simulated typists on seeds 401 to 430 (does a starting
+// view make the learner slow to follow a person who differs from it?), the shipped table's size, and the time a
+// recommendation takes.
+//
 // What it shows: how well a version predicts and ranks a real person's next sentences in one sitting. It says
 // nothing about practice over weeks, drills or forgetting, and nothing about whether anyone learns faster.
 
 import { createReadStream, readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { createGunzip } from 'node:zlib';
-import { DEFAULT_POLICY, LEAN_UNITS, LEARNER_VARIANTS, MISS_INTERVALS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY, fitLearner, learnerEvidence,
-  learnerRecommendation } from '../src/learner.js';
-import { calibration, seeded, timingRows } from './evaluate-learner.mjs';
+import { createGunzip, gzipSync } from 'node:zlib';
+import { DEFAULT_POLICY, LEAN_UNITS, LEARNER_VARIANTS, MISS_INTERVALS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY, drilledTargets, fitLearner,
+  learnerEvidence, learnerRecommendation } from '../src/learner.js';
+import { SHIPPED, SKILLS, calibration, evaluate0015, makeTypist, median, paired, seeded, timingRows, typeRun } from './evaluate-learner.mjs';
 
 export const KEYBOARD = 'physical-keyboard:qwerty';
 export const BANDS = [{ name: '0', from: 0, to: 0 }, { name: '1-2', from: 1, to: 2 }, { name: '3-5', from: 3, to: 5 }, { name: '6-9', from: 6, to: 9 }, { name: '10-14', from: 10, to: 14 }];
@@ -272,6 +279,85 @@ export function judge(record, name, first = 'logLoss') {
   return { name, a, a2, b, c: worse.length === 0, worse };
 }
 
+// Clause (d): ADR 0015's two simulated worlds on seeds never used before. The simulator plants weak pairs without
+// regard to the keyboard, so a starting view cannot help there: this reads only whether it slows the learner.
+export const GUARD_SEEDS = Array.from({ length: 30 }, (_, i) => 401 + i);
+export const GUARD_RUNS = 1;
+export const GUARD_MEASURES = ['pickUp', 'letGo', 'slowPickUp', 'slowLetGo', 'logLoss', 'captured10', 'captured40'];
+export const SIZE_LIMIT_BYTES = 30_000;
+export const TIME_LIMIT_MS = 2;
+const TIMED_RUNS = 1000;
+const TIMED_LOOPS = 200;
+const TIMED_TARGETS = 100;
+const TIMINGS = 15;
+const TIMING_SEED = 4190;
+
+export function guardWorld(names = JUDGED, options = {}) {
+  const policies = [DEFAULT_POLICY, ...names].map((policy) => ({ name: policy, policy, constants: SHIPPED }));
+  const byWorld = evaluate0015(policies, GUARD_SEEDS, options);
+
+  return names.map((name) => {
+    const worlds = Object.fromEntries(Object.entries(byWorld).map(([world, result]) => [world,
+      Object.fromEntries(GUARD_MEASURES.map((measure) => [measure, paired(result, name, DEFAULT_POLICY, measure)]))]));
+
+    return { name, worlds, d: Object.values(worlds).every((world) => world.pickUp.mean <= GUARD_RUNS && world.letGo.mean <= GUARD_RUNS) };
+  });
+}
+
+// Clause (e): the median time of a recommendation on 1,000 runs and 200 loops, each version against the default
+// on the same history, and the gzipped size of the shipped table.
+export function cost(names = JUDGED) {
+  const random = seeded(TIMING_SEED);
+  const typist = makeTypist(random, 'mechanics', SKILLS[1]);
+  const runs = Array.from({ length: TIMED_RUNS }, (_, r) => typeRun(typist, random, r, `fit-${r}`).run);
+  const pairs = [...new Set(runs.flatMap((run) => run.patterns.map((row) => row[0])))].slice(0, TIMED_TARGETS);
+  const at = (n) => runs[TIMED_TARGETS + n * 4];
+
+  const loops = Array.from({ length: TIMED_LOOPS }, (_, n) => ({ id: `fit-loop-${n}`, at: at(n).at, afterAttemptId: at(n).id, target: pairs[n % pairs.length],
+    targetBasis: n % 3 ? 'errors' : 'slow', conditions: runs[0].conditions }));
+
+  const now = Date.parse(runs.at(-1).at) + MS_PER_MINUTE;
+
+  const timed = (policy) => {
+    const recommend = () => learnerRecommendation(fitLearner(learnerEvidence(runs, KEYBOARD), now, LEARNER_VARIANTS[policy], undefined, [...drilledTargets(loops, KEYBOARD).values()]));
+    recommend();
+
+    return median(Array.from({ length: TIMINGS }, () => {
+      const started = performance.now();
+      recommend();
+
+      return performance.now() - started;
+    }));
+  };
+
+  const base = timed(DEFAULT_POLICY);
+  const gzipBytes = gzipSync(readFileSync(fileURLToPath(new URL('../src/learner-start.ts', import.meta.url)))).length;
+
+  return { gzipBytes, defaultMs: base, versions: names.map((name) => {
+    const ms = timed(name);
+
+    return { name, ms, e: gzipBytes <= SIZE_LIMIT_BYTES && ms - base <= TIME_LIMIT_MS };
+  }) };
+}
+
+export function guardReport({ guard, cost: costs }) {
+  const figure = (value) => (value === null ? 'n/a' : `${value.mean > 0 ? '+' : ''}${value.mean.toFixed(3)} [${value.low.toFixed(3)}, ${value.high.toFixed(3)}]`);
+  const lines = [`Seeds ${GUARD_SEEDS[0]} to ${GUARD_SEEDS.at(-1)}. Each version less the default, mean over seeds [95% t interval]. Pick-up and let-go in runs.`, ''];
+
+  for (const { name, worlds, d } of guard) {
+    lines.push(`${name}: (d) ${d ? 'holds' : 'fails'}`, `| world | ${GUARD_MEASURES.join(' | ')} |`, `| --- | ${GUARD_MEASURES.map(() => '---').join(' | ')} |`);
+
+    for (const [world, measures] of Object.entries(worlds)) lines.push(`| ${world} | ${GUARD_MEASURES.map((measure) => figure(measures[measure])).join(' | ')} |`);
+    lines.push('');
+  }
+
+  lines.push(`The table is ${costs.gzipBytes} bytes gzipped (limit ${SIZE_LIMIT_BYTES}). A recommendation on ${TIMED_RUNS} runs and ${TIMED_LOOPS} loops takes ${costs.defaultMs.toFixed(2)} ms with the default.`);
+
+  for (const { name, ms, e } of costs.versions) lines.push(`${name}: ${ms.toFixed(2)} ms, (e) ${e ? 'holds' : 'fails'}`);
+
+  return lines.join('\n');
+}
+
 const FORMATS = { logLoss: (v) => v.toFixed(4), paceError: (v) => v.toFixed(4), captured: (v) => `${(100 * v).toFixed(1)}%`, namedTopFour: (v) => `${(100 * v).toFixed(1)}%` };
 const signed = (format) => (v) => `${v > 0 ? '+' : ''}${format(v)}`;
 const SIGNED = Object.fromEntries(Object.entries(FORMATS).map(([measure, format]) => [measure, signed(format)]));
@@ -321,6 +407,15 @@ function option(name, fallback) {
 }
 
 async function main() {
+  if (process.argv.includes('--guard')) {
+    const record = { guard: guardWorld(), cost: cost() };
+
+    if (option('json', null)) writeFileSync(option('json', null), `${JSON.stringify(record, null, 2)}\n`);
+    console.log(guardReport(record));
+
+    return;
+  }
+
   const runs = option('runs', null);
   const split = option('split', 'validation');
 

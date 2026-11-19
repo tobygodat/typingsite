@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY } from '../src/learner.js';
-import { BANDS, JUDGED, MEASURES, bandOf, bootstrap, capturedShare, judge, namedVersions, participantBands, replayParticipant, slicesOf, timeLost } from '../scripts/evaluate-start.mjs';
+import { BANDS, GUARD_MEASURES, JUDGED, MEASURES, SIZE_LIMIT_BYTES, bandOf, bootstrap, capturedShare, cost, guardReport, judge, namedVersions, participantBands, replayParticipant, slicesOf,
+  timeLost } from '../scripts/evaluate-start.mjs';
 import { parseRow, sentenceRun } from '../scripts/keystrokes-to-runs.mjs';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -153,4 +154,24 @@ test('a participant is sliced by native language and keyboard from the metadata'
 
   assert.deepEqual(slices.get('7'), ['native English', 'full keyboard']);
   assert.deepEqual(slices.get('9'), ['not native English', 'laptop keyboard']);
+});
+
+test('the cost check times every version on the same history and reads the shipped table’s size', () => {
+  const costs = cost([START_POLICY]);
+
+  assert.ok(costs.gzipBytes > 0 && costs.gzipBytes <= SIZE_LIMIT_BYTES);
+  assert.ok(costs.defaultMs > 0);
+  assert.deepEqual(costs.versions.map((version) => version.name), [START_POLICY]);
+});
+
+test('the guard report says which versions hold clause (d) and clause (e)', () => {
+  const figure = { mean: 2, low: 1.2, high: 2.8 };
+  const measures = Object.fromEntries(GUARD_MEASURES.map((measure) => [measure, figure]));
+
+  const text = guardReport({ guard: [{ name: START_POLICY, worlds: { slow: measures }, d: false }],
+    cost: { gzipBytes: 3282, defaultMs: 15, versions: [{ name: START_POLICY, ms: 15.1, e: true }] } });
+
+  assert.match(text, /learner-start@3: \(d\) fails/);
+  assert.match(text, /\+2\.000 \[1\.200, 2\.800\]/);
+  assert.match(text, /learner-start@3: 15\.10 ms, \(e\) holds/);
 });

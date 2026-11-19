@@ -1,6 +1,6 @@
 # 0026. learner-start@3: a starting view trained on public keystrokes
 
-Status: Proposed, 2026-11-17. TOB-513. The rule below is written before any model is fitted. Toby accepted its thresholds on 2026-11-18. Its amendments are dated, each was made before any candidate was fitted, and it is not changed after a candidate's results are seen.
+Status: Accepted, 2026-11-18. TOB-513. The candidate failed clause (d) of the rule below; the default is unchanged. `learner-start-pace@3` held every clause it was judged on, and whether it becomes the default is Toby's to decide (see "The verdict"). The rule below is written before any model is fitted. Toby accepted its thresholds on 2026-11-18. Its amendments are dated, each was made before any candidate was fitted, and it is not changed after a candidate's results are seen.
 
 ## Context
 
@@ -168,7 +168,7 @@ With no runs the shipped learner leans on nothing, so its captured share is zero
 
 ## Results
 
-In progress. The test participants have not been read.
+The test participants were read once, on 2026-11-18, after the constants were committed (`e95ef2ad`). The verdict is at the end.
 
 ### Validation: the rate alone (S0r)
 
@@ -226,3 +226,90 @@ Three things to carry into the test read:
 - **The rate alone cannot hold clause (a).** It changes nothing before the first run, so its log loss in band 0 is S0's. Clause (a2)'s fallback to it could therefore never be reached. Nothing is changed to rescue it.
 
 The constants are fixed with this commit. The test participants have not been read.
+
+S3, the trees over S2's features, was fitted on 10,000 training participants (`ml/trees.py`). With the starting view alone on validation its log loss is 0.14474 and 0.14004 in bands 0 and 1–2, and its pace error 0.3051 and 0.3044. That is S1's (0.14462 and 0.13997, 0.3051 and 0.3044) and better than S2's. So S2's features do leave a gap, and the table already closes it.
+
+### Test: clauses (a), (a2), (b) and (c)
+
+`bun run evaluate:start -- --runs <dir> --split test --judge --metadata metadata_participants.txt`, on the 7,148 test participants (5,373 reach the last band). Each version less S0, mean [95% interval]. Log loss and pace error are better when lower, captured share (in points) when higher.
+
+| version | measure | 0 | 1–2 | 3–5 | 6–9 | 10–14 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `learner-start@3` | log loss | −0.0014 [−0.0017, −0.0011] | −0.1271 [−0.1330, −0.1214] | −0.0428 [−0.0455, −0.0401] | −0.0142 [−0.0156, −0.0129] | −0.0069 [−0.0086, −0.0055] |
+| | pace error | −0.0244 [−0.0252, −0.0235] | −0.0246 [−0.0252, −0.0240] | −0.0227 [−0.0232, −0.0222] | −0.0203 [−0.0207, −0.0199] | −0.0186 [−0.0193, −0.0180] |
+| | captured share | +20.2 [+19.8, +20.5] | +2.7 [+2.4, +3.1] | +1.0 [+0.7, +1.3] | +0.5 [+0.2, +0.7] | +0.1 [−0.2, +0.4] |
+| `learner-start-pace@3` | log loss | +0.0001 [+0.0000, +0.0002] | −0.1256 [−0.1315, −0.1198] | −0.0413 [−0.0438, −0.0387] | −0.0126 [−0.0140, −0.0113] | −0.0053 [−0.0069, −0.0039] |
+| | pace error | −0.0244 [−0.0252, −0.0235] | −0.0246 [−0.0252, −0.0239] | −0.0227 [−0.0232, −0.0222] | −0.0203 [−0.0207, −0.0199] | −0.0186 [−0.0192, −0.0180] |
+| | captured share | +20.2 [+19.8, +20.5] | +2.9 [+2.5, +3.3] | +1.2 [+0.9, +1.5] | +0.6 [+0.4, +0.9] | +0.1 [−0.2, +0.4] |
+| `learner-start-misses@3` | log loss | −0.0014 [−0.0017, −0.0011] | −0.1271 [−0.1329, −0.1215] | −0.0428 [−0.0454, −0.0400] | −0.0142 [−0.0156, −0.0129] | −0.0069 [−0.0086, −0.0055] |
+| | captured share | +5.1 [+4.9, +5.4] | −1.6 [−1.8, −1.5] | −0.3 [−0.4, −0.2] | +0.0 [−0.1, +0.1] | +0.2 [+0.1, +0.3] |
+| `learner-start-rate@3` | log loss | +0.0001 [+0.0000, +0.0002] | −0.1256 [−0.1317, −0.1195] | −0.0413 [−0.0440, −0.0387] | −0.0126 [−0.0140, −0.0113] | −0.0053 [−0.0069, −0.0038] |
+| | captured share | 0 | +0.3 [+0.1, +0.4] | +0.2 [+0.1, +0.3] | +0.1 [+0.0, +0.2] | +0.1 [+0.0, +0.2] |
+
+S0's own figures on these participants: log loss 0.1398, 0.2643, 0.1840, 0.1603, 0.1506; pace error 0.3298, 0.3284, 0.3246, 0.3188, 0.3145; captured share 0, 16.0%, 15.9%, 12.3%, 8.2%; calibration error 0.0012, 0.0270, 0.0153, 0.0097, 0.0064. Every version with a starting view has a calibration error of at most 0.0030 in every band.
+
+Against the rate alone in band 1–2 (clause (a2)): `learner-start@3` is lower on log loss by 0.0015 [0.0013, 0.0017] and higher on captured share by 2.5 points [2.1, 2.8]. `learner-start-pace@3` has the same log loss and is higher on captured share by 2.6 points [2.3, 3.0].
+
+| version | (a) | (a2) | (b) | (c) |
+| --- | --- | --- | --- | --- |
+| `learner-start@3` | holds | holds | holds, +2.7 points | holds |
+| `learner-start-pace@3` (pace error in (a)) | holds | holds | holds, +2.9 points | holds |
+| `learner-start-misses@3` | holds | holds | fails, −1.6 points | holds |
+| `learner-start-rate@3` | fails in band 0, as expected | n/a | fails | holds |
+
+Almost all of the log-loss gain over S0 is the pull on the pooled rate (−0.1256 of −0.1271 in band 1–2). Knowing which pair is hard adds 0.0015, about 1% of what is left.
+
+### Test: clauses (d), (e) and (f)
+
+`bun run evaluate:start -- --guard`. ADR 0015's two simulated worlds, seeds 401 to 430, each version less S0, mean over seeds [95% t interval], in runs. The limit is 1.0 run slower at the mean.
+
+| version | world | pick-up | let-go | (d) |
+| --- | --- | --- | --- | --- |
+| `learner-start@3` | missed pairs slow | **+2.00** [1.19, 2.81] | −4.03 [−4.96, −3.11] | **fails** |
+| | missed pairs at pace | 0 | −0.58 [−1.25, 0.09] | |
+| `learner-start-pace@3` | missed pairs slow | +0.72 [0.33, 1.11] | −1.15 [−1.93, −0.37] | holds |
+| | missed pairs at pace | 0 | −0.53 [−1.14, 0.08] | |
+| `learner-start-misses@3` | missed pairs slow | **+1.30** [0.69, 1.92] | −1.82 [−2.63, −1.01] | **fails** |
+| | missed pairs at pace | 0 | −0.58 [−1.25, 0.09] | |
+| `learner-start-rate@3` | missed pairs slow | −0.03 [−0.10, 0.04] | +0.02 [−0.06, 0.09] | holds |
+| | missed pairs at pace | 0 | −0.02 [−0.05, 0.02] | |
+
+Reported and deciding nothing, as the rule says: on the simulator the candidate's captured gain at 10 runs is lower by 12.2 and 15.7 points and the pace-only version's by 10.5 and 12.9. The simulator's weak pairs are planted without regard to the keyboard, so a view of the keyboard points at pairs that are not weak there.
+
+- **(e) holds for all four.** `src/learner-start.ts` is 3,282 bytes gzipped (limit 30,000). A recommendation on 1,000 runs and 200 loops takes 15.0 ms with the default and between 14.9 and 15.1 ms with each version.
+- **(f) holds.** With the four versions registered, `bun run evaluate:learner` (with `--naming`), `-- --rule 0015` and `-- --rule 0019` each rewrite their committed record byte for byte: `0013-evaluation-v2.json`, `0013-naming.json`, `0015-evaluation.json` and `0019-evaluation.json`.
+
+### Slices, deciding nothing
+
+`learner-start-pace@3` less S0 on the test participants. `learner-start@3` reads the same within 0.3 points.
+
+| slice | participants | pace error, 1–2 | captured share, 1–2 | captured share, 3–5 |
+| --- | --- | --- | --- | --- |
+| native English | 6,096 | −0.0249 | +3.3 [+2.9, +3.7] | +1.5 [+1.2, +1.9] |
+| not native English | 1,052 | −0.0228 | +0.8 [−0.1, +1.9] | −0.5 [−1.3, +0.3] |
+| full keyboard | 2,906 | −0.0243 | +3.1 [+2.5, +3.7] | +1.2 [+0.7, +1.7] |
+| laptop keyboard | 4,242 | −0.0248 | +2.8 [+2.3, +3.2] | +1.2 [+0.8, +1.6] |
+| fastest third | 2,386 | −0.0267 | +5.4 [+4.7, +6.0] | +2.7 [+2.2, +3.3] |
+| middle third | 2,380 | −0.0285 | +3.3 [+2.7, +3.9] | +1.6 [+1.0, +2.2] |
+| slowest third | 2,382 | −0.0186 | +0.1 [−0.5, +0.7] | −0.7 [−1.2, −0.2] |
+
+The ranking gain belongs to fast typists and native English speakers. The slowest third gain nothing in their first runs and lose 0.7 points in runs 3 to 5. The pace prediction is better in every slice.
+
+**Named in the top four**, also deciding nothing: with the miss half, the unit Train would name is in the hindsight top four less often (2.7% against 4.0% in band 1–2, lower by 0.7 to 0.8 points in bands 3–5 and 6–9). The pace-only version does not move it.
+
+### The verdict
+
+**`learner-start@3` does not become the default.** It holds (a), (a2), (b), (c) and (e) and fails (d): in the simulated world where missed pairs are also slow, it is 2.0 runs slower than the shipped learner to pick up a pair that has become weak. The miss half causes it. A pair the table calls easy is pulled toward its low rate with the weight of 80 tries, so the person's own misses take longer to outweigh it. `Km` = 80 was the validation choice by log loss, and the difference between 80 and 20 there was 0.0001.
+
+**The rule as written leaves the default at `learner-decay-timing@1`.** Its mixed-results paragraph sends the decision to `learner-start-pace@3` only when the miss half fails (a) or is worse in (c). The miss half failed (d), which that paragraph does not name, so "otherwise the default stays" applies.
+
+**`learner-start-pace@3` held every clause**, judged as the rule says it would be: (a) on pace error, (a2), (b) at +2.9 points, (c), (d) at 0.72 runs and (e). I did not read the rule's silence as permission to ship it. Making it the default needs Toby's decision and a new ADR that says so, because this one is not changed after results are seen.
+
+No threshold moves. All four versions stay named in `LEARNER_VARIANTS`, and the default computes exactly what it did.
+
+### What this shows
+
+- A person's first runs are predicted much better by one change that needs no model: a pooled rate that is never exactly zero. That is `learner-start-rate@3`, and it is most of the candidate's log-loss gain.
+- Which pair is slow on a keyboard is learnable from strangers and transfers: pace error falls 7.5% and the top four hold 2.9 more points of the time a person goes on to lose.
+- Which pair a person misses is barely learnable from strangers here (1% of log loss), and it makes ranking worse. A quarter of the dataset's misses are late-corrected slips, which the rule expected to be the noisier half.
+- None of this shows that anyone learns faster.
