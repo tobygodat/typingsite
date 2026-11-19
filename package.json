@@ -9,6 +9,8 @@
     "build": "node scripts/build-static.mjs",
     "build:dist": "node scripts/build-static.mjs",
     "evaluate:learner": "node --import tsx scripts/evaluate-learner.mjs",
+    "keystrokes:runs": "node --import tsx scripts/keystrokes-to-runs.mjs",
+    "evaluate:start": "node --import tsx scripts/evaluate-start.mjs",
     "lint": "oxlint --deny-warnings",
     "test": "node --import tsx --test",
     "test:unit": "node --import tsx --test",
