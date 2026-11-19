@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, learnerRecommendation } from '../src/learner.js';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY, fitLearner, learnerRecommendation } from '../src/learner.js';
 
 const NOW = Date.parse('2026-11-10T12:00:00Z');
 const RATE = { pair: 0.03, key: 0.02 };
@@ -80,4 +80,29 @@ test('the view ranks a hard pair first but names nothing: a target still needs t
   assert.equal(recommendation.kind, 'general');
   assert.deepEqual(recommendation.queue, []);
   assert.equal(recommendation.lean[0].unit, 'th');
+});
+
+test('the shipped starting views differ only in which half of the fitted table they read', () => {
+  const views = Object.fromEntries([START_POLICY, START_RATE_POLICY, START_MISSES_POLICY, START_PACE_POLICY].map((policy) => [policy, LEARNER_VARIANTS[policy].start]));
+  const halves = (policy) => [Object.values(views[policy].units).some((unit) => unit.miss), Object.values(views[policy].units).some((unit) => unit.pace)];
+
+  assert.deepEqual(halves(START_POLICY), [true, true]);
+  assert.deepEqual(halves(START_RATE_POLICY), [false, false]);
+  assert.deepEqual(halves(START_MISSES_POLICY), [true, false]);
+  assert.deepEqual(halves(START_PACE_POLICY), [false, true]);
+  assert.deepEqual(new Set(Object.values(views).map((view) => JSON.stringify([view.rate, view.rateTries]))).size, 1);
+  assert.equal(views[START_RATE_POLICY].missTries, shipped.pooledTries);
+  assert.equal(views[START_PACE_POLICY].missTries, shipped.pooledTries);
+});
+
+test('before any run, the shipped view expects a common pair missed less and typed faster than a rare one', () => {
+  const model = fitLearner([], NOW, LEARNER_VARIANTS[START_POLICY]);
+
+  assert.ok(unitOf(model, 'th').error.mean < unitOf(model, 'bv').error.mean);
+  assert.ok(unitOf(model, 'th').slowdown < 0 && unitOf(model, 'bv').slowdown > 0);
+  assert.equal(learnerRecommendation(model).target, null);
+});
+
+test('the default is still the version with no starting view', () => {
+  assert.equal(LEARNER_VARIANTS[DEFAULT_POLICY].start, undefined);
 });

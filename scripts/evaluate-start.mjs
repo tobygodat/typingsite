@@ -4,10 +4,13 @@
 // fixes the measures, the bands of k and the rule this serves.
 //
 //   bun run evaluate:start -- --runs <dir> --split validation [--limit 500] [--json out.json] [--views views.json]
-//   bun run evaluate:start -- --runs <dir> --split test --judge       (the test participants, read once, by the rule)
+//   bun run evaluate:start -- --runs <dir> --split test --judge --metadata metadata_participants.txt
+//                                                    (the test participants, read once, by the rule)
 //
 // --views names a JSON list of { name, start }: each is the shipped learner with that starting view (StartingView in
-// src/learner.ts), scored beside S0 and against it.
+// src/learner.ts), scored beside S0 and against it. --versions names learner versions in LEARNER_VARIANTS to score
+// instead. --judge scores the four versions ADR 0026 names and prints its clauses (a), (a2), (b) and (c);
+// (d), (e) and (f) are not read from this data. --metadata adds the slices the ADR reports.
 //
 // What it shows: how well a version predicts and ranks a real person's next sentences in one sitting. It says
 // nothing about practice over weeks, drills or forgetting, and nothing about whether anyone learns faster.
@@ -17,7 +20,8 @@ import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createGunzip } from 'node:zlib';
-import { DEFAULT_POLICY, LEAN_UNITS, LEARNER_VARIANTS, MISS_INTERVALS, fitLearner, learnerEvidence, learnerRecommendation } from '../src/learner.js';
+import { DEFAULT_POLICY, LEAN_UNITS, LEARNER_VARIANTS, MISS_INTERVALS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY, fitLearner, learnerEvidence,
+  learnerRecommendation } from '../src/learner.js';
 import { calibration, seeded, timingRows } from './evaluate-learner.mjs';
 
 export const KEYBOARD = 'physical-keyboard:qwerty';
@@ -25,6 +29,15 @@ export const BANDS = [{ name: '0', from: 0, to: 0 }, { name: '1-2', from: 1, to:
 export const RESAMPLES = 2000;
 export const BOOTSTRAP_SEED = 513;
 export const MEASURES = ['logLoss', 'paceError', 'captured', 'namedTopFour'];
+export const JUDGED = [START_RATE_POLICY, START_POLICY, START_MISSES_POLICY, START_PACE_POLICY];
+
+// ADR 0026's margins. A guard fails only when the interval lies wholly beyond its margin on the worse side.
+export const MARGINS = { logLoss: { ofS0: 0.005 }, paceError: { ofS0: 0.005 }, captured: { flat: 0.005 }, calibration: { flat: 0.002 } };
+export const CAPTURED_GAIN = 0.02;
+const HIGHER_IS_BETTER = new Set(['captured']);
+const FIRST_BANDS = [0, 1];
+const LATER_BANDS = [2, 3, 4];
+const SLICED = ['logLoss', 'paceError', 'captured'];
 
 const MS_PER_MINUTE = 60_000;
 const CHARS_PER_WORD = 5;
@@ -37,6 +50,13 @@ export const bandOf = (k) => BANDS.findIndex((band) => k >= band.from && k <= ba
 // The versions compared: S0, the shipped learner, then the shipped learner with each starting view given.
 export const versionsOf = (views = []) => [{ name: 'S0', variant: LEARNER_VARIANTS[DEFAULT_POLICY] },
   ...views.map(({ name, start }) => ({ name, variant: { ...LEARNER_VARIANTS[DEFAULT_POLICY], policy: name, start } }))];
+
+// S0 and the named learner versions, each under its own name.
+export const namedVersions = (names) => [{ name: 'S0', variant: LEARNER_VARIANTS[DEFAULT_POLICY] }, ...names.map((name) => {
+  if (!LEARNER_VARIANTS[name]) throw new Error(`no learner version named ${name}`);
+
+  return { name, variant: LEARNER_VARIANTS[name] };
+})];
 
 // The time each unit loses in a set of runs, in ms (ADR 0026, "captured share"). A pair loses its first-try misses
 // at MISS_INTERVALS of the run's own interval each, plus its timed tries at its median less the run's median. A
@@ -154,15 +174,41 @@ async function* participants(path, limit) {
   }
 }
 
-// Every version over every participant of a split: each measure per band as a mean with its interval, each
-// candidate's paired difference from S0, and the pooled calibration error.
-export async function evaluate(path, { versions = versionsOf(), limit = Infinity } = {}) {
+// A participant's slices from the dataset's metadata (ADR 0026: reported, deciding nothing).
+export function slicesOf(metadata) {
+  const [header, ...lines] = metadata.split('\n');
+  const names = header.trim().split('\t');
+  const at = (name) => names.indexOf(name);
+
+  return new Map(lines.map((line) => {
+    const fields = line.split('\t');
+
+    return [fields[at('PARTICIPANT_ID')], [fields[at('NATIVE_LANGUAGE')] === 'en' ? 'native English' : 'not native English', `${fields[at('KEYBOARD_TYPE')]} keyboard`]];
+  }));
+}
+
+const meanWpm = (runs) => runs.reduce((sum, run) => sum + (run.score?.wpm ?? 0), 0) / runs.length;
+
+// Each participant's third of typing speed, by their mean wpm over the runs kept.
+function speedThirds(speeds) {
+  const sorted = [...speeds].sort((a, b) => a - b);
+  const [slow, fast] = [sorted[Math.floor(sorted.length / 3)], sorted[Math.floor((2 * sorted.length) / 3)]];
+
+  return speeds.map((wpm) => (wpm < slow ? 'slowest third' : wpm < fast ? 'middle third' : 'fastest third'));
+}
+
+// Every version over every participant of a split: each measure per band as a mean with its interval, the pooled
+// calibration error, and each version's paired difference from S0 and from each version named in `bases`. With
+// `slices` (participant id to labels), the difference from S0 within each slice as well.
+export async function evaluate(path, { versions = versionsOf(), limit = Infinity, bases = [], slices = null } = {}) {
   const figures = versions.map(() => []);
   const pooled = versions.map(() => BANDS.map(() => []));
-  let count = 0;
+  const labels = [];
+  const speeds = [];
 
-  for await (const { runs } of participants(path, limit)) {
-    count += 1;
+  for await (const { id, runs } of participants(path, limit)) {
+    labels.push(slices?.get(String(id)) ?? []);
+    speeds.push(meanWpm(runs));
 
     versions.forEach(({ variant }, index) => {
       const rows = replayParticipant(runs, variant);
@@ -175,17 +221,55 @@ export async function evaluate(path, { versions = versionsOf(), limit = Infinity
   const random = seeded(BOOTSTRAP_SEED);
   const summary = (values) => bootstrap(values, random);
 
-  return { participants: count, bands: BANDS.map((band) => band.name), versions: versions.map(({ name }, index) => ({
+  const less = (index, base, measures, keep = () => true) => Object.fromEntries(measures.map((measure) => [measure, BANDS.map((_, band) => summary(figures[index].map((bands, person) => {
+    const mine = bands[band][measure];
+    const theirs = figures[base][person][band][measure];
+
+    return mine === null || theirs === null || !keep(person) ? null : mine - theirs;
+  })))]));
+
+  const baseIndexes = [0, ...versions.flatMap((version, index) => (index > 0 && bases.includes(version.name) ? [index] : []))];
+
+  const record = { participants: labels.length, bands: BANDS.map((band) => band.name), versions: versions.map(({ name }, index) => ({
     name,
     measures: Object.fromEntries(MEASURES.map((measure) => [measure, BANDS.map((_, band) => summary(figures[index].map((bands) => bands[band][measure])))])),
     calibration: BANDS.map((_, band) => (pooled[index][band].length ? calibration(pooled[index][band]) : null)),
-    againstS0: index === 0 ? null : Object.fromEntries(MEASURES.map((measure) => [measure, BANDS.map((_, band) => summary(figures[index].map((bands, person) => {
-      const mine = bands[band][measure];
-      const base = figures[0][person][band][measure];
-
-      return mine === null || base === null ? null : mine - base;
-    })))])),
+    against: Object.fromEntries(baseIndexes.flatMap((base) => (base < index ? [[versions[base].name, less(index, base, MEASURES)]] : []))),
   })) };
+
+  if (slices) {
+    const thirds = speedThirds(speeds);
+    const all = labels.map((own, person) => [...own, thirds[person]]);
+
+    record.slices = [...new Set(all.flat())].sort().map((label) => ({ label, participants: all.filter((own) => own.includes(label)).length,
+      lessS0: Object.fromEntries(versions.slice(1).map(({ name }, at) => [name, less(at + 1, 0, SLICED, (person) => all[person].includes(label))])) }));
+  }
+
+  return record;
+}
+
+const beyond = ({ low, high }, margin, higherIsBetter) => (higherIsBetter ? high < -margin : low > margin);
+const better = ({ low, high }, higherIsBetter) => (higherIsBetter ? low > 0 : high < 0);
+const marginOf = (measure, s0, band) => MARGINS[measure].flat ?? MARGINS[measure].ofS0 * s0.measures[measure][band].mean;
+
+// ADR 0026's clauses that this data decides, for one judged version. `first` is the measure clause (a) reads: log
+// loss, or pace error for the pace-only version. "Better" is an interval wholly on the better side of zero;
+// "worse" is one wholly beyond the margin on the worse side.
+export function judge(record, name, first = 'logLoss') {
+  const s0 = record.versions[0];
+  const version = record.versions.find((item) => item.name === name);
+  const lessS0 = version.against.S0;
+  const lessRate = version.against[START_RATE_POLICY];
+  const a = FIRST_BANDS.every((band) => better(lessS0[first][band], false));
+  const a2 = lessRate ? better(lessRate.logLoss[1], false) || better(lessRate.captured[1], true) : null;
+  const b = better(lessS0.captured[1], true) && lessS0.captured[1].mean >= CAPTURED_GAIN;
+
+  const worse = LATER_BANDS.flatMap((band) => [
+    ...['logLoss', 'paceError', 'captured'].filter((measure) => beyond(lessS0[measure][band], marginOf(measure, s0, band), HIGHER_IS_BETTER.has(measure))),
+    ...(version.calibration[band] - s0.calibration[band] > MARGINS.calibration.flat ? ['calibration'] : []),
+  ].map((measure) => `${measure} in ${record.bands[band]}`));
+
+  return { name, a, a2, b, c: worse.length === 0, worse };
 }
 
 const FORMATS = { logLoss: (v) => v.toFixed(4), paceError: (v) => v.toFixed(4), captured: (v) => `${(100 * v).toFixed(1)}%`, namedTopFour: (v) => `${(100 * v).toFixed(1)}%` };
@@ -203,12 +287,28 @@ export function report(record) {
     lines.push(`| calibration error | ${version.calibration.map((value) => (value === null ? 'n/a' : value.toFixed(4))).join(' | ')} |`,
       `| participants | ${version.measures.logLoss.map((figure) => figure.n).join(' | ')} |`, '');
 
-    if (version.againstS0) {
-      lines.push(`${version.name} less S0`, `| measure | ${record.bands.join(' | ')} |`, `| --- | ${record.bands.map(() => '---').join(' | ')} |`);
+    for (const [base, less] of Object.entries(version.against)) {
+      lines.push(`${version.name} less ${base}`, `| measure | ${record.bands.join(' | ')} |`, `| --- | ${record.bands.map(() => '---').join(' | ')} |`);
 
-      for (const measure of MEASURES) lines.push(`| ${measure} | ${version.againstS0[measure].map((figure) => cell(SIGNED[measure], figure)).join(' | ')} |`);
+      for (const measure of MEASURES) lines.push(`| ${measure} | ${less[measure].map((figure) => cell(SIGNED[measure], figure)).join(' | ')} |`);
       lines.push('');
     }
+  }
+
+  for (const slice of record.slices ?? []) {
+    lines.push(`${slice.label} (${slice.participants} participants), less S0`, `| version, measure | ${record.bands.join(' | ')} |`, `| --- | ${record.bands.map(() => '---').join(' | ')} |`);
+
+    for (const [name, less] of Object.entries(slice.lessS0)) {
+      for (const measure of SLICED) lines.push(`| ${name}, ${measure} | ${less[measure].map((figure) => cell(SIGNED[measure], figure)).join(' | ')} |`);
+    }
+
+    lines.push('');
+  }
+
+  for (const verdict of record.verdicts ?? []) {
+    const word = (pass) => (pass === null ? 'n/a' : pass ? 'holds' : 'fails');
+
+    lines.push(`${verdict.name}: (a) ${word(verdict.a)}, (a2) ${word(verdict.a2)}, (b) ${word(verdict.b)}, (c) ${word(verdict.c)}${verdict.worse.length ? ` (worse: ${verdict.worse.join(', ')})` : ''}`);
   }
 
   return lines.join('\n');
@@ -227,9 +327,16 @@ async function main() {
   if (!runs) throw new Error('usage: --runs <dir of runs-<split>.jsonl.gz> [--split train|validation|test] [--limit n] [--json out.json]');
 
   if (split === 'test' && !process.argv.includes('--judge')) throw new Error('ADR 0026 reads the test participants once, after the constants are fixed: pass --judge to do that.');
+  const judged = process.argv.includes('--judge');
   const views = option('views', null);
-  const versions = versionsOf(views ? JSON.parse(readFileSync(views, 'utf8')) : []);
-  const record = { split, ...await evaluate(join(runs, `runs-${split}.jsonl.gz`), { versions, limit: Number(option('limit', Infinity)) }) };
+  const named = judged ? JUDGED : option('versions', '').split(',').filter(Boolean);
+  const versions = named.length ? namedVersions(named) : versionsOf(views ? JSON.parse(readFileSync(views, 'utf8')) : []);
+  const metadata = option('metadata', null);
+
+  const record = { split, ...await evaluate(join(runs, `runs-${split}.jsonl.gz`), { versions, limit: Number(option('limit', Infinity)),
+    bases: [START_RATE_POLICY], slices: metadata ? slicesOf(readFileSync(metadata, 'utf8')) : null }) };
+
+  if (judged) record.verdicts = JUDGED.map((name) => judge(record, name, name === START_PACE_POLICY ? 'paceError' : 'logLoss'));
   const json = option('json', null);
 
   if (json) writeFileSync(json, `${JSON.stringify(record, null, 2)}\n`);

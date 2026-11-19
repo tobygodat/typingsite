@@ -187,6 +187,42 @@ Log loss on the 7,242 validation participants, by runs seen, with the pooled cal
 
 **`Kr` = 200**, the lowest log loss in band 1–2 (band 0 is the same for all). Against S0 it is lower by 0.129 [0.123, 0.135] in band 1–2 and lower in every later band. Captured share and pace error do not move, as they should not: the rate alone says nothing about which pair is hard. So nearly half of the shipped learner's log loss after one or two runs was the zero pooled rate, and the per-pair models are now judged against 0.1416, not 0.2704.
 
-### The per-pair models
+### Validation: the per-pair models
 
-Not fitted.
+Fitted on 2026-11-18 by `ml/` on the 58,057 training participants (`extract.py`, then `fit.py`). Four details were settled while fitting, before the test participants were read.
+
+- **What a model is fitted on.** One row is one unit in one predicted run: a participant who has typed k runs types run k + 1. The row carries what the learner knows of the person by then, computed as `src/learner.ts` computes it. So a view is fitted on the question it will be asked. Python's reading of the rate alone matches the app's to five decimals (0.14595 and 0.14161), which is the check that the two agree.
+- **S1's estimator.** A unit's `a` is the log odds of its pooled miss rate, with `s` tries at the rate the participants' own rates expect behind it, less the log odds of that expected rate. Its `b` is its timed intervals' mean log slowdown, with `s` intervals at none behind it.
+- **A key's own tries** are counted outside pairs, at the start of a word. The app subtracts only pairs with enough evidence to be named, so the two differ slightly. Log loss reads pairs only.
+- **The person's pace is not read.** The rule allowed two numbers about the person. Only the pooled miss rate reaches the app. Adding log pace to S2 moved its pace error in band 1–2 from 0.3118 to 0.3088, still behind S1's 0.3044, so it could not change which model is chosen and the learner was not changed to carry it.
+
+Chosen on the 7,242 validation participants, each by the measure the rule names in bands 0 and 1–2, read from `bun run evaluate:start`:
+
+| choice | from | chosen | band 0 | band 1–2 |
+| --- | --- | --- | --- | --- |
+| `Km`, log loss | 10, 20, 40, 80 | **80** | all 0.14468 | 0.14035, 0.14011, 0.14003, **0.14001** |
+| `Kt`, pace error | 2, 5, 10, 20 | **5** | all 0.3054 | 0.3040, **0.3029**, 0.3033, 0.3038 |
+| S1 miss shrink, log loss | 20, 100, 500, 2000 | **100** | 0.14469, **0.14468**, 0.14468, 0.14468 | 0.14001, 0.14001, 0.14001, 0.14003 |
+| S1 pace shrink, pace error | 5, 20, 100, 500 | **500** | 0.30541, 0.30540, 0.30537, **0.30535** | 0.30298, 0.30297, 0.30294, 0.30294 |
+| S2 penalty | 1e-6 to 1e-3 | 1e-4 | no difference past the fifth decimal | |
+
+The shrink strengths barely matter: with 16.5 million tries, few units are rare enough to move.
+
+**The model is S1.** At `Km` = 80 and `Kt` = 5, S2's log loss is 0.14502 and 0.14046 against S1's 0.14468 and 0.14001, so S2 does not beat S1 and the table is the candidate. S2's captured share is higher than S1's (20.5% against 18.6% in band 1–2), which the rule does not read when choosing the model. It is recorded here and changes nothing.
+
+The table ships as `src/learner-start.ts` (439 units, written by `ml/ship.py`, rounded to three decimals), and the four versions the rule names are in `LEARNER_VARIANTS`. As registered, on the validation participants, each less S0, mean [95% interval]:
+
+| version | log loss, 0 | log loss, 1–2 | pace error, 1–2 | captured, 1–2 | captured, 3–5 |
+| --- | --- | --- | --- | --- | --- |
+| `learner-start-rate@3` | −0.0000 [−0.0001, +0.0001] | −0.1288 [−0.1347, −0.1231] | 0 | +0.1 [−0.0, +0.2] | +0.0 [−0.1, +0.2] |
+| `learner-start@3` | −0.0013 [−0.0016, −0.0010] | −0.1304 [−0.1363, −0.1248] | −0.0246 [−0.0253, −0.0240] | +2.4 [+2.0, +2.7] | +0.8 [+0.5, +1.1] |
+| `learner-start-misses@3` | −0.0013 [−0.0016, −0.0009] | −0.1304 [−0.1365, −0.1249] | 0 | −1.6 [−1.8, −1.5] | −0.4 [−0.5, −0.3] |
+| `learner-start-pace@3` | −0.0000 [−0.0001, +0.0001] | −0.1288 [−0.1345, −0.1230] | −0.0246 [−0.0252, −0.0241] | +2.6 [+2.2, +2.9] | +0.9 [+0.6, +1.3] |
+
+Three things to carry into the test read:
+
+- **The pace half does the ranking.** The miss half predicts slightly better (log loss lower than the rate alone by 0.0016 in band 1–2) and ranks slightly worse (captured share down 1.6 points). The pace half raises captured share by 2.6 points.
+- **Clause (b) is close.** The candidate's gain in captured share is 2.4 points on validation, and the bar is 2.
+- **The rate alone cannot hold clause (a).** It changes nothing before the first run, so its log loss in band 0 is S0's. Clause (a2)'s fallback to it could therefore never be reached. Nothing is changed to rescue it.
+
+The constants are fixed with this commit. The test participants have not been read.

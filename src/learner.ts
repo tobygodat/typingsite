@@ -42,6 +42,7 @@ import { normalizeLayout } from './layouts.js';
 import { wordList } from './words.js';
 import { KEY_COUNTS_VERSION, MIN_PATTERN_SAMPLES, evidenceRun, recurringTargets } from './insights.js';
 import { recommendTarget } from './typing.js';
+import { START_RATE, START_TABLE } from './learner-start.js';
 
 export const LEARNER_POLICY = 'learner@1';
 export const DECAY_POLICY = 'learner-decay@1';
@@ -50,6 +51,10 @@ export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const OWN_COST_POLICY = 'learner-own-cost@2';
 export const LET_GO_POLICY = 'learner-let-go@2';
 export const LET_GO_MISSES_POLICY = 'learner-let-go-misses@2';
+export const START_POLICY = 'learner-start@3';
+export const START_RATE_POLICY = 'learner-start-rate@3';
+export const START_MISSES_POLICY = 'learner-start-misses@3';
+export const START_PACE_POLICY = 'learner-start-pace@3';
 export const BASELINE_POLICY = 'counting@1';
 
 // The policy that picks targets (ADR 0013): counts-gain with decay and the timing term, a miss priced at two
@@ -129,6 +134,33 @@ export interface StartingView { rate: { pair: number; key: number }; rateTries: 
 
 export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[]; start?: StartingView } & Partial<typeof LET_GO>;
 
+// The starting views ADR 0026 judges, from the table fitted on the public dataset's training participants
+// (src/learner-start.ts). Each constant was chosen on its validation participants: a person's pooled rate is pulled
+// toward the fitted rate with 200 tries (from {20, 50, 100, 200, 400}), a unit's miss rate toward its fitted rate
+// with 80 (from {10, 20, 40, 80}), and a pair's pace toward its fitted slowdown with 5 intervals (from {2, 5, 10,
+// 20}). The rate-only view pulls the pooled rate and nothing else; the misses and pace views each leave the
+// other half as the shipped learner has it.
+const START_RATE_TRIES = 200;
+const START_MISS_TRIES = 80;
+const START_PACE_TRIES = 5;
+
+function startingView(missTries: number, misses: boolean, pace: boolean): StartingView {
+  const units: StartingView['units'] = {};
+
+  for (const [unit, [miss, slowdown]] of Object.entries(START_TABLE)) {
+    const view: StartingView['units'][string] = {};
+
+    if (misses && miss) view.miss = [miss];
+
+    if (pace && slowdown) view.pace = [slowdown];
+    units[unit] = view;
+  }
+
+  return { rate: START_RATE, rateTries: START_RATE_TRIES, missTries, paceTries: START_PACE_TRIES, units };
+}
+
+const shipped = { decay: true, timing: true, ownCost: false, ...constants };
+
 interface LearnerVariants { [policy: string]: LearnerVariant; [DECAY_TIMING_POLICY]: LearnerVariant }
 
 export const LEARNER_VARIANTS: LearnerVariants = {
@@ -139,6 +171,10 @@ export const LEARNER_VARIANTS: LearnerVariants = {
   [OWN_COST_POLICY]: { policy: OWN_COST_POLICY, decay: true, timing: true, ownCost: true, ...constants },
   [LET_GO_POLICY]: { policy: LET_GO_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors', 'slow'], ...constants, ...LET_GO },
   [LET_GO_MISSES_POLICY]: { policy: LET_GO_MISSES_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors'], ...constants, ...LET_GO },
+  [START_POLICY]: { ...shipped, policy: START_POLICY, start: startingView(START_MISS_TRIES, true, true) },
+  [START_RATE_POLICY]: { ...shipped, policy: START_RATE_POLICY, start: startingView(POOLED_TRIES, false, false) },
+  [START_MISSES_POLICY]: { ...shipped, policy: START_MISSES_POLICY, start: startingView(START_MISS_TRIES, true, false) },
+  [START_PACE_POLICY]: { ...shipped, policy: START_PACE_POLICY, start: startingView(POOLED_TRIES, false, true) },
 };
 
 // How a person trains (a preference, never a test condition): balanced ranks by all the time a unit loses,

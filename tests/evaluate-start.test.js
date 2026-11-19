@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_POLICY, LEARNER_VARIANTS } from '../src/learner.js';
-import { BANDS, bandOf, bootstrap, capturedShare, participantBands, replayParticipant, timeLost } from '../scripts/evaluate-start.mjs';
+import { DEFAULT_POLICY, LEARNER_VARIANTS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY } from '../src/learner.js';
+import { BANDS, JUDGED, MEASURES, bandOf, bootstrap, capturedShare, judge, namedVersions, participantBands, replayParticipant, slicesOf, timeLost } from '../scripts/evaluate-start.mjs';
 import { parseRow, sentenceRun } from '../scripts/keystrokes-to-runs.mjs';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -98,4 +98,59 @@ test('the bootstrap interval holds the mean, leaves nulls out and repeats from i
   assert.ok(first.low < 0.3 && first.high > 0.3 && first.low >= 0.1 && first.high <= 0.5);
   assert.deepEqual(first, bootstrap(values, seeded(513)));
   assert.deepEqual(bootstrap([null], seeded(1)), { n: 0, mean: null, low: null, high: null });
+});
+
+const figure = (mean, half = 0.001) => ({ n: 100, mean, low: mean - half, high: mean + half });
+const flat = (value) => BANDS.map(() => figure(value));
+
+// A record of S0, the rate-only version and one judged version, whose differences from S0 are `less`.
+function judged(less, lessRate, calibration = BANDS.map(() => 0.002)) {
+  const measures = { logLoss: flat(0.15), paceError: flat(0.32), captured: flat(0.16), namedTopFour: flat(0.04) };
+  const all = (overrides) => Object.fromEntries(MEASURES.map((measure) => [measure, overrides[measure] ?? flat(0)]));
+
+  return { bands: BANDS.map((band) => band.name), versions: [{ name: 'S0', measures, calibration: BANDS.map(() => 0.002), against: {} },
+    { name: START_POLICY, measures, calibration, against: { S0: all(less), [START_RATE_POLICY]: all(lessRate) } }] };
+}
+
+const passing = { logLoss: flat(-0.002), captured: flat(0.03) };
+
+test('a version that predicts and ranks the first runs better, and beats the rate alone, holds every clause', () => {
+  assert.deepEqual(judge(judged(passing, { logLoss: flat(-0.002) }), START_POLICY), { name: START_POLICY, a: true, a2: true, b: true, c: true, worse: [] });
+});
+
+test('clause (a) needs log loss better in both first bands, and reads pace error for the pace-only version', () => {
+  const oneBand = { ...passing, logLoss: [figure(0), ...flat(-0.002).slice(1)] };
+
+  assert.equal(judge(judged(oneBand, {}), START_POLICY).a, false);
+  assert.equal(judge(judged({ ...oneBand, paceError: flat(-0.01) }, {}), START_POLICY, 'paceError').a, true);
+});
+
+test('clause (a2) fails when the version beats the rate alone on neither log loss nor captured share', () => {
+  assert.equal(judge(judged(passing, {}), START_POLICY).a2, false);
+  assert.equal(judge(judged(passing, { captured: flat(0.01) }), START_POLICY).a2, true);
+});
+
+test('clause (b) needs two points of captured share at the mean, not only an interval above zero', () => {
+  assert.equal(judge(judged({ ...passing, captured: flat(0.015) }, {}), START_POLICY).b, false);
+});
+
+test('clause (c) fails only when a later band is worse past its margin', () => {
+  const within = { ...passing, logLoss: [figure(-0.002), figure(-0.002), figure(0.0015), figure(0), figure(0)] };
+  const past = { ...passing, logLoss: [figure(-0.002), figure(-0.002), figure(0.003), figure(0), figure(0)], captured: [figure(0.03), figure(0.03), figure(0), figure(-0.02), figure(0)] };
+
+  assert.equal(judge(judged(within, {}), START_POLICY).c, true);
+  assert.deepEqual(judge(judged(past, {}), START_POLICY).worse, ['logLoss in 3-5', 'captured in 6-9']);
+  assert.deepEqual(judge(judged(passing, {}, [0.002, 0.002, 0.002, 0.002, 0.0045]), START_POLICY).worse, ['calibration in 10-14']);
+});
+
+test('the judged versions are the four ADR 0026 names, each scored under its own name beside S0', () => {
+  assert.deepEqual(namedVersions(JUDGED).map((version) => version.name), ['S0', START_RATE_POLICY, START_POLICY, START_MISSES_POLICY, START_PACE_POLICY]);
+  assert.throws(() => namedVersions(['learner-nothing@9']), /no learner version/);
+});
+
+test('a participant is sliced by native language and keyboard from the metadata', () => {
+  const slices = slicesOf('PARTICIPANT_ID\tLAYOUT\tNATIVE_LANGUAGE\tKEYBOARD_TYPE\n7\tqwerty\ten\tfull\n9\tqwerty\tde\tlaptop');
+
+  assert.deepEqual(slices.get('7'), ['native English', 'full keyboard']);
+  assert.deepEqual(slices.get('9'), ['not native English', 'laptop keyboard']);
 });
