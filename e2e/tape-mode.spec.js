@@ -1,7 +1,7 @@
 // Tape mode: the passage on one line instead of three. The tape advances in
 // word-aligned steps with the ~150 ms line scroll, never letter by letter, and instantly under
 // reduced motion. Screenshots go to docs/screenshots/tape-mode only when SCREENSHOTS is set.
-import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail, chooseSetting, phone } from './fixtures.js';
+import { test, expect, openApp, openSettings, passageText, typeInto, chooseWords, chooseMore, signInWithEmail, chooseSetting, phone, chooseLinearWordFlow } from './fixtures.js';
 import { wordList } from '../src/words.js';
 import { TAPE_LEAD } from '../src/tape.js';
 
@@ -136,6 +136,7 @@ test('the tape steps by whole words near the right edge, never per letter', asyn
   // A wide line, so its width determines the lead.
   await page.setViewportSize({ width: 1440, height: 720 });
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await setTape(page, true);
   await chooseWords(page, 50);
   // The same transition token as the three-line scroll.
@@ -188,6 +189,7 @@ test('trimming and remounting passed words moves nothing on the line', async ({ 
   test.fixme(browserName === 'webkit', 'TOB-22: words shift for one keystroke in about 1 in 3 WebKit runs');
   test.setTimeout(90_000);
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await setTape(page, true);
   await chooseWords(page, 100);
   const text = await passageText(page);
@@ -592,9 +594,10 @@ async function midRun(page) {
   const delay = process.env.SCREENSHOTS ? 150 : 0;
   await chooseWords(page, 50);
   const text = await passageText(page);
-  await typeInto(page, text.slice(0, 48), '#typing-input', { delay });
-  await page.keyboard.type(text[48] === 'x' ? 'z' : 'x', { delay });
-  await page.keyboard.type(text.slice(49, 76), { delay });
+  const slipAt = text.slice(48).search(/\S/u) + 48;
+  await typeInto(page, text.slice(0, slipAt), '#typing-input', { delay });
+  await page.keyboard.type(text[slipAt] === 'x' ? 'z' : 'x', { delay });
+  await page.keyboard.type(text.slice(slipAt + 1, 76), { delay });
   await expect(page.locator('#text-display .char.wrong')).toHaveCount(1);
   await page.mouse.move(5, 5);
   await page.mouse.move(400, 300, { steps: 4 });

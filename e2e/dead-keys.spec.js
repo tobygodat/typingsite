@@ -1,6 +1,6 @@
 import { replayAttempt } from '../src/typing.js';
 import { useCorpusFixture } from './corpus-fixture.js';
-import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter, setRaceName, openRaceLink } from './fixtures.js';
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, openSettings, openView, signInWithEmail, chooseMore, chooseSetting, chooseQuoteFilter, setRaceName, openRaceLink, chooseLinearWordFlow } from './fixtures.js';
 
 // Accent (dead) keys, as US-International and similar layouts send them. On macOS (and Linux with an
 // input method) the mark arrives as a composition that the next key commits; Chrome sends that through
@@ -295,6 +295,7 @@ test('a pending mark is not input: the run waits, and a cancelled mark leaves no
 test('IME text is still refused: the run is interrupted and not counted', async ({ page, supabase }) => {
   const user = supabase.addUser('ime@stilltype.test');
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await signInWithEmail(page, user.email);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
@@ -324,6 +325,7 @@ test('IME text is still refused: the run is interrupted and not counted', async 
 
 test('a multi-character IME commit and a single kana are refused as before', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -481,6 +483,7 @@ test('stop on error still blocks keys after a wrong accent commit', async ({ pag
 test('a mark pending when the clock runs out is not scored', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await page.locator('#duration-options [data-length="15"]').click();
   await expect(page.locator('#timer')).toHaveText('15');
@@ -501,6 +504,7 @@ test('a mark pending when the clock runs out is not scored', async ({ page }) =>
 test('an accent commit made before a timed run’s limit counts, though it is scored after the limit', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await page.locator('#duration-options [data-length="15"]').click();
   await expect(page.locator('#timer')).toHaveText('15');
@@ -552,6 +556,7 @@ test('an accent commit made before a timed run’s limit counts, though it is sc
 
 test('Esc with a mark pending restarts cleanly', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   await page.locator('#typing-input').focus();
@@ -570,6 +575,7 @@ const loseCompositionEnd = (page, field = '#typing-input') => page.evaluate((f) 
 
 test('when compositionend is lost, an accent key’s commit still types and an input method’s is refused', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
 
   // An accent key's mark: the plain text after it is typed, and the run counts.
@@ -630,6 +636,7 @@ test('when compositionend is lost, an accent key’s commit still types and an i
 
 test('an input method’s composition dropped as focus leaves still has its plain commit refused', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
 
@@ -677,6 +684,7 @@ test('an input method’s composition dropped as focus leaves still has its plai
 
 test('a composition over letters already typed (press-and-hold accents) does not type them again', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   // A doubled letter, where a second copy of the held letter would score as correct.
@@ -717,6 +725,7 @@ test('a composition over letters already typed (press-and-hold accents) does not
 
 test('a held accent key is key repeat: what it commits is ignored', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -748,6 +757,7 @@ test('a held accent key is key repeat: what it commits is ignored', async ({ pag
 
 test('a mark a held accent key leaves pending is repeat too, whichever order its letter arrives in', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -790,6 +800,7 @@ test('a mark a held accent key leaves pending is repeat too, whichever order its
 
 test('a held accent key is key repeat on Linux too, where its repeats arrive as Process keys', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -836,6 +847,7 @@ test('a held accent key is key repeat on Linux too, where its repeats arrive as 
 
 test('on Windows, a mark a held accent key leaves pending is repeat too, with all the next key types', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -867,6 +879,7 @@ test('on Windows, a mark a held accent key leaves pending is repeat too, with al
 
 test('another accent key pressed while one is held types its own mark, whichever order the events come in', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -904,6 +917,7 @@ test('another accent key pressed while one is held types its own mark, whichever
 test('an accent key let go where the field can’t hear it doesn’t hold back the next one', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await page.locator('#duration-options [data-length="15"]').click();
   await expect(page.locator('#timer')).toHaveText('15');
   const text = await passageText(page);
@@ -980,6 +994,7 @@ const leaveReadyRun = {
 
 test('a mark pending when focus moves on is dropped, and the run stays ready or in progress as it was', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -1012,6 +1027,7 @@ test('a mark pending when focus moves on is dropped, and the run stays ready or 
 
 test('a mark committed a task or more before focus moves (Safari, a click on macOS) is dropped too', { tag: '@compat' }, async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
 
@@ -1071,6 +1087,7 @@ test('a mark is typed as soon as the key that commits it arrives, before or afte
 
 test('an emoji committed through a composition is refused like IME text', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
@@ -1096,6 +1113,7 @@ test('an emoji committed through a composition is refused like IME text', async 
 
 test('a one-letter commit no accent key opened is refused like IME text, whatever its script', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
 
@@ -1141,6 +1159,7 @@ test('a one-letter commit no accent key opened is refused like IME text, whateve
 
 test('a symbol a Latin layout’s own key types after an accent mark is a slip, not IME text', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   const keys = await accentKeys(page);
   await chooseWords(page, 10);
 

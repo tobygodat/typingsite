@@ -55,6 +55,7 @@ import {
   consistency,
   characterBreakdown,
   wordHistory,
+  withWordFlow,
 } from './typing.js';
 import { wordListIds } from './words.js';
 import { codePassage } from './code-snippets.js';
@@ -65,7 +66,7 @@ import { normalizeWordHighlight } from './word-highlight.js';
 import { APP_FONTS, TYPING_FONTS, fontName } from './fonts.js';
 import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
-import { normalizeCaretGlide } from './caret-glide.js';
+import { TYPING_MOTIONS, normalizeCaretGlide, normalizeTypingMotion } from './caret-glide.js';
 import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
 import { MAX_CUSTOM_THEMES, newThemeId, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
@@ -521,6 +522,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     const limits = ruleLimits(ruleSession());
     selectSetting('strict-space-toggle', learning.preferences.strictSpace);
     selectSetting('quick-end-toggle', learning.preferences.quickEnd);
+    selectSetting('word-flow-toggle', learning.preferences.wordFlow);
     disableSetting('quick-end-toggle', Boolean(limits.quickEnd));
 
     settingsView.present({ quickEnd: lookup(RULE_NOTES, limits.quickEnd) || '', rules: lookup(RULE_NOTES, limits.fixed) || '' });
@@ -763,6 +765,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     $('typing-input').value = '';
     $('typing-input').disabled = false;
     $('accessible-passage').textContent = passage.text;
+    $('text-display').dataset.passage = practice.attempt.conditions.mode === 'code' ? 'code' : 'prose';
     primaryTextView = renderText($('text-display'), passage.text, { tape: onTape });
     primaryCharacters = primaryTextView.characters;
     primaryFx.reset(primaryCharacters);
@@ -1261,7 +1264,7 @@ export async function attachApplication({ practice, learning, palette, settings:
   const renderGhostOffer = ghostOffer.render;
 
   function raceConditions() {
-    return { ...conditions(), mode: 'quote', wordList: null, localRace: true, corpus: CORPUS_VERSION };
+    return withWordFlow({ ...conditions(), mode: 'quote', wordList: null, localRace: true, corpus: CORPUS_VERSION }, 'linear');
   }
 
   function forgetTraining() {
@@ -1618,6 +1621,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     onSetting('correction-select', (value) => setCorrection(value));
     onSetting('strict-space-toggle', (value) => setInputRule('strictSpace', value === 'true'));
     onSetting('quick-end-toggle', (value) => setInputRule('quickEnd', value === 'true'));
+    onSetting('word-flow-toggle', setWordFlow);
     onSetting('min-accuracy', (value) => setMinimum('minAccuracy', Number(value)));
     onSetting('min-wpm', (value) => setMinimum('minWpm', Number(value)));
     onSetting('theme-select', setThemeMode);
@@ -1937,6 +1941,16 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (document.body.dataset.view === 'practice') resetSession(practice.sessionKind);
   }
 
+  function setWordFlow(value: string) {
+    if (value !== 'fluid' && value !== 'linear') return;
+    const changed = learning.preferences.wordFlow !== value;
+    learning.preferences.wordFlow = value;
+    applyPreferences();
+    saveChoice('wordFlow');
+
+    if (changed && !ruleLimits(ruleSession()).fixed && document.body.dataset.view === 'practice') resetSession(practice.sessionKind);
+  }
+
   function activeAccentComposition() {
     return typingHost.accentCompositionActive;
   }
@@ -2072,12 +2086,12 @@ export async function attachApplication({ practice, learning, palette, settings:
     document.body.dataset.typingMotion = mode;
     document.documentElement.style.setProperty('--caret-glide', `${caretGlide}ms`);
     selectSetting('typing-motion', mode);
-    settingsView.present({ caretGlide, glideOff: mode === 'instant' });
+    settingsView.present({ caretGlide, glideOff: mode !== 'smooth' });
   }
 
   function setTypingMotion(value: string) {
-    if (value !== 'smooth' && value !== 'instant') return;
-    learning.preferences.typingMotion = value;
+    if (!TYPING_MOTIONS.some((mode) => mode === value)) return;
+    learning.preferences.typingMotion = normalizeTypingMotion(value);
     applyTypingMotion();
     saveChoice('typingMotion');
   }
@@ -2200,6 +2214,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       ...Object.entries(CORRECTION_LABELS).map(([policy, name]) => ({ group: 'test', label: `correction · ${policy === 'relaxed' ? 'free' : name}`, keywords: 'mistakes correction continue stop error backspace fail expert master confidence', hint: learning.preferences.correction === policy ? 'current' : '', on: learning.preferences.correction === policy, disabled: standardLocked(), run: () => setCorrection(policy) })),
       { group: 'test', label: 'repeat quotes', keywords: 'seen again same quote passage score chase replay', hint: onOff(Boolean(learning.preferences.repeatQuotes)), on: learning.preferences.repeatQuotes, disabled: learning.preferences.mode !== 'quote', run: () => setRepeatQuotes(!learning.preferences.repeatQuotes) },
       { group: 'test', label: 'strict space', keywords: 'space bar early skip word mistakes input', hint: onOff(Boolean(learning.preferences.strictSpace)), on: learning.preferences.strictSpace, run: () => setInputRule('strictSpace', !learning.preferences.strictSpace) },
+      ...(['fluid', 'linear'] as const).map((flow) => ({ group: 'test', label: `word flow · ${flow}`, keywords: 'space skip word overflow extra letters backspace', hint: learning.preferences.wordFlow === flow ? 'current' : '', on: learning.preferences.wordFlow === flow, run: () => setWordFlow(flow) })),
       { group: 'test', label: 'quick end', keywords: 'finish last word end mistakes submit confirm', hint: onOff(Boolean(learning.preferences.quickEnd)), on: learning.preferences.quickEnd, disabled: Boolean(ruleLimits(ruleSession()).quickEnd), run: () => setInputRule('quickEnd', !learning.preferences.quickEnd) },
       ...MIN_ACCURACY_OPTIONS.map((value) => ({ group: 'test', label: `minimum accuracy · ${value ? `${value}%` : 'off'}`, keywords: 'min acc threshold fail stop below continue', hint: learning.preferences.minAccuracy === value ? 'current' : '', on: learning.preferences.minAccuracy === value, run: () => setMinimum('minAccuracy', value) })),
       ...MIN_WPM_OPTIONS.map((value) => ({ group: 'test', label: `minimum speed · ${value ? formatSpeed(value) : 'off'}`, keywords: 'min wpm cpm pace threshold fail stop below continue', hint: learning.preferences.minWpm === value ? 'current' : '', on: learning.preferences.minWpm === value, run: () => setMinimum('minWpm', value) })),
@@ -2217,7 +2232,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     
       ...([['off', 'off'], ['current', 'this word'], ['next', 'next word']] as const).map(([mode, name]) => ({ group: 'display', label: `word highlight · ${name}`, keywords: 'tint emphasis reading ahead', hint: learning.preferences.wordHighlight === mode ? 'current' : '', on: learning.preferences.wordHighlight === mode, run: () => setWordHighlight(mode) })),
       { group: 'display', label: 'word highlight · slide', keywords: 'glide smooth motion animate', hint: onOff(Boolean(learning.preferences.wordHighlightSlide)), on: learning.preferences.wordHighlightSlide, disabled: learning.preferences.wordHighlight === 'off', run: () => setWordHighlightSlide(!learning.preferences.wordHighlightSlide) },
-      ...['smooth', 'instant'].map((mode) => ({ group: 'display', label: `typing motion · ${mode}`, keywords: 'caret animation scroll reduced motion', hint: learning.preferences.typingMotion === mode ? 'current' : '', on: learning.preferences.typingMotion === mode, run: () => setTypingMotion(mode) })),
+      ...TYPING_MOTIONS.map((mode) => ({ group: 'display', label: `typing motion · ${mode}`, keywords: 'caret animation scroll reduced motion', hint: learning.preferences.typingMotion === mode ? 'current' : '', on: learning.preferences.typingMotion === mode, run: () => setTypingMotion(mode) })),
       ...(learning.preferences.navigation === 'side' ? [{ group: 'display', label: navigation.view.getSnapshot().sideHidden ? 'show side bar' : 'hide side bar', keywords: 'sidebar navigation panel collapse expand toggle menu', run: toggleSideBarCommand }] : []),
       ...(['side', 'top'] as const).map((placement) => ({ group: 'display', label: `navigation · ${placement} bar`, keywords: 'sidebar topbar menu screens layout position move', hint: learning.preferences.navigation === placement ? 'current' : '', on: learning.preferences.navigation === placement, run: () => setNavigation(placement) })),
       { group: 'display', label: 'one-line tape', keywords: 'tape mode single line passage layout scroll', hint: onOff(Boolean(learning.preferences.tape)), on: learning.preferences.tape, run: () => togglePreference('tape') },

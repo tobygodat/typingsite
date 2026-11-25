@@ -194,3 +194,22 @@ test('code mode screenshots', async ({ page }, testInfo) => {
     await page.screenshot({ path: process.env.SCREENSHOTS ? `docs/screenshots/code-mode/${name}` : testInfo.outputPath(name) });
   }
 });
+
+test('code keeps every operator apart and deletes a word back to its start', async ({ page }) => {
+  await openApp(page);
+  await chooseMore(page, 'mode-code');
+  await expect(page.locator('#text-display')).toHaveAttribute('data-passage', 'code');
+  const style = await page.locator('#text-display').evaluate((node) => ({ ligatures: getComputedStyle(node).fontVariantLigatures, features: getComputedStyle(node).fontFeatureSettings }));
+  expect(style.ligatures).toBe('none');
+  expect(style.features).toMatch(/"liga" 0/);
+  expect(style.features).toMatch(/"calt" 0/);
+
+  const text = await passageText(page);
+  const space = text.indexOf(' ', 2);
+  const word = text.slice(space + 1).search(/ /u);
+  const partial = text.slice(0, space + 1 + Math.max(1, Math.min(3, word === -1 ? 3 : word)));
+  await typeInto(page, partial);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace');
+  await expect(page.locator('#typing-input')).toHaveValue(text.slice(0, space + 1));
+  await expect(page.locator('#text-display .char.correct')).toHaveCount(space + 1);
+});

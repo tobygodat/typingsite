@@ -107,6 +107,9 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
     if (!event) continue;
 
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
+
+    // Fluid word flow keeps letters off the passage positions; the compact form replays keys in order.
+    if (event.type === 'skip' || event.type === 'extra' || event.type === 'delete-extra') return null;
     let chars;
 
     if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));

@@ -2109,10 +2109,19 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
   font-weight: 400;
   line-height: var(--typing-line);
   letter-spacing: -0.004em;
+  /* Every key shows as the character it is: no ligature or contextual alternate joins <= or -> into one glyph. */
   font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   transition: transform var(--dur-quick) var(--ease-out);
+}
+
+/* Code keeps every operator apart, and drops the prose tracking so columns of symbols stay even. */
+#text-display[data-passage="code"] {
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0, "dlig" 0;
 }
 
 .word { display: inline-block; }
@@ -2137,6 +2146,22 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
 .char.wrong {
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+/* Fluid word flow (ADR 0027). A letter a space skipped is underlined in the miss colour, so it reads
+   as untyped rather than mistyped. Letters typed past a word's end sit inside that word, struck through
+   and tinted, so the words after it never move. */
+.char.missed {
+  color: var(--muted);
+  text-decoration: underline 2px var(--danger);
+  text-underline-offset: 0.18em;
+}
+
+.char.extra {
+  color: var(--danger);
+  background: var(--danger-soft);
+  text-decoration: line-through 1.5px;
+  opacity: 0.85;
 }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
@@ -2209,6 +2234,7 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
+  .char.extra,
   :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
     forced-color-adjust: none;
     color: MarkText;
@@ -2234,6 +2260,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 }
 
 .caret.is-snapping { transition: none; }
+
+/* The Spring caret moves on its own frames (src/motion.ts). */
+body[data-typing-motion="spring"] .caret { transition: none; }
 
 .caret-bar {
   position: absolute;
@@ -4131,6 +4160,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   white-space: pre-wrap;
   overflow-wrap: break-word;
   font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 .replay-text .char.is-caret::after {
   content: "";

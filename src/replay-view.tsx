@@ -10,6 +10,7 @@ import type { SealedRun } from './practice-session.js';
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
 import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing.js';
+import { MISSED } from './word-flow.js';
 import { formatSpeed, unitText } from './units.js';
 
 
@@ -115,7 +116,7 @@ export function createReplayView() {
     follow(caret);
     chars.forEach((node, offset) => {
       const index = first + offset;
-      const letter = index < caret ? (typed[index] === text[index] ? ' correct' : ' wrong') : '';
+      const letter = index < caret ? (typed[index] === text[index] ? ' correct' : typed[index] === MISSED ? ' missed' : ' wrong') : '';
       const name = `char${letter}${index === caret ? ' is-caret' : ''}`;
 
       if (drawn[offset] !== name) node.className = drawn[offset] = name;

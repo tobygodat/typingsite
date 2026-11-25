@@ -26,9 +26,9 @@ export interface Preferences {
   punctuation: boolean; numbers: boolean; adaptive: boolean; quoteLength: string; difficulty: string;
   wordList: string; speedUnit: 'wpm' | 'cpm'; codeLanguage: string; book: string; repeatQuotes: boolean;
   layout: string; fingerMap: boolean; fontSize: string; typingFont: string; appFont: string;
-  wordHighlight: string; wordHighlightSlide: boolean; typingMotion: 'smooth' | 'instant'; caretGlide: number;
+  wordHighlight: string; wordHighlightSlide: boolean; typingMotion: import('./caret-glide.js').TypingMotion; caretGlide: number;
   tape: boolean; navigation: 'side' | 'top'; liveMetrics: boolean; keyboard: boolean;
-  stopOnError: boolean; correction: import('./typing.js').CorrectionPolicy; strictSpace: boolean; quickEnd: boolean;
+  stopOnError: boolean; correction: import('./typing.js').CorrectionPolicy; strictSpace: boolean; quickEnd: boolean; wordFlow: import('./typing.js').WordFlow;
   focusMode: boolean; sound: string; soundVolume: number; minAccuracy: number; minWpm: number;
   keybindings: ReturnType<typeof import('./keybindings.js').normalizeKeybindings>;
   theme: string; darkTheme: string; lightTheme: string; customThemes: string; dailyGoal: number;

@@ -14,7 +14,7 @@ export type { Preferences, Profile, TrainingLoop, Best } from './profile-types.j
 
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
-import { CARET_GLIDE, normalizeCaretGlide } from './caret-glide.js';
+import { CARET_GLIDE, normalizeCaretGlide, normalizeTypingMotion } from './caret-glide.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
@@ -62,7 +62,7 @@ export const defaultPreferences: Preferences = {
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   wordHighlightSlide: false,
-  typingMotion: 'smooth',
+  typingMotion: 'spring',
   caretGlide: CARET_GLIDE.default,
   tape: false,
   // Where the screens are listed: a side bar, or a bar across the top. Display only.
@@ -73,6 +73,9 @@ export const defaultPreferences: Preferences = {
   correction: 'relaxed',
   strictSpace: false,
   quickEnd: true,
+  // How a practice run takes a space typed mid-word and letters past a word's end (ADR 0027). A test
+  // condition: fluid runs key apart from linear ones.
+  wordFlow: 'fluid',
   focusMode: false,
   sound: DEFAULT_SOUND_MODE,
   soundVolume: DEFAULT_SOUND_VOLUME,
@@ -139,6 +142,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
   const normalized = {
     strictSpace: value.strictSpace === true,
     quickEnd: value.quickEnd !== false,
+    wordFlow: value.wordFlow === 'linear' ? 'linear' as const : 'fluid' as const,
     correction,
     stopOnError: correction === 'mandatory',
     dailyGoal: includes(DAILY_GOALS, value.dailyGoal) ? value.dailyGoal : 0,
@@ -152,7 +156,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
     book: includes(bookIds, value.book) ? value.book : DEFAULT_BOOK,
     wordHighlight: normalizeWordHighlight(value.wordHighlight),
     wordHighlightSlide: value.wordHighlightSlide === true,
-    typingMotion: value.typingMotion === 'instant' ? 'instant' as const : 'smooth' as const,
+    typingMotion: normalizeTypingMotion(value.typingMotion),
     caretGlide: normalizeCaretGlide(value.caretGlide),
     typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
     appFont: normalizeFont(value.appFont, APP_FONTS),
@@ -276,6 +280,10 @@ export function normalizeProfile(stored: unknown): HydratedProfile {
 
     return historicalRunRecord(trace, trace.at || loop?.at || best?.at || null);
   });
+
+  // A profile whose saved runs are all linear, and that never chose a word flow, keeps linear (ADR 0027):
+  // its bests, averages and Train baselines carry on at the keys they were typed under.
+  if (!Object.hasOwn(rawPreferences, 'wordFlow') && records.length && !records.some((run) => isRecord(run.conditions) && run.conditions.wordFlow === 'fluid')) rawPreferences.wordFlow = 'linear';
 
   const profile: HydratedProfile = {
     ...emptyProfile(),

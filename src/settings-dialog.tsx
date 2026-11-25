@@ -135,13 +135,14 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             </fieldset>
           </div>
           <div className="preference-row">
-            <div className="preference-copy"><strong id="typing-motion-label">typing motion</strong><small className="preference-note" id="typing-motion-note">Instant skips caret, scroll, and word highlight animations.</small></div>
+            <div className="preference-copy"><strong id="typing-motion-label">typing motion</strong><small className="preference-note" id="typing-motion-note">Spring carries the caret through a burst. Instant skips caret, scroll, and word highlight animations.</small></div>
             <fieldset className="setting-options" id="typing-motion" aria-labelledby="typing-motion-label" aria-describedby="typing-motion-note" onClick={(event) => choose('typing-motion', event)}>
-              <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'smooth', true)} /><span>smooth</span></label>
+              <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'spring', true)} /><span>spring</span></label>
+              <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'smooth')} /><span>smooth</span></label>
               <label className="setting-option"><input type="radio" name="typing-motion" {...radio('typing-motion', 'instant')} /><span>instant</span></label>
             </fieldset>
           </div>
-          <PreferenceRange settings={settings} id="caret-glide" label="glide speed" note="Shorter is faster." value={view.presentation.caretGlide} min={CARET_GLIDE.min} max={CARET_GLIDE.max} step={CARET_GLIDE.step} unit=" ms" disabled={view.presentation.glideOff} />
+          <PreferenceRange settings={settings} id="caret-glide" label="glide speed" note="Smooth only. Shorter is faster." value={view.presentation.caretGlide} min={CARET_GLIDE.min} max={CARET_GLIDE.max} step={CARET_GLIDE.step} unit=" ms" disabled={view.presentation.glideOff} />
           <div className="preference-row">
             <div className="preference-copy"><strong id="tape-toggle-label">one-line tape</strong></div>
             <fieldset className="setting-options" id="tape-toggle" aria-labelledby="tape-toggle-label" disabled={view.disabled['tape-toggle'] ?? false} onClick={(event) => choose('tape-toggle', event)}>
@@ -198,6 +199,13 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
             <fieldset className="setting-options" id="strict-space-toggle" aria-labelledby="strict-space-toggle-label" aria-describedby="rules-note" disabled={view.disabled['strict-space-toggle'] ?? false} onClick={(event) => choose('strict-space-toggle', event)}>
               <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'false', true)} /><span>off</span></label>
               <label className="setting-option"><input type="radio" name="strict-space-toggle" {...radio('strict-space-toggle', 'true')} /><span>on</span></label>
+            </fieldset>
+          </div>
+          <div className="preference-row">
+            <div className="preference-copy"><strong id="word-flow-toggle-label">word flow</strong><small className="preference-note" id="word-flow-note">Fluid: space ends a word where it stands. Races, code, the standard test and strict rules stay linear.</small></div>
+            <fieldset className="setting-options" id="word-flow-toggle" aria-labelledby="word-flow-toggle-label" aria-describedby="word-flow-note" disabled={view.disabled['word-flow-toggle'] ?? false} onClick={(event) => choose('word-flow-toggle', event)}>
+              <label className="setting-option"><input type="radio" name="word-flow-toggle" {...radio('word-flow-toggle', 'fluid', true)} /><span>fluid</span></label>
+              <label className="setting-option"><input type="radio" name="word-flow-toggle" {...radio('word-flow-toggle', 'linear')} /><span>linear</span></label>
             </fieldset>
           </div>
           <div className="preference-row">

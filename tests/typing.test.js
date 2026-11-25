@@ -54,6 +54,7 @@ import {
   consistency,
   characterBreakdown,
   wordHistory,
+  withWordFlow,
 } from '../src/typing.js';
 
 function evenRun(text, msPerChar, misses = {}) {
@@ -965,6 +966,21 @@ test('a newer stop-on-error edit from an older client beats a stale correction p
 // that position, and a continue-on-error run ends on its last letter, right or wrong.
 const defaults = { mode: 'words', duration: null, count: 10, punctuation: false, quoteLength: null, difficulty: null,
   wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', language: 'en' };
+
+test('linear word flow keeps every condition key byte-identical, and fluid keys apart', () => {
+  const master = 'words::10:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1';
+  assert.equal(conditionKey(withWordFlow(defaults, 'linear')), master);
+  assert.equal(conditionKey({ ...defaults, wordFlow: 'fluid' }), `${master}:word-flow`);
+  assert.equal(conditionKey({ ...defaults, wordFlow: 'fluid', quickEnd: false }), `${master}:quick-end-off:word-flow`);
+  assert.equal(conditionKey({ ...defaults, wordFlow: 'fluid', layout: 'dvorak' }), `${master}:word-flow:layout-dvorak`);
+  // Where fluid words can't apply, a stray preference changes nothing: the standard test, stop on
+  // error and strict space keep the keys their bests and the race checks were built on.
+  assert.equal(conditionKey({ ...standardConditions(), wordFlow: 'fluid' }), 'standard:60::punctuation::::physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1:standard-v1');
+  assert.equal(conditionKey({ ...defaults, correctionPolicy: 'mandatory', wordFlow: 'fluid' }), 'words::10:plain:::200:physical-keyboard:mandatory:original-en-v6:stilltype-metrics-v1');
+  assert.equal(conditionKey({ ...defaults, strictSpace: true, wordFlow: 'fluid' }), `${master}:strict-space`);
+  assert.equal(conditionKey({ mode: 'code', codeLanguage: 'js', correctionPolicy: 'relaxed', wordFlow: 'fluid' }), conditionKey({ mode: 'code', codeLanguage: 'js', correctionPolicy: 'relaxed' }));
+  assert.notEqual(conditionKey({ ...defaults, wordFlow: 'fluid' }), conditionKey(defaults));
+});
 
 test('default strict space and quick end keep the condition key byte-identical', () => {
   const master = 'words::10:plain:::200:physical-keyboard:relaxed:original-en-v6:stilltype-metrics-v1';

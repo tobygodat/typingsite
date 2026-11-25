@@ -23,6 +23,12 @@ export function isAttemptEvent(value: unknown): value is AttemptEvent {
 
   if (value.type === 'delete') return value.count === undefined || typeof value.count === 'number';
 
+  if (value.type === 'skip') return Number.isInteger(value.position) && Number.isInteger(value.count);
+
+  if (value.type === 'extra') return typeof value.text === 'string' && Number.isInteger(value.position);
+
+  if (value.type === 'delete-extra') return Number.isInteger(value.count);
+
   return value.type === 'focus-lost' || value.type === 'focus' || value.type === 'focus-returned' || value.type === 'composition' || value.type === 'submit';
 }
 
