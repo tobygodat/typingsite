@@ -21,26 +21,37 @@ export function RankPill({ controller, onChallenge }: { controller: QuickMatchCo
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const shown = open && model !== null;
+  const ranked = model !== null;
+  const shown = open && ranked;
+
+  // A pill that goes (a sign-out here or in another tab) comes back closed.
+  useEffect(() => { if (!ranked) setOpen(false); }, [ranked]);
 
   useEffect(() => {
     if (!shown) return;
     const dismiss = (event: PointerEvent) => { if (!(event.target instanceof Node && root.current?.contains(event.target))) setOpen(false); };
 
-    document.addEventListener('pointerdown', dismiss);
+    // On the window, ahead of every other Escape handler: after a click WebKit leaves focus on the page, not the pill.
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setOpen(false);
+      trigger.current?.focus();
+    };
 
-    return () => document.removeEventListener('pointerdown', dismiss);
+    document.addEventListener('pointerdown', dismiss);
+    window.addEventListener('keydown', escape, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('keydown', escape, true);
+    };
   }, [shown]);
 
   if (!model) return null;
 
-  return <div ref={root} className="rank" onKeyDown={(event) => {
-    if (event.key !== 'Escape' || !open) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setOpen(false);
-    trigger.current?.focus();
-  }} onBlur={(event) => {
+  return <div ref={root} className="rank" onBlur={(event) => {
     // Focus leaving for the passage, or anywhere else, puts the card away; a press outside does it for the pointer.
     if (event.relatedTarget instanceof Node && !root.current?.contains(event.relatedTarget)) setOpen(false);
   }}>

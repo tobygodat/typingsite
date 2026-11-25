@@ -112,7 +112,6 @@ export function contrastIssues(colors: ThemeColors) {
   return issues;
 }
 
-// A generated theme's colours as this build wears them: a hex for every base token, or null when one is missing.
 export function generatedColors(received: Record<string, string>): ThemeColors | null {
   const colors: Record<string, string> = {};
 

@@ -1,8 +1,8 @@
-// The corner's rank pill (src/rank-pill.tsx): what it reads of the signed-in racer's own rating, and that it reads
-// nothing for a guest or for a rating no race has moved (docs/adr/0016-race-rank.md).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rankPill } from '../src/rank-pill.js';
+import { createQuickMatch } from '../src/quick-match-view.js';
+import { SESSION_KEY } from '../src/account.js';
 
 const plain = (pill) => ({ ...pill, line: pill.line.replaceAll(' ', ' ') });
 
@@ -31,4 +31,35 @@ test('the pill carries the racer’s own rating and nothing of anyone else’s',
   const pill = rankPill({ rating: 1920, races: 18, last: { roomId: 'r1', opponent: 'Mara', opponentRating: 2210 } });
   assert.deepEqual(Object.keys(pill).sort(), ['line', 'lit', 'note', 'rank', 'rating']);
   assert.doesNotMatch(JSON.stringify(pill), /Mara|2210|Tempest/);
+});
+
+test('a sign-out in another tab takes the pill away, and a later refresh does not bring it back', async () => {
+  const session = { access_token: 'a', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u1' } };
+  const store = new Map([[SESSION_KEY, JSON.stringify(session)]]);
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  let asked = 0;
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = async () => { asked += 1;
+
+    return new Response(JSON.stringify({ rating: 1920, races: 18 }), { status: 200 }); };
+
+  try {
+    const quick = createQuickMatch();
+    quick.configure({ getSession: () => session, signIn() {}, racerName: () => 'Racer', enterRoom() {}, busyElsewhere: () => false, ownBest: () => false, raceOwnBest() {} });
+    await quick.refresh();
+    assert.equal(rankPill(quick.view.getSnapshot().mine)?.rank, 'Gale II');
+
+    quick.signOutElsewhere();
+    assert.equal(quick.view.getSnapshot().mine, null);
+    const before = asked;
+    await quick.refresh();
+    quick.render();
+    assert.equal(quick.view.getSnapshot().mine, null);
+    assert.equal(asked, before);
+    quick.dispose();
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
 });

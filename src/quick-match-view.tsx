@@ -46,6 +46,8 @@ export function createQuickMatch() {
   let rating: DisplayRating | null = null;
   let notice = '';
   let disposed = false;
+  // Set when another tab signs the account out: this tab keeps its session until it reloads, but shows no rating.
+  let signedOutElsewhere = false;
   const getSession = () => options?.getSession() ?? null;
 
   const sessionIdentity = () => { const session = getSession();
@@ -81,7 +83,7 @@ export function createQuickMatch() {
       case 'idle': status = lastResult(); break;
     }
 
-    const mine = getSession() && rating ? { rating: rating.rating, races: rating.races } : null;
+    const mine = !signedOutElsewhere && getSession() && rating ? { rating: rating.rating, races: rating.races } : null;
     flushSync(() => view.publish({ label: searching ? 'Stop looking' : 'Find a race', status, rating: getSession() ? ratingLine(rating) : '', gauge: getSession() ? ratingGauge(rating) : null,
       mine, searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
 
@@ -178,11 +180,12 @@ export function createQuickMatch() {
     leave() { dispatch({ type: 'leave' }); },
     get searching() { return queued(state); },
     seen: markSeen,
+    signOutElsewhere() { signedOutElsewhere = true; rating = null; render(); },
     async refresh() {
       const session = getSession();
       const identity = sessionIdentity();
 
-      if (!session) { rating = null; render();
+      if (!session || signedOutElsewhere) { rating = null; render();
 
  return; }
 

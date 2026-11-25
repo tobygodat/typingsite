@@ -1486,7 +1486,13 @@ export async function attachApplication({ practice, learning, palette, settings:
         return;
       }
 
-      if (sync.state.signedOutElsewhere || followSessionElsewhere(event)) return;
+      if (sync.state.signedOutElsewhere) return;
+
+      if (followSessionElsewhere(event)) {
+        challenge.quick.signOutElsewhere();
+
+        return;
+      }
 
       if (event.key !== account.profileKey(accounts.session.user.id)) return;
 
@@ -1623,7 +1629,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
       save: saveCustomThemes,
       signedIn: () => Boolean(accounts.session) && !sync.state.signedOutElsewhere,
-      generate: (vibe) => account.generateTheme(accounts.session, vibe),
+      generate: (vibe, signal) => account.generateTheme(accounts.session, vibe, { signal }),
       signIn: () => { settingsView.close(); openAccountDialog('signin'); },
     });
     prefersLight.addEventListener('change', () => { if (learning.preferences.theme === 'system') applyTheme(); }, { signal: lifetime.signal });
@@ -2251,7 +2257,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       themes: {
         member: () => Boolean(accounts.session) && !sync.state.signedOutElsewhere,
         full: () => readCustomThemes(learning.preferences.customThemes).length >= MAX_CUSTOM_THEMES,
-        generate: (vibe) => account.generateTheme(accounts.session, vibe),
+        generate: (vibe, signal) => account.generateTheme(accounts.session, vibe, { signal }),
         preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
         save: (name, colors) => {
           const id = newThemeId();

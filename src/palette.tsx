@@ -25,7 +25,7 @@ export interface PaletteCommand {
 export interface PaletteThemePorts {
   member(): boolean;
   full(): boolean;
-  generate(vibe: string): PromiseLike<GeneratedTheme>;
+  generate(vibe: string, signal: AbortSignal): PromiseLike<GeneratedTheme>;
   preview(colors: ThemeColors | null): void;
   save(name: string, colors: ThemeColors): void;
   signIn(): void;
@@ -117,7 +117,8 @@ export function contrastNote(theme: Extract<PaletteTheme, { status: 'ready' }>) 
 export function createPalette() {
   let options: PaletteOptions = { getCommands: () => [] };
   let host: PaletteHost | null = null;
-  let generation: object | null = null;
+  // The request in flight, aborted the moment its answer is no longer wanted.
+  let generation: AbortController | null = null;
   let previewing = false;
   const view = createStore<PaletteView>({ query: '', items: [], active: 0, open: false, theme: IDLE });
 
@@ -129,6 +130,7 @@ export function createPalette() {
   }
 
   function forget() {
+    generation?.abort();
     generation = null;
     unwear();
   }
@@ -190,22 +192,23 @@ export function createPalette() {
 
  return; }
 
-    const request = {};
+    generation?.abort();
+    const request = new AbortController();
     generation = request;
     show({ status: 'generating', vibe });
 
     try {
-      const reply = await ports.generate(vibe);
+      const reply = await ports.generate(vibe, request.signal);
 
-      if (generation !== request) return;
+      if (generation !== request || request.signal.aborted) return;
       const colors = generatedColors(reply.colors);
 
       if (!colors) throw new Error(FAILED);
       ports.preview(colors);
       previewing = true;
-      show({ status: 'ready', vibe, name: cleanThemeName(reply.name) || cleanThemeName(vibe), colors, issues: contrastIssues(colors), ratio: contrast(colors.text ?? '', colors.ground) });
+      show({ status: 'ready', vibe, name: cleanThemeName(reply.name) || 'generated', colors, issues: contrastIssues(colors), ratio: contrast(colors.text ?? '', colors.ground) });
     } catch (error) {
-      if (generation !== request) return;
+      if (generation !== request || request.signal.aborted) return;
       unwear();
       show({ status: 'failed', vibe, message: error instanceof Error && error.message ? error.message : FAILED });
     } finally {
@@ -270,6 +273,7 @@ export function createPalette() {
       command.run();
     },
     dispose() {
+      generation?.abort();
       generation = null;
       host = null;
     },

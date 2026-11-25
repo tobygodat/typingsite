@@ -1236,6 +1236,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   /* Its menus open to the right of the bar, level with their row's foot, so they stay on screen. */
   :root[data-navigation="side"] .corner-popover { top: auto; bottom: 0; right: auto; left: calc(100% + var(--space-6)); }
   :root[data-navigation="side"] .rank-popover { transform-origin: bottom left; }
+  /* Too short for the card above the row's foot: it hangs from the row's top instead. */
+  @media (max-height: 340px) { :root[data-navigation="side"] .rank-popover { top: 0; bottom: auto; transform-origin: top left; } }
   :root[data-navigation="side"] .rank-pill-rating { margin-left: auto; }
 
   :root[data-navigation="side"] .dock-zone .site-footer {
@@ -4027,7 +4029,6 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--muted); font-style: italic; }
 
-/* A theme being made or tried, between the search and the list. */
 .palette-theme {
   min-height: var(--control);
   padding: var(--space-2) var(--space-4);
