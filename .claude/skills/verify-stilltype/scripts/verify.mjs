@@ -146,11 +146,22 @@ function serverOwner(url) {
   }
   const pids = execFileSync('lsof', ['-nP', '-a', `-iTCP:${address.port || 80}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim().split(/\s+/);
   for (const pid of pids) {
-    if (fs.readlinkSync(`/proc/${pid}/cwd`) !== root || !fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').includes('server.mjs')) {
-      throw new Error(`${url} belongs to another checkout or is not node server.mjs`);
-    }
+    if (!isOurServer(processInfo(pid))) throw new Error(`${url} belongs to another checkout or is not node server.mjs`);
   }
 }
+
+// Linux has /proc; macOS answers the same two questions through lsof and ps.
+function processInfo(pid) {
+  if (fs.existsSync(`/proc/${pid}`)) {
+    return { cwd: fs.readlinkSync(`/proc/${pid}/cwd`), args: fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0') };
+  }
+  const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const cwd = run('lsof', ['-a', '-p', String(pid), '-d', 'cwd', '-Fn']).split('\n').find((line) => line.startsWith('n'));
+  if (!cwd) throw new Error(`lsof reports no working directory for pid ${pid}`);
+  return { cwd: cwd.slice(1), args: run('ps', ['-o', 'command=', '-p', String(pid)]).trim().split(/\s+/) };
+}
+
+const isOurServer = ({ cwd, args }) => cwd === root && args.includes('server.mjs');
 
 async function servesThisCheckout(url, build) {
   try { serverOwner(url); } catch (error) { return { ok: false, reason: `cannot verify server ownership at ${url}: ${error.message}` }; }
@@ -194,9 +205,7 @@ function managedServer() {
   const state = readJson(serverFile);
   if (!state || !alive(state.pid)) return null;
   try {
-    const cmdline = fs.readFileSync(`/proc/${state.pid}/cmdline`, 'utf8');
-    const cwd = fs.readlinkSync(`/proc/${state.pid}/cwd`);
-    if (!cmdline.includes('server.mjs') || cwd !== root) return null;
+    if (!isOurServer(processInfo(state.pid))) return null;
   } catch { return null; }
   return state;
 }
@@ -339,9 +348,10 @@ const FLOW_IMPL = {
     await shot('mid-run');
     await h.type(text.slice(half));
     await h.attr('body', 'data-view', 'results');
+    await page.locator('#run-card').waitFor();
     await h.settle();
     const result = {};
-    for (const key of ['wpm', 'accuracy', 'time', 'consistency', 'standing', 'conditions']) result[key] = await h.text(`#result-${key}`);
+    for (const key of ['wpm', 'accuracy', 'time', 'consistency', 'conditions']) result[key] = await h.text(`#result-${key}`);
     result.counts = await page.locator('#result-accuracy-fact').getAttribute('title');
     note('passage', text);
     note('result', result);

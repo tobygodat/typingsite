@@ -34,9 +34,9 @@ $V serve      # prints url, pid and log; port is fixed per checkout (5200–5799
 
 Ready means usable. `serve` returns only once every emitted file in the manifest comes back byte-identical
 to this checkout's `dist/`, with the expected `X-Stilltype-Build` version. It also verifies that the local
-listener runs `server.mjs` in this checkout, using Linux `/proc` and `lsof`. There is no database, migration
-or seed. A guest starts from defaults and writes nothing; signed-in state comes from the fake Supabase
-in each browser context. Shots and drives use the managed server automatically while it runs, after the
+listener runs `server.mjs` in this checkout, using `/proc` and `lsof` on Linux, or `lsof` and `ps` on macOS.
+There is no database, migration or seed. A guest starts from defaults and writes nothing; signed-in state
+comes from the fake Supabase in each browser context. Shots and drives use the managed server automatically while it runs, after the
 same artifact check. Source edits need a rebuild.
 Run `$V stop` then `$V serve` to rebuild and restart. Calling `serve` with an existing managed server
 checks it without rebuilding. Stop it first if its build is stale.
