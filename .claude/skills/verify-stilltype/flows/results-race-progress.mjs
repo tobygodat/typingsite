@@ -133,7 +133,7 @@ export default async ({ page, h, shot, note, check, fake, url }) => {
   await toggle.click();
   await h.settle();
   check((await toggle.getAttribute('aria-expanded')) === 'false' && (await drawer.evaluate((node) => getComputedStyle(node).visibility)) === 'hidden', 'Inspect words closes the list');
-  check(await page.locator('#practice-words').isVisible() || !(await page.locator('#practice-words').count()) || (await page.locator('#practice-words').isHidden()), 'the practice action keeps its place');
+  check(await page.locator('#practice-words').isVisible(), 'Practice these words stays in view with the list closed');
   await shot('words-closed');
   await toggle.click();
   await h.settle();

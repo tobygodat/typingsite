@@ -138,7 +138,6 @@
   /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
-  /* The gap between one part of a card arriving and the next. */
   --stagger-step: calc(40ms * var(--motion-scale));
 
   /* The chosen segment of the mode, length and language rows: the theme's text as a fill, its ground as ink. */
@@ -2841,6 +2840,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 /* Closed, the panel ends at its head: the head's rule and the room under it go with the list, on the same timing. */
 .run-card-wordlist > .panel-head { transition: margin-bottom var(--dur-drawer) var(--ease-drawer), border-color var(--dur-drawer) var(--ease-drawer); }
 .run-card-wordlist:has(> .word-drawer[data-open="false"]) > .panel-head { margin-bottom: calc(var(--panel-inset) * -1); border-bottom-color: transparent; }
+/* The global 1ms floor would still hold the old height for a frame: with reduced motion the drawer simply switches. */
+@media (prefers-reduced-motion: reduce) {
+  :is(.word-drawer, .word-drawer[data-open="false"], .run-card-wordlist > .panel-head, .run-card-toggle svg) { transition-property: none; }
+}
 
 /* The actions, the average and best and the conditions line set against them on the right. */
 .result-actions {
@@ -3055,6 +3058,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   font: var(--text-fine)/1.6 var(--font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   transform: translate(var(--scrub-x, 0), var(--scrub-y, 0));
 }
@@ -3387,8 +3393,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
 .panel-count { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
-/* Pairs: friction and flow side by side, each a row of chips. A friction chip opens its drill; a flow chip only
-   says so. The two lists never share a pair (bigramChips in src/progress-view.ts). */
+/* The two lists never share a pair (bigramChips in src/progress-view.ts). */
 .pair-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-4) var(--space-6); }
 .pair-group { min-width: 0; display: grid; gap: var(--space-2); align-content: start; }
 .pair-group-title { margin: 0; color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
@@ -3874,8 +3879,6 @@ button.pair-chip { border-color: color-mix(in srgb, var(--danger) 45%, var(--hai
 .ghost-caret .caret-tag > span { color: var(--text); }
 .duel-replay-controls { margin-top: var(--space-4); display: flex; justify-content: center; gap: var(--space-3); }
 
-/* Two lanes, one under the other: the name, a hairline that fills as that racer types, and where they are. Yours fills
-   in the accent and theirs in the text colour, as on the graph after. */
 .online-players { display: grid; gap: var(--space-3); margin: var(--space-6) 0; }
 .online-player-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) minmax(0, 8rem); align-items: center; gap: var(--space-4); }
 .online-player-row strong { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

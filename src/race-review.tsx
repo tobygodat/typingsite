@@ -150,6 +150,8 @@ export function createRaceReview() {
  if (host === next) host = null; };
     },
     select,
+    // The speed unit changed: the open graph reads in the new one, at the point it was reading.
+    redraw() { drawGraph(false); },
     toggle() { if (playing) pause(); else play(); },
     speed() { speed = speed === 1 ? 2 : 1; flushSync(() => snapshot.publish({ ...snapshot.getSnapshot(), speed })); },
     restart() { position = 0; play(); },

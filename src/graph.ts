@@ -10,13 +10,14 @@ interface Plot { svg: SVGElement; ink: SVGElement; x: (t: number) => number; y: 
 interface DrawnPoint { t: number; speed: number }
 
 // One place the scrubber can rest: the crosshair's x, a dot's y per series (null where that series has no point),
-// and the readout.
-interface ScrubStop { x: number; ys: (number | null)[]; text: string }
+// the readout, and, when the readout can be shortened, the readout in at most that many characters.
+interface ScrubStop { x: number; ys: (number | null)[]; text: string; fit?: (chars: number) => string }
 
 // Speed graph: the run's typing speed over time, with mistakes marked, as an SVG line chart.
 // Presentational only. Scoring never reads from here; it reads the event log.
 import { CHARS_PER_WORD } from './typing.js';
 import { formatSpeed, speedValue } from './units.js';
+import { skippedText } from './word-flow.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const WINDOW_MS = 3000; // speed is averaged over the trailing three seconds, so single pauses don't spike
@@ -30,10 +31,11 @@ function stepMs(durationMs: number) {
 
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
 // Speed at each point is measured over exactly the trailing three seconds of keystroke timestamps,
-// however coarse the drawn points are; mistakes are summed per drawn point.
+// however coarse the drawn points are; mistakes are summed per drawn point. In fluid word flow a space that skips
+// letters and a letter past a word's end are each a wrong key, as replayAttempt scores them.
 export function speedSeries(attempt: ReplaySource) {
   const all = attempt?.events || [];
-  const events = all.filter((event): event is Extract<AttemptEvent, { text: string }> => event.type === 'insert' || event.type === 'blocked-insert');
+  const events = all.filter((event): event is Extract<AttemptEvent, { type: 'insert' | 'blocked-insert' | 'skip' | 'extra' }> => event.type === 'insert' || event.type === 'blocked-insert' || event.type === 'skip' || event.type === 'extra');
 
   if (!events.length) return { points: [], durationS: 0 };
   const start = attempt.startedAt ?? indexed(events, 0).offsetMs;
@@ -50,6 +52,19 @@ export function speedSeries(attempt: ReplaySource) {
   for (const event of all) {
     if (event.type === 'delete') {
       kept.splice(Math.max(0, kept.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+
+    if (event.type === 'skip' || event.type === 'extra') {
+      const length = attempt.text?.length ?? 0;
+
+      if (event.position >= length) continue;
+      const at = Math.max(0, event.offsetMs - start);
+      const bucket = Math.min(count - 1, Math.floor(at / step));
+      misses[bucket] = indexed(misses, bucket) + 1;
+
+      // The skipped letters and the space after them stay in the kept text, so a later delete takes them first.
+      if (event.type === 'skip') kept.push(...[...skippedText(length, event.position, event.count)].map((char, offset) => ({ at, hit: attempt.text?.[event.position + offset] === char })));
       continue;
     }
 
@@ -226,7 +241,7 @@ export function renderSpeedGraph(container: HTMLElement, attempt: ReplaySource &
   const chart = trace(container, { durationS: series.durationS, low: Math.min(...speeds), high: Math.max(...speeds), animate });
 
   if (!chart || !points.length) {
-    scrub(container, null, []);
+    scrub(container, null, [], false);
 
     return;
   }
@@ -241,7 +256,7 @@ export function renderSpeedGraph(container: HTMLElement, attempt: ReplaySource &
     ink.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r: 4 }));
   }
 
-  scrub(container, chart, points.map((point) => ({ x: chart.x(point.t), ys: [y(point.speed)], text: scrubReadout(point) })));
+  scrub(container, chart, points.map((point) => ({ x: chart.x(point.t), ys: [y(point.speed)], text: scrubReadout(point) })), !animate);
 }
 
 // An online race: both racers' speed on one chart over the race clock, which both traces start from the
@@ -254,7 +269,7 @@ export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [ReplayS
   const chart = plot(container, { durationS: Math.max(...series.map((each) => each.durationS)), top, animate });
 
   if (!chart) {
-    scrub(container, null, []);
+    scrub(container, null, [], false);
 
     return;
   }
@@ -267,8 +282,8 @@ export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [ReplayS
   scrub(container, chart, times.map((t) => {
     const racers = [{ name: 'You', point: scrubPointAt(ours, t, indexed(series, 0).durationS) }, { name, point: scrubPointAt(others, t, indexed(series, 1).durationS) }];
 
-    return { x: chart.x(t), ys: racers.map(({ point }) => (point ? chart.y(point.speed) : null)), text: duelReadout(t, racers) };
-  }));
+    return { x: chart.x(t), ys: racers.map(({ point }) => (point ? chart.y(point.speed) : null)), text: duelReadout(t, racers), fit: (chars: number) => duelReadout(t, racers, undefined, chars) };
+  }), !animate);
 }
 
 // The index of the value nearest `value` in ascending `values`, or -1 when there are none. The scrubber snaps to
@@ -302,9 +317,21 @@ export function scrubReadout(point: SpeedPoint, unit?: string) {
   return `${stamp(point.t)} · ${formatSpeed(point.wpm, { whole: true }, unit)} · ${point.misses} ${point.misses === 1 ? 'mistake' : 'mistakes'}`;
 }
 
-// "4.1s · You 62 wpm · Lin 58 wpm", with a dash for a racer who has finished by then.
-export function duelReadout(t: number, racers: readonly { name: string; point: SpeedPoint | null }[], unit?: string) {
-  return [stamp(t), ...racers.map(({ name, point }) => `${name} ${point ? formatSpeed(point.wpm, { whole: true }, unit) : '—'}`)].join(' · ');
+// "4.1s · You 62 wpm · Lin 58 wpm", with a dash for a racer who has finished by then. Given at most `chars`
+// characters, the names give way first, each cut to an ellipsis, so the moment and both speeds always read whole.
+export function duelReadout(t: number, racers: readonly { name: string; point: SpeedPoint | null }[], unit?: string, chars = Infinity) {
+  const readout = (names: readonly string[]) => [stamp(t), ...racers.map(({ point }, index) => `${names[index]} ${point ? formatSpeed(point.wpm, { whole: true }, unit) : '—'}`)].join(' · ');
+  const names = racers.map(({ name }) => name);
+
+  while (readout(names).length > chars) {
+    const longest = names.reduce((most, name, index) => (name.length > indexed(names, most).length ? index : most), 0);
+    const name = indexed(names, longest).replace(/…$/, '');
+
+    if (name.length <= 1) break;
+    names[longest] = `${name.slice(0, -1).trimEnd()}…`;
+  }
+
+  return readout(names);
 }
 
 const IDLE = 'Arrow keys read the speed at each point';
@@ -313,8 +340,10 @@ const scrubs = new WeakMap<HTMLElement, AbortController>();
 // Hover, drag or arrow across a chart: a hairline and a dot per series snap to the nearest point, and the readout
 // takes the time axis's row, centred under the hairline and kept inside the chart. Every coordinate is worked out at
 // draw time, the readout's width from one measure of the longest text in its monospaced face; a move only writes, so
-// it never forces layout. Each drawing replaces the last one's listeners.
-function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[]) {
+// it never forces layout. A readout too wide for the chart is shortened by its own fit. Each drawing replaces the
+// last one's listeners; with `keep`, a redraw (a resize, or the speed unit changing) reads the same point again.
+function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[], keep: boolean) {
+  const kept = keep && container.dataset.scrubbing !== undefined ? Number(container.getAttribute('aria-valuenow')) : -1;
   scrubs.get(container)?.abort();
   delete container.dataset.scrubbing;
   container.setAttribute('aria-valuemin', '0');
@@ -336,15 +365,17 @@ function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[]) {
   const xs = stops.map((stop) => stop.x);
   const longest = stops.reduce((most, stop) => (stop.text.length > most.length ? stop.text : most), '');
   readout.textContent = longest;
-  const perCharacter = readout.offsetWidth / Math.max(1, longest.length);
+  const perCharacter = readout.scrollWidth / Math.max(1, longest.length);
   readout.textContent = '';
   readout.style.setProperty('--scrub-y', `${chart.bottom + 2}px`);
   const width = Number(svg.getAttribute('width'));
+  const room = Math.floor((width - 2) / Math.max(1, perCharacter));
+  const texts = stops.map((stop) => (stop.text.length > room && stop.fit ? stop.fit(room) : stop.text));
 
-  const lefts = stops.map((stop) => {
-    const wide = Math.min(width, Math.ceil(perCharacter * stop.text.length) + 1);
+  const lefts = texts.map((text, index) => {
+    const wide = Math.min(width, Math.ceil(perCharacter * text.length) + 1);
 
-    return Math.max(0, Math.min(width - wide, stop.x - wide / 2)).toFixed(1);
+    return Math.max(0, Math.min(width - wide, indexed(stops, index).x - wide / 2)).toFixed(1);
   });
 
   let origin = Number.NaN;
@@ -377,7 +408,7 @@ function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[]) {
       dot.setAttribute('cy', y.toFixed(1));
     });
     readout.style.setProperty('--scrub-x', `${lefts[index]}px`);
-    readout.textContent = stop.text;
+    readout.textContent = texts[index] ?? stop.text;
     container.setAttribute('aria-valuenow', String(index));
     container.setAttribute('aria-valuetext', stop.text);
   }
@@ -412,4 +443,6 @@ function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[]) {
     event.preventDefault();
     show(Math.max(0, Math.min(last, next)));
   }, { signal });
+
+  if (kept >= 0) show(Math.min(kept, stops.length - 1));
 }

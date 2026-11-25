@@ -493,6 +493,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     labelWords();
 
     if (practice.shownResult && rateShown(practice.shownResult)) renderSpeedGraph($('speed-graph'), practice.shownResult, { animate: false });
+    challenge.review.redraw();
 
     if (document.body.dataset.view === 'progress') {
       drawProgressView();

@@ -169,3 +169,29 @@ test.describe('narrow phone', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
 });
+
+// Reduced motion: the global 1 ms floor would hold the list's old height for a frame, so the drawer has no transition
+// and Inspect words closes and opens it on the click's own frame. Practice these words stays in view while it is shut.
+test('under reduced motion Inspect words closes and opens the list at once', { tag: '@compat' }, async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openApp(page);
+  await finishRun(page);
+  const drawer = page.locator('#result-words-drawer');
+  expect(await drawer.evaluate((node) => getComputedStyle(node).transitionProperty)).toBe('none');
+  expect(await page.locator('.run-card-wordlist > .panel-head').evaluate((node) => getComputedStyle(node).transitionProperty)).toBe('none');
+
+  const toggle = () => page.evaluate(() => new Promise((resolve) => {
+    const node = document.getElementById('result-words-drawer');
+    const before = node.getBoundingClientRect().height;
+    document.getElementById('inspect-words').click();
+    requestAnimationFrame(() => resolve({ before, after: node.getBoundingClientRect().height, visibility: getComputedStyle(node).visibility }));
+  }));
+
+  const closed = await toggle();
+  expect(closed.before).toBeGreaterThan(0);
+  expect(closed).toEqual(expect.objectContaining({ after: 0, visibility: 'hidden' }));
+  await expect(page.locator('#inspect-words')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#practice-words')).toBeVisible();
+  const opened = await toggle();
+  expect(opened).toEqual({ before: 0, after: closed.before, visibility: 'visible' });
+});
