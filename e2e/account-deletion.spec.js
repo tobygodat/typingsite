@@ -225,8 +225,9 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
     await page.locator('#palette-input').fill(query);
   };
 
+  // A guest finds no such command; the query is only offered back as a theme to generate.
   await palette('delete account');
-  await expect(page.locator('#palette-list')).not.toContainText('delete account');
+  await expect(page.locator('#palette-list [role="option"] .opt-text')).toHaveText(['generate theme · delete account']);
   await page.keyboard.press('Escape');
 
   await signInWithEmail(page, ADA);

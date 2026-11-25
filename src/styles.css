@@ -139,6 +139,10 @@
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
+  /* The chosen segment of the mode, length and language rows: the theme's text as a fill, its ground as ink. */
+  --ink-fill: var(--text);
+  --ink-label: var(--ground);
+
   /* The rated result card (src/rank-card.js): its width, the emblem, the rank name and the bar. Its colours live
      in that module, not here: they are the ranks' own and don't follow the theme's accent. */
   --rank-card: 420px;
@@ -715,7 +719,26 @@ kbd {
   transition: transform var(--dur-base) var(--ease-out);
 }
 
-.glide.no-anim .glide-pill { transition: none; }
+.glide.no-anim :is(.glide-pill, .glide-ink) { transition: none; }
+
+/* The segmented rows ink their choice instead: a layer of label copies (src/control-glide.ts) in the fill's own
+   ink, clipped to the chosen segment. The window wipes from one segment to the next, and each label turns to ink
+   exactly where the window's edge crosses it. The layer takes no pointer, so every segment keeps its whole box. */
+.glide-ink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: var(--ink-fill);
+  color: var(--ink-label);
+  clip-path: inset(var(--ink-t, 0) var(--ink-r, 100%) var(--ink-b, 0) var(--ink-l, 0) round var(--radius));
+  opacity: var(--ink-o, 0);
+  pointer-events: none;
+  transition: clip-path var(--dur-base) var(--ease-out);
+  will-change: clip-path;
+}
+
+.glide-ink-label { position: absolute; box-sizing: border-box; display: flex; align-items: center; white-space: nowrap; }
 
 .dock-nav { display: flex; align-items: center; gap: 2px; }
 /* The list runs across or down, so its pill moves on both axes, by transform alone. */
@@ -823,7 +846,7 @@ kbd {
   box-shadow: var(--shadow-float);
   overflow: clip;
 }
-#settings-dialog[open] { display: flex; flex-direction: column; animation: palette-in var(--dur-quick) var(--ease-out); }
+#settings-dialog[open] { display: flex; flex-direction: column; animation: dialog-in var(--dur-quick) var(--ease-out); }
 #settings-dialog::backdrop { background: var(--backdrop); }
 .settings-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-6); border-bottom: 1px solid var(--hairline-strong); }
 .settings-header h2 { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: 1.2; }
@@ -1015,6 +1038,31 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
+/* The rank pill (src/rank-pill.tsx): the member's own race rank as a small dial in the corner, its ring the step
+   it sits in. Its card scales out of the pill's corner and back, and is still under reduced motion. */
+.rank { position: relative; }
+.rank-pill { width: auto; padding: 0 var(--space-3) 0 var(--space-2); gap: var(--space-2); font: var(--text-mono)/1 var(--font-mono); letter-spacing: 0.02em; }
+.rank-pill[aria-expanded="true"] { color: var(--text); background: var(--raised-2); }
+.rank-pill-rating { color: var(--text); }
+.rank-pill .rank-ring { width: var(--frame-glyph); height: var(--frame-glyph); transform: rotate(-90deg); }
+.rank-ring circle { fill: none; stroke-width: 2.25; }
+.rank-ring-track { stroke: var(--hairline-strong); }
+.rank-ring-fill { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray var(--dur-medium) var(--ease-out); }
+
+.rank-popover {
+  width: 260px;
+  transform-origin: top right;
+  animation: rank-in var(--dur-quick) var(--ease-out);
+}
+.rank-popover .gauge { margin-top: var(--space-3); }
+.rank-popover-head { margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); font: var(--text-mono)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.rank-popover-head strong { color: var(--text); font-weight: 500; }
+.rank-popover-head .num { color: var(--muted); }
+.rank-popover-note { margin: var(--space-2) 0 var(--space-4); color: var(--muted); font: var(--text-fine)/1.5 var(--font-mono); }
+.rank-challenge { width: 100%; }
+
+@keyframes rank-in { from { opacity: 0; transform: scale(0.95); } }
+
 /* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
    the week's ghost race results, then the newest thirty others. */
 
@@ -1187,6 +1235,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .corner-label small { display: block; color: var(--muted); font-size: var(--text-fine); line-height: 1.4; }
   /* Its menus open to the right of the bar, level with their row's foot, so they stay on screen. */
   :root[data-navigation="side"] .corner-popover { top: auto; bottom: 0; right: auto; left: calc(100% + var(--space-6)); }
+  :root[data-navigation="side"] .rank-popover { transform-origin: bottom left; }
+  :root[data-navigation="side"] .rank-pill-rating { margin-left: auto; }
 
   :root[data-navigation="side"] .dock-zone .site-footer {
     width: auto;
@@ -1468,7 +1518,6 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   gap: 2px;
 }
 
-.segmented .glide-pill { border-radius: var(--radius); }
 
 .segmented button,
 .segmented .custom-length-input {
@@ -1531,6 +1580,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .mode-more > summary::-webkit-details-marker { display: none; }
 /* The disclosure chevron of "drill something else", at the same rotated 1.5px corner. */
 .mode-more > summary::after,
+.glide-ink-label.is-disclosure::after,
 .conditions-disclosure > summary::after {
   content: "";
   width: 7px;
@@ -1541,7 +1591,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   transform: translateY(-2px) rotate(45deg);
   transition: transform var(--dur-quick) var(--ease-out);
 }
-:is(.mode-more, .conditions-disclosure)[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+:is(.mode-more, .conditions-disclosure)[open] > summary::after,
+.mode-options:has(> .mode-more[open]) .glide-ink-label.is-disclosure::after { transform: translateY(2px) rotate(-135deg); }
 .mode-more > summary:hover,
 .mode-more[open] > summary,
 .mode-more[data-active] > summary { color: var(--text); }
@@ -1869,6 +1920,7 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before 
 .dock-zone,
 .dock,
 .corner,
+.rank-pill,
 .practice-controls,
 .quote-options,
 .standard-options,
@@ -1877,8 +1929,8 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before 
 .site-footer,
 .compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .dock, .corner, .rank-pill, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .rank-pill, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* The background image. The layer fades it out and dims it mid-run; only its opacity changes, so a run never
    relays out or repaints it. Its ::before holds the style: dither is dots × the dithered image (inverted on light
@@ -3880,10 +3932,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   overflow: visible;
 }
 
-.palette::backdrop {
-  background: var(--backdrop);
-  animation: fade-in var(--dur-quick) var(--ease-out);
-}
+/* The palette opens and closes on the frame of the key, with no motion either way, so the next key always lands. */
+.palette::backdrop { background: var(--backdrop); }
 
 .palette-box {
   border: 1px solid var(--hairline-strong);
@@ -3891,15 +3941,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   background: var(--raised);
   box-shadow: var(--shadow-float);
   overflow: hidden;
-  animation: palette-in var(--dur-quick) var(--ease-out);
 }
 
-/* palette.js waits 150ms before closing; keep palette-out at --dur-quick. */
-.palette.is-closing .palette-box { animation: palette-out var(--dur-quick) var(--ease-out) forwards; }
-.palette.is-closing::backdrop { opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
-
-@keyframes palette-in { from { opacity: 0; transform: translateY(-4px); } }
-@keyframes palette-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(-4px); } }
 
 .palette-search {
   height: 62px;
@@ -3983,6 +4027,25 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--muted); font-style: italic; }
 
+/* A theme being made or tried, between the search and the list. */
+.palette-theme {
+  min-height: var(--control);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-label);
+}
+.palette-theme[data-status="idle"] { display: none; }
+.palette-theme-text { flex: 1 1 12em; min-width: 0; }
+.palette-swatches { display: inline-flex; gap: 3px; flex: none; }
+.palette-swatches i { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.palette-contrast { flex: none; color: var(--accent); font: var(--text-fine)/1.4 var(--font-mono); letter-spacing: 0.03em; white-space: nowrap; }
+.palette-contrast.is-low { color: var(--warning); white-space: normal; }
+
 #clear-dialog,
 #account-dialog,
 #replay-dialog,
@@ -4005,7 +4068,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 #replay-dialog[open],
 #import-dialog[open],
 #suggest-dialog[open],
-#release-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#release-dialog[open] { animation: dialog-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
@@ -4210,6 +4273,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .corner-trigger { border: 1px solid var(--hairline-strong); border-radius: var(--radius-control); background: var(--ground-2); }
   .corner-popover { width: min(300px, calc(100vw - var(--space-8))); }
   .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
+  /* The pill stands before the inbox and the person, so its card reaches past both to the screen's edge. */
+  .rank-popover { right: calc(-2 * (var(--control) + var(--space-2))); width: min(260px, calc(100vw - var(--space-8))); }
 
 
   .screen { padding-top: var(--screen-top-phone); }

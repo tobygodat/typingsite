@@ -19,7 +19,8 @@ type LastRating = Extract<QuickMatchReply, { last?: object }>;
 
 type DisplayRating = Rating & { last?: LastRating['last'] };
 
-interface QuickMatchView { label: string; status: string; rating: string; gauge: RatingGauge | null; searching: boolean; lonely: boolean; best: boolean; signedIn: boolean }
+// `mine` is the signed-in racer's own rating, never another racer's (docs/adr/0016-race-rank.md).
+interface QuickMatchView { label: string; status: string; rating: string; gauge: RatingGauge | null; mine: Rating | null; searching: boolean; lonely: boolean; best: boolean; signedIn: boolean }
 
 interface QuickMatchOptions {
   getSession(): Session | null;
@@ -36,7 +37,7 @@ type TimedEvent = Extract<QueueEvent, { now: number }>;
 type DispatchEvent = Exclude<QueueEvent, TimedEvent> | Omit<Extract<QueueEvent, { type: 'reply' }>, 'now'> | { type: 'tick' | 'keep-waiting' };
 
 export function createQuickMatch() {
-  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', gauge: null, searching: false, lonely: false, best: false, signedIn: false });
+  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', gauge: null, mine: null, searching: false, lonely: false, best: false, signedIn: false });
   let options: QuickMatchOptions | null = null;
   let state: QueueState = QUEUE_IDLE;
   let requests = Promise.resolve();
@@ -80,8 +81,9 @@ export function createQuickMatch() {
       case 'idle': status = lastResult(); break;
     }
 
+    const mine = getSession() && rating ? { rating: rating.rating, races: rating.races } : null;
     flushSync(() => view.publish({ label: searching ? 'Stop looking' : 'Find a race', status, rating: getSession() ? ratingLine(rating) : '', gauge: getSession() ? ratingGauge(rating) : null,
-      searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
+      mine, searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
 
     if (searching && !tickTimer) tickTimer = window.setInterval(() => dispatch({ type: 'tick' }), 1000);
     else if (!searching && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }

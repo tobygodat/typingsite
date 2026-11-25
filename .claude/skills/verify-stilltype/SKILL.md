@@ -105,6 +105,7 @@ $V drive .claude/skills/verify-stilltype/flows/book-run.mjs --width 390 --height
 $V drive .claude/skills/verify-stilltype/flows/themes.mjs        # every theme: settings, mid-run, results
 $V drive .claude/skills/verify-stilltype/flows/theme-modes.mjs   # system mode: a dark and a light pick, both schemes
 $V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in   # custom theme editor and generate
+$V drive .claude/skills/verify-stilltype/flows/rank-pill-and-palette.mjs   # instant palette, a theme generated in it, inked tabs, the rank pill
 $V drive .claude/skills/verify-stilltype/flows/fonts.mjs --delay 30   # every typing font: caret, tape, pace caret measured
 $V drive .claude/skills/verify-stilltype/flows/wallpaper.mjs     # background image: settings without/with one, each style idle, dimmed mid-run
 $V drive .claude/skills/verify-stilltype/flows/online-rematch.mjs --full-page   # two accounts race: results, graph, replay, each Rematch state, a rematch joined late through to its graph and replay

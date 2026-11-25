@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { Effect } from 'effect';
 import { AsyncLifetime, pageLifetime } from './async-runtime.js';
-import { BASE_TOKENS, MAX_CUSTOM_THEMES, READABLE, THEME_TOKENS, cleanThemeName, contrastIssues, newThemeId, normalizeHex, themeMode } from './custom-themes.js';
+import { BASE_TOKENS, MAX_CUSTOM_THEMES, READABLE, THEME_TOKENS, cleanThemeName, contrastIssues, generatedColors, newThemeId, normalizeHex, themeMode } from './custom-themes.js';
 import type { CustomTheme, ThemeColors } from './custom-themes.js';
 import type { GeneratedTheme } from './account.js';
 import { createStore } from './store.js';
@@ -141,17 +141,10 @@ export function createThemeEditor(initial?: ThemeEditorCallbacks) {
       const draft = view.getSnapshot().draft;
 
       if (!draft || generation !== request) return;
-      const colors: Record<string, string> = {};
-      const received = raw.colors;
+      const colors = generatedColors(raw.colors);
 
-      for (const token of BASE_TOKENS) {
-        const hex = normalizeHex(received[token]);
-
-        if (!hex) throw new Error('Couldn’t generate a theme. Try again.');
-        colors[token] = hex;
-      }
-
-      update({ ...draft, colors: palette(colors), hex: { ...colors }, invalid: {}, name: cleanThemeName(raw.name) || draft.name, nameInvalid: false });
+      if (!colors) throw new Error('Couldn’t generate a theme. Try again.');
+      update({ ...draft, colors, hex: { ...colors }, invalid: {}, name: cleanThemeName(raw.name) || draft.name, nameInvalid: false });
     } catch (error) {
       if (view.getSnapshot().draft && generation === request && !request.signal.aborted) publish({ ...view.getSnapshot(), status: error instanceof Error ? error.message : 'Couldn’t generate a theme. Try again.' });
     } finally {

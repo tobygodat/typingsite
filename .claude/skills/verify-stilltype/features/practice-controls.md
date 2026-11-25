@@ -2,7 +2,7 @@
 
 One short rail above the passage holds the mode (time, words, quote, and "more"), the length pills
 (including custom), the punctuation switch and, for time and words, the adaptive switch. "more" opens a small
-menu with code, standard, book, compose, custom, drill (a 1–8 letter manual drill) and learn to type; picking one renames "more" to that mode and slides the pill under it.
+menu with code, standard, book, compose, custom, drill (a 1–8 letter manual drill) and learn to type; picking one renames "more" to that mode and wipes the ink onto it. The chosen mode, length and code language are inked: a clipped window of the theme's text colour, with the label in the ground colour, wipes from one segment to the next.
 Book mode puts a book dropdown and the page number where the lengths go.
 
 ## Sub-features

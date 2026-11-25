@@ -67,7 +67,7 @@ import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { normalizeCaretGlide } from './caret-glide.js';
 import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
-import { readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
+import { MAX_CUSTOM_THEMES, newThemeId, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
 import * as account from './account.js';
@@ -2248,6 +2248,17 @@ export async function attachApplication({ practice, learning, palette, settings:
   function bindPalette() {
     palette.configure({
       getCommands: paletteCommands,
+      themes: {
+        member: () => Boolean(accounts.session) && !sync.state.signedOutElsewhere,
+        full: () => readCustomThemes(learning.preferences.customThemes).length >= MAX_CUSTOM_THEMES,
+        generate: (vibe) => account.generateTheme(accounts.session, vibe),
+        preview: (colors) => (colors ? wearTheme(colors) : applyTheme()),
+        save: (name, colors) => {
+          const id = newThemeId();
+          saveCustomThemes([...readCustomThemes(learning.preferences.customThemes), { id, name, colors }], id);
+        },
+        signIn: () => openAccountDialog('signin'),
+      },
       onOpen: () => {
         quoteFilters.dismiss();
         settingsView?.close();
@@ -2480,6 +2491,9 @@ export async function attachApplication({ practice, learning, palette, settings:
   syncOnLoad();
 
   inbox.refresh();
+
+  // The corner's rank pill reads the member's own rating; a guest has none and sends nothing.
+  void challenge.quick.refresh();
 
   const refreshGoalDay = () => {
     const today = dayKey(new Date());
