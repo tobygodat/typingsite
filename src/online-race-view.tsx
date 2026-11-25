@@ -137,7 +137,7 @@ function PlayerRow({ room, slot }: { room: RaceRoom; slot: number }) {
   const state = !player ? 'not joined' : player.left ? 'left' : player.finished ? 'finished' : room.status === 'waiting'
     ? player.ready ? 'ready' : room.rematchOf && !player.connected && slot !== room.selfSlot ? 'invited' : 'not ready' : `${Math.round(player.progress || 0)}% complete`;
 
-  return <div className="online-player-row" data-player-slot={slot}><strong>{player ? `${player.name}${slot === room.selfSlot ? ' (you)' : ''}` : 'Waiting for a player'}</strong><span>{state}</span><div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} aria-label={`${player?.name || `Player ${slot}`} race progress`}><span style={style}></span></div></div>;
+  return <div className="online-player-row" data-player-slot={slot} data-self={slot === room.selfSlot ? '' : undefined}><strong>{player ? `${player.name}${slot === room.selfSlot ? ' (you)' : ''}` : 'Waiting for a player'}</strong><span>{state}</span><div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} aria-label={`${player?.name || `Player ${slot}`} race progress`}><span style={style}></span></div></div>;
 }
 
 function Score({ player, outcome, mine, children }: { player: RacePlayer; outcome: string; mine?: boolean; children: React.ReactNode }) {

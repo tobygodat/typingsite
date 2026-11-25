@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeSeries, speedRange, speedSeries } from '../src/graph.js';
+import { describeSeries, duelReadout, scrubIndexAt, scrubPointAt, scrubReadout, speedRange, speedSeries } from '../src/graph.js';
 
 test('speed graph buckets correct keystrokes per second and marks misses', () => {
   const text = 'abcdefghij';
@@ -57,4 +57,40 @@ test('the trace\'s range is its slowest and fastest point, and nothing under thr
   assert.deepEqual(speedRange({ points: [at(118), at(164), at(140)], durationS: 3 }), { low: 118, high: 164 });
   assert.equal(speedRange({ points: [at(118), at(164), at(140)], durationS: 2.8 }), null);
   assert.equal(speedRange({ points: [], durationS: 0 }), null);
+});
+
+test('the scrubber snaps to the nearest drawn point, and reads nothing with none', () => {
+  const xs = [10, 40, 70, 100];
+  assert.equal(scrubIndexAt(xs, -50), 0);
+  assert.equal(scrubIndexAt(xs, 24), 0);
+  assert.equal(scrubIndexAt(xs, 26), 1);
+  assert.equal(scrubIndexAt(xs, 70), 2);
+  assert.equal(scrubIndexAt(xs, 400), 3);
+  assert.equal(scrubIndexAt([55], 0), 0, 'a single point is read wherever the pointer is');
+  assert.equal(scrubIndexAt([], 10), -1);
+});
+
+test('a solo point reads its moment, its trailing speed and its mistakes, in wpm or cpm', () => {
+  const text = 'abcdefghij';
+  const events = [...text].map((char, position) => ({ type: 'insert', text: char, position, accepted: true, offsetMs: 50 + position * 200 }));
+  events.splice(3, 0, { type: 'insert', text: 'x', position: 3, accepted: true, offsetMs: 590 }, { type: 'delete', count: 1, offsetMs: 595 });
+  const { points } = speedSeries({ text, events, startedAt: 0, endedAt: 2000 });
+  const first = scrubPointAt(points, 0.8);
+  assert.equal(scrubReadout(first, 'wpm'), '1s · 60 wpm · 1 mistake');
+  assert.equal(scrubReadout(first, 'cpm'), '1s · 300 cpm · 1 mistake');
+  assert.equal(scrubReadout(scrubPointAt(points, 1.9), 'wpm'), '2s · 60 wpm · 0 mistakes');
+  assert.equal(scrubReadout({ t: 4.001, wpm: 40, misses: 2 }, 'wpm'), '4s · 40 wpm · 2 mistakes');
+  assert.equal(scrubReadout({ t: 4.06, wpm: 40.4, misses: 0 }, 'cpm'), '4.1s · 202 cpm · 0 mistakes');
+  assert.equal(scrubPointAt([], 1), null);
+});
+
+test('a duel point reads both racers at one moment, and a dash for one who has finished', () => {
+  const mine = [{ t: 1, wpm: 60, misses: 0 }, { t: 2, wpm: 72, misses: 0 }, { t: 3, wpm: 66, misses: 0 }];
+  const theirs = [{ t: 1, wpm: 48, misses: 1 }, { t: 2, wpm: 54, misses: 0 }];
+  const at = (t, unit) => duelReadout(t, [{ name: 'You', point: scrubPointAt(mine, t, 3) }, { name: 'Lin', point: scrubPointAt(theirs, t, 2) }], unit);
+  assert.equal(at(1, 'wpm'), '1s · You 60 wpm · Lin 48 wpm');
+  assert.equal(at(2.2, 'wpm'), '2.2s · You 72 wpm · Lin —', 'past their finish their line has ended');
+  assert.equal(at(1.6, 'cpm'), '1.6s · You 360 cpm · Lin 270 cpm');
+  assert.equal(at(3, 'wpm'), '3s · You 66 wpm · Lin —');
+  assert.equal(scrubPointAt(mine, 3.5, 3), null);
 });

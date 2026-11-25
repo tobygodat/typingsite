@@ -8,6 +8,7 @@ import type { CopyPart } from './practice-session.js';
 import { Copy } from './results-card.js';
 import { unitText } from './units.js';
 import type { ProgressDetail } from './progress-filters.js';
+import type { PairChip } from './progress-view.js';
 
 export interface RunRowView { id?: string; wpm: number; accuracy: number; date: string; errors?: number; time: string; description: CopyPart[]; textNote: string; passage?: string | number | boolean | null }
 
@@ -34,9 +35,10 @@ export function createProgressSections() {
   const overview = createStore({ hasHistory: false, hasProgress: false, links: { runs: false, calendar: false, compose: false, fixed: false }, runsLabel: 'All runs' });
   const trends = createStore<{ parts: CopyPart[][]; note: string }>({ parts: [], note: '' });
   const charts = createStore({ visible: false, runs: 0 });
-  const commands = { showAll() {}, clear() {}, movers() {} };
+  const pairs = createStore<{ friction: PairChip[]; flow: PairChip[] }>({ friction: [], flow: [] });
+  const commands = { showAll() {}, clear() {}, movers() {}, pair(pair: string) { void pair; } };
 
-  return { trends, charts, navigation: createProgressNavigation(), overview, filters: createProgressFilters(), calendar: createProgressCalendar(), runs, table, composing, lead, movers, commands };
+  return { trends, charts, pairs, navigation: createProgressNavigation(), overview, filters: createProgressFilters(), calendar: createProgressCalendar(), runs, table, composing, lead, movers, commands };
 }
 
 export type ProgressSections = ReturnType<typeof createProgressSections>;
@@ -124,4 +126,18 @@ export function ProgressTrendNote({ progress }: { progress: ProgressSections }) 
   const { note } = useSyncExternalStore(progress.trends.subscribe, progress.trends.getSnapshot, progress.trends.getSnapshot);
 
   return <p id="progress-trend-note" className="result-note">{note}</p>;
+}
+
+// The pairs at these conditions that hold the person back, each a way into a drill of it, and the pairs that flow,
+// for contrast. Quiet until a pair has the tries to be named either way.
+export function ProgressPairs({ progress }: { progress: ProgressSections }) {
+  const { friction, flow } = useSyncExternalStore(progress.pairs.subscribe, progress.pairs.getSnapshot, progress.pairs.getSnapshot);
+
+  return <section id="progress-pairs" className="panel pairs-panel" aria-labelledby="pairs-title" hidden={!friction.length && !flow.length}>
+    <header className="panel-head"><h2 id="pairs-title" className="panel-title">pairs</h2></header>
+    <div className="pair-groups">
+      <div className="pair-group" hidden={!friction.length}><h3 id="pairs-friction" className="pair-group-title">friction</h3><ul className="pair-chips" aria-labelledby="pairs-friction">{friction.map((chip) => <li key={chip.pair}><button className="pair-chip" type="button" data-pair={chip.pair} data-kind="friction" aria-label={chip.label} onClick={() => progress.commands.pair(chip.pair)}><span className="pair-chip-pair">{chip.pair}</span><span className="pair-chip-note num">{chip.note}</span></button></li>)}</ul></div>
+      <div className="pair-group" hidden={!flow.length}><h3 id="pairs-flow" className="pair-group-title">flow</h3><ul className="pair-chips" aria-labelledby="pairs-flow">{flow.map((chip) => <li key={chip.pair} className="pair-chip" data-pair={chip.pair} data-kind="flow"><span className="pair-chip-pair" aria-hidden="true">{chip.pair}</span><span className="pair-chip-note num" aria-hidden="true">{chip.note}</span><span className="sr-only">{chip.label}</span></li>)}</ul></div>
+    </div>
+  </section>;
 }

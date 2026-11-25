@@ -138,6 +138,8 @@
   /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  /* The gap between one part of a card arriving and the next. */
+  --stagger-step: calc(40ms * var(--motion-scale));
 
   /* The chosen segment of the mode, length and language rows: the theme's text as a fill, its ground as ink. */
   --ink-fill: var(--text);
@@ -1341,14 +1343,16 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   .btn:active:not(:disabled, [aria-disabled="true"]),
   .nav-item:active,
   .dock-command:active,
-  .segmented button:active { transform: scale(var(--press-scale)); }
+  .segmented button:active,
+  button.pair-chip:active { transform: scale(var(--press-scale)); }
   /* The scale shrinks the hit box too, so a press held near an edge would end over the neighbour and click the
      group around both. This layer scales back out to the resting edge (on .btn, past its 1px border), so the
      release lands on the control the press began on. */
   .btn:active:not(:disabled, [aria-disabled="true"])::after,
   .nav-item:active::after,
   .dock-command:active::after,
-  .segmented button:active::after { content: ""; position: absolute; inset: 0; transform: scale(calc(1 / var(--press-scale))); }
+  .segmented button:active::after,
+  button.pair-chip:active::after { content: ""; position: absolute; inset: 0; transform: scale(calc(1 / var(--press-scale))); }
   .btn:active:not(:disabled, [aria-disabled="true"])::after { inset: -1px; }
 }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
@@ -2743,8 +2747,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-heading:has(> h2.sr-only):has(> .result-note:empty) { display: contents; }
 .result-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; }
 
-/* The run as figures, then its speed and the words typed in panels, then the actions. A static print: nothing
-   counts up or draws in but the trace. */
+/* The run as figures, then its speed and the words typed in panels, then the actions. Nothing counts up: the parts
+   arrive in order, each rising its last few pixels, and the trace draws in. The actions only fade, so the button
+   under the pointer never moves, and opacity never stops a press: Run again works from the first frame. */
 .run-card {
   min-width: 0;
   display: grid;
@@ -2752,6 +2757,15 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   /* A finished run scrolls the card clear of the bottom edge (focusResult in src/application-host.ts). */
   scroll-margin-bottom: var(--space-6);
 }
+@media (prefers-reduced-motion: no-preference) {
+  body[data-view="results"] .run-card > * { animation: card-rise var(--dur-fast) var(--ease-out) calc(var(--stagger-step) * var(--stagger, 0)) both; }
+  body[data-view="results"] .run-card > .result-actions { animation-name: card-fade; }
+}
+.run-card > .run-card-trace { --stagger: 1; }
+.run-card > .run-card-wordlist { --stagger: 2; }
+.run-card > .result-actions { --stagger: 3; }
+@keyframes card-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes card-fade { from { opacity: 0; } }
 
 .run-card-facts { margin: 0; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); }
 .run-card-facts dd { margin: 0; }
@@ -2801,6 +2815,32 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 @media (hover: hover) and (pointer: fine) { .run-card-practice:hover { color: var(--text); } }
 @media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
+.run-card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.run-card-toggle { display: inline-flex; align-items: center; gap: var(--space-1); }
+.run-card-toggle svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur-quick) var(--ease-out); }
+.run-card-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* Inspect words opens and closes the list on its own height. The inner box takes the list's outset (its ring room)
+   as padding, so clipping it for the slide never cuts a focus ring; closed, it is hidden once the slide ends. */
+.word-drawer {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-drawer) var(--ease-drawer), visibility 0s;
+}
+.word-drawer[data-open="false"] {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-drawer) var(--ease-drawer), visibility 0s var(--dur-drawer);
+}
+.word-drawer-inner {
+  min-height: 0;
+  overflow: hidden;
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+}
+/* Closed, the panel ends at its head: the head's rule and the room under it go with the list, on the same timing. */
+.run-card-wordlist > .panel-head { transition: margin-bottom var(--dur-drawer) var(--ease-drawer), border-color var(--dur-drawer) var(--ease-drawer); }
+.run-card-wordlist:has(> .word-drawer[data-open="false"]) > .panel-head { margin-bottom: calc(var(--panel-inset) * -1); border-bottom-color: transparent; }
 
 /* The actions, the average and best and the conditions line set against them on the right. */
 .result-actions {
@@ -2996,11 +3036,30 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .run-card-graph { margin: 0; }
 
-.speed-graph { height: var(--result-trace); }
+.speed-graph { position: relative; height: var(--result-trace); cursor: crosshair; touch-action: pan-y; border-radius: var(--radius-sm); }
 /* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
    holding the card at its old width when the window narrows, so the observer sees the new width
    and redraws; until then it scales evenly rather than stretching. */
 .speed-graph svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+
+/* The scrubber: a hairline and a dot per racer at the point read, and the readout beside the hairline, on the side
+   with room. Hidden until something is read. */
+.graph-scrub { stroke: var(--text); stroke-width: 1; opacity: 0.5; shape-rendering: crispEdges; }
+.graph-scrub-dot { fill: var(--accent); stroke: var(--card-top); stroke-width: 1.5; }
+.graph-scrub-dot.graph-scrub-theirs { fill: var(--text); }
+.graph-readout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: var(--text);
+  font: var(--text-fine)/1.6 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(var(--scrub-x, 0), var(--scrub-y, 0));
+}
+.speed-graph:not([data-scrubbing]) :is(.graph-scrub, .graph-scrub-dot, .graph-readout) { visibility: hidden; }
+.speed-graph[data-scrubbing] .graph-tick { visibility: hidden; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
@@ -3009,11 +3068,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 2; }
 
-/* The line draws once, left to right, and the mistakes fade in to finish with it. */
-.is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
-.is-drawing .graph-miss { animation: graph-fade var(--dur-base) var(--ease-out) calc(var(--dur-develop) - var(--dur-base)) both; }
-@keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes graph-fade { from { opacity: 0; } }
+/* The lines and their mistakes are wiped in once, left to right. The clip reaches a little past the ink so no
+   round cap is cut, and it is gone once the wipe ends. */
+@media (prefers-reduced-motion: no-preference) { .is-drawing .graph-ink { animation: graph-wipe var(--dur-develop) var(--ease-out) backwards; } }
+@keyframes graph-wipe { from { clip-path: inset(-8px 100% -8px -8px); } to { clip-path: inset(-8px); } }
 
 .metric-note {
   margin: 0;
@@ -3329,6 +3387,33 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
 .panel-count { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* Pairs: friction and flow side by side, each a row of chips. A friction chip opens its drill; a flow chip only
+   says so. The two lists never share a pair (bigramChips in src/progress-view.ts). */
+.pair-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-4) var(--space-6); }
+.pair-group { min-width: 0; display: grid; gap: var(--space-2); align-content: start; }
+.pair-group-title { margin: 0; color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.pair-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.pair-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: var(--space-8);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: var(--text-label)/1.6 var(--font-app);
+  transition: border-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.pair-chip-pair { font-family: var(--font-mono); font-weight: 500; }
+.pair-chip-note { color: var(--muted); font: var(--text-fine)/1.6 var(--font-mono); font-variant-numeric: tabular-nums; }
+button.pair-chip { border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline-strong)); }
+.pair-chip[data-kind="flow"] { border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline-strong)); }
+@media (hover: hover) and (pointer: fine) { button.pair-chip:hover { border-color: var(--danger); } }
+@media (pointer: coarse) { button.pair-chip { min-height: var(--control); align-items: center; } }
+
 .week-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .week-charts[hidden] { display: none; }
 .week-chart-slot { --week-chart-height: 220px; min-width: 0; }
@@ -3789,11 +3874,15 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .ghost-caret .caret-tag > span { color: var(--text); }
 .duel-replay-controls { margin-top: var(--space-4); display: flex; justify-content: center; gap: var(--space-3); }
 
-.online-players { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin: var(--space-6) 0; }
-.online-player-row { min-width: 0; display: grid; grid-template-columns: 1fr; gap: var(--space-2); }
-.online-player-row strong { font-weight: 400; overflow-wrap: anywhere; }
-.online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.online-player-row .progress-track > span { transition: none; }
+/* Two lanes, one under the other: the name, a hairline that fills as that racer types, and where they are. Yours fills
+   in the accent and theirs in the text colour, as on the graph after. */
+.online-players { display: grid; gap: var(--space-3); margin: var(--space-6) 0; }
+.online-player-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) minmax(0, 8rem); align-items: center; gap: var(--space-4); }
+.online-player-row strong { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; text-align: end; }
+.online-player-row .progress-track { grid-column: 2; grid-row: 1; }
+.online-player-row .progress-track > span { transition: transform var(--dur-quick) var(--ease-out); }
+.online-player-row:not([data-self]) .progress-track > span { background: var(--text); }
 .online-countdown { min-height: var(--space-10); margin: var(--space-6) 0 var(--space-2); font-size: var(--text-title); color: var(--accent); }
 .online-typing-wrap { margin-top: var(--space-6); }
 #online-connection:not(:empty) { color: var(--warning); }
@@ -3823,7 +3912,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 
 @media (max-width: 760px) {
-  .online-setup, .online-players { grid-template-columns: 1fr; }
+  .online-setup { grid-template-columns: 1fr; }
+  .online-player-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
+  .online-player-row .progress-track { grid-column: 1 / -1; grid-row: 2; }
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
   .online-friend-row { flex-wrap: wrap; }
