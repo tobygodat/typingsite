@@ -20,18 +20,24 @@ export function normalizeCaretGlide(value: unknown) {
   return Math.min(CARET_GLIDE.max, Math.max(CARET_GLIDE.min, stepped));
 }
 
-// The Spring caret: a spring a little under critical damping, so a burst of keys carries one motion
-// from letter to letter with no visible overshoot. Per second, in px.
-export const CARET_SPRING = { stiffness: 780, damping: 48, settle: 0.1, maxStepS: 1 / 30 } as const;
+// The Spring caret: a critically damped spring, so a burst of keys carries one motion from letter to
+// letter with no overshoot. omega is its natural frequency, per second; a key's step comes within
+// `settle` px of its letter in about 0.25 s. A spring still moving after maxSettleMs since its target
+// last changed is placed on the letter, so it never runs on.
+export const CARET_SPRING = { omega: 38, settle: 0.1, settleSpeed: 2, maxSettleMs: 300 } as const;
 
 export interface SpringState { x: number; v: number }
 
-// One semi-implicit Euler step toward `target`, over at most maxStepS so a dropped frame stays stable.
+// The exact solution of the critically damped spring over dtS seconds, not a numerical step, so any
+// frame rate and any dropped frame land on the same curve and can never diverge.
 export function springStep({ x, v }: SpringState, target: number, dtS: number): SpringState {
-  const dt = Math.min(CARET_SPRING.maxStepS, Math.max(0, dtS));
-  const next = v + ((target - x) * CARET_SPRING.stiffness - v * CARET_SPRING.damping) * dt;
+  const t = Number.isFinite(dtS) ? Math.max(0, dtS) : 0;
+  const { omega } = CARET_SPRING;
+  const offset = x - target;
+  const slope = v + omega * offset;
+  const decay = Math.exp(-omega * t);
 
-  return { x: x + next * dt, v: next };
+  return { x: target + (offset + slope * t) * decay, v: (v - omega * slope * t) * decay };
 }
 
-export const springSettled = ({ x, v }: SpringState, target: number) => Math.abs(target - x) < CARET_SPRING.settle && Math.abs(v) < CARET_SPRING.settle;
+export const springSettled = ({ x, v }: SpringState, target: number) => Math.abs(target - x) < CARET_SPRING.settle && Math.abs(v) < CARET_SPRING.settleSpeed;

@@ -27,7 +27,7 @@ The caret glides over a fixed CSS duration. Each key restarts the transition fro
   - `delete-extra { count }`: extras removed at the caret.
   - Letters, normal spaces and Backspace into kept text use the existing `insert` and `delete` events.
 - The live input records the steps the state machine returns, and replay applies the same steps, so `replayAttempt`, `replayCursor` and `replayFlow` give the live state at every recorded moment.
-- Scoring keeps `stilltype-metrics-v1`. A skip and an extra each count as one keystroke and one first-try error at their position. Skipped letters are never correct. Extras still standing at the finish count as extra characters on the run card. Speed counts correct letters at their passage positions, as before.
+- Scoring keeps `stilltype-metrics-v1`. A skip and an extra each count as one keystroke and one first-try error at their position. Repeated extras at one position each count as a separate keystroke error, and they share one first-try entry for that position. Skipped letters are never correct. Extras still standing at the finish count as extra characters on the run card. Speed counts correct letters at their passage positions, as before.
 - `inputRules` appends `word-flow` for a fluid run, after `strict-space` and `quick-end-off`. Fluid runs therefore key apart from linear ones, and their bests never mix. A linear run adds nothing, so every existing key is unchanged (`tests/typing.test.js`).
 - A retest keeps its baseline's word flow, as it keeps strict space and quick end.
 - A fluid run's ghost trace records a skip as a wrong key at each letter it skipped, then its space, and leaves out extras and their deletes. Replayed in order, the trace walks the run's caret path and counts the same correct letters, so a ghost race's outcome and speed match the run. The friend races under linear word flow, as every race does. The trace's accuracy counts each skipped letter as a miss, so it can read lower than the run card's.
@@ -35,7 +35,7 @@ The caret glides over a fixed CSS duration. Each key restarts the transition fro
 ### Caret motion
 
 - `typingMotion` is `spring` (the default), `smooth` or `instant`. A profile that stored `smooth` or `instant` keeps it. `caretGlide` sets the Smooth duration only.
-- The spring follows the caret's target with its velocity carried from key to key (stiffness 780, damping 48, a little under critical damping). It snaps on a line change, a restart and a re-layout, so it never moves diagonally. Its frame loop stops once the caret is within 0.1 px of the target and moves under 0.1 px per second. Under `prefers-reduced-motion: reduce`, it lands on each letter at once.
+- The spring follows the caret's target with its velocity carried from key to key. It is critically damped (natural frequency 38 per second) and stepped by its exact closed-form solution, so every frame rate and every dropped frame follow the same curve and it cannot diverge. It snaps on a line change, a restart and a re-layout, so it never moves diagonally. Its frame loop stops once the caret is within 0.1 px of the target and moves under 2 px per second, or 300 ms after the target last changed, whichever comes first. Under `prefers-reduced-motion: reduce`, it lands on each letter at once.
 - Scoring (`src/typing.ts`, `src/word-flow.ts`) never reads `src/motion.ts` or `src/caret-glide.ts`.
 
 ### Code mode

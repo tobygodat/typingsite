@@ -11,7 +11,7 @@ interface Ghost { cps: number; points: [number, number][] | null; cursor: number
 // Everything here is presentational; scoring never reads from it.
 
 import { tapeOffset } from './tape.js';
-import { springSettled, springStep } from './caret-glide.js';
+import { CARET_SPRING, springSettled, springStep } from './caret-glide.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
@@ -106,9 +106,8 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
   let position = 0;
   let caretRow = 0;
   let frame = 0;
-  // Spring motion (body[data-typing-motion=spring]): x follows the target with its velocity kept
-  // between keys; the frame loop stops once it settles.
-  const spring = { x: 0, v: 0, target: 0, frame: 0, last: 0 };
+  // moved: when the target last changed, so a spring that has not settled by maxSettleMs is placed.
+  const spring = { x: 0, v: 0, target: 0, frame: 0, last: 0, moved: 0 };
   let snapNext = true;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   // Tape mode (one line): the scroll, and what the caret was doing at the last measure.
@@ -163,7 +162,16 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
     let x = 0;
     let top = 0;
 
-    if (current) {
+    // At a word's end with letters typed past it, the caret follows the last of them: a word that
+    // long wraps inside itself, and its space would otherwise sit at the line's right edge.
+    const word = current ? current.previousElementSibling : last?.parentElement;
+    const tail = word?.classList.contains('word') ? word.lastElementChild : null;
+    const extra = tail instanceof HTMLElement && tail.classList.contains('extra') ? tail : null;
+
+    if (extra) {
+      ({ left: x, top } = offsetIn(extra, display));
+      x += extra.offsetWidth;
+    } else if (current) {
       ({ left: x, top } = offsetIn(current, display));
     } else if (last) {
       ({ left: x, top } = offsetIn(last, display));
@@ -220,6 +228,7 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
       return;
     }
 
+    if (spring.target !== x) spring.moved = performance.now();
     spring.target = x;
 
     if (spring.frame) return;
@@ -229,7 +238,7 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
 
   function stepSpring(now: number) {
     const next = springStep(spring, spring.target, (now - spring.last) / 1000);
-    const settled = springSettled(next, spring.target);
+    const settled = springSettled(next, spring.target) || now - spring.moved >= CARET_SPRING.maxSettleMs;
     Object.assign(spring, settled ? { x: spring.target, v: 0, frame: 0 } : { ...next, frame: requestAnimationFrame(stepSpring) }, { last: now });
     caret.style.transform = `translate3d(${spring.x}px, ${caretRow}px, 0)`;
   }

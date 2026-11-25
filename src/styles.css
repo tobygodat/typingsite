@@ -2161,7 +2161,6 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   color: var(--danger);
   background: var(--danger-soft);
   text-decoration: line-through 1.5px;
-  opacity: 0.85;
 }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own

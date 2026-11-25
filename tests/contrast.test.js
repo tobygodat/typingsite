@@ -141,6 +141,14 @@ function pairs(tokens) {
   // A mistyped letter on its own tint, in the passage and on a hovered danger button in a dialog.
   text('--danger on --danger-soft over ground', colour('--danger'), over(colour('--danger-soft'), ground));
   text('--danger on --danger-soft over raised', colour('--danger'), over(colour('--danger-soft'), raised));
+  // A letter typed past a word's end, as its .char.extra rule paints it: the rule's colour on the rule's
+  // tint over the passage ground, both faded by the rule's opacity, as an element's opacity fades both.
+  const extraRule = rules.find((r) => r.selectors.includes('.char.extra'));
+  assert.ok(extraRule, '.char.extra rule not found');
+  const extraOpacity = plainNumber(extraRule.declarations.opacity ?? '1', '.char.extra');
+  const extraColour = (name) => over(faded(parseColour(resolve(extraRule.declarations[name], tokens)), extraOpacity), ground);
+  const extraBackground = extraColour('background');
+  list.push({ label: '.char.extra (extra letter) on its tint over ground', value: ratio(over(faded(parseColour(resolve(extraRule.declarations.color, tokens)), extraOpacity), extraBackground), extraBackground), min: 4.5 });
   // The selected palette row and hovered rows in raised surfaces.
   text('--accent on --raised-2 over raised', colour('--accent'), washOverRaised);
   // The checked option in a settings radio group, on the raised dialog.

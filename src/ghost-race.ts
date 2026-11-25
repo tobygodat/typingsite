@@ -289,6 +289,8 @@ function furthestTyped(attempt: TraceSource, text: unknown) {
 
     if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, Number(event.count || 1)));
     else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(Number(rawField(text, 'length')), insertedLength(typed, event.text));
+    // A skip moves the caret past the letters it skipped and onto the next word, as encodeTrace replays it.
+    else if (event.type === 'skip') typed = Math.min(Number(rawField(text, 'length')), typed + skippedText(Number(rawField(text, 'length')), Number(event.position), Number(event.count)).length);
     furthest = Math.max(furthest, typed);
   }
 
