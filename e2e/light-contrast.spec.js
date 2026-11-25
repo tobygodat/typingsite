@@ -48,7 +48,6 @@ const seedRandom = () => {
 const open = async (page, theme) => {
   await openApp(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-  // Ceramic's and Obsidian's grounds.
   await expect(page.locator('body')).toHaveCSS('background-color', theme === 'light' ? 'rgb(246, 246, 244)' : 'rgb(11, 11, 13)');
 };
 

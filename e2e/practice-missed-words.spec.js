@@ -40,7 +40,6 @@ test('missed and slowest words become their own uncounted practice run', async (
   // The words missed first try are the coral ones in the passage; the slowest make up the rest of the count.
   await expect(page.locator('#result-words .word-miss')).toHaveText(missed);
   const count = Number((await button.textContent()).match(/\d+/)[0]);
-  // A green line of the app font, not a button box.
   await expect(button).toHaveCSS('font-family', /^"?Inter/);
   await expect(button).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 

@@ -1,8 +1,6 @@
 /*
- * Stilltype.
- * Inter on Obsidian near-black (or Ceramic white), one viridian accent, and a speed
- * graph on the card of every finished run. Tokens first, then shell, then screens. DESIGN.md
- * lists the floors every change holds. Motion scales to zero under reduced motion.
+ * Stilltype. Tokens first, then shell, then screens. DESIGN.md lists the floors every change
+ * holds. Motion scales to zero under reduced motion.
  */
 
 @font-face { font-family: "Geist Mono"; src: url("/src/fonts/geist-mono-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -136,6 +134,7 @@
   --dur-develop: calc(450ms * var(--motion-scale));
   --dur-settle: calc(700ms * var(--motion-scale));
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --press-scale: 0.97;
   /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -1286,13 +1285,19 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     transform var(--dur-quick) var(--ease-out);
 }
 
-/* A press: buttons and frame controls sink to 97% under the pointer or finger and spring back on release.
-   Reduced motion leaves them still. */
 @media (prefers-reduced-motion: no-preference) {
   .btn:active:not(:disabled, [aria-disabled="true"]),
   .nav-item:active,
   .dock-command:active,
-  .segmented button:active { transform: scale(0.97); }
+  .segmented button:active { transform: scale(var(--press-scale)); }
+  /* The scale shrinks the hit box too, so a press held near an edge would end over the neighbour and click the
+     group around both. This layer scales back out to the resting edge (on .btn, past its 1px border), so the
+     release lands on the control the press began on. */
+  .btn:active:not(:disabled, [aria-disabled="true"])::after,
+  .nav-item:active::after,
+  .dock-command:active::after,
+  .segmented button:active::after { content: ""; position: absolute; inset: 0; transform: scale(calc(1 / var(--press-scale))); }
+  .btn:active:not(:disabled, [aria-disabled="true"])::after { inset: -1px; }
 }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
 /* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
@@ -1323,7 +1328,9 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* A quiet destructive action (e.g. a ghost "Clear history" button). */
 .danger-text { color: var(--danger); }
-.danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+}
 
 .input {
   height: var(--control);
@@ -2080,8 +2087,9 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
    tint would notch the row. Paint it at full line height instead. Its box starts the
-   half-leading below the line's top, and layout floors that half-leading to whole pixels,
-   so the tint rises by the same floored amount and meets the letters' tint edge to edge. */
+   half-leading below the line's top. Chromium floors that half-leading to whole pixels, so the
+   tint rises by the same floored amount and meets the letters' tint edge to edge there. WebKit
+   leaves a subpixel offset. */
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong { background: none; }
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
   content: "";
