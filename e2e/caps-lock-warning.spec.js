@@ -17,7 +17,7 @@ test('shows while Caps Lock is on, stays during a run, hides once it is off', as
   await capsKey(page, 'keydown', true);
   await expect(warning).toBeVisible();
   await expect(warning).toHaveText('Caps Lock is on');
-  await expect(warning).toHaveCSS('font-family', /^"?Literata/);
+  await expect(warning).toHaveCSS('font-family', /^"?Inter/);
   await expect(page.locator('#announcement')).toHaveText('Caps Lock is on');
   expect(await wrap.boundingBox()).toEqual(before);
 

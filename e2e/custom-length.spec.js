@@ -22,8 +22,8 @@ test('a custom time is validated in place, becomes the test length, and lasts fo
   await openApp(page);
   await expect(pill(page)).toHaveText('custom');
   await expect(pill(page)).toHaveAttribute('aria-pressed', 'false');
-  // "custom" is a word, so Literata like the mode options; the field takes its exact width.
-  await expect(pill(page)).toHaveCSS('font-family', /^"?Literata/);
+  // "custom" is a word, so the app font like the mode options; the field takes its exact width.
+  await expect(pill(page)).toHaveCSS('font-family', /^"?Inter/);
   const closed = await rowWidth(page);
 
   await pill(page).click();

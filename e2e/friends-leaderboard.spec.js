@@ -311,7 +311,7 @@ test('a daily run reaches the board with the profile save, and only mutual frien
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     // Let the theme's colour fade settle before the picture.
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
     await page.waitForTimeout(400);
     await shot(page, testInfo, 'board-dark', { fullPage: true });
   }

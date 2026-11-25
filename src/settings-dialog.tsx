@@ -107,7 +107,7 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
           <div className="preference-row">
             <div className="preference-copy"><strong id="app-font-label">app font</strong></div>
             <fieldset className="setting-options" id="app-font" aria-labelledby="app-font-label" disabled={view.disabled['app-font'] ?? false} onClick={(event) => choose('app-font', event)}>
-              {APP_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="app-font" {...radio('app-font', font, font === 'literata')} /><span>{fontName(font)}</span></label>)}
+              {APP_FONTS.map((font) => <label key={font} className="setting-option"><input type="radio" name="app-font" {...radio('app-font', font, font === DEFAULT_FONT)} /><span>{fontName(font)}</span></label>)}
             </fieldset>
           </div>
           <h3 className="settings-group-title">Typing display</h3>

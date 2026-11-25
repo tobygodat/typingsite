@@ -2,7 +2,7 @@
 // row, then a 10-word run with one slip (mid-run shot shows typed, mistyped and untyped letters and the
 // caret), then the results. Shots: <theme>-settings, <theme>-mid-run, <theme>-results. At a phone width it
 // shoots mid-run only.
-const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const MODES = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export default async ({ page, h, shot, check }) => {
   const phone = page.viewportSize().width < 761;

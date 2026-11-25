@@ -17,13 +17,13 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'light' });
     await openApp(page);
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
-    await expect(themeColor(page)).toHaveAttribute('content', '#f4f1eb');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#f6f6f4');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
-    await expect(themeColor(page)).toHaveAttribute('content', '#0f0f0e');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#0b0b0d');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
 
     await openSettings(page);
     await chooseSetting(page, 'theme-select', 'light');

@@ -3,7 +3,7 @@
 // family stack in src/styles.css (html[data-typing-font], html[data-app-font]); a font file loads the
 // first time text uses it. The inline prepaint bundle shares these lists to apply signed-in picks.
 
-export const DEFAULT_FONT = 'literata';
+export const DEFAULT_FONT = 'inter';
 export const TYPING_FONTS = ['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'];
 export const APP_FONTS = ['literata', 'source-serif', 'inter'];
 

@@ -643,7 +643,7 @@ test('composing screenshots, dark and light', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   // The theme cross-fades; wait for the paper ground before taking the picture.
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
   await page.clock.runFor(400);
   await page.screenshot({ path: shot(testInfo, 'result-light') });
 
@@ -746,7 +746,7 @@ test.describe('without caret-animation', () => {
     // assistive tech and never in the way of a click.
     await expect(input).toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
     await expect(caret).toHaveCount(1);
-    await expect(caret).toHaveCSS('background-color', 'rgb(143, 209, 138)');
+    await expect(caret).toHaveCSS('background-color', 'rgb(45, 212, 160)');
     await expect(caret).toHaveCSS('pointer-events', 'none');
     await expect(page.locator('.compose-caret-layer')).toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('.compose-caret-layer')).toHaveCSS('pointer-events', 'none');
@@ -994,8 +994,8 @@ test.describe('without caret-animation', () => {
 
     await page.emulateMedia({ colorScheme: 'light' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
-    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(33, 114, 69)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
+    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(15, 118, 110)');
     await typePaced(page, [...', so I read by the window'], 210);
     await expectCaretAt(page, text.length + 24, 'right');
     await expect(page.locator('#compose-input')).toBeFocused();
@@ -1009,7 +1009,7 @@ test('where the caret can be held solid, the field keeps its own and draws none'
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
-  await expect(input).toHaveCSS('caret-color', 'rgb(143, 209, 138)');
+  await expect(input).toHaveCSS('caret-color', 'rgb(45, 212, 160)');
 
   if (await caretAnimationParses(page)) await expect(input).toHaveCSS('caret-animation', 'manual');
   await typePaced(page, [...'Toast and the radio'], 210);

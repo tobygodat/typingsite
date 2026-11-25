@@ -96,8 +96,8 @@ const seedRandom = () => {
   };
 };
 
-const DARK_THEMES = new Set(['dark', 'terminal', 'midnight', 'nord']);
-const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+const DARK_THEMES = new Set(['dark', 'slate', 'terminal', 'midnight', 'nord']);
+const THEMES = ['dark', 'light', 'slate', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 
 for (const theme of THEMES) {
   const mode = DARK_THEMES.has(theme) ? 'dark' : 'light';

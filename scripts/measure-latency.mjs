@@ -217,10 +217,14 @@ try {
     if (index === correctionAt) {
       const wrong = char === 'z' ? 'q' : 'z';
       await key(wrong);
-      correctionVerified = await evaluate(`(() => { const node = document.querySelector('#${displayId} .char.wrong'); return !!node && getComputedStyle(node).textDecorationLine.includes('underline'); })()`);
+      correctionVerified = await evaluate(`(() => {
+        const node = document.querySelector('#${displayId} .char.wrong');
+        const tinted = (style) => style.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        return !!node && getComputedStyle(node).textDecorationLine === 'none' && (tinted(getComputedStyle(node)) || tinted(getComputedStyle(node, '::before')));
+      })()`);
       await backspace();
 
-      if (!correctionVerified) throw new Error('Wrong character lacked visible underline');
+      if (!correctionVerified) throw new Error('Wrong character lacked its flat tint, or had an underline');
     }
 
     await key(char);

@@ -2,7 +2,7 @@
 // picked in settings → appearance in its mode, a shot of the overview.
 import { history } from './progress-week.mjs';
 
-const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const MODES = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export default async ({ page, h, shot, check, fake }) => {
   const user = fake.addUser('week-themes@stilltype.test');

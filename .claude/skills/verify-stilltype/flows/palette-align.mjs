@@ -4,7 +4,7 @@
 // search text and labels share the next, the hints end where the esc key does, and no group heading repeats.
 // Shots: palette-top, palette-end.
 // PALETTE_ALL=1 also walks every theme (in settings → appearance) and every app font (settings → appearance).
-const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const MODES = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 const FONTS = ['literata', 'source-serif', 'inter'];
 
 function measure() {

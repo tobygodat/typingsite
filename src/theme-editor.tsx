@@ -234,7 +234,7 @@ export function createThemeEditor(initial?: ThemeEditorCallbacks) {
 
 export type ThemeEditorController = ReturnType<typeof createThemeEditor>;
 
-const BUILT_INS = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const BUILT_INS = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export function ThemeSettings({ controller, settings }: { controller: ThemeEditorController; settings: SettingsController }) {
   const view = useSyncExternalStore(controller.view.subscribe, controller.view.getSnapshot, controller.view.getSnapshot);

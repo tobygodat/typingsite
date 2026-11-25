@@ -48,7 +48,7 @@ for (const file of files) hash.update(file).update(await readFile(path.join(out,
 const version = `stilltype-shell-${hash.digest('hex').slice(0, 12)}`;
 
 const shell = ['/', ...files.filter((file) => file !== 'index.html'
-  && (!/\.(?:ttf|woff2|txt)$/.test(file) || /\/(?:literata|geist-mono)-/.test(file))).map((file) => `/${file}`)];
+  && (!/\.(?:ttf|woff2|txt)$/.test(file) || /\/(?:inter|geist-mono)-/.test(file))).map((file) => `/${file}`)];
 
 const fonts = files.filter((file) => /\.(?:ttf|woff2)$/.test(file)).map((file) => `/${file}`);
 

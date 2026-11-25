@@ -48,8 +48,8 @@ const seedRandom = () => {
 const open = async (page, theme) => {
   await openApp(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-  // The grounds themselves are unchanged by the contrast pass.
-  await expect(page.locator('body')).toHaveCSS('background-color', theme === 'light' ? 'rgb(244, 241, 235)' : 'rgb(15, 15, 14)');
+  // Ceramic's and Obsidian's grounds.
+  await expect(page.locator('body')).toHaveCSS('background-color', theme === 'light' ? 'rgb(246, 246, 244)' : 'rgb(11, 11, 13)');
 };
 
 const toggleGhost = async (page) => {
