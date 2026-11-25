@@ -82,7 +82,7 @@ import {
   LESSONS, keysLabel, lessonKeys, lessonPassage, lessonUnlocked, lessonsComplete,
   nextLessonIndex,
 } from './lessons.js';
-import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, defaultPreferences, emptyProfile, normalizeProfile, preferencesInUse, uid, validPreferences } from './profile.js';
+import { DARK_THEMES, DRILL_LENGTHS, LIGHT_THEMES, MIN_ACCURACY_OPTIONS, MIN_WPM_OPTIONS, emptyProfile, normalizeProfile, preferencesInUse, profileDefaults, uid, validPreferences } from './profile.js';
 
 export async function attachApplication({ practice, learning, palette, settings: settingsView, compose, quoteFilters, challenge, themeEditor, wallpaper, accounts, sync, deletion, inbox, friendsBoard, suggestion, importing, release, historyClear, recording, practiceRun: runSession, onlineRace, editors, lengthEditor, training, navigation, ghostOffer, ghostResult, displayedUnits }: Application) {
   startPageWork();
@@ -136,13 +136,13 @@ export async function attachApplication({ practice, learning, palette, settings:
   const { loadProfile, saveProfile, storeLocally, commitPreferences, saveChoice, absorbCache, pullProfile, syncOnLoad } = sync;
   sync.configure({ running: () => runInProgress(), showMerged, resetListedRuns() { progressState.allRuns = false; }, boardFor: (data) => boardFor(data),
     boardPushed() { friendsBoard?.pushed(); }, boardResume() { friendsBoard?.resume(); }, repairBoard, adoptProfile,
-    legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences); }, clearCountsUnsaved() { runSession.markCountsSaved(); } });
+    legacyPreferences() { learning.preferences = preferencesInUse(learning.profile.preferences, learning.profile); }, clearCountsUnsaved() { runSession.markCountsSaved(); } });
 
   let historyWaiting = false;
 
   const saveRunCounts = runSession.saveCounts;
   const initialProfile = loadProfile();
-  learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences));
+  learning.initialize(initialProfile, preferencesInUse(initialProfile.preferences, initialProfile));
 
   let preferencesWaiting = false;
   let passage: PreparedPassage | null = null;
@@ -305,7 +305,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       return;
     }
 
-    const stored: HistoricalRecord = { ...defaultPreferences, ...learning.profile.preferences };
+    const stored: HistoricalRecord = { ...profileDefaults(learning.profile), ...learning.profile.preferences };
     const next: HistoricalRecord = { ...learning.preferences };
     let changedConditions = false;
     preferencesWaiting = false;
@@ -1333,7 +1333,7 @@ export async function attachApplication({ practice, learning, palette, settings:
   function adoptProfile(data: import('./profile-copy.js').SyncedProfile<import('./profile-types.js').HydratedProfile>) {
     learning.profile = normalizeProfile(data);
     progressState.allRuns = false;
-    learning.preferences = preferencesInUse(learning.profile.preferences);
+    learning.preferences = preferencesInUse(learning.profile.preferences, learning.profile);
     learning.livePreferences = JSON.stringify(learning.preferences);
     storeLocally();
     applyPreferences();

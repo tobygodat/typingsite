@@ -9,8 +9,8 @@ import {
 } from '../src/typing.js';
 import { correctionTimes, missedAndSlowWords } from '../src/insights.js';
 import { isAttemptEvent } from '../src/domain-history.js';
-import { encodeTrace } from '../src/ghost-race.js';
-import { normalizeProfile, preferencesInUse } from '../src/profile.js';
+import { encodeTrace, ghostPoints, scoreTrace } from '../src/ghost-race.js';
+import { historyWordFlow, normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const fluid = { mode: 'words', count: 10, punctuation: false, numbers: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed', wordFlow: 'fluid' };
 
@@ -227,6 +227,15 @@ test('500 random fluid runs keep every invariant and replay exactly', () => {
     const words = wordHistory(attempt, replay);
     assert.ok(words.every((word) => !word.word.includes(MISSED)), label);
     assert.equal(correctionTimes(attempt).length, 2, label);
+
+    // The ghost trace walks the same caret path and counts the same correct letters.
+    const trace = encodeTrace(attempt);
+
+    if (attempt.events.length) {
+      assert.equal(ghostPoints(trace, text.length).at(-1)[1], state.typed.length, label);
+      assert.equal(scoreTrace(trace, text, { relaxed: true }).correct, [...state.typed].filter((char, i) => char === text[i]).length, label);
+    }
+
     assert.ok(Array.isArray(missedAndSlowWords(attempt).missed), label);
   }
 });
@@ -266,7 +275,6 @@ test('a fluid run scores its skip and extras as misses and shows them on the wor
   assert.deepEqual(characterBreakdown(attempt, replay), { correct: 10, incorrect: 0, extra: 2, missed: 1 });
   assert.deepEqual(wordHistory(attempt, replay).map(({ word, wrong }) => [word, wrong]), [['th', true], ['catxx', true], ['sat', false]]);
   assert.deepEqual(missedAndSlowWords(attempt).missed.length, 2);
-  assert.equal(encodeTrace(attempt), null);
 });
 
 test('linear runs replay exactly as before: no extras and the same typed text', () => {
@@ -280,14 +288,39 @@ test('linear runs replay exactly as before: no extras and the same typed text', 
   assert.equal(replayCursor(attempt)(Infinity), replayAttempt(attempt).typed);
 });
 
-test('a profile with only linear history keeps linear; a new or fluid profile, or one that chose, is left alone', () => {
+test('a profile with only linear history types linear until it chooses; a new or fluid profile types fluid, and nothing is stored', () => {
   const linearRun = { id: 'a', at: '2026-11-01T10:00:00Z', status: 'complete', kind: 'test', conditions: withWordFlow(fluid, 'linear'), summary: { score: { wpm: 60, accuracy: 97 } } };
   const fluidRun = { ...linearRun, id: 'b', conditions: fluid };
-  const flowOf = (data) => preferencesInUse(normalizeProfile({ version: 2, ...data }).preferences).wordFlow;
+
+  const flowOf = (data) => {
+    const profile = normalizeProfile({ version: 2, ...data });
+    assert.equal(Object.hasOwn(profile.preferences, 'wordFlow'), Object.hasOwn(data.preferences, 'wordFlow'));
+
+    return preferencesInUse(profile.preferences, profile).wordFlow;
+  };
+
   assert.equal(preferencesInUse({}).wordFlow, 'fluid');
+  assert.equal(historyWordFlow(null), 'fluid');
   assert.equal(flowOf({ preferences: {}, runs: [] }), 'fluid');
   assert.equal(flowOf({ preferences: {}, runs: [linearRun] }), 'linear');
+  assert.equal(flowOf({ preferences: {}, runs: [], bests: { [conditionKey(withWordFlow(fluid, 'linear'))]: { wpm: 72 } } }), 'linear');
+  assert.equal(flowOf({ preferences: {}, runs: [], bests: { [conditionKey(fluid)]: { wpm: 72 } } }), 'fluid');
   assert.equal(flowOf({ preferences: {}, runs: [linearRun, fluidRun] }), 'fluid');
   assert.equal(flowOf({ preferences: { wordFlow: 'fluid' }, runs: [linearRun] }), 'fluid');
   assert.equal(flowOf({ preferences: { wordFlow: 'linear' }, runs: [] }), 'linear');
+});
+
+test('a fluid run sends a ghost trace whose caret path and correct letters match the run', () => {
+  const { attempt } = record('the cat sat on mat', [...'th catxx⌫⌫ sat on mat']);
+  attempt.kind = 'test';
+  attempt.textId = 'x';
+  const trace = encodeTrace(attempt);
+  assert.ok(trace);
+  assert.equal(trace.k.length, trace.t.length);
+  const replay = replayAttempt(attempt);
+  const points = ghostPoints(trace, attempt.text.length);
+  assert.equal(points.at(-1)[1], attempt.text.length);
+  const correct = [...replay.typed].filter((char, i) => char === attempt.text[i]).length;
+  assert.equal(scoreTrace(trace, attempt.text, { relaxed: true }).correct, correct);
+  assert.equal(scoreTrace(trace, attempt.text, { relaxed: true }).wpm, replay.score.wpm);
 });

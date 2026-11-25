@@ -3,6 +3,7 @@
 // stores and scores (supabase/migrations/20261009100000_ghost_challenges.sql). The ghost is
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
 import { recordedField as rawField } from './recorded-text.js';
+import { skippedText } from './word-flow.js';
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { Schema } from 'effect';
 import { accountLifetime } from './async-runtime.js';
@@ -108,11 +109,14 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
 
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
 
-    // Fluid word flow keeps letters off the passage positions; the compact form replays keys in order.
-    if (event.type === 'skip' || event.type === 'extra' || event.type === 'delete-extra') return null;
     let chars;
 
-    if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));
+    // Fluid word flow (ADR 0027), replayed as keys in order: a skip is a wrong key at each letter it
+    // skipped, then its space, so the caret walks the same path and the same letters count. Letters past
+    // a word's end never move the caret, so they are left out with their deletes.
+    if (event.type === 'skip') chars = skippedText(Number(rawField(text, 'length')), Number(event.position), Number(event.count));
+    else if (event.type === 'extra' || event.type === 'delete-extra') continue;
+    else if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));
     else if (event.type === 'insert') {
       // The compact form has no way to say "counted but not kept", so such a run is not encoded.
       if (event.accepted === false || typeof event.text !== 'string' || !event.text || /[\r\n]/.test(event.text) || ASTRAL.test(event.text)) return null;
@@ -329,6 +333,9 @@ export function challengePayload(attempt: ChallengePayloadSource | null | undefi
   if ('quickEnd' in source && source.quickEnd === true) delete source.quickEnd;
 
   if ('layout' in source && source.layout === 'qwerty') delete source.layout;
+
+  // A ghost race is a race, typed under linear word flow whatever the sender's run used.
+  if ('wordFlow' in source) delete source.wordFlow;
   const conditions = challengeConditions(source, duration);
 
   if (!conditions) return null;

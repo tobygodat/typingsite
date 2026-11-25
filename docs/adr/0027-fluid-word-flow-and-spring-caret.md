@@ -14,7 +14,7 @@ The caret glides over a fixed CSS duration. Each key restarts the transition fro
 
 ### Word flow
 
-- `wordFlow` is a practice preference: `fluid` (the default) or `linear`. A stored profile that has saved runs, none of them fluid, and never chose a word flow is read as `linear` (`normalizeProfile`), so an existing account keeps its bests, averages and Train baselines. A new profile, a guest, and any profile that has typed a fluid run get `fluid`. A run is fluid only when its conditions say `wordFlow: 'fluid'` and `wordFlowApplies` holds: a time, words, quote, book, custom or missed-words run with free correction (`relaxed`) and no strict space. Online races, quick matches, one-keyboard races, the standard test, lessons, code, the daily passage, strict space and every other correction policy stay linear, whatever the preference says.
+- `wordFlow` is a practice preference: `fluid` (the default) or `linear`. A profile that never chose a word flow and has saved runs or bests, none of them fluid, types `linear` (`historyWordFlow` in `src/profile.ts`). This keeps an existing account's bests, averages and Train baselines. The value is read each time and never stored, so synced copies stay as they were. A new profile, a guest, and any profile that has typed a fluid run get `fluid`. A run is fluid only when its conditions say `wordFlow: 'fluid'` and `wordFlowApplies` holds: a time, words, quote, book, custom or missed-words run with free correction (`relaxed`) and no strict space. Online races, quick matches, one-keyboard races, the standard test, lessons, code, the daily passage, strict space and every other correction policy stay linear, whatever the preference says.
 - `src/word-flow.ts` holds the rules as a pure state machine (`WordFlowState`, `createWordFlow`, `applyWordFlowKey`, `applyWordFlowDelete`, `applyWordFlowDeleteWord`). It imports nothing.
   - A space mid-word moves to the next word. The letters it skipped stand in the kept text as a private-use mark (`MISSED`) and are shown as missed.
   - A space at a word's first letter does nothing and starts nothing.
@@ -30,7 +30,7 @@ The caret glides over a fixed CSS duration. Each key restarts the transition fro
 - Scoring keeps `stilltype-metrics-v1`. A skip and an extra each count as one keystroke and one first-try error at their position. Skipped letters are never correct. Extras still standing at the finish count as extra characters on the run card. Speed counts correct letters at their passage positions, as before.
 - `inputRules` appends `word-flow` for a fluid run, after `strict-space` and `quick-end-off`. Fluid runs therefore key apart from linear ones, and their bests never mix. A linear run adds nothing, so every existing key is unchanged (`tests/typing.test.js`).
 - A retest keeps its baseline's word flow, as it keeps strict space and quick end.
-- A fluid run sends no ghost trace. The compact trace replays keys in order, and it cannot hold a skip or an extra.
+- A fluid run's ghost trace records a skip as a wrong key at each letter it skipped, then its space, and leaves out extras and their deletes. Replayed in order, the trace walks the run's caret path and counts the same correct letters, so a ghost race's outcome and speed match the run. The friend races under linear word flow, as every race does. The trace's accuracy counts each skipped letter as a miss, so it can read lower than the run card's.
 
 ### Caret motion
 
@@ -46,7 +46,6 @@ The caret glides over a fixed CSS duration. Each key restarts the transition fro
 
 - A new person types fluid runs. An existing account stays linear until it chooses fluid. Its fluid bests then start apart from its linear bests at the same shape, and Progress names the two sets "fluid words" and "linear words".
 - Online races, quick matches and the standard test record exactly what they recorded before, so the race trace check and the standard test's comparisons are unaffected.
-- A fluid run cannot be sent as a ghost challenge.
 - The speed graph (`src/graph.ts`) does not read `skip`, `extra` or `delete-extra` events. On a fluid run, its trace can drift slightly from the scored run after Backspace returns into a skipped word, and the graph does not mark skips or extras as mistakes. Scoring, accuracy, the run card, replay and pair timings read the events in full.
 - e2e specs that test letter-position geometry choose linear word flow explicitly (`chooseLinearWordFlow` in `e2e/fixtures.js`). `e2e/word-flow.spec.js` covers fluid behaviour.
 - A change to these rules needs a new event version and an ADR that supersedes this one.

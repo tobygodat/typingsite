@@ -19,6 +19,7 @@ import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalize
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
 import { DRILL_SECONDS, createAttempt, correctionPreference, customTextProblem, normalizeCustomText, replayAttempt } from './typing.js';
+import type { WordFlow } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
@@ -191,7 +192,24 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
 }
 
 // Every setting as used: the stored ones, and the default for each one the profile doesn't store.
-export const preferencesInUse = (stored: Partial<Preferences> | HistoricalRecord = {}) => validPreferences({ ...defaultPreferences, ...stored, correction: correctionPreference(stored) });
+// The word flow a profile that never chose one types under (ADR 0027): linear when it has saved runs or
+// bests and none of them fluid, so an account's bests, averages and Train baselines carry on at the keys
+// they were typed under; fluid for a new profile or a guest. Read, never stored.
+export function historyWordFlow(profile: HistoricalRecord | null = null): WordFlow {
+  const runs = Array.isArray(profile?.runs) ? profile.runs : [];
+  const bests = isRecord(profile?.bests) ? Object.keys(profile.bests) : [];
+
+  if (!runs.length && !bests.length) return 'fluid';
+
+  const fluid = runs.some((run: unknown) => isRecord(run) && isRecord(run.conditions) && run.conditions.wordFlow === 'fluid')
+    || bests.some((key) => key.split(':').includes('word-flow'));
+
+  return fluid ? 'fluid' : 'linear';
+}
+
+export const profileDefaults = (profile: HistoricalRecord | null = null) => ({ ...defaultPreferences, wordFlow: historyWordFlow(profile) });
+
+export const preferencesInUse = (stored: Partial<Preferences> | HistoricalRecord = {}, profile: HistoricalRecord | null = null) => validPreferences({ ...profileDefaults(profile), ...stored, correction: correctionPreference(stored) });
 
 // The settings a stored copy holds, each made one this build can use, and no others. A setting the copy
 // lacks (its build didn't have it, or it was never chosen) stays absent rather than filled in with its
@@ -280,10 +298,6 @@ export function normalizeProfile(stored: unknown): HydratedProfile {
 
     return historicalRunRecord(trace, trace.at || loop?.at || best?.at || null);
   });
-
-  // A profile whose saved runs are all linear, and that never chose a word flow, keeps linear (ADR 0027):
-  // its bests, averages and Train baselines carry on at the keys they were typed under.
-  if (!Object.hasOwn(rawPreferences, 'wordFlow') && records.length && !records.some((run) => isRecord(run.conditions) && run.conditions.wordFlow === 'fluid')) rawPreferences.wordFlow = 'linear';
 
   const profile: HydratedProfile = {
     ...emptyProfile(),

@@ -164,6 +164,10 @@ test('glide speed adjusts the running caret and is saved for Smooth', { tag: '@c
   await typeInto(page, text.slice(0, 1));
   await openSettings(page, 'appearance');
   const slider = page.getByRole('slider', { name: /glide speed/i });
+  // Spring is the default motion, and the glide speed is Smooth's alone.
+  await expect(slider).toBeDisabled();
+  await chooseSetting(page, 'typing-motion', 'smooth');
+  await expect(slider).toBeEnabled();
   await expect(slider).toHaveValue('80');
   await slider.fill('120');
   await slider.press('ArrowRight');
