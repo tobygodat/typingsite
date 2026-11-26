@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { DECAY_TIMING_POLICY, FIXED_OBSERVATIONS, FIXED_RUNS, FOCUSES, basisOf, LEARNER_VARIANTS, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, drillSplit, drilledTargets, englishFrequency,
   fitLearner, keyboardOf, learnerEvidence, letGo, letGoIndex, recommendFor } from '../src/learner.js';
 import * as trainPathModule from '../src/train-path.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
-import { readFileSync } from 'node:fs';
 import { check0019, seasonTask } from '../scripts/evaluate-let-go.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
@@ -287,24 +289,38 @@ test('over a simulated season, a target the drill left weak is never let go, and
   assert.ok(targets.filter((t) => t.world === 'unchanged').every((t) => !t.results['let-go'].letGo.includes(true)), 'a still-weak target let go');
 });
 
-test("CI's let-go gate passes ADR 0019's recorded validation, and fails a breached ceiling or a constant the learner doesn't ship", () => {
+test("CI's let-go gate enforces every validation ceiling and checks the shipped constants", () => {
   const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
   const failed = (validation) => check0019(validation, recorded).filter((row) => !row.ok).map((row) => row.label);
-  assert.deepEqual(failed(recorded), []);
+  assert.deepEqual(failed(recorded), ['H false return (errors)', 'H false return (slow)']);
 
-  const looserR = structuredClone(recorded);
+  const withinCeilings = structuredClone(recorded);
+  withinCeilings.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: 0.025, slow: 0.025 };
+  assert.deepEqual(failed(withinCeilings), []);
+
+  const looserR = structuredClone(withinCeilings);
   looserR.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
   assert.deepEqual(failed(looserR), ['R false let-go']);
 
-  const otherQ0 = structuredClone(recorded);
+  const otherQ0 = structuredClone(withinCeilings);
   otherQ0.slowShare.chosen = 0.85;
   assert.deepEqual(failed(otherQ0), ['q0 chosen', 'q0 false let-go']);
+});
 
-  const tighter = structuredClone(recorded);
-  tighter.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
-  assert.deepEqual(check0019(tighter, tighter).filter((row) => !row.ok).map((row) => row.label), ['R false let-go'], "only H's false return may stand on the record");
+test("CI's let-go gate fails when there are no observations for a measure", () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+  const empty = structuredClone(recorded);
+  empty.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = null;
+  empty.slowShare.rows.find((row) => row.value === LET_GO.slowShare).falseLetGo = null;
+  empty.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: null, slow: null };
+  const failures = check0019(empty, recorded).filter((row) => !row.ok);
+  assert.deepEqual(failures.map((row) => row.label), ['R false let-go', 'q0 false let-go', 'H false return (errors)', 'H false return (slow)']);
+  assert.ok(failures.every((row) => row.detail.includes('no observations')));
+});
 
-  const moreReturns = structuredClone(recorded);
-  moreReturns.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn.slow += 0.001;
-  assert.deepEqual(failed(moreReturns), ['H false return (slow)']);
+test("the learner CLI rejects a check with zero workers", () => {
+  const script = fileURLToPath(new URL('../scripts/evaluate-learner.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, ['--import', 'tsx', script, '--rule', '0019', '--check', '--workers', '0'], { encoding: 'utf8' });
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stderr, /--workers must be a positive integer/);
 });
