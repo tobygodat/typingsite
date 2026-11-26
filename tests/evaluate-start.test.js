@@ -144,7 +144,7 @@ test('clause (c) fails only when a later band is worse past its margin', () => {
   assert.deepEqual(judge(judged(passing, {}, [0.002, 0.002, 0.002, 0.002, 0.0045]), START_POLICY).worse, ['calibration in 10-14']);
 });
 
-test('the judged versions are the four ADR 0026 names, each scored under its own name beside S0', () => {
+test('the judged versions are the four ADR 0030 names, each scored under its own name beside S0', () => {
   assert.deepEqual(namedVersions(JUDGED).map((version) => version.name), ['S0', START_RATE_POLICY, START_POLICY, START_MISSES_POLICY, START_PACE_POLICY]);
   assert.throws(() => namedVersions(['learner-nothing@9']), /no learner version/);
 });

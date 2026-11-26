@@ -1,6 +1,6 @@
 // Turns the public 136M Keystrokes dataset (Dhakal, Feit, Kristensson and Oulasvirta, CHI 2018) into the app's own
 // run records, one sentence a run, read by the same replayAttempt and runRecord that read a real Stilltype run.
-// See docs/adr/0026-starting-view-from-public-keystrokes.md. The dataset is never committed: it is free for
+// See docs/adr/0030-starting-view-from-public-keystrokes.md. The dataset is never committed: it is free for
 // non-commercial use with attribution, and lives outside the repo.
 //
 //   unzip -p Keystrokes.zip 'Keystrokes/files/*_keystrokes.txt' \
@@ -30,7 +30,7 @@ const VALIDATION_BELOW = 90;
 const CONDITIONS = { mode: 'words', punctuation: true, numbers: false, wordList: '136m-keystrokes', inputClass: 'physical-keyboard',
   correctionPolicy: 'relaxed', corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: KEPT_LAYOUT };
 
-// Whole participants go to one split, by a hash of their id (ADR 0026).
+// Whole participants go to one split, by a hash of their id (ADR 0030).
 export function splitOf(participant) {
   const bucket = Number(BigInt(`0x${createHash('sha256').update(String(participant)).digest('hex')}`) % SPLIT_BUCKETS);
 
@@ -207,7 +207,7 @@ export function participantRuns(rows, { dropBadTimestamps = false } = {}) {
   return { kept, dropped, sentences: sections.size, flags };
 }
 
-// The participants ADR 0026 keeps: QWERTY on a full or laptop keyboard.
+// The participants ADR 0030 keeps: QWERTY on a full or laptop keyboard.
 export function keptParticipants(metadata) {
   const [header, ...lines] = metadata.split('\n');
   const names = header.trim().split('\t');

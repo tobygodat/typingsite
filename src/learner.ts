@@ -124,7 +124,7 @@ const TYPICAL_FLOOR = 0.01;
 const constants = { halfLifeRuns: HALF_LIFE_RUNS, pooledTries: POOLED_TRIES, timingTries: TIMING_TRIES, costCorrections: COST_CORRECTIONS };
 export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare: SLOW_SHARE, returnOdds: RETURN_ODDS };
 
-// What a version believes before a person's own evidence arrives (ADR 0026), fitted on public typing and never
+// What a version believes before a person's own evidence arrives (ADR 0030), fitted on public typing and never
 // on Stilltype's users. `rate` is the fitted first-try miss rate of a pair and of a key, and a person's pooled rate
 // is pulled toward it with the weight of `rateTries` tries. A unit's `miss` is added to the log odds its miss rate
 // is pulled toward, and a pair's `pace` is the log slowdown its pace is pulled toward, with the weights of
@@ -134,7 +134,7 @@ export interface StartingView { rate: { pair: number; key: number }; rateTries: 
 
 export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[]; start?: StartingView } & Partial<typeof LET_GO>;
 
-// The starting views ADR 0026 judges, from the table fitted on the public dataset's training participants
+// The starting views ADR 0030 judges, from the table fitted on the public dataset's training participants
 // (src/learner-start.ts). Each constant was chosen on its validation participants: a person's pooled rate is pulled
 // toward the fitted rate with 200 tries (from {20, 50, 100, 200, 400}), a unit's miss rate toward its fitted rate
 // with 80 (from {10, 20, 40, 80}), and a pair's pace toward its fitted slowdown with 5 intervals (from {2, 5, 10,

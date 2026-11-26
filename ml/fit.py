@@ -1,4 +1,4 @@
-"""Fits the starting view's models on the training participants' rows (ADR 0026) and writes them as the JSON
+"""Fits the starting view's models on the training participants' rows (ADR 0030) and writes them as the JSON
 src/learner.ts reads (StartingView.units).
 
     uv run fit.py --train train.npz --validation validation.npz --frequency frequency.json --out models.json

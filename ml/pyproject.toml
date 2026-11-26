@@ -1,6 +1,6 @@
 [project]
 name = "stilltype-ml"
 version = "0.1.0"
-description = "Fits the learner's starting view on the public 136M Keystrokes dataset (ADR 0026). Nothing here ships: the app reads the JSON these scripts write."
+description = "Fits the learner's starting view on the public 136M Keystrokes dataset (ADR 0030). Nothing here ships: the app reads the JSON these scripts write."
 requires-python = ">=3.12"
 dependencies = ["numpy>=2.1", "scipy>=1.14", "lightgbm>=4.5"]

@@ -1,4 +1,4 @@
-"""Turns a split's run records into the rows the starting view is fitted on (ADR 0026).
+"""Turns a split's run records into the rows the starting view is fitted on (ADR 0030).
 
     uv run extract.py --runs <dir of runs-<split>.jsonl.gz> --split train --rate-pair 0.0340 --rate-key 0.0386 --out train.npz
 
@@ -16,7 +16,7 @@ import re
 
 import numpy as np
 
-RATE_TRIES = 200  # Kr, chosen on validation (ADR 0026, "Validation: the rate alone")
+RATE_TRIES = 200  # Kr, chosen on validation (ADR 0030, "Validation: the rate alone")
 HALF_LIFE_RUNS = 60  # HALF_LIFE_RUNS in src/learner.ts
 MIN_PACE_MS = 30  # MIN_PACE_MS in src/learner.ts
 PAIR = re.compile(r"^[a-z]{2}$")

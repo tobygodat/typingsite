@@ -1,6 +1,8 @@
-# 0026. learner-start@3: a starting view trained on public keystrokes
+# 0030. learner-start@3: a starting view trained on public keystrokes
 
 Status: Accepted, 2026-11-18. TOB-513. The candidate failed clause (d) of the rule below; the default is unchanged. `learner-start-pace@3` held every clause it was judged on, and whether it becomes the default is Toby's to decide (see "The verdict"). The rule below is written before any model is fitted. Toby accepted its thresholds on 2026-11-18. Its amendments are dated, each was made before any candidate was fitted, and it is not changed after a candidate's results are seen.
+
+Written and accepted as ADR 0026; renumbered 0030 because [ADR 0026](0026-architectural-tokens-and-default-inter.md) and [ADR 0027](0027-fluid-word-flow-and-spring-caret.md) landed on master first and 0028–0029 were reserved first. Nothing in the rule or verdict changed.
 
 ## Context
 

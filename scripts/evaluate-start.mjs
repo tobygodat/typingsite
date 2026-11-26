@@ -1,6 +1,6 @@
 // Scores learner versions on real typing: the participants of the public 136M Keystrokes dataset, as the app's own
 // run records (scripts/keystrokes-to-runs.mjs). For each participant, in the order typed, a version is fitted on
-// their first k runs and predicts run k + 1. See docs/adr/0026-starting-view-from-public-keystrokes.md, which
+// their first k runs and predicts run k + 1. See docs/adr/0030-starting-view-from-public-keystrokes.md, which
 // fixes the measures, the bands of k and the rule this serves.
 //
 //   bun run evaluate:start -- --runs <dir> --split validation [--limit 500] [--json out.json] [--views views.json]
@@ -9,14 +9,14 @@
 //
 // --views names a JSON list of { name, start }: each is the shipped learner with that starting view (StartingView in
 // src/learner.ts), scored beside S0 and against it. --versions names learner versions in LEARNER_VARIANTS to score
-// instead. --judge scores the four versions ADR 0026 names and prints its clauses (a), (a2), (b) and (c);
+// instead. --judge scores the four versions ADR 0030 names and prints its clauses (a), (a2), (b) and (c);
 // (d), (e) and (f) are not read from this data. --metadata adds the slices the ADR reports.
 //
 //   bun run evaluate:start -- --guard [--json out.json]
 //
 //   bun run evaluate:start -- --profile <profile.json>        (also: bun run evaluate:learner -- --profile <profile.json>)
 //
-// Scores the default and ADR 0026's starting-view versions on a profile exported from the app, on its own eligible runs
+// Scores the default and ADR 0030's starting-view versions on a profile exported from the app, on its own eligible runs
 // oldest first, with the same measures: log loss, calibration error, pace error and captured share, overall and by runs
 // seen (0, 1-2, 3-5, 6-9, 10+). The file is read here and nothing is written or sent.
 //
@@ -44,7 +44,7 @@ export const BOOTSTRAP_SEED = 513;
 export const MEASURES = ['logLoss', 'paceError', 'captured', 'namedTopFour'];
 export const JUDGED = [START_RATE_POLICY, START_POLICY, START_MISSES_POLICY, START_PACE_POLICY];
 
-// ADR 0026's margins. A guard fails only when the interval lies wholly beyond its margin on the worse side.
+// ADR 0030's margins. A guard fails only when the interval lies wholly beyond its margin on the worse side.
 export const MARGINS = { logLoss: { ofS0: 0.005 }, paceError: { ofS0: 0.005 }, captured: { flat: 0.005 }, calibration: { flat: 0.002 } };
 export const CAPTURED_GAIN = 0.02;
 const HIGHER_IS_BETTER = new Set(['captured']);
@@ -75,7 +75,7 @@ export const namedVersions = (names) => [{ name: 'S0', variant: LEARNER_VARIANTS
   return { name, variant: LEARNER_VARIANTS[name] };
 })];
 
-// The time each unit loses in a set of runs, in ms (ADR 0026, "captured share"). A pair loses its first-try misses
+// The time each unit loses in a set of runs, in ms (ADR 0030, "captured share"). A pair loses its first-try misses
 // at MISS_INTERVALS of the run's own interval each, plus its timed tries at its median less the run's median. A
 // key loses only the misses outside a pair, at the start of a word. A unit that gains time loses none.
 export function timeLost(runs) {
@@ -181,7 +181,7 @@ export function bootstrap(values, random) {
   return { n: present.length, mean, low: means[Math.floor(INTERVAL_LOW * RESAMPLES)], high: means[Math.ceil(INTERVAL_HIGH * RESAMPLES) - 1] };
 }
 
-// Every learner version ADR 0026 compares, scored on one person's own runs.
+// Every learner version ADR 0030 compares, scored on one person's own runs.
 export const PROFILE_VERSIONS = [DEFAULT_POLICY, START_RATE_POLICY, START_PACE_POLICY, START_POLICY, START_MISSES_POLICY];
 
 // One person's runs (eligible, chronological, on one keyboard) under each named version, with the measures the
@@ -230,7 +230,7 @@ async function* participants(path, limit) {
   }
 }
 
-// A participant's slices from the dataset's metadata (ADR 0026: reported, deciding nothing).
+// A participant's slices from the dataset's metadata (ADR 0030: reported, deciding nothing).
 export function slicesOf(metadata) {
   const [header, ...lines] = metadata.split('\n');
   const names = header.trim().split('\t');
@@ -308,7 +308,7 @@ const beyond = ({ low, high }, margin, higherIsBetter) => (higherIsBetter ? high
 const better = ({ low, high }, higherIsBetter) => (higherIsBetter ? low > 0 : high < 0);
 const marginOf = (measure, s0, band) => MARGINS[measure].flat ?? MARGINS[measure].ofS0 * s0.measures[measure][band].mean;
 
-// ADR 0026's clauses that this data decides, for one judged version. `first` is the measure clause (a) reads: log
+// ADR 0030's clauses that this data decides, for one judged version. `first` is the measure clause (a) reads: log
 // loss, or pace error for the pace-only version. "Better" is an interval wholly on the better side of zero;
 // "worse" is one wholly beyond the margin on the worse side.
 export function judge(record, name, first = 'logLoss') {
@@ -481,7 +481,7 @@ async function main() {
 
   if (!runs) throw new Error('usage: --runs <dir of runs-<split>.jsonl.gz> [--split train|validation|test] [--limit n] [--json out.json]');
 
-  if (split === 'test' && !process.argv.includes('--judge')) throw new Error('ADR 0026 reads the test participants once, after the constants are fixed: pass --judge to do that.');
+  if (split === 'test' && !process.argv.includes('--judge')) throw new Error('ADR 0030 reads the test participants once, after the constants are fixed: pass --judge to do that.');
   const judged = process.argv.includes('--judge');
   const views = option('views', null);
   const named = judged ? JUDGED : option('versions', '').split(',').filter(Boolean);

@@ -1,4 +1,4 @@
-"""S3 (ADR 0026): gradient-boosted trees over S2's features, reported beside S2 and never shipped.
+"""S3 (ADR 0030): gradient-boosted trees over S2's features, reported beside S2 and never shipped.
 
     uv run trees.py --train train.npz --validation validation.npz --frequency frequency.json [--participants 10000]
 

@@ -9,6 +9,6 @@ supabase/.temp/
 # Per-user Claude Code settings (entire graph writes its SubagentStart hook here)
 .claude/settings.local.json
 
-# The Python that fits the starting view (ADR 0026) keeps its environment out of the repo
+# The Python that fits the starting view (ADR 0030) keeps its environment out of the repo
 ml/.venv/
 ml/__pycache__/

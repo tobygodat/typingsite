@@ -669,7 +669,7 @@ export function report0015(record) {
 
 // A stored profile, replayed the same way on its own measured runs (the keyboard with the most of them), oldest first.
 // `policies` is the older constants-tuned pair scored on log loss and calibration; `versions` scores the default and
-// ADR 0026's starting-view versions on those same runs with the measures scripts/evaluate-start.mjs reads
+// ADR 0030's starting-view versions on those same runs with the measures scripts/evaluate-start.mjs reads
 // (log loss, calibration error, pace error, captured share), overall and by runs seen. The profile stays in this process.
 export async function evaluateProfile(stored, constants, scoreRuns = null) {
   const profile = normalizeProfile(stored);
