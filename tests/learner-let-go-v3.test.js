@@ -4,6 +4,7 @@ import { DECAY_TIMING_POLICY, LEARNER_VARIANTS, LET_GO_3, LET_GO_3_POLICY, LET_G
   drilledTargets, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, letGoIndex, letGoIndexV3, letGoV3, queuedFor, recommendFor, typicalAt } from '../src/learner.js';
 import { ADAPTIVE_MIN_TRIES, KEPT_RETESTS, MAX_DRILL_WINDOW, MAX_PATTERN_RUNS, TYPICAL_RUNS, retainRuns, runRecord } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
+import { weekMovers } from '../src/week-change.js';
 import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive } from '../src/typing.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -241,4 +242,30 @@ test('profile merges keep the longer window the same on both sides', () => {
   const bWins = mergeSynced({ runs: [runs[199], trimmedAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} }, { runs: [runs[199], fullAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} });
   assert.deepEqual(aWins.runs, bWins.runs);
   assert.deepEqual(aWins.runs.find((r) => r.id === fullAdaptive.id)?.adaptivePatterns, fullAdaptive.adaptivePatterns);
+});
+
+test('weekMovers reads the same 120-run pattern window as DEFAULT_POLICY even when retainRuns keeps post-drill runs beyond 120', () => {
+  // 200 chronological runs ending near NOW, with a retest at run 30 so retainRuns keeps all 200 pattern-carrying runs.
+  // Runs 0..79 (outside the newest 120) have misses on "qu"; runs 80..199 (the newest 120) have misses on "th" before
+  // `began` and clean runs after `began`. Both weekMovers and DEFAULT_POLICY must agree with the 120-run window.
+  const dayMs = 86_400_000;
+  const began = NOW - 6 * dayMs;
+
+  const history = Array.from({ length: 200 }, (_, n) => {
+    const stamp = new Date(began - (190 - n) * 6 * 3_600_000).toISOString();
+    const rows = n < 80 ? [['qu', 12, 4, 12, 200, 0]] : n < 185 ? [['th', 10, 2, 10, 200, 0]] : [['th', 12, 0, 12, 200, 0]];
+
+    return run(n, rows, n === 30 ? { at: stamp, kind: 'retest' } : { at: stamp });
+  });
+
+  const kept = retainRuns(history);
+  const trimmed120 = retainRuns(history, { drills: false });
+  assert.ok(kept.filter((r) => r.patterns.length).length > MAX_PATTERN_RUNS, 'post-drill retention keeps >120 runs');
+  assert.equal(trimmed120.filter((r) => r.patterns.length).length, MAX_PATTERN_RUNS);
+
+  const moversKept = weekMovers({ runs: kept, loops: [], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began });
+  const movers120 = weekMovers({ runs: trimmed120, loops: [], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began });
+  assert.deepEqual(moversKept, movers120);
+  assert.ok(!moversKept.some((m) => m.unit === 'qu'), 'runs older than the 120-run window do not leak into weekMovers');
+  assert.deepEqual(recommend(DECAY_TIMING_POLICY, kept, []), recommend(DECAY_TIMING_POLICY, trimmed120, []));
 });

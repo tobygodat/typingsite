@@ -28,7 +28,7 @@ export type Mover = { unit: string; split: 'drill' | 'week'; weight: number } & 
 // The lead compares fresh-text runs at one condition key, a week against the week before (weeklyChange). The movers
 // read every measured run on that key's keyboard, as Train does, in the train focus.
 
-import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, weeklyChange } from './insights.js';
+import { filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, retainRuns, runDay, trendRun, weeklyChange } from './insights.js';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
 import { evidenceSince, isFixed, sinceDrilled } from './train-path.js';
 
@@ -82,7 +82,10 @@ const basisNamed = (item: { was: TargetEvidence | null } | undefined): Basis => 
 export function weekMovers({ runs, loops: rawLoops = [], keyboard, focus, now, began }: { runs: readonly unknown[]; loops?: readonly unknown[]; keyboard: string; focus: string; now: number; began: number }) {
   const loops = analysisLoops(rawLoops);
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
-  const records = learnerEvidence(runs, keyboard);
+  // Match recommendFor: DEFAULT_POLICY reads the newest 120 pattern-carrying runs, even when retainRuns keeps older
+  // post-drill runs for learner-let-go@3 (ADR 0029).
+  const read = variant.letGoVersion === 3 ? runs : retainRuns(analysisRuns(runs), { drills: false });
+  const records = learnerEvidence(read, keyboard);
   const earlier = records.filter((record) => record.at === null || record.at < began);
   const [modelNow, modelThen] = [fitLearner(records, now, variant, focus), fitLearner(earlier, began, variant, focus)];
   const queuedNow = new Set(learnerRecommendation(modelNow).queue.map((item) => item.unit));
