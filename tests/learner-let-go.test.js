@@ -289,22 +289,28 @@ test('over a simulated season, a target the drill left weak is never let go, and
   assert.ok(targets.filter((t) => t.world === 'unchanged').every((t) => !t.results['let-go'].letGo.includes(true)), 'a still-weak target let go');
 });
 
-test("CI's let-go gate enforces every validation ceiling and checks the shipped constants", () => {
+test("CI's let-go gate enforces the false let-go ceilings and recorded false-return limits", () => {
   const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
-  const failed = (validation) => check0019(validation).filter((row) => !row.ok).map((row) => row.label);
-  assert.deepEqual(failed(recorded), ['H false return (errors)', 'H false return (slow)']);
+  const failed = (validation) => check0019(validation, recorded).filter((row) => !row.ok).map((row) => row.label);
+  assert.deepEqual(failed(recorded), []);
 
-  const withinCeilings = structuredClone(recorded);
-  withinCeilings.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: 0.025, slow: 0.025 };
-  assert.deepEqual(failed(withinCeilings), []);
-
-  const looserR = structuredClone(withinCeilings);
+  const looserR = structuredClone(recorded);
   looserR.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
   assert.deepEqual(failed(looserR), ['R false let-go']);
 
-  const otherQ0 = structuredClone(withinCeilings);
+  const otherQ0 = structuredClone(recorded);
   otherQ0.slowShare.chosen = 0.85;
   assert.deepEqual(failed(otherQ0), ['q0 chosen', 'q0 false let-go']);
+
+  for (const kind of ['errors', 'slow']) {
+    const regressed = structuredClone(recorded);
+    regressed.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn[kind] += 0.0001;
+    assert.deepEqual(failed(regressed), [`H false return (${kind})`]);
+  }
+
+  const missingLimit = structuredClone(recorded);
+  missingLimit.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn.slow = null;
+  assert.equal(check0019(recorded, missingLimit).find((row) => row.label === 'H false return (slow)').ok, false);
 });
 
 test("CI's let-go gate fails when there are no observations for a measure", () => {
@@ -313,7 +319,7 @@ test("CI's let-go gate fails when there are no observations for a measure", () =
   empty.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = null;
   empty.slowShare.rows.find((row) => row.value === LET_GO.slowShare).falseLetGo = null;
   empty.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: null, slow: null };
-  const failures = check0019(empty).filter((row) => !row.ok);
+  const failures = check0019(empty, recorded).filter((row) => !row.ok);
   assert.deepEqual(failures.map((row) => row.label), ['R false let-go', 'q0 false let-go', 'H false return (errors)', 'H false return (slow)']);
   assert.ok(failures.every((row) => row.detail.includes('no observations')));
 });

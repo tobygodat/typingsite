@@ -162,39 +162,23 @@ jobs:
         with:
           # A PR's merge commit and both its parents, so the scope can diff it against the base.
           fetch-depth: 2
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
         with:
-          bun-version: 1.4.2
+          node-version: 24
       - id: scope
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          run=true
           if [ "$EVENT" != pull_request ]; then
             echo "A $EVENT run checks the learner."
-          elif ! changed=$(git diff --name-only --no-renames HEAD^1 HEAD); then
-            echo "Can't list the PR's changes, so this run checks the learner."
-          elif grep -qE '^(scripts/evaluate-[^/]*\.mjs|docs/adr/0019-evaluation\.json|\.github/workflows/ci\.yml|package\.json|bun\.lock|tsconfig\.json)$' <<< "$changed"; then
-            echo "The PR changes the evaluation or its configuration."
+            echo "run=true" >> "$GITHUB_OUTPUT"
           else
-            scratch=$(mktemp -d)
-            trap 'rm -rf "$scratch"' EXIT
-            if ! bun build scripts/evaluate-let-go.mjs --target=node --packages=external \
-              --outdir="$scratch/bundle" --metafile="$scratch/inputs.json" > /dev/null ||
-              ! bun -e 'console.log(Object.keys(require(process.argv[1]).inputs).join("\n"))' "$scratch/inputs.json" > "$scratch/paths"; then
-              echo "Can't list the evaluation inputs, so this run checks the learner."
-            elif grep -Fxq -f "$scratch/paths" <<< "$changed"; then
-              echo "The PR changes a module in the learner evaluation."
-            else
-              echo "The PR changes nothing the learner evaluation reads."
-              run=false
-            fi
+            node scripts/learner-eval-scope.mjs
           fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
       - if: steps.scope.outputs.run == 'true'
-        uses: actions/setup-node@v4
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: 24
+          bun-version: 1.4.2
       - if: steps.scope.outputs.run == 'true'
         run: bun install --frozen-lockfile
       - if: steps.scope.outputs.run == 'true'
