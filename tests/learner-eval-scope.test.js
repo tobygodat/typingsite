@@ -19,7 +19,7 @@ test("the committed evaluation's closure reaches the learner's transitive import
   const closure = closureAt('HEAD');
   assert.ok(closure, 'every import resolves at HEAD');
 
-  for (const file of ['scripts/evaluate-let-go.mjs', 'scripts/evaluate-learner.mjs', 'src/learner.ts', 'src/train-path.ts', 'src/typing.ts', 'src/insights.ts', 'src/domain-history.ts', 'src/profile-types.ts']) {
+  for (const file of ['scripts/evaluate-let-go.mjs', 'scripts/evaluate-let-go-v3.mjs', 'scripts/evaluate-learner.mjs', 'src/learner.ts', 'src/train-path.ts', 'src/typing.ts', 'src/insights.ts', 'src/domain-history.ts', 'src/profile-types.ts']) {
     assert.ok(closure.has(file), file);
   }
 

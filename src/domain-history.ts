@@ -139,7 +139,7 @@ export function isAnalysisRun(value: unknown): value is import('./profile-types.
     && optional(value, ['elapsedMs', 'errors', 'drillSeconds', 'keysVersion'], number)
     && optional(value, ['conditions'], isRecord) && optional(value, ['score'], isScore)
     && optional(value, ['keys'], (keys) => Array.isArray(keys) && keys.every((key: unknown) => Array.isArray(key) && key.length === 3 && typeof key[0] === 'string' && typeof key[1] === 'number' && typeof key[2] === 'number'))
-    && optional(value, ['patterns'], (patterns) => Array.isArray(patterns) && patterns.every((row: unknown) => Array.isArray(row) && row.length === 6 && typeof row[0] === 'string'
+    && optional(value, ['patterns', 'adaptivePatterns'], (patterns) => Array.isArray(patterns) && patterns.every((row: unknown) => Array.isArray(row) && row.length === 6 && typeof row[0] === 'string'
       && typeof row[1] === 'number' && typeof row[2] === 'number' && typeof row[3] === 'number' && nullableNumber(row[4]) && nullableNumber(row[5])))
     && optional(value, ['corrections'], (corrections) => Array.isArray(corrections) && corrections.length === 2 && typeof corrections[0] === 'number' && nullableNumber(corrections[1]))
     && optional(value, ['missedWords'], (words) => Array.isArray(words) && words.every(string));

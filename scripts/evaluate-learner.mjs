@@ -6,6 +6,7 @@
 //   bun run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
 //   bun run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
 //   bun run evaluate:learner -- --rule 0019 --json out.json           (ADR 0019's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
+//   bun run evaluate:learner -- --rule 0027 --json out.json           (ADR 0027's rule: learner-let-go@3, scripts/evaluate-let-go-v3.mjs)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.
@@ -212,9 +213,10 @@ export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
 // One run: the app's own passage generator, typed under stop on error (a wrong key is refused, then the
 // right one follows), scored and summarized by the app's own code. Returns the summary and the full trace.
 // ADR 0019's season sets the words a run, the date, and `shift`, the log odds a bad day adds to every letter's miss.
-export function typeRun(typist, random, index, id, { count = CONDITIONS.count, at: date = START + index * RUN_MS, shift = 0 } = {}) {
+export function typeRun(typist, random, index, id, { count = CONDITIONS.count, at: date = START + index * RUN_MS, shift = 0, text: given = null, adaptive = false } = {}) {
   const conditions = count === CONDITIONS.count ? CONDITIONS : { ...CONDITIONS, count };
-  const text = makePassage('words', count, false, random, CONDITIONS.wordList);
+  // ADR 0027's adaptive arm types the text it is given, as a drill-kind run; every other run draws its own passage.
+  const text = given ?? makePassage('words', count, false, random, CONDITIONS.wordList);
   const events = [];
   let t = 0;
 
@@ -236,8 +238,10 @@ export function typeRun(typist, random, index, id, { count = CONDITIONS.count, a
 
   const at = new Date(date).toISOString();
 
-  const attempt = completeAttempt({ id, kind: 'test', status: 'complete', conditions, textId: id, fresh: true, text, events, startedAt: events[0].offsetMs },
-    { endedAt: Math.round(t) });
+  const fields = { id, kind: adaptive ? 'drill' : 'test', status: 'complete', conditions, textId: id, fresh: true, text, events, startedAt: events[0].offsetMs };
+
+  if (adaptive) fields.adaptive = true;
+  const attempt = completeAttempt(fields, { endedAt: Math.round(t) });
 
   return { run: runRecord(attempt, at), trace: attempt };
 }
@@ -853,6 +857,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   // ADR 0019's rule runs in its own process, on worker threads, because it imports this module.
   if (option('rule', null) === '0019') {
     const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(new URL('./evaluate-let-go.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
+    process.exit(child.status ?? 1);
+  }
+
+  // So does ADR 0027's.
+  if (option('rule', null) === '0027') {
+    const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(new URL('./evaluate-let-go-v3.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
     process.exit(child.status ?? 1);
   }
 

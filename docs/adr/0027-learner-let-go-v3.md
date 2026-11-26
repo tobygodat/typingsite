@@ -99,7 +99,38 @@ Per kind (misses, pace), over counted targets, per arm: **runs to read fixed** (
 
 ## Results
 
-Not yet run.
+### Validation (seeds 9001 and 9002, run after this rule was committed and before any test seed)
+
+`bun run evaluate:learner -- --rule 0027 --validation-only`. Each season row below counts the targets the shipped default queued before their drill, drilled for the kind it queued them for.
+
+| R | false let-go, misses | median runs to read fixed, 25 words |
+| --- | --- | --- |
+| 3 (chosen) | 0.0% | 61 |
+| 4 | 4.7% | 42 |
+| 6 | 20.8% | 29 |
+| 8 | 33.0% | 25 |
+
+| q0 | false let-go, pace | median runs to read fixed, 25 words |
+| --- | --- | --- |
+| 0.75 (chosen, none eligible: the rule takes the smallest) | 1.95% | 38.5 |
+| 0.85 | 6.5% | 28 |
+| 0.95 | 14.9% | 28 |
+
+| H | false return, misses | false return, pace | named again (median runs) |
+| --- | --- | --- | --- |
+| ln 10³ (chosen) | 1.1% | 0.8% | 29 |
+| ln 10⁴ | 1.1% | 0.8% | 34.5 |
+| ln 10⁵ | 1.1% | 0.0% | 41 |
+
+| S | false let-go misses / pace | median runs to read fixed, 25 words (misses / pace) | median first tries of the drilled pair a run (misses / pace) |
+| --- | --- | --- | --- |
+| 0.5 (chosen, none eligible: the rule takes the smallest) | 2.8% / 1.3% | 21 / 22.5 | 5 / 7 |
+| 0.75 | 2.8% / 1.9% | 14 / 19 | 7 / 9 |
+| 0.9 | 0.9% / 1.3% | 10 / 14 | 8 / 10.75 |
+
+Two rules gave "none eligible": q0 (every value above the 1% ceiling) and S (no value under 1% for both kinds). Each fell to the rule's stated default, the smallest value, and the constants were fixed as the rule says: **R = 3, q0 = 0.75, H = ln 10³, S = 0.5**. Validation was not repeated with any other choice. A reader can see that S = 0.9 would have cleared the misses ceiling and would have read fixed in about half the runs; the rule committed above did not let validation pick it, and the test below runs S = 0.5.
+
+Test results: not yet run.
 
 ## Consequences
 
