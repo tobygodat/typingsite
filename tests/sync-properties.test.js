@@ -15,10 +15,11 @@ const minute = (n) => new Date(Date.UTC(2026, 9, 1, 12, 0) + n * 60000).toISOStr
 const HISTORY_NAMES = ['attempts', 'runs', 'loops'];
 const BEST_KEYS = ['time:30', 'words:25', 'quote'];
 
-// The shared history: records with unique ids, each with its own date and speed. Speeds come from a
-// narrow band so that two copies often hold different bests at the same speed, where ties must settle.
-const sharedHistory = fc.uniqueArray(fc.record({ n: fc.integer({ min: 0, max: 5000 }), wpm: fc.integer({ min: 60, max: 63 }) }), { selector: ({ n }) => n, maxLength: 30 })
-  .map((drawn) => drawn.map(({ n, wpm }) => ({ id: `r${n}`, at: minute(n), kind: 'test', status: 'complete', textId: `t${n % 7}`, score: { wpm, accuracy: 100 } })));
+// The shared history: records with unique ids, a date and a speed. Dates fall on a few slots and speeds
+// in a narrow band, so records often share a date and copies often hold different bests at the same
+// speed: the ties every copy must settle the same way.
+const sharedHistory = fc.uniqueArray(fc.record({ n: fc.integer({ min: 0, max: 5000 }), slot: fc.integer({ min: 0, max: 50 }), wpm: fc.integer({ min: 60, max: 63 }) }), { selector: ({ n }) => n, maxLength: 30 })
+  .map((drawn) => drawn.map(({ n, slot, wpm }) => ({ id: `r${n}`, at: minute(slot * 100), kind: 'test', status: 'complete', textId: `t${n % 7}`, score: { wpm, accuracy: 100 } })));
 
 // Settings with the stamp of their last change, as this build writes them (preferencesAt).
 const setting = (values) => fc.tuple(fc.constantFrom(...values), fc.integer({ min: 0, max: 6000 }));
@@ -71,13 +72,16 @@ test('a merge keeps every record from both copies, in date order', () => {
   }));
 });
 
-test('a merge never lowers a best, and keeps one for every condition either copy had', () => {
+test('a merge never lowers a best, keeps one for every condition either copy had, and a tie goes to the earlier run', () => {
   fc.assert(fc.property(copies(2), ([a, b]) => {
     const merged = mergeSynced(a, b);
 
     for (const key of new Set([...Object.keys(a.bests), ...Object.keys(b.bests)])) {
-      const highest = Math.max(a.bests[key]?.wpm ?? 0, b.bests[key]?.wpm ?? 0);
-      assert.equal(merged.bests[key]?.wpm, highest, key);
+      const held = [a.bests[key], b.bests[key]].filter(Boolean);
+      const highest = Math.max(...held.map((best) => best.wpm));
+      // A later run has to beat a best, not match it. Two runs on the same date settle on the lower id.
+      const [first] = held.filter((best) => best.wpm === highest).sort((x, y) => x.at.localeCompare(y.at) || x.attemptId.localeCompare(y.attemptId));
+      assert.deepEqual(merged.bests[key], first, key);
     }
   }));
 });
