@@ -143,7 +143,7 @@ export const DEFAULT_FOCUS = 'balanced';
 const FIRST_RATE = 1 / (1 + Math.exp(3.4));
 
 // Gains are computed half a standard deviation below each posterior mean, so thin evidence ranks lower.
-const UNCERTAINTY_Z = 0.5;
+export const UNCERTAINTY_Z = 0.5;
 
 // Adaptive and leaning drill text draw on this many of the top units.
 export const LEAN_UNITS = 4;

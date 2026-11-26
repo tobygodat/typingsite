@@ -1,6 +1,6 @@
 # 0028. Calling a pair or key "slipping" on Progress from day-level variation
 
-Status: Proposed (pre-registered before any test seed runs), 2026-11-26. TOB-511.
+Status: Accepted, 2026-11-26. TOB-511. Passed every pre-registered clause on held-out test seeds `601..630`.
 
 ## Context
 
@@ -129,4 +129,57 @@ If any clause fails, `src/week-change.ts` remains slipping-free and the failure 
 
 ## Results
 
-_Pending single held-out test run on seeds `601..630` after this rule commit._
+The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write ADR 0028 slipping decision rule before running test seeds (TOB-511)") before any held-out test seed ran. Held-out test seeds `601..630` ran once (`node --import tsx scripts/evaluate-slipping.mjs --test --json docs/adr/0028-evaluation.json --workers 12`, 5,940 cells, 11,880 simulated weeks: 5,400 null weeks and 6,480 alternative weeks, 84.3 s), and the full record is saved in [`0028-evaluation.json`](0028-evaluation.json).
+
+**`day-level-0028` passes every pre-registered clause.**
+
+### Overall null false-slip rate (5,400 null weeks, 95% Wilson intervals)
+
+| Detector | False-slip weeks | 95% Wilson interval |
+| --- | --- | --- |
+| `pooled-7b07` (prior pooled Fisher) | 2.59% (140 / 5,400) | [2.20%, 3.05%] |
+| **`day-level-0028`** | **0.02% (1 / 5,400)** | **[0.00%, 0.10%]** |
+
+### Null false-slip rate by regime, volume, and skill
+
+| Slice | `n` | `pooled-7b07` | `day-level-0028` | `day-level-0028` 95% Wilson |
+| --- | --- | --- | --- | --- |
+| `null-stationary` | 1,080 | 0.09% (1) | 0.00% (0) | [0.00%, 0.35%] |
+| `null-uneven-bad-days` | 1,080 | 0.19% (2) | 0.00% (0) | [0.00%, 0.35%] |
+| `null-overdispersed` | 1,080 | 5.65% (61) | 0.09% (1) | [0.02%, 0.52%] |
+| `null-single-day-hiccup` | 1,080 | 4.63% (50) | 0.00% (0) | [0.00%, 0.35%] |
+| `null-global-bad-week` | 1,080 | 2.41% (26) | 0.00% (0) | [0.00%, 0.35%] |
+| `light-10` | 900 | 0.11% (1) | 0.00% (0) | [0.00%, 0.43%] |
+| `light-25` | 900 | 0.00% (0) | 0.00% (0) | [0.00%, 0.43%] |
+| `medium` | 900 | 0.22% (2) | 0.11% (1) | [0.02%, 0.63%] |
+| `heavy-15x100` | 900 | 0.22% (2) | 0.00% (0) | [0.00%, 0.43%] |
+| `heavy-30k` (30,000 words/week) | 900 | **14.78% (133)** | **0.00% (0)** | **[0.00%, 0.43%]** |
+| `bursty-week` | 900 | 0.22% (2) | 0.00% (0) | [0.00%, 0.43%] |
+| `careful` (1%) | 1,800 | 1.11% (20) | 0.00% (0) | [0.00%, 0.21%] |
+| `average` (3%) | 1,800 | 2.50% (45) | 0.00% (0) | [0.00%, 0.21%] |
+| `learning` / careless (7%) | 1,800 | 4.17% (75) | 0.06% (1) | [0.01%, 0.31%] |
+
+### Alternative regimes: detection of real multi-day slips (1,080 weeks per regime)
+
+| Regime | `day-level-0028` readable planted | `day-level-0028` on `heavy-30k` | `day-level-0028` all planted | `day-level-0028` extra-false weeks [95% Wilson] | `pooled-7b07` extra-false weeks |
+| --- | --- | --- | --- | --- | --- |
+| `alt-1pair-strong` | **44.22% (260/588)** | **94.4% (170/180)** | 24.07% (260/1,080) | 0.74% (8/1,080) [0.38%, 1.45%] | 3.24% (35/1,080) |
+| `alt-1pair-moderate` | 26.76% (160/598) | — | 14.81% (160/1,080) | 0.09% (1/1,080) [0.02%, 0.52%] | 2.59% (28/1,080) |
+| `alt-coslip-2` | **38.31% (431/1,125)** | **90.3% (325/360)** | 19.95% (431/2,160) | 0.46% (5/1,080) [0.20%, 1.08%] | 3.89% (42/1,080) |
+| `alt-coslip-4` | **37.69% (822/2,181)** | **85.7% (617/720)** | 19.03% (822/4,320) | 1.02% (11/1,080) [0.57%, 1.81%] | 3.24% (35/1,080) |
+| `alt-4day-slip` | **20.49% (125/610)** | **61.7% (111/180)** | 11.57% (125/1,080) | 0.09% (1/1,080) [0.02%, 0.52%] | 1.76% (19/1,080) |
+| `alt-key-slip` | **43.08% (383/889)** | **97.8% (176/180)** | 35.46% (383/1,080) | 0.00% (0/1,080) [0.00%, 0.35%] | 0.37% (4/1,080) |
+
+### Clause-by-clause verdict
+
+- **(a) Overall null Wilson upper ≤ 1.0%:** **PASS** — `0.02% [0.00%, 0.10%]` (`1 / 5,400`).
+- **(b) Every null regime, volume, and skill slice ≤ 1.5% point and ≤ 2.0% Wilson upper:** **PASS** — highest slice is `medium` at `0.11% [0.02%, 0.63%]` (`1 / 900`); `heavy-30k` is `0.00% [0.00%, 0.43%]` (`0 / 900`), versus `14.78%` for `pooled-7b07`.
+- **(c) Readable planted detection:** **PASS** — `alt-1pair-strong` 44.22% overall (≥ 30%) and 94.4% on `heavy-30k` (≥ 50%), `alt-coslip-2` 38.31% (≥ 25%), `alt-coslip-4` 37.69% (≥ 25%), `alt-key-slip` 43.08% (≥ 30%), `alt-4day-slip` 20.49% (≥ 10%).
+- **(d) Alternative-week specificity (unaffected units ≤ 2.5% Wilson upper):** **PASS** — highest is `alt-coslip-4` at `1.02% [0.57%, 1.81%]` (`11 / 1,080`).
+
+## Consequences
+
+- `detectSlips`, `weekSlips`, and `SLIP_RULE` are implemented as pure exported functions in `src/week-change.ts` and unit-tested in `tests/week-change.test.js`, including parity with `scripts/evaluate-slipping.mjs`.
+- Per `DESIGN.md` ("Show Toby a mockup or a screenshot of any change a user sees before it ships"), Progress's rendered DOM list (`weekChange` / `weekMovers`) is left unchanged in this change; `weekSlips` is ready for UI hookup once the visible presentation is approved.
+- Limitations to keep in mind: on light practice (`light-10`, `light-25`), individual pairs rarely reach `FIXED_OBSERVATIONS` (20 tries) on both sides of the week, so light typists see slips primarily on keys (`alt-key-slip`) rather than rare pairs—which is honest, since thin pair counts cannot separate a real slip from noise.
+
