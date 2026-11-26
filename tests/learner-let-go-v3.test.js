@@ -233,4 +233,12 @@ test('profile merges keep the longer window the same on both sides', () => {
   const other = mergeSynced(half(80, 200), half(0, 120));
   assert.deepEqual(merged.runs, other.runs);
   assert.deepEqual(merged.runs, retainRuns(runs));
+
+  // An adaptive run's fuller copy (with adaptivePatterns) wins over a trimmed copy regardless of merge order.
+  const fullAdaptive = adaptiveRun(201, [['th', 10, 0, 10, 200, 0]]);
+  const { adaptivePatterns: _, ...trimmedAdaptive } = fullAdaptive;
+  const aWins = mergeSynced({ runs: [runs[199], fullAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} }, { runs: [runs[199], trimmedAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} });
+  const bWins = mergeSynced({ runs: [runs[199], trimmedAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} }, { runs: [runs[199], fullAdaptive], loops: [], attempts: [], compositions: [], practiceDays: {} });
+  assert.deepEqual(aWins.runs, bWins.runs);
+  assert.deepEqual(aWins.runs.find((r) => r.id === fullAdaptive.id)?.adaptivePatterns, fullAdaptive.adaptivePatterns);
 });

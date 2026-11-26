@@ -241,6 +241,8 @@ function historicalRunRecord(trace: HistoricalRecord, at: unknown): HistoricalRe
   if (typeof trace.target === 'string') attempt.target = trace.target;
 
   if (typeof trace.fresh === 'boolean') attempt.fresh = trace.fresh;
+
+  if (trace.adaptive) attempt.adaptive = true;
   attempt.interrupted = Boolean(trace.interrupted || trace.unsupportedInput || trace.stopped);
   const generated = runRecord(attempt, typeof at === 'string' ? at : null);
 
