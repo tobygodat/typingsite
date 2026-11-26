@@ -112,6 +112,7 @@ test('contrast is repaired toward AA before the theme leaves the server', async 
   const { theme } = await (await call(deps({ reply: () => answer(murky) }))).json();
   assert.deepEqual(contrastIssues(theme.colors), {});
   assert.ok(contrast(theme.colors['accent-ink'], theme.colors.accent) >= 4.5);
+  assert.ok(contrast(theme.colors.accent, theme.colors.ground) >= 4.5, 'the accent is small text, so it holds 4.5:1 too');
   assert.equal(theme.mode, 'dark', 'dark or light follows the background, not the answer');
   assert.equal(theme.colors.ground, murky.colors.ground, 'the background is left as chosen');
 });

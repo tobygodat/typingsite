@@ -456,6 +456,7 @@ test('desktop settings and the practice label, dark and light', async ({ page },
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
+    const before = await page.locator('.practice-rail').boundingBox();
     await openSettings(page, 'practice');
     await chooseSetting(page, 'min-accuracy', '95');
     await chooseSetting(page, 'min-wpm', '40');
@@ -464,10 +465,14 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await closeSettings(page);
     await expect(page.locator('#settings-dialog')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
-    // The label takes its own line, so the controls' rail stays centred in the page.
+    // The label takes its own line under the controls' rail, so the rail doesn't move: it keeps its place, its
+    // labels in line with the left edge of the passage's column (the rail is pulled out by its labels' inset).
     const rail = await page.locator('.practice-rail').boundingBox();
     const column = await page.locator('#main-content').boundingBox();
-    expect(Math.abs((rail.x + rail.width / 2) - (column.x + column.width / 2))).toBeLessThanOrEqual(2);
+    const inset = await page.locator('.practice-rail').evaluate((node) => -parseFloat(getComputedStyle(node).marginLeft));
+    expect(Math.abs(rail.x - before.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(rail.y - before.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(rail.x + inset - column.x)).toBeLessThanOrEqual(2);
     expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(rail.y + rail.height);
     await page.mouse.move(1270, 790);
     await shot(page, testInfo, `practice-${scheme}`);

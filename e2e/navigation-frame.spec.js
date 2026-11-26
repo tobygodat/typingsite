@@ -31,7 +31,8 @@ test('the setting moves navigation between the side bar and the top bar, and a s
   expect(Math.abs(corner.x + corner.width - (column.x + column.width))).toBeLessThan(1);
   expect(Math.abs((await page.locator('nav.dock .brand').boundingBox()).x - column.x)).toBeLessThan(4);
   await expect(sideBar(page)).toHaveCSS('border-bottom-width', '0px');
-  await expect(sideBar(page)).toHaveCSS('background-color', await page.locator('body').evaluate((body) => getComputedStyle(body).backgroundColor));
+  await expect(sideBar(page)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(sideBar(page)).toHaveCSS('position', 'relative');
   await expect(page.locator('#main-content + .site-footer')).toBeVisible();
   await expect(toggle(page)).toBeHidden();
   // The pill sits on the screen shown, in the row.

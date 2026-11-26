@@ -1631,7 +1631,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     });
     keybindingEditor.refresh();
     onSetting('wallpaper-style', wallpaper.style);
-    detachWallpaper = wallpaper.attach({ layer: $('wallpaper'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('live-stats'), $('typing-wrap'), ...document.querySelectorAll<HTMLElement>('.shortcut-row, .site-footer > *')] });
+    detachWallpaper = wallpaper.attach({ layer: $('wallpaper'), surfaces: [$('typing-form'), $('compose-form')], reading: [$('side-bar'), $('live-stats'), $('typing-wrap'), ...document.querySelectorAll<HTMLElement>('.shortcut-row, .site-footer > *')] });
     settingsView.configure(() => settingsView.keybindings.stopRecording());
     onSetting('live-toggle', (value) => { learning.preferences.liveMetrics = value === 'true'; applyPreferences(); saveChoice('liveMetrics'); });
     onSetting('keyboard-toggle', (value) => { learning.preferences.keyboard = value === 'true'; applyPreferences(); saveChoice('keyboard'); });

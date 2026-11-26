@@ -533,7 +533,8 @@
 /* A custom theme (src/custom-themes.js) sets its colours inline on :root, over dark or light. The surfaces
    and tints follow the colours they come from, at dark's or light's shares, unless the theme sets them too. */
 :root[data-theme][data-custom] {
-  --untyped: color-mix(in srgb, var(--muted) 50%, var(--ground));
+  /* 70% holds untyped letters at 2.2:1 wherever muted holds 4.5:1 (UNTYPED_SHARE in src/custom-themes.ts). */
+  --untyped: color-mix(in srgb, var(--muted) 70%, var(--ground));
   --outline: color-mix(in srgb, var(--muted) 77%, var(--ground));
   --practice-level-1: color-mix(in srgb, var(--accent) 30%, transparent);
   --practice-level-2: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -695,10 +696,11 @@ kbd {
 .site-footer { grid-row: 3; }
 
 /* The top bar: no slab and no rule, just the wordmark, the screens and the commands at the left of the page's
-   column and the corner at its right. It keeps to the top while the page scrolls, on the page's own ground. */
+   column and the corner at its right, straight on the page, so a background image runs on behind it. It scrolls
+   with the page, so nothing scrolls under its letters; where the image would make them hard to read,
+   src/wallpaper-layer.ts outlines them as it does the passage. */
 .dock-zone {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 40;
   grid-column: 2;
   grid-row: 1;
@@ -707,7 +709,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  background: var(--ground);
+  background: transparent;
 }
 
 .dock,
@@ -1283,6 +1285,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .dock-zone .footer-links { flex-wrap: wrap; gap: 0 var(--space-4); margin-top: var(--space-1); }
   :root[data-navigation="side"] .dock-zone .footer-link { white-space: nowrap; }
   :root[data-navigation="side"] .challenge-toast { top: var(--space-4); }
+  /* The side bar is its own slab, so the picture never runs behind its letters. */
+  :root[data-navigation="side"] .dock-zone[data-halo] { -webkit-text-stroke: 0; }
   :root[data-navigation="side"] { --frame-top: 0px; }
   :root[data-navigation="side"] body[data-view="practice"]:not([data-compose="true"]) .shortcut-row { top: auto; bottom: var(--space-4); }
 }
@@ -2074,10 +2078,11 @@ body[data-running="true"] .caps-warning { transition: none; }
 /* The setup bar: on a wide screen the setup controls are one borderless line of mono, the groups split by short
    hairlines and the choice in the accent. In open practice the readouts share that line: the average and best at its
    right end, and the clock where the controls were once they fade at the start of a run. The line keeps its place
-   whatever a mode puts in it. */
+   whatever a mode puts in it. A column too narrow for the widest mode's controls and the average and best on one
+   line (by the column's width, so beside the side bar too) gives the controls the whole line and the readouts their
+   own line under it, so no mode wraps the bar and the passage never moves when the mode changes. */
 @media (min-width: 761px) {
   .practice-controls { justify-content: flex-start; margin: 0 0 var(--space-2); }
-  body[data-session="practice"] .practice-controls { padding-inline-end: var(--standing-reserve); }
   .practice-rail {
     --ink-fill: transparent;
     --ink-label: var(--accent);
@@ -2120,8 +2125,12 @@ body[data-running="true"] .caps-warning { transition: none; }
   /* The custom text panel sits under the bar, across the page. */
   .custom-options { width: 100%; margin: 0 0 var(--space-6); }
 
-  /* The readouts rise into the bar's line while nothing opens between them. */
-  body[data-session="practice"] #typing-screen:has(> .practice-controls:not([hidden])):not(:has(> :is(#custom-options, #manual-target):not([hidden]))) .measure-row { margin-top: calc(-1 * (var(--band) + var(--space-2))); }
+  /* Where the line has room for both, the bar leaves its right end to the readouts, and they rise into it while
+     nothing opens between them. */
+  @container page (min-width: 860px) {
+    body[data-session="practice"] .practice-controls { padding-inline-end: var(--standing-reserve); }
+    body[data-session="practice"] #typing-screen:has(> .practice-controls:not([hidden])):not(:has(> :is(#custom-options, #manual-target):not([hidden]))) .measure-row { margin-top: calc(-1 * (var(--band) + var(--space-2))); }
+  }
   body[data-session="practice"]:not([data-running="true"]) .live-stats .live-stat,
   body[data-session="practice"] #typing-screen:has(> .practice-controls:focus-within) .live-stats .live-stat { visibility: hidden; }
 }

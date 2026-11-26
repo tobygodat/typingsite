@@ -1,6 +1,6 @@
 // Practice's readout cells and the run card's notes (TOB-470): the average a run is set against, the words
 // missed and typed, and the trace's range.
-import { test, expect, openApp, passageText, typeInto, chooseWords, chooseSetting } from './fixtures.js';
+import { test, expect, openApp, passageText, typeInto, chooseWords, chooseSetting, chooseNavigation } from './fixtures.js';
 
 const number = (text) => Number(text.replace('−', '-').replaceAll(/[^\d.-]/g, ''));
 
@@ -90,3 +90,52 @@ test('with live metrics off, wpm and accuracy keep their cells and show no live 
   await expect(page.locator('#live-wpm')).toHaveText(/^\d+$/);
   await expect(page.locator('#live-accuracy')).toHaveText(/^\d+$/);
 });
+
+// The setup bar holds the passage still (TOB-470): whatever a mode puts in the bar, at any desktop width, under the
+// top bar or beside the side bar (a narrower column), no mode wraps it onto a second line, and the average and best
+// at its end never sit on a control.
+for (const [width, navigation] of [[800, 'top'], [1024, 'top'], [1024, 'side'], [1280, 'top']]) {
+  test(`at ${width}px with the ${navigation} bar the passage keeps its place as the mode changes @compat`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openApp(page);
+    await chooseWords(page, 10);
+    await run(page);
+    await page.locator('#run-again').click();
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+    await expect(page.locator('#live-standing .cell-figure')).not.toHaveText('—');
+
+    if (navigation === 'side') await chooseNavigation(page, 'side');
+
+    const place = () => page.evaluate(() => {
+      const box = (node) => node.getBoundingClientRect();
+      const standing = box(document.querySelector('#live-standing'));
+      const controls = [...document.querySelectorAll('.practice-rail :is(button, summary, label, .quote-filter-trigger, .book-page)')];
+      const over = (rect) => rect.width && rect.height && rect.right > standing.left && rect.left < standing.right && rect.bottom > standing.top && rect.top < standing.bottom;
+
+      return {
+        passage: Math.round(box(document.querySelector('#typing-wrap')).top),
+        rail: Math.round(box(document.querySelector('.practice-rail')).height),
+        overlaps: controls.filter((node) => over(box(node))).length,
+      };
+    });
+
+    const start = await place();
+    const seen = [];
+
+    for (const mode of ['time', 'words', 'quote', 'code', 'standard', 'book', 'time']) {
+      if (['code', 'standard', 'book'].includes(mode)) await page.locator('#mode-more-label').click();
+      await page.locator(`#mode-${mode}`).click();
+      await expect(page.locator(`#mode-${mode}`)).toHaveAttribute('aria-pressed', 'true');
+      await page.mouse.move(0, 799);
+      await expect.poll(async () => (await place()).passage, `${mode}: the passage stays put`).toBe(start.passage);
+      seen.push({ mode, ...(await place()) });
+    }
+
+
+    for (const { mode, passage, rail, overlaps } of seen) {
+      expect(Math.abs(passage - start.passage), `${mode}: the passage stays put`).toBeLessThanOrEqual(1);
+      expect(rail, `${mode}: the bar is one line`).toBeLessThanOrEqual(start.rail);
+      expect(overlaps, `${mode}: the average and best sit clear of the controls`).toBe(0);
+    }
+  });
+}
