@@ -95,8 +95,6 @@ function ciReports() {
   return { heading: `ci.yml runs finished since ${since}: ${runs.length}, with ${reports.length} e2e reports`, reports };
 }
 
-const { heading, reports } = ci ? ciReports() : await runTargets();
-
 // Failures the machine caused, not the test: Chromium aborts loads in flight when a network interface changes
 // (a container restarting), and a crashed page or a killed worker ends a test from outside.
 const machineFault = (text) => ['ERR_NETWORK_CHANGED', 'Target crashed', 'Page crashed', 'signal=SIGKILL'].find((sign) => text.includes(sign));
@@ -118,8 +116,10 @@ function count(row, result) {
 function walk(suite, path = []) {
   for (const spec of suite.specs ?? []) {
     for (const entry of spec.tests) {
-      const key = `${spec.file}:${spec.line} [${entry.projectName}] ${[...path, spec.title].join(' › ')}`;
-      const row = tally.get(key) ?? { runs: 0, failed: 0, retried: 0, machine: 0, errors: new Map() };
+      const titles = [...path, spec.title];
+      const key = JSON.stringify([spec.file, entry.projectName, ...titles]);
+      const label = `${spec.file}:${spec.line} [${entry.projectName}] ${titles.join(' › ')}`;
+      const row = tally.get(key) ?? { label, runs: 0, failed: 0, retried: 0, machine: 0, errors: new Map() };
 
       for (const result of entry.results) count(row, result);
       row.retried += entry.status === 'flaky' ? 1 : 0;
@@ -130,35 +130,48 @@ function walk(suite, path = []) {
   for (const child of suite.suites ?? []) walk(child, [...path, child.title]);
 }
 
-for (const { shard, path } of reports) {
-  const report = JSON.parse(readFileSync(path, 'utf8'));
+let heading;
+try {
+  const result = ci ? ciReports() : await runTargets();
+  heading = result.heading;
 
-  for (const suite of report.suites) walk(suite);
+  for (const { shard, path } of result.reports) {
+    const report = JSON.parse(readFileSync(path, 'utf8'));
 
-  if (shard) shards.set(shard, [...(shards.get(shard) ?? []), report.stats.duration]);
+    for (const suite of report.suites) walk(suite);
+
+    if (shard) shards.set(shard, [...(shards.get(shard) ?? []), report.stats.duration]);
+  }
+} finally {
+  if (ci || !trace.length) rmSync(scratch, { recursive: true, force: true });
 }
 
-if (!tally.size) {
-  console.error(ci ? `no e2e report in the last ${days} days` : `no test matched ${targets.join(' ')}`);
+if (!ci && !tally.size) {
+  console.error(`no test matched ${targets.join(' ')}`);
   process.exit(1);
 }
 
 console.log(heading);
 
 // From CI, tests that passed on retry come first: a test that failed every attempt is more often a red PR than a flake.
-const failing = [...tally].filter(([, row]) => !ci || row.failed > 0).sort(([, a], [, b]) => (ci ? b.retried - a.retried || b.failed - a.failed : 0));
+const failing = [...tally.values()].filter((row) => !ci || row.failed > 0).sort((a, b) => (ci ? b.retried - a.retried || b.failed - a.failed : 0));
 
-if (ci) console.log(`\n${tally.size} tests, ${failing.length} failed an attempt, ${failing.filter(([, row]) => row.retried).length} passed on retry`);
+if (ci) console.log(`\n${tally.size} tests, ${failing.length} failed an attempt, ${failing.filter((row) => row.retried).length} passed on retry`);
 
-for (const [key, row] of failing) {
+for (const row of failing) {
   const notes = [row.machine && `${row.machine} by the machine`, row.retried && `${row.retried} passed on retry`].filter(Boolean);
-  console.log(`${row.failed}/${row.runs} failed${notes.length ? ` (${notes.join(', ')})` : ''}  ${key}`);
+  console.log(`${row.failed}/${row.runs} failed${notes.length ? ` (${notes.join(', ')})` : ''}  ${row.label}`);
 
   for (const [message, times] of row.errors) console.log(`    ${times}x ${message}`);
 }
 
 if (shards.size) {
-  const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  const median = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const middle = Math.floor(sorted.length / 2);
+
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  };
   const seconds = (ms) => `${(ms / 1000).toFixed(0)}s`;
   console.log('\nshard wall time, slowest median first: median, slowest, reports');
 
@@ -168,4 +181,3 @@ if (shards.size) {
 }
 
 if (trace.length && !ci) console.log(`traces in ${join(scratch, 'results')}`);
-else rmSync(scratch, { recursive: true, force: true });

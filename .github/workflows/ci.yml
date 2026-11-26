@@ -150,11 +150,6 @@ jobs:
       - if: failure() && steps.scope.outputs.run == 'true'
         run: docker ps -a --format '{{.Names}}' | grep '^supabase_' | xargs -I{} sh -c 'echo "::group::{}"; docker logs --tail 200 {} 2>&1; echo "::endgroup::"'
 
-  # ADR 0019's let-go validation (scripts/evaluate-let-go.mjs --check): the constants it chooses must be the ones
-  # the learner ships, each false let-go within its validation ceiling, and H's false return no worse than ADR 0019's
-  # record, which already breaches its ceiling. A PR runs it only when it changes the learner, Train's path, scoring,
-  # the evaluation scripts, ADR 0019's record or this workflow; master and manual runs always do. It isn't one of the
-  # master ruleset's required checks.
   learner-eval:
     name: Learner eval
     runs-on: ubuntu-latest
@@ -167,31 +162,39 @@ jobs:
         with:
           # A PR's merge commit and both its parents, so the scope can diff it against the base.
           fetch-depth: 2
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
       - id: scope
         env:
           EVENT: ${{ github.event_name }}
         run: |
+          run=true
           if [ "$EVENT" != pull_request ]; then
             echo "A $EVENT run checks the learner."
-            echo "run=true" >> "$GITHUB_OUTPUT"
           elif ! changed=$(git diff --name-only --no-renames HEAD^1 HEAD); then
             echo "Can't list the PR's changes, so this run checks the learner."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          elif grep -qE '^(src/(learner|train-path|typing|insights)\.ts|scripts/evaluate-[^/]*\.mjs|docs/adr/0019-evaluation\.json|\.github/workflows/ci\.yml)$' <<< "$changed"; then
-            echo "The PR changes the learner, scoring, the evaluation or this workflow."
-            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif grep -qE '^(scripts/evaluate-[^/]*\.mjs|docs/adr/0019-evaluation\.json|\.github/workflows/ci\.yml|package\.json|bun\.lock|tsconfig\.json)$' <<< "$changed"; then
+            echo "The PR changes the evaluation or its configuration."
           else
-            echo "The PR changes nothing the learner evaluation reads, so there is nothing to check."
-            echo "run=false" >> "$GITHUB_OUTPUT"
+            scratch=$(mktemp -d)
+            trap 'rm -rf "$scratch"' EXIT
+            if ! bun build scripts/evaluate-let-go.mjs --target=node --packages=external \
+              --outdir="$scratch/bundle" --metafile="$scratch/inputs.json" > /dev/null ||
+              ! bun -e 'console.log(Object.keys(require(process.argv[1]).inputs).join("\n"))' "$scratch/inputs.json" > "$scratch/paths"; then
+              echo "Can't list the evaluation inputs, so this run checks the learner."
+            elif grep -Fxq -f "$scratch/paths" <<< "$changed"; then
+              echo "The PR changes a module in the learner evaluation."
+            else
+              echo "The PR changes nothing the learner evaluation reads."
+              run=false
+            fi
           fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
       - if: steps.scope.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - if: steps.scope.outputs.run == 'true'
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
       - if: steps.scope.outputs.run == 'true'
         run: bun install --frozen-lockfile
       - if: steps.scope.outputs.run == 'true'

@@ -291,7 +291,7 @@ test('over a simulated season, a target the drill left weak is never let go, and
 
 test("CI's let-go gate enforces every validation ceiling and checks the shipped constants", () => {
   const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
-  const failed = (validation) => check0019(validation, recorded).filter((row) => !row.ok).map((row) => row.label);
+  const failed = (validation) => check0019(validation).filter((row) => !row.ok).map((row) => row.label);
   assert.deepEqual(failed(recorded), ['H false return (errors)', 'H false return (slow)']);
 
   const withinCeilings = structuredClone(recorded);
@@ -313,7 +313,7 @@ test("CI's let-go gate fails when there are no observations for a measure", () =
   empty.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = null;
   empty.slowShare.rows.find((row) => row.value === LET_GO.slowShare).falseLetGo = null;
   empty.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: null, slow: null };
-  const failures = check0019(empty, recorded).filter((row) => !row.ok);
+  const failures = check0019(empty).filter((row) => !row.ok);
   assert.deepEqual(failures.map((row) => row.label), ['R false let-go', 'q0 false let-go', 'H false return (errors)', 'H false return (slow)']);
   assert.ok(failures.every((row) => row.detail.includes('no observations')));
 });
