@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { BASE_TOKENS, MAX_CUSTOM_THEMES, THEME_TOKENS, contrastIssues, normalizeCustomThemes, readCustomThemes, themeMode } from '../src/custom-themes.js';
+import { BASE_TOKENS, MAX_CUSTOM_THEMES, THEME_TOKENS, UNTYPED_SHARE, contrast, contrastIssues, mix, normalizeCustomThemes, readCustomThemes, themeMode } from '../src/custom-themes.js';
 import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const css = readFileSync(new URL('../src/styles.css', import.meta.url), 'utf8');
@@ -84,10 +84,57 @@ test('dark or light follows the background, and readability notes name the token
   assert.equal(themeMode({ ground: '#f4f1eb' }), 'light');
   assert.deepEqual(contrastIssues(DARK), {});
   const issues = contrastIssues({ ...DARK, text: '#333333', muted: '#444444', accent: '#1a1a1a', danger: '#552222' });
-  assert.deepEqual(Object.keys(issues).sort(), ['accent', 'danger', 'muted', 'text']);
+  assert.deepEqual(Object.keys(issues).sort(), ['accent', 'danger', 'muted', 'text', 'untyped']);
   assert.ok(issues.text < 4.5 && issues.accent < 3);
-  // The caret needs 3:1, not 4.5:1.
+  // The accent is small text too (the selected setup choices and the running clock), so 3:1 is not enough.
+  assert.deepEqual(contrastIssues({ ...DARK, accent: '#4d754a' }), { accent: 3.6 });
   assert.deepEqual(contrastIssues({ ...DARK, accent: '#5b8a58' }), {});
+});
+
+test('untyped passage letters, derived from muted or set by hand, hold 2.2:1, and the accent 4.5:1', () => {
+  const black = { ground: '#000000', text: '#ffffff', muted: '#777777', accent: '#6d6d6d', danger: '#ff6b6b' };
+  // Muted at 4.69:1 and an accent at 4.06:1: only the accent is low, and the derived untyped clears its floor.
+  assert.deepEqual(contrastIssues(black), { accent: 4 });
+  assert.deepEqual(contrastIssues({ ...black, accent: '#7b7b7b' }), {});
+  assert.ok(contrast(mix(black.muted, black.ground, UNTYPED_SHARE), black.ground) >= 2.2);
+  assert.ok(contrast(mix('#767676', '#ffffff', UNTYPED_SHARE), '#ffffff') >= 2.2);
+  // An untyped colour set by hand is checked as it is.
+  assert.deepEqual(contrastIssues({ ...black, accent: '#7b7b7b', untyped: '#333333' }), { untyped: 1.6 });
+
+  // Any muted that holds 4.5:1 derives untyped letters at 2.2:1, on dark, mid and light grounds and in any hue.
+  // The hues are drawn mostly from near the ends of each channel, where mixing in sRGB loses the most contrast.
+  let seed = 7;
+
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+
+    return seed / 2147483648;
+  };
+
+  const channel = () => {
+    const pick = next();
+
+    if (pick < 0.4) return Math.floor(next() * 40);
+
+    return pick < 0.8 ? 255 - Math.floor(next() * 40) : Math.floor(next() * 256);
+  };
+
+  const hex = () => `#${[channel(), channel(), channel()].map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+  const grey = (value) => `#${value.toString(16).padStart(2, '0').repeat(3)}`;
+  const pairs = [];
+
+  for (let ground = 0; ground < 256; ground += 3) for (let muted = 0; muted < 256; muted += 3) pairs.push([grey(ground), grey(muted)]);
+
+  for (let i = 0; i < 40000; i += 1) pairs.push([hex(), hex()]);
+  const readable = pairs.filter(([ground, muted]) => contrast(muted, ground) >= 4.5);
+  assert.ok(readable.length > 5000);
+
+  for (const [ground, muted] of readable) {
+    assert.equal(contrastIssues({ ground, text: muted, muted, accent: muted, danger: muted, 'danger-soft': ground }).untyped, undefined, `${muted} on ${ground}`);
+  }
+
+  // The stylesheet derives it at the same share.
+  assert.match(block(':root[data-theme][data-custom]'), new RegExp(`--untyped: color-mix\\(in srgb, var\\(--muted\\) ${UNTYPED_SHARE * 100}%, var\\(--ground\\)\\);`));
 });
 
 // Runs index.html's inline script against a stored session and profile, as a page load would.

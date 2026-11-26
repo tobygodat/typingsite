@@ -66,7 +66,7 @@ try {
     root.dataset.custom = '';
   }
 
-  if (preferences?.navigation === 'top') root.dataset.navigation = 'top';
+  if (preferences?.navigation === 'side') root.dataset.navigation = 'side';
 
   if (typeof user === 'string' && storedSideBarHidden(user)) root.dataset.sideBar = 'hidden';
 

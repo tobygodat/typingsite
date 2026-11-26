@@ -186,23 +186,24 @@ test('a setting a copy from an older build lacks comes from the copy that has it
     { theme: 'dark', fontSize: '36', numbers: false, paceCaret: 'off', paceWpm: 80 });
 });
 
-test('where navigation sits merges like any setting, and an older build without it reads the side bar', () => {
-  const laptop = profile({ preferences: { theme: 'system', navigation: 'top' }, preferencesAt: { navigation: minute(5) }, updatedAt: minute(5) });
+test('where navigation sits merges like any setting, and an older build without it reads the top bar', () => {
+  const laptop = profile({ preferences: { theme: 'system', navigation: 'side' }, preferencesAt: { navigation: minute(5) }, updatedAt: minute(5) });
   const phone = profile({ preferences: { theme: 'dark' }, preferencesAt: { theme: minute(6) }, updatedAt: minute(9) });
 
   for (const merged of [mergeSynced(laptop, phone), mergeSynced(phone, laptop)]) {
-    assert.equal(merged.preferences.navigation, 'top');
+    assert.equal(merged.preferences.navigation, 'side');
     assert.equal(merged.preferences.theme, 'dark');
   }
 
-  const back = profile({ preferences: { navigation: 'side' }, preferencesAt: { navigation: minute(7) }, updatedAt: minute(7) });
-  assert.equal(mergeSynced(laptop, back).preferences.navigation, 'side');
-  assert.equal(mergeSynced(back, laptop).preferences.navigation, 'side');
+  const back = profile({ preferences: { navigation: 'top' }, preferencesAt: { navigation: minute(7) }, updatedAt: minute(7) });
+  assert.equal(mergeSynced(laptop, back).preferences.navigation, 'top');
+  assert.equal(mergeSynced(back, laptop).preferences.navigation, 'top');
 
   assert.equal(Object.hasOwn(normalizeProfile(phone).preferences, 'navigation'), false);
-  assert.equal(preferencesInUse(normalizeProfile(phone).preferences).navigation, 'side');
+  assert.equal(preferencesInUse(normalizeProfile(phone).preferences).navigation, 'top');
+  assert.equal(preferencesInUse(normalizeProfile(laptop).preferences).navigation, 'side');
 
-  for (const value of ['bottom', true, null, 'TOP']) assert.equal(preferencesInUse({ navigation: value }).navigation, 'side');
+  for (const value of ['bottom', true, null, 'SIDE']) assert.equal(preferencesInUse({ navigation: value }).navigation, 'top');
 });
 
 test('two devices that each tried the same daily before merging keep one first attempt', () => {

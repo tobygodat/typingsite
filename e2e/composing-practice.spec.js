@@ -898,9 +898,17 @@ test.describe('without caret-animation', () => {
     await openCompose(page);
     const input = page.locator('#compose-input');
     const at = () => input.evaluate((node) => node.selectionStart);
-    // Thirteen words run onto a second line; a long word after them goes whole to the third.
-    const words = 'word '.repeat(13);
-    await typePaced(page, [...words, 'm'], 60);
+    // Words until one runs onto a second line, whatever the passage size and the system's font, and two more there;
+    // then a long word after them goes whole to the third.
+    let words = '';
+
+    do {
+      words += 'word ';
+      await typePaced(page, [...'word '], 60);
+    } while (words.length < 10 || !(await wrapsBefore(page, words.length - 5)));
+
+    words += 'word '.repeat(2);
+    await typePaced(page, [...'word '.repeat(2), 'm'], 60);
 
     while (!(await wrapsBefore(page, words.length))) await typePaced(page, ['m'], 60);
     const third = words.length;

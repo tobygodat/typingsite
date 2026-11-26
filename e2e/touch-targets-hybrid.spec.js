@@ -5,7 +5,7 @@
 // 2 hover): a fine primary pointer with hover, and a coarse one also available. Firefox takes the same
 // from its pointer preferences (bit flags: 1 coarse, 2 fine, 4 hover). WebKit has no such setting.
 // That needs its own browser, so these tests live in their own file.
-import { test, expect, openProgressDetail, openProgressView, openApp, openView, chooseWords, completePassage } from './fixtures.js';
+import { test, expect, openProgressDetail, openProgressView, openApp, openView, chooseNavigation, chooseWords, completePassage } from './fixtures.js';
 
 const args = ['--blink-settings=primaryPointerType=4,availablePointerTypes=6,primaryHoverType=2,availableHoverTypes=3'];
 
@@ -69,7 +69,8 @@ test('a fine primary pointer with a touchscreen beside it still gets 44px target
 
 test('with a finger in reach, every row of the side bar and its toggle is a 44px target', async ({ page }) => {
   await openApp(page);
-  await expect(page.locator('#side-bar')).toBeVisible();
+  await chooseNavigation(page, 'side');
+  await expect(page.locator('#side-bar')).toHaveCSS('position', 'fixed');
 
   for (const control of await page.locator('#side-bar :is(.brand, .side-toggle, .nav-item, .dock-command, .corner-trigger)').filter({ visible: true }).all()) {
     const [, height] = await hitArea(control);

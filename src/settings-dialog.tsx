@@ -100,8 +100,8 @@ export function SettingsDialog({ controller, themeEditor: providedTheme, wallpap
           <div className="preference-row">
             <div className="preference-copy"><strong id="navigation-select-label">navigation</strong></div>
             <fieldset className="setting-options" id="navigation-select" aria-labelledby="navigation-select-label" disabled={view.disabled['navigation-select'] ?? false} onClick={(event) => choose('navigation-select', event)}>
-              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'side', true)} /><span>side bar</span></label>
-              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'top')} /><span>top bar</span></label>
+              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'top', true)} /><span>top bar</span></label>
+              <label className="setting-option"><input type="radio" name="navigation-select" {...radio('navigation-select', 'side')} /><span>side bar</span></label>
             </fieldset>
           </div>
           <div className="preference-row">

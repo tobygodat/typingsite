@@ -12,7 +12,7 @@ type RGB = [number, number, number];
 
 interface Source extends WallpaperPixels { cell?: number }
 
-const INKS: Array<[string, string, number]> = [['--text', '', 4.5], ['--muted', '', 4.5], ['--danger', '--danger-soft', 4.5], ['--accent', '', 3]];
+const INKS: Array<[string, string, number]> = [['--text', '', 4.5], ['--muted', '', 4.5], ['--danger', '--danger-soft', 4.5], ['--accent', '', 4.5]];
 const SAMPLES = 8192;
 const WASH_SCALE = 8;
 const over = ([r, g, b, a]: RGBA, under: readonly number[]): RGB => [r * a + (under[0] ?? 0) * (1 - a), g * a + (under[1] ?? 0) * (1 - a), b * a + (under[2] ?? 0) * (1 - a)];
@@ -96,9 +96,9 @@ export function createWallpaperLayer({ layer, surfaces, reading }: WallpaperLaye
   }
 
   // Text the picture runs behind gets an outline in the ground colour (data-halo) where what the layer paints there
-  // would take a letter, a mistyped letter on its tint or the caret below the contrast floor: the style, tint,
-  // blur, opacity, height and mid-run dim all count, and the worst pixel under each region decides it. Checked
-  // when one of those, the theme or the layout changes, never per keystroke.
+  // would take a letter, a mistyped letter on its tint or the accent (the running clock, the caret) below the
+  // text floor: the style, tint, blur, opacity, height and mid-run dim all count, and the worst pixel under each
+  // region decides it. Checked when one of those, the theme or the layout changes, never per keystroke.
   function halo() {
     const pixels = source;
 

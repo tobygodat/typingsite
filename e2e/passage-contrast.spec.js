@@ -1,5 +1,6 @@
-// The passage itself stays readable: untyped, typed and mistyped letters are drawn, uncovered, and keep
-// 4.5:1 against what is painted behind them, and the caret 3:1, in every theme, on desktop and phone.
+// The passage itself stays readable: untyped, typed and mistyped letters are drawn and uncovered. Typed and
+// mistyped letters keep 4.5:1 against what is painted behind them; untyped letters use the softer --untyped tone
+// (DESIGN.md), at least 2.2:1 and well below typed text; the caret keeps 3:1. In every theme, on desktop and phone.
 // tests/contrast.test.js checks the token pairs; e2e/light-contrast.spec.js the ghost caret; this one the
 // passage as painted.
 import { test, expect, openApp, chooseWords, passageText, chooseSetting, closeSettings } from './fixtures.js';
@@ -137,8 +138,10 @@ for (const theme of THEMES) {
         expect(letter.size, `${state} letter has a box`).toBeGreaterThan(0);
         expect(letter.hit, `${state} letter is on screen`).toBe(true);
         expect(letter.covers, `nothing covers the ${state} letter`).toEqual([]);
-        expect(contrast(letter), `${state} letter "${letter.text}" contrast`).toBeGreaterThanOrEqual(4.5);
+        expect(contrast(letter), `${state} letter "${letter.text}" contrast`).toBeGreaterThanOrEqual(state === 'untyped' ? 2.2 : 4.5);
       }
+
+      expect(contrast(running.typed) / contrast(running.untyped), 'typed letters stand clearly above untyped ones').toBeGreaterThanOrEqual(2.5);
 
       // The caret crosses the bare passage and mistyped letters' tint.
       for (const letter of [running.untyped, running.wrong]) {

@@ -6,7 +6,7 @@
 // with no hole in it, and over the brightest image in every style, at full strength and the most blur, the
 // passage and the coral mistakes keep their contrast in every theme, idle and mid-run: outlined in the ground
 // colour where the picture would take them below the floor, and not over a quiet image. The caret is never ringed.
-import { test, expect, openApp, chooseWords, passageText, openSettings, closeSettings, chooseSetting, openView } from './fixtures.js';
+import { test, expect, openApp, chooseWords, completePassage, passageText, openSettings, closeSettings, chooseSetting, openView } from './fixtures.js';
 
 const layer = (page) => page.locator('#wallpaper');
 
@@ -251,9 +251,10 @@ for (const [label, viewport] of VIEWPORTS) {
           return rect.height ? [rect] : [];
         });
 
-        const bar = document.querySelector('.dock-zone').getBoundingClientRect();
+        const zone = document.querySelector('.dock-zone');
+        const bar = zone.getBoundingClientRect();
 
-        return { left: bar.height ? bar.right : 0, top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
+        return { left: getComputedStyle(zone).position === 'fixed' ? bar.right : 0, top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
       });
 
       const clip = { x: Math.round(span.left) + 2, y: Math.round(span.top), width: 4, height: Math.round(span.bottom - span.top) };
@@ -292,6 +293,101 @@ for (const [label, viewport] of VIEWPORTS) {
     });
   }
 }
+
+// The top bar is no slab: at full height the picture runs on behind the wordmark, the screens and the corner, the
+// bar outlines its letters where the picture is bright, and it scrolls away with the page, so no page scrolls under
+// its letters.
+test('desktop: the picture runs on behind the top bar, which outlines its letters over a bright picture and scrolls with the page', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await pickImage(page, await solidImage(page, 255));
+  await chooseSetting(page, 'wallpaper-style', 'regular');
+  await page.locator('#wallpaper-reach').fill('100');
+  await closeSettings(page);
+  await expect.poll(() => opacity(page)).toBe(1);
+
+  const bar = page.locator('#side-bar');
+  await expect(bar).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  const box = await bar.boundingBox();
+  const clip = { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) };
+  const shown = await page.screenshot({ clip });
+  await layer(page).evaluate((node) => { node.style.visibility = 'hidden'; });
+  const bare = await page.screenshot({ clip });
+  await layer(page).evaluate((node) => { node.style.visibility = ''; });
+
+  // How much of the bar shows the picture: everything but its letters and icons.
+  const share = await page.evaluate(async ([a, b]) => {
+    const pixels = async (png) => {
+      const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const context = Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height }).getContext('2d');
+      context.drawImage(bitmap, 0, 0);
+
+      return context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+    };
+
+    const [lit, dark] = await Promise.all([pixels(a), pixels(b)]);
+    let changed = 0;
+
+    for (let i = 0; i < lit.length; i += 4) if (Math.abs(lit[i] - dark[i]) > 100) changed += 1;
+
+    return changed / (lit.length / 4);
+  }, [shown.toString('base64'), bare.toString('base64')]);
+
+  expect(share, 'the picture shows behind the bar').toBeGreaterThan(0.8);
+  await expect(bar).toHaveAttribute('data-halo', '');
+
+  // Top-bar icons keep their contrast over a bright picture through the same ground outline, while open popovers
+  // sit on their own panel and stay unoutlined.
+  for (const selector of ['#settings-trigger', '#account-trigger']) {
+    await expect(page.locator(`${selector} svg`)).not.toHaveCSS('filter', 'none');
+    const iconBox = await page.locator(selector).boundingBox();
+    const iconPng = await page.screenshot({ clip: { x: Math.round(iconBox.x), y: Math.round(iconBox.y), width: Math.round(iconBox.width), height: Math.round(iconBox.height) } });
+
+    const [corner, darkest] = await page.evaluate(async (png) => {
+      const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const context = Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height }).getContext('2d');
+      context.drawImage(bitmap, 0, 0);
+      const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      const bg = [data[0], data[1], data[2]];
+      let min = 999;
+      let ink = bg;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const sum = data[i] + data[i + 1] + data[i + 2];
+
+        if (sum < min) {
+          min = sum;
+          ink = [data[i], data[i + 1], data[i + 2]];
+        }
+      }
+
+      return [bg, ink];
+    }, iconPng.toString('base64'));
+
+    expect(ratio(darkest, corner), `${selector} icon keeps contrast over a bright picture`).toBeGreaterThanOrEqual(3);
+  }
+
+  await page.locator('#account-trigger').click();
+  await expect(page.locator('#account .corner-popover')).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await page.locator('#account-trigger').click();
+
+  // Progress, taller than the window once there is a run, scrolls the bar away with it.
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await openView(page, 'progress');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'progress');
+  const top = (await bar.boundingBox()).y;
+
+  const scrolled = await page.evaluate(() => {
+    window.scrollTo({ top: 200, behavior: 'instant' });
+
+    return window.scrollY;
+  });
+
+  expect(scrolled).toBeGreaterThan(100);
+  expect((await bar.boundingBox()).y).toBeCloseTo(top - scrolled, 0);
+});
 
 const DARK_THEMES = new Set(['dark', 'slate', 'terminal', 'midnight', 'nord']);
 const THEMES = ['dark', 'light', 'slate', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];

@@ -10,7 +10,7 @@ The tokens at the top of `src/styles.css` are the source of truth for colours, t
 
 These protect the people who use the app. Every change holds all of them.
 
-- **Contrast.** In every built-in theme, text holds 4.5:1 and carets, focus rings and input outlines hold 3:1, which is WCAG AA (`tests/contrast.test.js`).
+- **Contrast.** In every built-in theme, text holds 4.5:1 and carets, focus rings and input outlines hold 3:1, which is WCAG AA (`tests/contrast.test.js`). One tone is softer on purpose: passage letters not yet typed use `--untyped`, which holds at least 2.2:1 on the ground and sits well below `--text`, so typed text stands out. Typed and mistyped letters, the caret, and every label, readout and control keep the 4.5:1 floor.
 - **Reduced motion.** Everything animated has a reduced-motion path. CSS durations multiply by `--motion-scale`, which is 0 under `prefers-reduced-motion`, and motion driven from JavaScript checks the same media query.
 - **Touch targets.** A control is at least 44px on a coarse pointer. `e2e/touch-targets.spec.js` measures every visible control and lists the two exceptions.
 - **The letter being typed.** During a run, the letter someone is typing stays in view, whatever else moves (`e2e/tape-mode.spec.js`).

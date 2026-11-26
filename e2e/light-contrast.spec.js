@@ -1,5 +1,6 @@
-// Rendered contrast in both themes: a mistyped letter on its tint, the caret and ghost caret on ground
-// and on that tint, the selected palette row's green hint, and input placeholders.
+// Rendered contrast in both themes: a mistyped letter on its tint, typed letters, the softer untyped letters
+// ahead of the caret, the caret and ghost caret on ground and on that tint, the selected palette row's green
+// hint, and input placeholders.
 // tests/contrast.test.js checks the token pairs; this checks that the page really paints them that way.
 import { test, expect, openApp, chooseWords, passageText } from './fixtures.js';
 
@@ -97,8 +98,13 @@ for (const theme of ['light', 'dark']) {
         const wrong = document.querySelector('#text-display .word > .char.wrong');
         const ghost = document.querySelector('#text-display .ghost-caret');
 
+        const untyped = [...document.querySelectorAll('#text-display .word > .char')].findLast((char) => char.classList.length === 1);
+
         return {
           ground: css(document.body).backgroundColor,
+          typed: css(document.querySelector('#text-display .char.correct')).color,
+          untyped: css(untyped).color,
+          timer: css(document.querySelector('#timer')).color,
           wrongColor: css(wrong).color,
           wrongTint: css(wrong).backgroundColor,
           caret: css(document.querySelector('#text-display .caret-bar')).backgroundColor,
@@ -109,6 +115,14 @@ for (const theme of ['light', 'dark']) {
 
       const ground = stack([[paint.ground]]);
       expect(ratio(rgba(paint.wrongColor), stack([[paint.ground], [paint.wrongTint]]))).toBeGreaterThanOrEqual(4.5);
+      // Typed letters and the live clock hold 4.5:1; untyped letters are the softer --untyped tone (DESIGN.md):
+      // at least 2.2:1, and well below typed text.
+      expect(ratio(rgba(paint.typed), ground)).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(rgba(paint.timer), ground)).toBeGreaterThanOrEqual(4.5);
+      const untyped = ratio(rgba(paint.untyped), ground);
+      expect(untyped).toBeGreaterThanOrEqual(2.2);
+      expect(ratio(rgba(paint.typed), ground) / untyped).toBeGreaterThanOrEqual(3);
+      expect(paint.untyped).not.toBe(paint.typed);
       expect(ratio(rgba(paint.caret), ground)).toBeGreaterThanOrEqual(3);
       expect(paint.ghostOpacity).toBeGreaterThan(0);
       expect(ratio(stack([[paint.ground], [paint.ghost, paint.ghostOpacity]]), ground)).toBeGreaterThanOrEqual(3);

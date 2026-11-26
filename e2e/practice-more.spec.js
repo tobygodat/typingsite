@@ -3,10 +3,11 @@ import { test, expect, openApp, passageText } from './fixtures.js';
 
 const MORE = ['code', 'standard', 'book', 'compose', 'custom', 'drill', 'learn to type'];
 
-test('modes, lengths and punctuation sit in one strip, side by side; "more" names the mode chosen inside it', async ({ page }) => {
+test('modes, lengths and punctuation sit in one borderless line, side by side; "more" names the mode chosen inside it', async ({ page }) => {
   await openApp(page);
   const rail = page.locator('.practice-rail');
-  await expect(rail).toHaveCSS('border-top-style', 'solid');
+  await expect(rail).toHaveCSS('border-top-style', 'none');
+  await expect(rail).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   let previous;
 
   for (const group of ['.mode-options', '#duration-options', '#punctuation-switch']) {
@@ -59,7 +60,7 @@ test('Escape closes "more" without restarting, and a click elsewhere closes it t
 
   await page.locator('#mode-more-label').click();
   await expect(page.locator('.mode-more-menu')).toBeVisible();
-  await page.locator('#text-display').click();
+  await page.locator('#typing-wrap').click();
   await expect(page.locator('#mode-more')).not.toHaveAttribute('open');
 });
 

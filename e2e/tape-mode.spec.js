@@ -282,6 +282,10 @@ test('a ghost race keeps three lines with the tape on, so the friend’s caret s
     trace: { v: 1, k: passage, t: [...passage].map((_, i) => (i ? 40 : 0)), e: (passage.length - 1) * 40 } });
   await openApp(page);
   await signInWithEmail(page, 'lin@stilltype.test');
+  // The largest text size, so the sixteen words wrap onto a second line where the ghost can run ahead.
+  await openSettings(page);
+  await chooseSetting(page, 'font-size', '36');
+  await page.keyboard.press('Escape');
   await setTape(page, true);
   const line = await lineHeight(page);
   expect(await wrapHeight(page)).toBe(Math.round(line));
@@ -493,6 +497,10 @@ test.describe('reduced motion', () => {
 
 test('switching layouts mid-run keeps the run going and the caret in view', async ({ page }) => {
   await openApp(page);
+  // The largest text size, so 340 letters run past the fourth line and the lines above trim.
+  await openSettings(page);
+  await chooseSetting(page, 'font-size', '36');
+  await page.keyboard.press('Escape');
   await chooseWords(page, 100);
   const text = await passageText(page);
   // By now the three-line passage has trimmed the lines far above it into a spacer.
