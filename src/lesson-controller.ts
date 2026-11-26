@@ -49,7 +49,7 @@ export function createLessonController(learning: LearningStore, sync: ProfileSyn
   let lessonIndex = 0;
   let lessonResult: LessonResult | null = null;
 
-  const handoffCopy = () => `That’s the whole keyboard. From here the training loop takes over: take a practice run, and Train suggests a ${learning.preferences.drillSeconds}-second drill from your own mistakes once there’s enough evidence${learning.preferences.retest ? ', then retests you on fresh text' : ''}.`;
+  const handoffCopy = () => `That’s the whole keyboard. From here Train takes over: take a practice run, and Train suggests a ${learning.preferences.drillSeconds}-second drill from your own mistakes once there’s enough evidence${learning.preferences.retest ? ', then retests you on fresh text' : ''}.`;
 
   function lessonCopy(index: number, current: (NonNullable<Parameters<typeof makeupCopy>[1]> & { lessonId?: string }) | null = null) {
     return `${indexed(LESSONS, index).focus} ${makeupCopy(index, current?.lessonId === indexed(LESSONS, index).id ? current : null)}`;

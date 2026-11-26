@@ -16,7 +16,7 @@ test.describe('pace caret', () => {
     await openSettings(page, 'practice');
     await expect(page.locator('#pace-select input:checked')).toHaveValue('off');
     await chooseSetting(page, 'pace-select', 'best');
-    await expect(page.locator('#pace-note')).toHaveText('no runs yet — 60 wpm');
+    await expect(page.locator('#pace-note')).toHaveText('no runs yet · 60 wpm');
     await chooseSetting(page, 'pace-select', 'custom');
     await openSettings(page, 'practice');
     await expect(page.locator('#pace-custom')).toBeVisible();
@@ -108,7 +108,7 @@ test.describe('pace caret', () => {
     await openView(page, 'Practice');
     expect(await passageText(page)).toBe(text);
     await expect(label).toHaveText('pace 60 wpm');
-    await expect(page.locator('#pace-note')).toHaveText('no runs yet — 60 wpm');
+    await expect(page.locator('#pace-note')).toHaveText('no runs yet · 60 wpm');
     await page.locator('#undo-clear').click();
     await expect(label).toHaveText(last);
   });

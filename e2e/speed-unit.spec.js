@@ -311,7 +311,7 @@ test('a retest comparison and the drills and retests list read in cpm', async ({
 
   await openView(page, 'Progress');
   await openProgressDetail(page, 'runs');
-  await expect(page.locator('.history-measure span').nth(1)).toHaveText('Corrected cpm');
+  await expect(page.locator('.history-measure span').nth(1)).toHaveText('corrected cpm');
   await expect(page.locator('.history-timing')).toHaveText(`${sign}${delta * 5} cpm`);
   await page.locator('.history-summary').click();
   await expect(page.locator('.history-detail')).toContainText(/before\d+ cpm · \d+%/);

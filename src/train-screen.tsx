@@ -262,10 +262,12 @@ class TrainSteps extends Component<StepsProps, StepsState, StepsSnapshot | null>
     const drilled = steps.filter((step) => step.kind === 'behind' || step.kind === 'just');
     const open = this.state.open || chosen.kind === 'behind' || chosen.kind === 'just';
     const pressed = (step: Step) => step.key === chosen.key;
+    // The cost column only heads rows that carry a cost.
+    const costed = Boolean(figures?.current) || steps.some((step) => step.kind === 'ahead');
 
     return <div ref={this.root} className="train-layout">
       <section className="panel train-queue" aria-labelledby="train-queue-title">
-        <header className="panel-head"><h2 id="train-queue-title" className="panel-title">queue</h2><span className="panel-title" aria-hidden="true">cost</span></header>
+        <header className="panel-head"><h2 id="train-queue-title" className="panel-title">queue</h2>{costed && <span className="panel-title" aria-hidden="true">cost</span>}</header>
         <ol id="train-path" className="queue" aria-labelledby="train-queue-title">
           <li id="train-current" className={`queue-step is-current${current?.unit ? '' : ' is-general'}`} aria-current="step" data-key="current" data-unit={current?.unit ?? undefined}>
             <button className="q-row" type="button" aria-pressed={chosen.kind === 'current'} onClick={() => this.choose('current')}>

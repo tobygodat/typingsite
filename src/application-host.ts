@@ -627,7 +627,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       custom: ['custom text', 'Your text', 'Doesn’t count toward your best.'],
       retest: ['fresh-text retest', 'Measure the change', passage?.fresh === false ? 'You’ve seen every matching quote, so this can’t be a fresh comparison.' : 'Fresh text, same conditions.'],
       missed: ['missed words', training.words?.recurring ? 'Practice words you keep missing' : 'Practice missed and slowest words', 'Doesn’t count toward your best.'],
-      daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at midnight UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
+      daily: ['daily challenge', 'Today’s passage', `${passage?.day} · resets at 00:00 UTC · ${passage?.firstDailyAttempt ? 'first attempt' : 'repeat attempt'}${passage?.firstDailyAttempt && !passage?.fresh ? ' · previously displayed passage' : ''}`],
       lesson: ['lesson', `Lesson ${lessons.index + 1} · ${keysLabel(indexed(LESSONS, lessons.index).keys)}`, lessonCopy(lessons.index, passage)],
       challenge: ghostResult.race?.own ? ['ghost race', 'Race your best run', 'The ghost is your own recording. Not counted toward your best.']
         : ['ghost race', `Race ${ghostResult.race?.name}’s run`, 'Your first finish without a break is sent. Not counted toward your best.'],
@@ -1093,7 +1093,7 @@ export async function attachApplication({ practice, learning, palette, settings:
       note: copyParts([uncounted, uncounted && unsaved ? ' ' : '', unsaved]),
       words: wordHistory(completed, replay).map((item) => ({ ...item, wpm: rateShown(completed) ? item.wpm : null })),
       practiceWords: words, drillLabel: '',
-      againLabel: practice.sessionKind === 'daily' ? 'Try daily again' : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again',
+      againLabel: practice.sessionKind === 'daily' ? 'Type it again' : counted && completed.conditions?.mode === 'book' && completed.kind !== 'drill' ? 'Next page' : 'Run again',
       replay: Boolean(completed.events?.length) && comparableKind(completed.kind), graph: rateShown(completed),
     }));
     renderResultDrill(completed);

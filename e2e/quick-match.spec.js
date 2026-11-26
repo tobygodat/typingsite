@@ -107,7 +107,7 @@ test('a ranked account reads its rank on the rating line, and a win that crosses
     await expect(ends(page)).toHaveText(['Gust I', '5 to Gale III']);
     await expect(ends(page)).toHaveText(['Gale III', '95 to Gale II']);
     await expect(card(page, 'rank')).toHaveText('Gale III');
-    await expect(card(page, 'from')).toHaveText('promoted from Gust I');
+    await expect(card(page, 'from')).toHaveText('up from Gust I');
     await expect(card(page, 'rating')).toHaveText('1805');
     await expect(card(page, 'delta')).toHaveText('+10');
     // The dark card on a dark theme, its gain in green; the screen reader hears the sentence, not the card.
