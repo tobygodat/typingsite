@@ -33,13 +33,14 @@ test('modes, lengths and punctuation sit in one strip, side by side; "more" name
   await expect(page.locator('#mode-more-label')).toHaveText('standard');
   await expect(page.locator('#mode-more')).toHaveAttribute('data-active', '');
 
-  // The gliding pill rests under the renamed summary, as it would under any chosen mode.
+  // The ink window rests on the renamed summary, as it would on any chosen mode, and inks its name.
   const summary = await page.locator('#mode-more-label').boundingBox();
-  await expect.poll(async () => {
-    const pill = await rail.locator('.mode-options > .glide-pill').boundingBox();
+  await expect.poll(() => rail.locator('.mode-options > .glide-ink').evaluate((ink) => {
+    const box = ink.getBoundingClientRect();
+    const [right, left] = getComputedStyle(ink).clipPath.match(/inset\([-\d.]+px ([-\d.]+)px [-\d.]+px ([-\d.]+)px/).slice(1).map(Number);
 
-    return Math.abs(pill.x - summary.x) + Math.abs(pill.width - summary.width);
-  }).toBeLessThan(2);
+    return { left: box.left + left, width: box.width - left - right, label: ink.querySelector('.is-disclosure')?.textContent };
+  }).then(({ left, width, label }) => ({ off: Math.abs(left - summary.x) + Math.abs(width - summary.width) < 2, label }))).toEqual({ off: true, label: 'standard' });
 
   await page.locator('#mode-time').click();
   await expect(page.locator('#mode-more-label')).toHaveText('more');

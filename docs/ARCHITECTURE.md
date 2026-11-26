@@ -68,7 +68,8 @@ In `src/`:
 - `keybindings.ts`: shortcuts.
 - `settings.ts`: the settings dialog.
 - `custom-themes.ts`, `theme-editor.tsx`: custom themes (tokens, contrast, storage) and their editor.
-- `palette.tsx`: the command palette.
+- `palette.tsx`: the command palette, and a theme generated from its query, worn until saved or put back.
+- `rank-pill.tsx`: the member's own race rank in the corner, read from `quick-match-view.tsx`'s rating, and its card.
 - `monkeytype.ts`: Monkeytype import.
 - `compose.ts`, `compose-view.tsx`, `compose-caret.ts`: composing practice.
 - `profile.ts`: profile defaults and `normalizeProfile`.

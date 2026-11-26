@@ -112,6 +112,19 @@ export function contrastIssues(colors: ThemeColors) {
   return issues;
 }
 
+export function generatedColors(received: Record<string, string>): ThemeColors | null {
+  const colors: Record<string, string> = {};
+
+  for (const token of BASE_TOKENS) {
+    const hex = normalizeHex(received[token]);
+
+    if (!hex) return null;
+    colors[token] = hex;
+  }
+
+  return validColors(colors) ? colors : null;
+}
+
 export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? value.replaceAll(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');
 
 // A stored theme as this build uses it: hex colours for every base token and any derived ones

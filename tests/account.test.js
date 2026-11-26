@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AuthError, challengeFor, cleanRedirectUrl, completeRedirect, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
+  AuthError, challengeFor, cleanRedirectUrl, completeRedirect, deleteAccount, DELETE_ACCOUNT_PATH, DELETE_COPY, forgetAccount, freshSession, generateTheme, GENERATE_THEME_PATH, MAX_SUGGESTION, mergeProfiles, mergeSynced, parseAuthRedirect, profileKey, restoreUnsent,
   sameProfile, sameSignIn, SESSION_KEY, signedOutKey, signIn, signOut, signUp, suggestionRow, textStamp, unsentCopy,
 } from '../src/account.js';
 import { MAX_RUN_SUMMARIES, minutesByDay, retainHistory } from '../src/insights.js';
@@ -920,4 +920,33 @@ test('a redirect error shows fixed words, not the link’s', async () => {
       (error) => error instanceof AuthError && error.message === 'That sign-in link didn’t work. Try signing in again.',
     );
   });
+});
+
+test('a theme generation whose signal aborts stops its request and rejects as aborted, not as a service failure', async () => {
+  const later = Math.floor(Date.now() / 1000) + 3600;
+  const session = { access_token: 'a', refresh_token: 'r', expires_at: later, user: { id: 'u1' } };
+  const store = new Map([[SESSION_KEY, JSON.stringify(session)]]);
+  const originalStorage = globalThis.localStorage;
+  const originalFetch = globalThis.fetch;
+  const sent = [];
+  globalThis.localStorage = { getItem: (key) => store.get(key) ?? null, setItem: (key, value) => store.set(key, value), removeItem: (key) => store.delete(key) };
+  globalThis.fetch = (url, init) => {
+    sent.push({ url: String(url), signal: init.signal });
+
+    return new Promise((resolve, reject) => { init.signal.addEventListener('abort', () => reject(init.signal.reason)); });
+  };
+
+  try {
+    const controller = new AbortController();
+    const pending = generateTheme(session, 'warm kyoto matcha', { signal: controller.signal });
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].url.endsWith(GENERATE_THEME_PATH));
+    controller.abort();
+    await assert.rejects(pending, (error) => error instanceof DOMException && error.name === 'AbortError');
+    assert.equal(sent[0].signal.aborted, true);
+  } finally {
+    globalThis.localStorage = originalStorage;
+    globalThis.fetch = originalFetch;
+  }
 });

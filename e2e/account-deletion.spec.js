@@ -226,7 +226,7 @@ test('the palette offers deletion to members only, and the dialog fits a phone',
   };
 
   await palette('delete account');
-  await expect(page.locator('#palette-list')).not.toContainText('delete account');
+  await expect(page.locator('#palette-list [role="option"] .opt-text')).toHaveText(['generate theme · delete account']);
   await page.keyboard.press('Escape');
 
   await signInWithEmail(page, ADA);

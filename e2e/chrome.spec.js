@@ -274,28 +274,26 @@ test.describe('reduced motion', () => {
   });
 });
 
-// ⌘K pressed while the palette fades out after Escape opens it again (TOB-448). The fade once counted as open, so the
-// press closed it a second time and the palette was gone. The page's clock holds the fade still, so this is the
-// same on any machine.
-test('the commands binding reopens the palette while it fades out', async ({ page }) => {
+// The palette closes on Escape's own frame, with no fade, so ⌘K pressed straight after opens it again (TOB-448: a
+// fade once counted as open, and that press closed it a second time). The page's clock stands still, so nothing
+// here waits on a timer.
+test('Escape closes the palette at once, and the commands binding reopens it straight after', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#palette')).toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
+  await expect(page.locator('#typing-input')).toBeFocused();
   await page.keyboard.press('Control+k');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).toHaveAttribute('open', '');
-  await expect(page.locator('#palette')).not.toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(true);
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.locator('#palette-input').fill('practice c');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
 
   // Escape still closes it, and focus goes back where it was before the first press.
   await page.keyboard.press('Escape');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).not.toHaveAttribute('open', '');
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
   await expect(page.locator('#typing-input')).toBeFocused();
 });
 

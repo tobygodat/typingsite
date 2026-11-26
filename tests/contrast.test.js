@@ -151,6 +151,8 @@ function pairs(tokens) {
   // A pressed challenge-mode button under the pointer.
   text('--accent on --raised-2 over ground', colour('--accent'), washOverGround);
   text('--accent-ink on --accent (primary button)', colour('--accent-ink'), colour('--accent'));
+  // The chosen mode, length or language, inked where the gliding window covers it.
+  text('--ink-label on --ink-fill (chosen segment)', colour('--ink-label'), colour('--ink-fill'));
   // Placeholders as the stylesheet paints them: the rule's colour, faded by the rule's opacity. Fields
   // are raised stock, and the palette's search field sits on the raised palette box.
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');

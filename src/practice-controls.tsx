@@ -40,7 +40,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
         <div className="practice-controls" aria-label="Practice setup" hidden={!view.visible} data-editing={length.open ? 'true' : undefined} onPointerDown={(event) => lengthEditor.pointer(event.target)} onPointerCancel={() => lengthEditor.cancelPointer()}>
           <div className="practice-rail">
             <div className="segmented glide mode-options" role="group" aria-label="Practice mode" data-glide="pressed">
-              <span className="glide-pill" aria-hidden="true"></span>
+              <span className="glide-ink" aria-hidden="true"></span>
               <ModeButton mode="time" view={view} practice={practice} />
               <ModeButton mode="words" view={view} practice={practice} />
               <ModeButton mode="quote" view={view} practice={practice} />
@@ -62,7 +62,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
                 <p id="standard-recipe" className="condition-copy">{view.standardRecipe}</p>
               </div>
               <div id="duration-options" className="segmented compact glide" role="group" aria-label="Test length" data-glide="pressed" hidden={special || !hasLength}>
-                <span className="glide-pill" aria-hidden="true"></span>
+                <span className="glide-ink" aria-hidden="true"></span>
                 {spec.presets.map((preset, index) => <button key={index} type="button" data-length={preset} aria-pressed={preset === current} aria-label={`${preset} ${spec.unit}`} className={preset === current ? 'is-active' : ''} onClick={() => practice.choices.chooseLength(preset)}>{preset}</button>)}
                 <CustomLengthField controller={lengthEditor} mode={view.lengthMode} current={current} />
               </div>
@@ -74,7 +74,7 @@ export function PracticeControls({ practice, quoteFilters, lengthEditor }: { pra
                 <span id="book-page" className="book-page">page {view.bookPage}</span>
               </div>
               <div id="code-options" className="segmented compact glide" role="group" aria-label="Code language" data-glide="pressed" hidden={special || view.mode !== 'code'}>
-                <span className="glide-pill" aria-hidden="true"></span>
+                <span className="glide-ink" aria-hidden="true"></span>
                 {['js', 'python', 'go', 'rust'].map((language) => <button key={language} type="button" data-language={language} aria-pressed={view.codeLanguage === language} className={view.codeLanguage === language ? 'is-active' : ''} onClick={() => practice.choices.chooseLanguage(language)}>{language}</button>)}
               </div>
             </div>
