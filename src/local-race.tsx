@@ -38,7 +38,7 @@ interface LocalPorts {
 
 export function createLocalRace() {
   const state: LocalState = { passage: null, conditions: null, names: ['', ''], player: 0, attempt: null, startTime: null, results: [], characters: [], textView: null, notice: '' };
-  const view = createStore<LocalView>({ setup: true, stage: false, handoff: false, leaderboard: false, revealing: false, names: ['', ''], player: 'Player one', progress: 0, passage: '', handoffName: 'player 2', winner: 'Two observed runs', results: [], help: 'esc restarts.', hint: true });
+  const view = createStore<LocalView>({ setup: true, stage: false, handoff: false, leaderboard: false, revealing: false, names: ['', ''], player: 'Player 1', progress: 0, passage: '', handoffName: 'Player 2', winner: 'Two observed runs', results: [], help: 'esc restarts.', hint: true });
   let host: LocalHost | null = null;
   let ports: LocalPorts | null = null;
   let fx: ReturnType<typeof createTypingFx> | null = null;
@@ -90,7 +90,7 @@ export function createLocalRace() {
     });
 
     publish({ ...view.getSnapshot(), leaderboard: true, winner, results: ranked });
-    ports?.announce('Challenge complete.');
+    ports?.announce('Race complete.');
   }
 
   return {
@@ -123,7 +123,7 @@ export function createLocalRace() {
       const names = view.getSnapshot().names;
 
       const next: LocalState = { passage: selectPassage({ mode: 'quote', quoteLength: 'medium', difficulty: 'any', seenIds: [] }), conditions: ports.conditions(),
-        names: [names[0].trim() || 'Player one', names[1].trim() || 'Player two'], player: 0, attempt: null, startTime: null, results: [], characters: [], textView: null, notice: '' };
+        names: [names[0].trim() || 'Player 1', names[1].trim() || 'Player 2'], player: 0, attempt: null, startTime: null, results: [], characters: [], textView: null, notice: '' };
 
       Object.assign(state, next);
 
@@ -203,11 +203,11 @@ export function LocalRace({ controller }: { controller: LocalRaceController }) {
     </form>
     <div id="race-stage" className="race-stage" hidden={!view.stage}>
       <div className="race-stage-heading"><div><h2><span id="race-player">{view.player}</span>’s turn</h2></div></div>
-      <div id="race-progress" className="progress-track" role="progressbar" aria-label="Challenge progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={view.progress}><span style={progressStyle}></span></div>
-      <div ref={wrap} className="race-typing-wrap"><div ref={display} id="race-text-display" aria-hidden="true"></div><textarea ref={input} id="race-input" aria-label="Challenge typing input" aria-describedby="race-help race-accessible-passage" rows={1} spellCheck={false} autoCapitalize="off" autoComplete="off" autoCorrect="off" onBlur={() => controller.interrupt()}></textarea><span id="race-accessible-passage" className="sr-only">{view.passage}</span></div>
+      <div id="race-progress" className="progress-track" role="progressbar" aria-label="Race progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={view.progress}><span style={progressStyle}></span></div>
+      <div ref={wrap} className="race-typing-wrap"><div ref={display} id="race-text-display" aria-hidden="true"></div><textarea ref={input} id="race-input" aria-label="Race typing input" aria-describedby="race-help race-accessible-passage" rows={1} spellCheck={false} autoCapitalize="off" autoComplete="off" autoCorrect="off" onBlur={() => controller.interrupt()}></textarea><span id="race-accessible-passage" className="sr-only">{view.passage}</span></div>
       <p id="race-help">{view.hint ? <span className="key-hint">{view.help}</span> : view.help}</p>
     </div>
     <div id="race-handoff" className={`handoff-panel${view.revealing ? ' is-revealing' : ''}`} hidden={!view.handoff}><div id="handoff-veil" className="handoff-veil" aria-hidden="true">{view.passage}</div><div className="handoff-copy"><h2>Pass the keyboard to <span id="handoff-name">{view.handoffName}</span>.</h2><button id="start-next-player" className="btn btn-primary" type="button" onClick={() => controller.reveal()}>Reveal passage</button></div></div>
-    <div id="race-leaderboard" className="race-leaderboard" hidden={!view.leaderboard} aria-live="polite"><div className="race-result-heading"><h2 id="race-winner">{view.winner}</h2><button id="race-again" className="btn btn-secondary" type="button" onClick={() => controller.again()}>Play again</button></div><div id="race-results" className="race-results">{view.results.map(({ name, attempt }, index) => <article key={index} className="race-result-row"><strong>{name}</strong><span className="num">{attempt.status === 'complete' ? <Copy parts={[{ kind: 'speed', wpm: attempt.summary.score.wpm }]} /> : attempt.failed ? `failed · ${attempt.failed}` : 'interrupted'}</span><span className="num">{attempt.summary.score.accuracy}% accuracy</span><span className="num">{(attempt.summary.elapsedMs / 1000).toFixed(1)} s</span></article>)}</div><p>Not counted in your progress.</p></div>
+    <div id="race-leaderboard" className="race-leaderboard" hidden={!view.leaderboard} aria-live="polite"><div className="race-result-heading"><h2 id="race-winner">{view.winner}</h2><button id="race-again" className="btn btn-secondary" type="button" onClick={() => controller.again()}>Race again</button></div><div id="race-results" className="race-results">{view.results.map(({ name, attempt }, index) => <article key={index} className="race-result-row"><strong>{name}</strong><span className="num">{attempt.status === 'complete' ? <Copy parts={[{ kind: 'speed', wpm: attempt.summary.score.wpm }]} /> : attempt.failed ? `failed · ${attempt.failed}` : 'interrupted'}</span><span className="num">{attempt.summary.score.accuracy}% accuracy</span><span className="num">{(attempt.summary.elapsedMs / 1000).toFixed(1)} s</span></article>)}</div><p>Not counted in your progress.</p></div>
   </div>;
 }

@@ -68,7 +68,7 @@ export function RankPill({ controller, onChallenge }: { controller: QuickMatchCo
       <div className="gauge" aria-hidden="true">{Array.from({ length: GAUGE_SEGMENTS }, (_, index) => <i key={index} className={index < model.lit ? 'is-lit' : undefined}></i>)}</div>
       <p className="rank-popover-note">{model.note}</p>
       <p className="sr-only">{model.line}</p>
-      <button className="btn btn-secondary btn-sm rank-challenge" type="button" onClick={() => { setOpen(false); onChallenge(); }}>Challenge</button>
+      <button className="btn btn-secondary btn-sm rank-challenge" type="button" onClick={() => { setOpen(false); onChallenge(); }}>Open quick match</button>
     </div>}
   </div>;
 }

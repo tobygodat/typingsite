@@ -75,7 +75,7 @@ export function createKeybindingEditor() {
  return () => { if (focus === callback) focus = null; }; },
     edit(action: KeybindingAction, value: string) { edited.add(action); update({ values: { ...view.getSnapshot().values, [action]: value } }); },
     changed(action: KeybindingAction) { if (edited.has(action)) apply(); },
-    reset() { onSave({ ...DEFAULT_KEYBINDINGS }); refresh({ force: true }); update({ feedback: 'Default keybindings restored.' }); },
+    reset() { onSave({ ...DEFAULT_KEYBINDINGS }); refresh({ force: true }); update({ feedback: 'Default shortcuts restored.' }); },
     record(action: KeybindingAction) {
       const wasRecording = view.getSnapshot().recording === action;
       stopRecording();

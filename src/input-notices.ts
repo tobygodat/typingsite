@@ -18,6 +18,6 @@ export const NOTICES = {
   composeImport: 'Settings import opened mid-way, so this one won’t be saved.',
   deleteOpened: 'Account deletion opened mid-run, so it won’t count.',
   raceFocusLost: 'Focus lost. Esc to restart this turn.',
-  onlineBlocked: 'Correct the mistyped letter before continuing.',
+  onlineBlocked: 'Fix the underlined letter.',
   onlineComposition: 'IME input isn’t supported in races. Use direct keyboard input.',
 };

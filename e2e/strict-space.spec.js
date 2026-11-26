@@ -509,7 +509,7 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await closeSettings(page);
   await page.locator('#start-next-player').click();
   // The passage is revealed before the second turn takes keys.
-  await expect(page.locator('#race-player')).toHaveText('Player two');
+  await expect(page.locator('#race-player')).toHaveText('Player 2');
   await expect(page.locator('#race-input')).toBeFocused();
   await typeInto(page, typed, '#race-input');
   await expect(page.locator('#race-help')).toHaveText(SUBMIT_NOTICE);

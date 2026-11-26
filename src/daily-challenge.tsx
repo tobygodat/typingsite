@@ -50,7 +50,7 @@ export function createDailyChallenge(learning: LearningStore) {
       const rows = [...completed].reverse().slice(0, 30).map((run) => ({ id: run.id, wpm: run.score.wpm, accuracy: run.score.accuracy,
         detail: `${run.challengeDate} · ${(run.firstDailyAttempt ?? run.fresh) ? 'first attempt' : 'repeat attempt'}${run.firstDailyAttempt && !run.fresh ? ' · previously displayed passage' : ''} · ${currentPorts.inputLabel(run.conditions)}` }));
 
-      flushSync(() => view.publish({ date: `${daily.day} · english · resets 00:00 UTC`, tile: dailyTileLine(daily.day, Boolean(best)), status, rows }));
+      flushSync(() => view.publish({ date: `${daily.day} · english · resets at 00:00 UTC`, tile: dailyTileLine(daily.day, Boolean(best)), status, rows }));
     },
   };
 }
@@ -63,7 +63,7 @@ export function DailyChallenge({ controller }: { controller: DailyChallengeContr
   return <section id="daily-challenge" className="panel daily-challenge" aria-labelledby="daily-heading">
     <div className="panel-head daily-heading"><h2 id="daily-heading" className="panel-title" tabIndex={-1}>daily passage</h2><p id="daily-date" className="condition-copy">{view.date}</p></div>
     <div className="daily-start"><p id="daily-status" className="result-note" aria-live="polite"><Copy parts={view.status} /></p>
-    <button id="start-daily" className="btn btn-primary" type="button" onClick={() => controller.start()}>Start daily challenge</button></div>
+    <button id="start-daily" className="btn btn-primary" type="button" onClick={() => controller.start()}>Start daily passage</button></div>
     <details id="daily-history-panel" hidden={!view.rows.length}><summary>Your daily results</summary><div id="daily-history">{view.rows.map((run, index) => <div key={run.id ?? index} className="daily-result"><strong className="num"><Copy parts={[{ kind: 'speed', wpm: run.wpm }, ` · ${run.accuracy}%`]} /></strong><span>{run.detail}</span></div>)}</div></details>
   </section>;
 }

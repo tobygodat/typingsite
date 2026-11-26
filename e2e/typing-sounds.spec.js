@@ -588,7 +588,7 @@ test('an online race ticks a mistyped letter and clicks refused keys and backspa
     // Races always stop on error: the mistyped letter ticks; the refused key, each backspace and a
     // backspace with nothing left to delete click.
     await page.keyboard.type(`${wrongFor(passage[1])}${passage[2]}`);
-    await expect(page.locator('#online-help')).toHaveText('Correct the mistyped letter before continuing.');
+    await expect(page.locator('#online-help')).toHaveText('Fix the underlined letter.');
 
     for (let i = 0; i < 3; i += 1) await page.keyboard.press('Backspace');
     await expect(page.locator('#online-input')).toHaveValue('');
