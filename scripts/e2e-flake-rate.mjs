@@ -131,6 +131,7 @@ function walk(suite, path = []) {
 }
 
 let heading;
+
 try {
   const result = ci ? ciReports() : await runTargets();
   heading = result.heading;
@@ -172,6 +173,7 @@ if (shards.size) {
 
     return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
   };
+
   const seconds = (ms) => `${(ms / 1000).toFixed(0)}s`;
   console.log('\nshard wall time, slowest median first: median, slowest, reports');
 
