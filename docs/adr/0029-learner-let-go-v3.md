@@ -1,8 +1,8 @@
-# 0027. learner-let-go@3: a drilled target is let go on evidence fixed at its drill
+# 0029. learner-let-go@3: a drilled target is let go on evidence fixed at its drill
 
 Status: Proposed, 2026-11-26. TOB-511. This file holds the rule and its decision clauses. Results are added below only after the test seeds run, and nothing above "Results" changes after that.
 
-File name: master already holds `0027-fluid-word-flow-and-spring-caret.md`. This ADR keeps the number its brief gave it, and the file name tells them apart. [ADR 0019](0019-learner-lets-go.md) is accepted and is not edited. ADR 0026 is reserved by PR #166.
+Written and committed as ADR 0027 (`aea5944`); renumbered 0029 because `0026-architectural-tokens-and-default-inter.md` and `0027-fluid-word-flow-and-spring-caret.md` already existed on master and `0028` is used by the Progress slipping rule (`0028-progress-slipping-rule.md`). Nothing else in the rule changed. [ADR 0019](0019-learner-lets-go.md) is accepted and is not edited.
 
 ## Context
 
