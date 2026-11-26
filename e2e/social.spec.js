@@ -720,7 +720,7 @@ test('the inbox sits by the account button without touching the dock', async ({ 
       const inbox = await page.locator('#inbox-trigger').boundingBox();
       const account = await page.locator('#account-trigger').boundingBox();
       const dock = await page.locator('.dock').boundingBox();
-      const sideBar = await page.locator('.dock-zone').boundingBox();
+      const sideBar = await page.locator('.dock-zone').evaluate((node) => (getComputedStyle(node).position === 'fixed' ? node.getBoundingClientRect().toJSON() : null));
 
       if (sideBar) {
         // At the foot of the side bar: a row over the person's, under the navigation.

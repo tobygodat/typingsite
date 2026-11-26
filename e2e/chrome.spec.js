@@ -93,7 +93,7 @@ test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
 
-  for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
+  for (const [size, px] of [['22', '22px'], ['36', '34px'], ['28', '26px']]) {
     await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }

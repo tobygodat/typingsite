@@ -1,6 +1,6 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
 import { appEntry, appStyles } from './built-assets.js';
-import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, chooseNavigation, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -250,6 +250,7 @@ test.describe('lesson on a 320x568 phone', () => {
 
 test('desktop sets the side bar beside the page and the passage at three lines', async ({ page }) => {
   await openApp(page);
+  await chooseNavigation(page, 'side');
   const bar = await page.locator('.dock-zone').boundingBox();
   const viewport = page.viewportSize();
   expect(bar.x).toBe(0);

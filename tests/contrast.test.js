@@ -197,7 +197,7 @@ test('the stylesheet defines eleven theme token sets of the same shape', () => {
   for (const name of Object.keys(themes)) assert.deepEqual(own(name), own('dark'), `${name} sets exactly the tokens dark sets`);
 
   for (const [name, tokens] of Object.entries(themes)) {
-    for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
+    for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--untyped', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
       assert.ok(tokens[token], `${name} theme is missing ${token}`);
     }
   }
@@ -209,6 +209,29 @@ for (const name of Object.keys(themes)) {
     assert.ok(results.length >= 25);
     const failures = results.filter((pair) => pair.value < pair.min).map((pair) => `${pair.label}: ${pair.value.toFixed(2)} < ${pair.min}`);
     assert.deepEqual(failures, []);
+  });
+}
+
+// Untyped passage letters are the one softer tone (DESIGN.md): readable on the ground, never invisible, and well
+// below typed text so the two read apart. Everything else keeps 4.5:1 in the theme tests above.
+const passageRule = rules.find((r) => r.selectors.includes('#text-display'));
+
+test('untyped passage letters use --untyped, and typed letters use --text', () => {
+  assert.equal(passageRule?.declarations.color, 'var(--untyped)');
+  assert.equal(rules.find((r) => r.selectors.includes('.char.correct'))?.declarations.color, 'var(--text)');
+});
+
+for (const name of Object.keys(themes)) {
+  test(`${name} theme: untyped letters hold 2.2:1 on the ground and sit clearly below typed text`, () => {
+    const colour = (token) => parseColour(resolve(`var(${token})`, themes[name]));
+    const ground = colour('--ground');
+    const untyped = ratio(over(colour('--untyped'), ground), ground);
+    const typed = ratio(over(colour('--text'), ground), ground);
+    const muted = ratio(over(colour('--muted'), ground), ground);
+
+    assert.ok(untyped >= 2.2, `--untyped on ground is ${untyped.toFixed(2)}, under 2.2`);
+    assert.ok(untyped < muted, `--untyped (${untyped.toFixed(2)}) is softer than --muted (${muted.toFixed(2)})`);
+    assert.ok(typed / untyped >= 3, `--text (${typed.toFixed(2)}) is at least three times --untyped (${untyped.toFixed(2)})`);
   });
 }
 

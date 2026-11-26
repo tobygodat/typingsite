@@ -189,7 +189,7 @@ export async function chooseSetting(page, id, value) {
   await option.locator('..').click();
 }
 
-// Where navigation sits (settings → appearance): a side bar from 960px, the default, or a top bar.
+// Where navigation sits (settings → appearance): a top bar, the default, or a side bar from 960px.
 export async function chooseNavigation(page, placement) {
   await chooseSetting(page, 'navigation-select', placement);
   await closeSettings(page);

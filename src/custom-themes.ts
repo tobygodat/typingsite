@@ -29,6 +29,7 @@ export const THEME_TOKENS = [
   { name: 'raised', label: 'raised', derived: true },
   { name: 'card-top', label: 'card top', derived: true },
   { name: 'card-bottom', label: 'card bottom', derived: true },
+  { name: 'untyped', label: 'untyped text', derived: true },
   { name: 'outline', label: 'outline', derived: true },
   { name: 'selection', label: 'selection', derived: true },
   { name: 'raised-2', label: 'hover', derived: true },

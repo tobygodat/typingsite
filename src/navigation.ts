@@ -13,7 +13,7 @@ interface NavigationView { screen: AppView; keys: Keybindings; mac: boolean; pla
 interface NavigationPorts { go(view: AppView, keep: boolean): void; skip(): void; restart(): void; exitFocus(): void; toggleSideBar(): void }
 
 export function createNavigation() {
-  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'side', sideHidden: false,
+  const view = createStore<NavigationView>({ screen: 'practice', keys: { ...DEFAULT_KEYBINDINGS }, mac: false, placement: 'top', sideHidden: false,
     wide: typeof matchMedia === 'function' ? matchMedia(SIDE_BAR_MEDIA).matches : true });
 
   let ports: NavigationPorts | null = null;
@@ -26,8 +26,8 @@ export function createNavigation() {
       flushSync(() => view.publish({ ...view.getSnapshot(), screen }));
     },
     bindings(keys: Keybindings) { flushSync(() => view.publish({ ...view.getSnapshot(), keys })); },
-    // The preference, as html[data-navigation]. CSS decides the layout from it and the width: a side bar from 960px
-    // when it is 'side', otherwise a top bar, and a bottom bar on phones. Returns whether it changed.
+    // The preference, as html[data-navigation]. CSS decides the layout from it and the width: a top bar by default, a
+    // side bar from 960px when it is 'side', and a bottom bar on phones. Returns whether it changed.
     placement(placement: NavigationPlacement) {
       document.documentElement.dataset.navigation = placement;
 

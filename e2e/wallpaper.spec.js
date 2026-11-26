@@ -251,9 +251,10 @@ for (const [label, viewport] of VIEWPORTS) {
           return rect.height ? [rect] : [];
         });
 
-        const bar = document.querySelector('.dock-zone').getBoundingClientRect();
+        const zone = document.querySelector('.dock-zone');
+        const bar = zone.getBoundingClientRect();
 
-        return { left: bar.height ? bar.right : 0, top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
+        return { left: getComputedStyle(zone).position === 'fixed' ? bar.right : 0, top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)) };
       });
 
       const clip = { x: Math.round(span.left) + 2, y: Math.round(span.top), width: 4, height: Math.round(span.bottom - span.top) };
