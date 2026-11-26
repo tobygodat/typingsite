@@ -1448,7 +1448,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* opacity: 1 overrides the browser's own placeholder fade, so the token alone sets the contrast. */
 .input::placeholder { color: var(--placeholder); opacity: 1; }
-.input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+/* The page-wide neutral ring, held close to the field. */
+.input:focus-visible { outline-offset: 1px; }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .select { padding-right: 8px; cursor: pointer; }
 
