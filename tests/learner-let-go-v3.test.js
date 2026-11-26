@@ -155,8 +155,9 @@ test('adaptive text leans harder toward recently drilled pairs, in adaptive text
   const plain = recommend(LET_GO_3_POLICY, runs, loops);
   const adaptive = recommend(LET_GO_3_POLICY, runs, loops, { adaptive: true });
   const weight = (list, unit) => (list.find((item) => item.unit === unit)?.weight ?? 0) / list.reduce((s, item) => s + item.weight, 0);
-  assert.ok(weight(adaptive.lean, 'th') >= 0.75 - 1e-9, 'a drilled target not yet let go holds the share');
-  assert.ok(weight(plain.lean, 'th') < 0.75, 'the ordinary lean is the learner’s own');
+  const share = LEARNER_VARIANTS[LET_GO_3_POLICY].drillLeanShare;
+  assert.ok(weight(adaptive.lean, 'th') >= share - 1e-9, 'a drilled target not yet let go holds the share');
+  assert.ok(weight(plain.lean, 'th') < share, 'the ordinary lean is the learner’s own');
   assert.deepEqual({ ...adaptive, lean: 0 }, { ...plain, lean: 0 }, 'only the lean changes: the queue and the target are the same');
 
   // Non-adaptive paths and every other policy: exactly what they were.
