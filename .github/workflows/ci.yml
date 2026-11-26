@@ -150,6 +150,45 @@ jobs:
       - if: failure() && steps.scope.outputs.run == 'true'
         run: docker ps -a --format '{{.Names}}' | grep '^supabase_' | xargs -I{} sh -c 'echo "::group::{}"; docker logs --tail 200 {} 2>&1; echo "::endgroup::"'
 
+  learner-eval:
+    name: Learner eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: learner-eval-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A PR's merge commit and both its parents, so the scope can diff it against the base.
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "A $EVENT run checks the learner."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/learner-eval-scope.mjs
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - if: steps.scope.outputs.run == 'true'
+        run: bun install --frozen-lockfile
+      - if: steps.scope.outputs.run == 'true'
+        run: |
+          set -o pipefail
+          status=0
+          bun run evaluate:learner -- --rule 0019 --check --workers "$(nproc)" | tee check.txt || status=$?
+          { echo '## Learner eval (ADR 0019 validation)'; echo '```'; cat check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
   deploy:
     name: Deploy to Cloudflare
     # Master never deploys a commit that failed lint, typecheck or the unit tests.

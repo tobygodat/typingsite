@@ -1,0 +1,35 @@
+name: E2E hygiene
+
+# A weekly report of flaky browser tests and slow shards, from the Playwright reports that ci.yml's e2e jobs keep for
+# 7 days (scripts/e2e-flake-rate.mjs --ci). It writes the job summary and never fails on a flaky test.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days of ci.yml runs to read (artifacts are kept 7)
+        type: number
+        default: 7
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  flake-rate:
+    name: Flake rate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: ${{ inputs.days || 7 }}
+        run: |
+          set -o pipefail
+          node scripts/e2e-flake-rate.mjs --ci --days "$DAYS" | tee report.txt
+          { echo "## E2E flake rate, last $DAYS days"; echo '```'; cat report.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
