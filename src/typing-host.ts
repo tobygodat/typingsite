@@ -55,6 +55,7 @@ export interface TypingPort<A> {
   inTime(type: InputSurface, at: number): boolean;
   typeKeys(keys: string[], type: InputSurface, at?: number): void;
   deleteKey(type: InputSurface): void;
+  deleteWord(type: InputSurface): void;
   refuseComposition(type: InputSurface): void;
   unsupported(type: InputSurface): void;
   refusePaste(type: InputSurface): void;
@@ -206,7 +207,8 @@ function beforeTypingInput(event: TypingInputEvent, type: InputSurface, input: H
   if (event.inputType?.startsWith('delete')) {
     event.preventDefault();
 
-    port.deleteKey(type);
+    if (event.inputType === 'deleteWordBackward') port.deleteWord(type);
+    else port.deleteKey(type);
 
     return;
   }

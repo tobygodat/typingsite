@@ -1,5 +1,7 @@
-import { allowsBackspace, awaitingSubmit, blocksOnError, carriedKey, failureFor, refusesSpace, replayCursor } from './typing.js';
+import { allowsBackspace, awaitingSubmit, blocksOnError, carriedKey, failureFor, fluidWords, refusesSpace, replayFlow } from './typing.js';
 import type { Attempt, AttemptEvent } from './typing.js';
+import { applyWordFlowDelete, applyWordFlowDeleteWord, applyWordFlowKey, createWordFlow, linearWordDeleteCount } from './word-flow.js';
+import type { WordFlowResult, WordFlowState, WordFlowStep } from './word-flow.js';
 import { KEY_OUTCOME, keyOutcome } from './sound.js';
 import type { KeyOutcome } from './sound.js';
 import { createTypingHost } from './typing-host.js';
@@ -24,23 +26,34 @@ interface InputOwner {
 // Scoring, timing and native composition share one attempt identity for each input surface.
 export function createInputController(owner: InputOwner) {
   let online: OnlineTypingSurface | null = null;
-  const cursors = new WeakMap<Attempt, ReturnType<typeof replayCursor>>();
+  const cursors = new WeakMap<Attempt, ReturnType<typeof replayFlow>>();
   const now = () => performance.now();
   const attempt = (type: InputSurface) => type === 'online' ? online?.attempt ?? null : owner.attempt(type);
 
-  function typed(type: InputSurface) {
-    const current = attempt(type);
-
-    if (!current) return '';
+  function flowOf(current: Attempt) {
     let cursor = cursors.get(current);
 
     if (!cursor) {
-      cursor = replayCursor(current);
+      cursor = replayFlow(current);
       cursors.set(current, cursor);
     }
 
     // Live attempts append events. The cursor consumes all new events since the previous read.
     return cursor(Infinity);
+  }
+
+  function flow(type: InputSurface): WordFlowState {
+    const current = attempt(type);
+
+    return current ? flowOf(current) : createWordFlow('');
+  }
+
+  const typed = (type: InputSurface) => flow(type).typed;
+
+  function record(current: Attempt, { steps }: WordFlowResult, offsetMs: number) {
+    for (const step of steps) current.events.push(stepEvent(step, offsetMs));
+
+    return steps;
   }
 
   function required(type: InputSurface) { const current = attempt(type);
@@ -82,6 +95,11 @@ export function createInputController(owner: InputOwner) {
 
   function pushInsert(char: string, type: InputSurface, at: number, carried: boolean): InsertChange {
     const current = required(type);
+    // Past the passage end a key is scored as in a linear run: an accent commit's carried key included.
+    const flowed = fluidWords(current.conditions) && typed(type).length < current.text.length ? applyWordFlowKey(flowOf(current), char) : null;
+
+    // A key fluid word flow ignores (a space at a word's start, a letter past the extras' limit) starts nothing.
+    if (flowed && !flowed.steps.length) return { previousLength: typed(type).length, blocked: false };
     owner.start(current, type, at);
     const prefix = typed(type);
     const offsetMs = offsetFor(type, at);
@@ -97,6 +115,19 @@ export function createInputController(owner: InputOwner) {
       current.events.push({ type: 'submit', offsetMs });
 
       return { previousLength: position, blocked: false, submit: true };
+    }
+
+    if (flowed) {
+      const [step] = record(current, flowed, offsetMs);
+      // A space that skips the rest of the last word ends the run as it stands, as a submit would.
+      const change: InsertChange = { previousLength: position, blocked: false, correct: step ? step.type === 'insert' && char === current.text[position] : undefined };
+
+      if (step?.type === 'skip' && awaitingSubmit(current, typed(type))) {
+        current.events.push({ type: 'submit', offsetMs });
+        change.submit = true;
+      }
+
+      return change;
     }
 
     if (refusesSpace(current.conditions, current.text, position, char)) {
@@ -149,7 +180,20 @@ export function createInputController(owner: InputOwner) {
       if (!allowsBackspace(current.conditions.correctionPolicy)) return;
       const length = typed(type).length;
 
-      if (length) current.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
+      if (fluidWords(current.conditions)) record(current, applyWordFlowDelete(flowOf(current)), offsetFor(type));
+      else if (length) current.events.push({ type: 'delete', count: 1, offsetMs: offsetFor(type) });
+      owner.play(KEY_OUTCOME.delete);
+      owner.refresh(type, length);
+    },
+    // Option+Backspace or Ctrl+Backspace. An online race keeps its one-letter delete.
+    deleteWord(type) {
+      const current = required(type);
+
+      if (!allowsBackspace(current.conditions.correctionPolicy)) return;
+      const length = typed(type).length;
+
+      if (fluidWords(current.conditions)) record(current, applyWordFlowDeleteWord(flowOf(current)), offsetFor(type));
+      else if (length) current.events.push({ type: 'delete', count: type === 'online' ? 1 : linearWordDeleteCount(typed(type)), offsetMs: offsetFor(type) });
       owner.play(KEY_OUTCOME.delete);
       owner.refresh(type, length);
     },
@@ -180,7 +224,7 @@ export function createInputController(owner: InputOwner) {
   return {
     attach: host.attach, forget: host.forget, clearFor: host.clearFor, pending: host.pending, keydown: host.keydown,
     get accentCompositionActive() { return host.accentCompositionActive; },
-    attempt, typed, offsetFor, timeUp, accepting, finishIfTimeUp,
+    attempt, typed, flow, offsetFor, timeUp, accepting, finishIfTimeUp,
     get online() { return online; },
     wireOnlineTyping(input: HTMLTextAreaElement, surface: OnlineTypingSurface): OnlineTypingLease {
       online = surface;
@@ -192,6 +236,14 @@ export function createInputController(owner: InputOwner) {
     },
     dispose() { host.dispose(); online = null; },
   };
+}
+
+function stepEvent(step: WordFlowStep, offsetMs: number): AttemptEvent {
+  if (step.type === 'insert') return { type: 'insert', text: step.text, position: step.position, accepted: true, offsetMs };
+
+  if (step.type === 'delete') return { type: 'delete', count: step.count, offsetMs };
+
+  return { ...step, offsetMs };
 }
 
 export type InputController = ReturnType<typeof createInputController>;

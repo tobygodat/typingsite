@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone, chooseLinearWordFlow } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -33,6 +33,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await openSettings(page, 'practice');
   await expect(page.locator('#min-accuracy input:checked')).toHaveValue('0');
   await expect(page.locator('#min-wpm input:checked')).toHaveValue('0');
@@ -90,6 +91,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
 
 test('the grace period forgives an early miss, and a run that ends above the minimum counts', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '90');
@@ -159,6 +161,7 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
 test('custom text has no minimums: the note stands aside and a run under them still finishes', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '95');
   await chooseSetting(page, 'min-wpm', '100');
@@ -194,6 +197,7 @@ test('custom text has no minimums: the note stands aside and a run under them st
 test('a retest carries its baseline’s minimums, and the daily challenge has none', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-wpm', '20');
@@ -253,6 +257,7 @@ for (const end of ['last character', 'timer']) {
     await page.setViewportSize({ width: 1280, height: 1100 });
     await page.clock.install();
     await openApp(page);
+    await chooseLinearWordFlow(page);
 
     if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();
     else await chooseWords(page, 10);
@@ -335,6 +340,7 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
 test('a last key that misses just past a whole second finishes the run under its minimum', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '90');

@@ -2,6 +2,8 @@ import { recordedField, recordedSlice } from './recorded-text.js';
 import type { HistoricalRecord } from './profile-types.js';
 import { isPatternAttempt } from './domain-history.js';
 import { at, isRecord } from './domain-values.js';
+import { MISSED, applyWordFlowStep, createWordFlow, skippedText } from './word-flow.js';
+import type { WordFlowState } from './word-flow.js';
 
 export type TestMode = 'time' | 'words' | 'quote' | 'standard' | 'code' | 'book' | 'custom' | 'lesson';
 
@@ -11,17 +13,22 @@ export type InputClass = 'physical-keyboard' | 'touch';
 
 export type CorrectionPolicy = 'relaxed' | 'mandatory' | 'no-backspace' | 'fail-word' | 'fail-any';
 
+export type WordFlow = 'fluid' | 'linear';
+
 export interface Conditions {
   mode?: unknown; duration?: unknown; count?: unknown; punctuation?: unknown; numbers?: unknown;
   quoteLength?: unknown; difficulty?: unknown; wordList?: unknown;
   inputClass?: InputClass; correctionPolicy?: CorrectionPolicy; language?: string; corpus?: string;
   metricVersion?: string; recipe?: string; layout?: string; codeLanguage?: unknown; book?: unknown;
-  strictSpace?: boolean; quickEnd?: boolean; customOrder?: string; lesson?: string; onlineRace?: boolean;
+  strictSpace?: boolean; quickEnd?: boolean; customOrder?: string; lesson?: string; onlineRace?: boolean; localRace?: boolean; wordFlow?: 'fluid';
 }
 
 export type AttemptEvent =
   | { type: 'insert' | 'blocked-insert'; text: string; offsetMs: number; position?: number; accepted?: boolean }
   | { type: 'delete'; count?: number; offsetMs: number }
+  | { type: 'skip'; position: number; count: number; offsetMs: number }
+  | { type: 'extra'; text: string; position: number; offsetMs: number }
+  | { type: 'delete-extra'; count: number; offsetMs: number }
   | { type: 'focus-lost' | 'composition' | 'focus' | 'focus-returned' | 'submit'; offsetMs: number };
 
 export interface FirstAttempt { position: number; expected: string | undefined; actual: string; correct: boolean; offsetMs: number }
@@ -66,6 +73,9 @@ import { isDefaultLayout } from './layouts.js';
 
 export const METRIC_VERSION = 'stilltype-metrics-v1';
 export const EVENT_VERSION = 'stilltype-events-v1';
+
+// Fluid word flow runs add skip, extra and delete-extra events (ADR 0027).
+export const WORD_FLOW_EVENT_VERSION = 'stilltype-word-flow-events-v1';
 export const CORPUS_VERSION = 'original-en-v6';
 const MAX_PAIR_PAUSE_MS = 2000;
 
@@ -419,7 +429,7 @@ export function selectPassage({ mode = 'time', count = 25, duration = 0, punctua
 export function createAttempt({ id, text, textId: sourceTextId, kind = 'test', conditions = {} }: Pick<Attempt, 'id' | 'text' | 'textId'> & Partial<Pick<Attempt, 'kind' | 'conditions'>>): Attempt {
   return {
     id,
-    eventVersion: EVENT_VERSION,
+    eventVersion: fluidWords(conditions) ? WORD_FLOW_EVENT_VERSION : EVENT_VERSION,
     metricVersion: METRIC_VERSION,
     kind,
     text,
@@ -547,6 +557,29 @@ export function refusesSpace(conditions: Conditions = {}, text: string, position
   return conditions.strictSpace === true && char === ' ' && position < text.length && text[position] !== ' ';
 }
 
+// Fluid word flow (src/word-flow.ts) is for practising prose with free correction. Races, the
+// standard test, lessons, code, strict space and the other correction policies keep the linear rules
+// their checks and comparisons were built on, whatever the preference says.
+const FLUID_MODES = new Set(['time', 'words', 'quote', 'book', 'custom', 'missed']);
+
+export function wordFlowApplies(conditions: Conditions | HistoricalRecord = {}) {
+  return FLUID_MODES.has(String(conditions.mode)) && conditions.correctionPolicy === 'relaxed' && conditions.strictSpace !== true
+    && conditions.onlineRace !== true && conditions.localRace !== true;
+}
+
+export function fluidWords(conditions: Conditions | HistoricalRecord = {}) {
+  return conditions.wordFlow === 'fluid' && wordFlowApplies(conditions);
+}
+
+// The conditions a run is typed under with the word flow preference applied. Linear adds nothing, so
+// linear conditions stay exactly as they were.
+export function withWordFlow<C extends Conditions>(conditions: C, wordFlow: WordFlow): C {
+  const linear = { ...conditions };
+  delete linear.wordFlow;
+
+  return wordFlow === 'fluid' && wordFlowApplies(linear) ? { ...linear, wordFlow: 'fluid' } : linear;
+}
+
 // Input rules away from the defaults, in the order conditionKey appends them. Defaults add
 // nothing, so runs saved before these settings existed keep their keys.
 export function inputRules(conditions: Conditions | HistoricalRecord = {}) {
@@ -555,6 +588,8 @@ export function inputRules(conditions: Conditions | HistoricalRecord = {}) {
   if (conditions.strictSpace === true) rules.push('strict-space');
 
   if (conditions.quickEnd === false && quickEndApplies(conditions)) rules.push('quick-end-off');
+
+  if (fluidWords(conditions)) rules.push('word-flow');
 
   return rules;
 }
@@ -749,6 +784,7 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
   let endedAt: number | null = null;
   const firstAttempts = new Map<number, RetainedFirstAttempt>();
   const pairTimings: RetainedPairTiming[] = [];
+  const textLength = () => (typeof attempt.text === 'string' ? attempt.text.length : Number(recordedField(attempt.text, 'length')));
 
   for (const event of attempt.events || []) {
     if (event.type === 'focus-lost' || event.type === 'composition') {
@@ -762,6 +798,34 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
       continue;
     }
 
+    if (event.type === 'delete-extra') {
+      interruptionSinceCorrect = true;
+      continue;
+    }
+
+    // A space that skipped letters, or a letter past a word's end: one wrong key at that position.
+    if (event.type === 'skip' || event.type === 'extra') {
+      const { position } = event;
+
+      const length = textLength();
+
+      if (position >= length) continue;
+
+      if (startedAt === null) startedAt = event.offsetMs;
+      insertions += 1;
+
+      if (!firstAttempts.has(position)) {
+        const expected = typeof attempt.text === 'string' ? attempt.text[position] : recordedField(attempt.text, String(position));
+        firstAttempts.set(position, { position, expected, actual: event.type === 'skip' ? ' ' : event.text, correct: false, offsetMs: event.offsetMs });
+      }
+
+      if (event.type === 'skip') typed += skippedText(length, position, event.count);
+      previousCorrect = null;
+      interruptionSinceCorrect = true;
+      endedAt = event.offsetMs;
+      continue;
+    }
+
     if (event.type !== 'insert' || !printable(event.text)) continue;
 
     if (startedAt === null) startedAt = event.offsetMs;
@@ -769,7 +833,7 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
     for (const char of event.text) {
       const position = typeof event.position === 'number' && Number.isInteger(event.position) ? event.position : typed.length;
 
-      if (position >= (typeof attempt.text === 'string' ? attempt.text.length : Number(recordedField(attempt.text, 'length')))) break;
+      if (position >= textLength()) break;
       const expected = typeof attempt.text === 'string' ? attempt.text[position] : recordedField(attempt.text, String(position));
       const correct = char === expected;
       insertions += 1;
@@ -820,6 +884,8 @@ export function replayAttempt(attempt: RetainedReplaySource): RetainedReplay {
 function typedAfter(typed: string, event: AttemptEvent, text: string) {
   if (event.type === 'delete') return typed.slice(0, Math.max(0, typed.length - Math.max(1, event.count || 1)));
 
+  if (event.type === 'skip') return typed + skippedText(text.length, event.position, event.count);
+
   if (event.type !== 'insert' || !printable(event.text) || event.accepted === false) return typed;
   let next = typed;
 
@@ -833,31 +899,47 @@ function typedAfter(typed: string, event: AttemptEvent, text: string) {
   return next;
 }
 
-// The typed text at offset t (ms on the attempt clock), for the watch-replay view. Events are
+function flowAfter(state: WordFlowState, event: AttemptEvent): WordFlowState {
+  if (event.type === 'extra') return applyWordFlowStep(state, { type: 'extra', text: event.text, position: event.position });
+
+  if (event.type === 'delete-extra') return applyWordFlowStep(state, { type: 'delete-extra', count: event.count });
+  const typed = typedAfter(state.typed, event, state.text);
+
+  return typed === state.typed ? state : { ...state, typed };
+}
+
+// The typed text and any letters past a word's end at offset t (ms on the attempt clock). Events are
 // recorded in time order, so each call steps forward only through the events that came due since
 // the last one, and starts over only when t goes back (Restart). At every prefix of the events
-// it equals replayAttempt's typed text; scoring never calls this.
-export function replayCursor(attempt: ReplaySource) {
+// its typed text equals replayAttempt's; scoring never calls this.
+export function replayFlow(attempt: ReplaySource) {
   const events = attempt.events || [];
   let applied = 0;
-  let typed = '';
+  let state = createWordFlow(attempt.text);
   let last = -Infinity;
 
   return (t: number) => {
     if (t < last) {
       applied = 0;
-      typed = '';
+      state = createWordFlow(attempt.text);
     }
 
     last = t;
 
     while (applied < events.length && !(at(events, applied).offsetMs > t)) {
-      typed = typedAfter(typed, at(events, applied), attempt.text);
+      state = flowAfter(state, at(events, applied));
       applied += 1;
     }
 
-    return typed;
+    return state;
   };
+}
+
+// The typed text at offset t, for the watch-replay view and the live input.
+export function replayCursor(attempt: ReplaySource) {
+  const flow = replayFlow(attempt);
+
+  return (t: number) => flow(t).typed;
 }
 
 // The scored bounds (startedAt/endedAt) widened to cover every event, so a timed run's idle tail
@@ -1194,13 +1276,20 @@ function comparisonScore(attempt: ComparisonSource) {
 // Secondary run-card stats, derived from the event log only. Presentational: they never feed
 // the versioned wpm/accuracy contract, bests, comparisons or pattern memory.
 
-// Every printable key pressed, including keys held back while stop-on-error waits for a fix.
+// Every printable key pressed, including keys held back while stop-on-error waits for a fix, a space
+// that skipped letters and a letter past a word's end.
 function keystrokes(attempt: Attempt) {
-  return (attempt.events || []).filter((event): event is Extract<AttemptEvent, { text: string }> => (event.type === 'insert' || event.type === 'blocked-insert') && printable(event.text));
+  return (attempt.events || []).flatMap((event) => {
+    if (event.type === 'skip') return [{ offsetMs: event.offsetMs, keys: 1 }];
+
+    if ((event.type === 'insert' || event.type === 'blocked-insert' || event.type === 'extra') && printable(event.text)) return [{ offsetMs: event.offsetMs, keys: [...event.text].length }];
+
+    return [];
+  });
 }
 
 export function rawWpm(attempt: Attempt, replay = replayAttempt(attempt)) {
-  const typed = keystrokes(attempt).reduce((sum, event) => sum + [...event.text].length, 0);
+  const typed = keystrokes(attempt).reduce((sum, event) => sum + event.keys, 0);
 
   return replay.elapsedMs > 0 ? Math.round(typed / CHARS_PER_WORD / (replay.elapsedMs / 60000)) : 0;
 }
@@ -1219,7 +1308,7 @@ export function consistency(attempt: Attempt, replay = replayAttempt(attempt)) {
   for (const event of keys) {
     const second = Math.floor((event.offsetMs - start) / 1000);
 
-    if (second >= 0 && second < seconds) counts[second] = at(counts, second) + [...event.text].length;
+    if (second >= 0 && second < seconds) counts[second] = at(counts, second) + event.keys;
   }
 
   const mean = counts.reduce((sum, value) => sum + value, 0) / seconds;
@@ -1233,19 +1322,27 @@ export function consistency(attempt: Attempt, replay = replayAttempt(attempt)) {
 // The finished text, letter by letter: correct and incorrect (still wrong at the finish) in the
 // kept text; extra = keystrokes past the passage end, including a key an accent commit carried past
 // it (recorded against the last letter once the passage is full, not kept; a key refused inside the
-// passage is not extra); missed = letters left untyped inside the
-// last word the run reached. Slips fixed along the way are first-try errors, not incorrect.
+// passage is not extra), and letters still standing past a word's end; missed = letters a space
+// skipped, and letters left untyped inside the last word the run reached. Slips fixed along the way
+// are first-try errors, not incorrect.
 export function characterBreakdown(attempt: Attempt, replay = replayAttempt(attempt)) {
   const target = attempt.text;
   const { typed } = replay;
   let correct = 0;
+  let skipped = 0;
 
-  for (let i = 0; i < typed.length; i += 1) if (typed[i] === target[i]) correct += 1;
-  let extra = 0;
+  for (let i = 0; i < typed.length; i += 1) {
+    if (typed[i] === target[i]) correct += 1;
+    else if (typed[i] === MISSED) skipped += 1;
+  }
+
+  let extra = [...replayFlow(attempt)(Infinity).extras.values()].reduce((sum, letters) => sum + letters.length, 0);
   let length = 0;
 
   for (const event of attempt.events || []) {
     if (event.type === 'delete') length = Math.max(0, length - Math.max(1, event.count || 1));
+
+    if (event.type === 'skip') length += skippedText(target.length, event.position, event.count).length;
 
     if (event.type !== 'insert' || !printable(event.text)) continue;
 
@@ -1264,7 +1361,7 @@ export function characterBreakdown(attempt: Attempt, replay = replayAttempt(atte
     reached = space === -1 ? target.length : space;
   }
 
-  return { correct, incorrect: typed.length - correct, extra, missed: Math.max(0, reached - typed.length) };
+  return { correct, incorrect: typed.length - correct - skipped, extra, missed: skipped + Math.max(0, reached - typed.length) };
 }
 
 // When each letter still there at the finish was typed, mirroring replayAttempt's kept text.
@@ -1274,6 +1371,11 @@ function keptTimes(attempt: Attempt) {
   for (const event of attempt.events || []) {
     if (event.type === 'delete') {
       times.splice(Math.max(0, times.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+
+    if (event.type === 'skip') {
+      times.push(...skippedText(attempt.text.length, event.position, event.count).split('').map(() => event.offsetMs));
       continue;
     }
 
@@ -1304,6 +1406,7 @@ export function wordHistory(attempt: Attempt, replay = replayAttempt(attempt)) {
   // fixed, and then every kept letter typed after that key counts.
   const firstKey = (attempt.events || []).find((event) => event.type === 'insert' && printable(event.text))?.offsetMs;
   const words: { word: string; wrong: boolean; wpm: number | null }[] = [];
+  const { extras } = replayFlow(attempt)(Infinity);
   const pattern = /\S+/gu;
   let match;
 
@@ -1321,7 +1424,13 @@ export function wordHistory(attempt: Attempt, replay = replayAttempt(attempt)) {
     const stop = start + match[0].length;
     const gap = target.slice(stop).search(/\S/u);
     const kept = replay.typed.slice(stop, gap === -1 ? target.length : stop + gap);
-    let shown = replay.typed.slice(start, end + 1);
+    let shown = replay.typed.slice(start, end + 1).replaceAll(MISSED, '');
+    const extra = extras.get(stop);
+
+    if (extra) {
+      wrong = true;
+      shown += extra;
+    }
 
     for (let i = stop; i < stop + kept.length; i += 1) if (firsts.get(i)?.correct === false) wrong = true;
 

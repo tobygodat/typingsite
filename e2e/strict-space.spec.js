@@ -1,4 +1,4 @@
-import { test, expect, firstTryErrors, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings, finishDrill } from './fixtures.js';
+import { test, expect, firstTryErrors, chooseWords, completePassage, openApp, openSettings, openView, passageText, typeInto, chooseMore, chooseSetting, closeSettings, finishDrill, chooseLinearWordFlow } from './fixtures.js';
 
 // Committed docs screenshots are only rewritten when SCREENSHOTS is set; normal runs write to test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/strict-space/${name}` : testInfo.outputPath(name));
@@ -43,8 +43,9 @@ async function settle(page) {
 
 const wrongFor = (char) => (char === 'x' ? 'z' : 'x');
 
-test('by default a space typed mid-word takes that letter’s place, as before', async ({ page }) => {
+test('with linear word flow, a space typed mid-word takes that letter’s place, as before', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   const text = await passageText(page);
   const at = midWord(text);
@@ -262,6 +263,7 @@ test('the daily challenge keeps its fixed rules whatever these settings say', as
 test('custom text keeps the default rules and its passage, so its key stays the one master writes', async ({ page }) => {
   const custom = 'the quick brown fox jumps over the lazy dog';
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await setSwitch(page, 'strict-space-toggle', true);
   await setSwitch(page, 'quick-end-toggle', false);

@@ -20,6 +20,7 @@ interface RecurringPair { pair: string; observations: number; errors: number; ru
 
 import type { Attempt, Conditions, Replay } from './typing.js';
 import type { RunRecord, KeyCounts } from './profile-types.js';
+import { skippedText } from './word-flow.js';
 
 export type { RunRecord, KeyCounts, PatternCounts } from './profile-types.js';
 
@@ -88,6 +89,19 @@ export function correctionTimes(attempt: Attempt): [number, number | null] {
   for (const event of attempt.events || []) {
     if (event.type === 'delete') {
       keptAt.splice(Math.max(0, keptAt.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+
+    if (event.type === 'skip' || event.type === 'extra') {
+      const { position } = event;
+
+      if (position < attempt.text.length && !firstTried.has(position)) {
+        firstTried.add(position);
+
+        if (position > 0 && keptAt.length === position) pending.set(position, indexed(keptAt, position - 1));
+      }
+
+      if (event.type === 'skip') keptAt.push(...skippedText(attempt.text.length, position, event.count).split('').map(() => event.offsetMs));
       continue;
     }
 
@@ -483,6 +497,8 @@ const CONDITION_PARTS: ConditionPart[] = [
   { name: 'correction', text: (c) => correctionLabel(labelSource(c).correctionPolicy) },
   { name: 'strictSpace', text: (c) => (inputRules(c).includes('strict-space') ? 'strict space' : 'no strict space'), shown: (c) => inputRules(c).includes('strict-space') },
   { name: 'quickEnd', text: (c) => (inputRules(c).includes('quick-end-off') ? 'quick end off' : 'quick end'), shown: (c) => inputRules(c).includes('quick-end-off') },
+  // Named only beside a set it differs from (Progress's pills), so the default adds nothing to a run's line.
+  { name: 'wordFlow', text: (c) => (inputRules(c).includes('word-flow') ? 'fluid words' : 'linear words'), shown: () => false },
   { name: 'corpus', text: (c) => `corpus ${version(labelSource(c).corpus || CORPUS_VERSION)}`, shown: () => false },
   { name: 'metric', text: (c) => `metric ${version(labelSource(c).metricVersion || METRIC_VERSION)}`, shown: () => false },
 ];
@@ -843,6 +859,11 @@ function keptOffsets(attempt: Attempt) {
   for (const event of attempt.events || []) {
     if (event.type === 'delete') {
       times.splice(Math.max(0, times.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+
+    if (event.type === 'skip') {
+      times.push(...skippedText(attempt.text.length, event.position, event.count).split('').map(() => event.offsetMs));
       continue;
     }
 

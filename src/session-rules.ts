@@ -6,7 +6,7 @@ import type { OnlineRaceController } from './online-race.js';
 import type { createGhostResult } from './ghost-result.js';
 import type { createNavigation } from './navigation.js';
 import type { Conditions } from './typing.js';
-import { STANDARD_SECONDS } from './typing.js';
+import { STANDARD_SECONDS, fluidWords, withWordFlow } from './typing.js';
 import { isRecord } from './domain-values.js';
 
 type RuleKind = SessionKind | 'race';
@@ -89,6 +89,7 @@ export function createSessionRules(learning: LearningStore, practice: PracticeSe
       if (!isRecord(baseline)) throw new TypeError('A retest requires its baseline conditions');
       run.strictSpace = baseline.strictSpace === true;
       run.quickEnd = baseline.quickEnd !== false;
+      run = withWordFlow(run, fluidWords(baseline) ? 'fluid' : 'linear');
     }
 
     if (ruleLimits({ kind, run }).quickEnd) run.quickEnd = true;

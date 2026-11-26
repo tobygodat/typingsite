@@ -87,6 +87,8 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
   field.setSelectionRange(length, length);
   textView.ensureAhead(length);
   updateCharacterStates(characters, typed, targetAttempt.text, previousLength);
+  const { extras } = input.flow(type);
+  textView.showExtras(extras);
   const lastCorrect = length > 0 && typed[length - 1] === targetAttempt.text[length - 1];
   let outcome = 'delete';
 
@@ -102,7 +104,7 @@ function refreshAfterInput(type: InputSurface, previousLength: number, blocked: 
     skipped.className = 'char wrong';
   }
 
-  fx.update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space');
+  fx.update(length, outcome, (length > 0 && !lastCorrect) || blocked === 'space' || extras.has(length));
   textView.trimBehind(length);
   const waiting = awaitingSubmit(targetAttempt, typed);
   const rule = blocked === 'space' ? NOTICES.strictSpace : waiting ? NOTICES.submit : '';

@@ -1,5 +1,5 @@
 // Run card: consistency, the counts behind accuracy (its tooltip) and the static words list.
-import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, phone } from './fixtures.js';
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, phone, chooseLinearWordFlow } from './fixtures.js';
 
 // Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/run-card-stats/${name}` : testInfo.outputPath(name));
@@ -148,6 +148,7 @@ test.describe('narrow phone', () => {
 
   test('long, error-heavy stats stay inside the card at 320 px', async ({ page }) => {
     await openApp(page);
+    await chooseLinearWordFlow(page);
     await chooseWords(page, 100);
     // Every letter wrong under continue on error: the breakdown reads 0/<all>/0/0.
     const text = await passageText(page);

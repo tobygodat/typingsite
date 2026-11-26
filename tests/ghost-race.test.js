@@ -121,6 +121,39 @@ test('word, quote and daily runs send their whole passage; a timed run is cut at
   assert.equal(payload.conditions.textId, 'quote-fox');
 });
 
+test('a timed fluid run that skips past the allowance sends every word its caret reached, at the run card score', () => {
+  const long = Array.from({ length: 1600 }, (_, i) => ['alpha', 'beta', 'gamma', 'delta'][i % 4]).join(' ');
+  const attempt = createAttempt({ id: 'f', text: long, textId: 'quote-fox', kind: 'test', conditions: { mode: 'time', duration: 15, correctionPolicy: 'relaxed' } });
+  let typed = 0;
+  let clock = 0.4;
+  const key = (event) => { attempt.events.push({ ...event, offsetMs: clock }); clock += 12; };
+
+  // Every third word: its first letter, then Space skips the rest of it.
+  for (let word = 0; typed < 900; word += 1) {
+    const end = long.indexOf(' ', typed);
+
+    if (word % 3 === 2) {
+      key({ type: 'insert', text: long[typed], position: typed, accepted: true });
+      key({ type: 'skip', position: typed + 1, count: end - typed - 1 });
+      typed = end + 1;
+    } else {
+      for (; typed <= end; typed += 1) key({ type: 'insert', text: long[typed], position: typed, accepted: true });
+    }
+  }
+
+  attempt.startedAt = 0;
+  attempt.endedAt = 15000;
+  attempt.status = 'complete';
+  const text = challengeText(attempt);
+  assert.ok(text.length >= typed - 1, `cut at ${text.length}, the caret reached ${typed}`);
+  assert.equal(long[text.length], ' ');
+  const payload = challengePayload(attempt);
+  const card = replayAttempt(attempt);
+  assert.equal(payload.score.correct, [...card.typed].filter((char, index) => char === long[index]).length);
+  assert.equal(payload.score.wpm, card.score.wpm);
+  assert.equal(payload.score.elapsedMs, 15000);
+});
+
 test('only finished practice, retest and daily runs can be sent', () => {
   assert.ok(challengePayload(run(passage)));
   assert.equal(challengePayload(run(passage, { kind: 'drill' })), null);
