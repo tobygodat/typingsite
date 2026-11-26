@@ -4,6 +4,7 @@
 //
 //   bun run evaluate:learner -- --rule 0019 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go.mjs ...)
 //   bun run evaluate:learner -- --rule 0019 --validation-only
+//   bun run evaluate:learner -- --rule 0019 --check   (CI: validation only, exits 1 when a check below fails)
 //
 // Two simulators. The guard world is ADR 0015's, with drills saved at run 20, scored on ADR 0015's measures. The season
 // is months of practice, light and heavy, careful and careless, with and without bad days, in which a drill fixes a
@@ -11,7 +12,7 @@
 // a simulated typist gets better after a drill only because the season says so.
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { DECAY_TIMING_POLICY, DEFAULT_POLICY, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, LEARNER_VARIANTS, drillSplit, drilledTargets, fitLearner, learnerEvidence,
   learnerRecommendation, letGo, letGoIndex, recommendFor } from '../src/learner.js';
@@ -316,6 +317,31 @@ export async function validate0019(workers) {
   return { weakRatio: weak, slowShare: slow, returnOdds: { rows: returns, chosen: returnOdds }, constants: { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds } };
 }
 
+// CI's gate on a validation run (--check): each chosen constant is the one the learner ships, and each validation
+// measure at it is within its ceiling. ADR 0019 records that no H met its ceiling, so the rule took the largest; H's
+// false return may instead not rise above that record, at the H it chose.
+const VALIDATED = [
+  { name: 'weakRatio', key: 'R', ceiling: RULE_0019.validationCeiling.letGo, measures: (row) => [['false let-go', row.falseLetGo]] },
+  { name: 'slowShare', key: 'q0', ceiling: RULE_0019.validationCeiling.letGo, measures: (row) => [['false let-go', row.falseLetGo]] },
+  { name: 'returnOdds', key: 'H', ceiling: RULE_0019.validationCeiling.return, measures: (row) => KINDS.map((kind) => [`false return (${kind})`, row.falseReturn[kind] ?? 0]),
+    recordedBreach: true },
+];
+
+export function check0019(validation, recorded) {
+  return VALIDATED.flatMap(({ name, key, ceiling, measures, recordedBreach }) => {
+    const chosen = validation[name].chosen;
+    const at = (record) => record[name].rows.find((row) => (row.value ?? row.returnOdds) === chosen);
+    const before = recordedBreach && recorded[name].chosen === chosen ? measures(at(recorded)) : [];
+
+    return [{ label: `${key} chosen`, ok: chosen === LET_GO[name], detail: `${chosen}, shipped ${LET_GO[name]}` },
+      ...measures(at(validation)).map(([measure, value], i) => {
+        const limit = (before[i]?.[1] ?? 0) > ceiling ? { at: before[i][1], by: "ADR 0019's record" } : { at: ceiling, by: 'ceiling' };
+
+        return { label: `${key} ${measure}`, ok: value <= limit.at, detail: `${percent(value)}, limit ${percent(limit.at)} (${limit.by})` };
+      })];
+  });
+}
+
 const reallyWorse = (result, a, b, measure) => {
   const d = paired(result, a, b, measure);
 
@@ -511,6 +537,16 @@ function option(name, fallback) {
 
 async function main() {
   const workers = Number(option('workers', 12));
+
+  if (process.argv.includes('--check')) {
+    const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+    const rows = check0019(await validate0019(workers), recorded);
+
+    for (const row of rows) console.log(`${row.ok ? 'pass' : 'FAIL'}  ${row.label}: ${row.detail}`);
+    process.exitCode = rows.every((row) => row.ok) ? 0 : 1;
+
+    return;
+  }
 
   if (process.argv.includes('--validation-only')) {
     console.log(JSON.stringify(await validate0019(workers), null, 1));

@@ -6,7 +6,8 @@ import * as trainPathModule from '../src/train-path.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
-import { seasonTask } from '../scripts/evaluate-let-go.mjs';
+import { readFileSync } from 'node:fs';
+import { check0019, seasonTask } from '../scripts/evaluate-let-go.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -284,4 +285,26 @@ test('over a simulated season, a target the drill left weak is never let go, and
   assert.ok(released.length >= fixedWorld.length / 2, `${released.length} of ${fixedWorld.length} let go in the season`);
 
   assert.ok(targets.filter((t) => t.world === 'unchanged').every((t) => !t.results['let-go'].letGo.includes(true)), 'a still-weak target let go');
+});
+
+test("CI's let-go gate passes ADR 0019's recorded validation, and fails a breached ceiling or a constant the learner doesn't ship", () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+  const failed = (validation) => check0019(validation, recorded).filter((row) => !row.ok).map((row) => row.label);
+  assert.deepEqual(failed(recorded), []);
+
+  const looserR = structuredClone(recorded);
+  looserR.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
+  assert.deepEqual(failed(looserR), ['R false let-go']);
+
+  const otherQ0 = structuredClone(recorded);
+  otherQ0.slowShare.chosen = 0.85;
+  assert.deepEqual(failed(otherQ0), ['q0 chosen', 'q0 false let-go']);
+
+  const tighter = structuredClone(recorded);
+  tighter.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
+  assert.deepEqual(check0019(tighter, tighter).filter((row) => !row.ok).map((row) => row.label), ['R false let-go'], "only H's false return may stand on the record");
+
+  const moreReturns = structuredClone(recorded);
+  moreReturns.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn.slow += 0.001;
+  assert.deepEqual(failed(moreReturns), ['H false return (slow)']);
 });
