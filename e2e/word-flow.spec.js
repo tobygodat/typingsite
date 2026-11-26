@@ -143,6 +143,30 @@ test('a fluid run with a skipped word and a corrected overflow scores both and r
   await expect(page.locator('#replay-errors')).toHaveText('2');
 });
 
+// The trace and its readout count a skipped word and a letter past a word end as the score does, one mistake each.
+test('the speed trace marks a fluid run\'s skip and letter past a word end as its two mistakes', { tag: '@compat' }, async ({ page }) => {
+  await openApp(page);
+  await useCustom(page);
+  await typeInto(page, 'the qu brownx fox jumps over the lazy dog', '#typing-input', { delay: 60 });
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await expect(page.locator('#result-accuracy-fact')).toHaveAttribute('title', firstTryErrors('2'));
+  const graph = page.locator('#speed-graph');
+  await expect(graph.locator('circle.graph-miss')).not.toHaveCount(0);
+  await graph.focus();
+  const last = Number(await graph.getAttribute('aria-valuemax'));
+  const read = [];
+
+  for (let index = 0; index <= last; index += 1) {
+    await page.keyboard.press(index ? 'ArrowRight' : 'Home');
+    read.push(await graph.getAttribute('aria-valuetext'));
+  }
+
+  const counts = read.map((text) => Number(/· (\d+) mistakes?$/.exec(text)?.[1] ?? Number.NaN));
+  expect(counts.reduce((sum, count) => sum + count, 0), read.join('\n')).toBe(2);
+  // The mistakes sit in the first second or two, where "qu" and "brownx" were typed.
+  expect(counts.findIndex(Boolean)).toBeLessThanOrEqual(1);
+});
+
 test('the rules that keep linear scoring still take a space typed mid-word in place of the letter', async ({ page }) => {
   await openApp(page);
   await chooseSetting(page, 'correction-select', 'no-backspace');

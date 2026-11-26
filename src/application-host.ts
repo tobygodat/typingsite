@@ -52,6 +52,7 @@ import {
   correctionPreference,
   selectPassage,
   standardConditions,
+  summarizePatterns,
   consistency,
   characterBreakdown,
   wordHistory,
@@ -68,6 +69,7 @@ import { createTypingFx, createWordGlide } from './motion.js';
 import { SOUND_LABELS, SOUND_MODES, createSounds, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { TYPING_MOTIONS, normalizeCaretGlide, normalizeTypingMotion } from './caret-glide.js';
 import { renderSpeedGraph, speedRange, speedSeries } from './graph.js';
+import { bigramChips } from './progress-view.js';
 import { MAX_CUSTOM_THEMES, newThemeId, readCustomThemes, themeMode as colorsMode } from './custom-themes.js';
 import { matchesBinding, bindingLabel } from './keybindings.js';
 import { listenForSequence } from './egg.js';
@@ -491,6 +493,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     labelWords();
 
     if (practice.shownResult && rateShown(practice.shownResult)) renderSpeedGraph($('speed-graph'), practice.shownResult, { animate: false });
+    challenge.review.redraw();
 
     if (document.body.dataset.view === 'progress') {
       drawProgressView();
@@ -1230,7 +1233,23 @@ export async function attachApplication({ practice, learning, palette, settings:
 
   const progressState = learning.progress.navigation.state;
   const progressHistory = createProgressHistory(learning, practiceProgress, { describe: describeConditions, describeRun, date: dateCopy, loops: renderLoops, focusShown });
-  const { renderHistory, renderWeek, drawProgressView, chooseProgress, hasAnyHistory } = progressHistory;
+  const { renderHistory: drawHistory, renderWeek: drawWeek, drawProgressView, chooseProgress: chooseConditions, hasAnyHistory } = progressHistory;
+
+  // The pairs read this device's recorded attempts, as Train's recommendation does, at the conditions Progress shows,
+  // and a friction pair opens its drill under them.
+  function renderPairs() {
+    const source = learning.profile.runs.flatMap(({ conditions: shown }) => (isRecord(shown) && conditionKey(shown) === progressState.key ? [shown] : [])).at(-1);
+
+    learning.progress.commands.pair = (pair) => { if (source) practiceTarget(pair, source); };
+
+    flushSync(() => learning.progress.pairs.publish(source ? bigramChips(summarizePatterns(learning.profile.attempts, 20, source)) : { friction: [], flow: [] }));
+  }
+
+  function renderHistory() { drawHistory(); renderPairs(); }
+
+  function renderWeek() { drawWeek(); renderPairs(); }
+
+  function chooseProgress(choice: Parameters<typeof chooseConditions>[0]) { chooseConditions(choice); renderPairs(); }
 
   let keyboardInput = false;
   const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'OS', 'CapsLock', 'Fn']);

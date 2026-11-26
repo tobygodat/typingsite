@@ -1,5 +1,6 @@
 import { at as indexed } from './domain-values.js';
 import type { ScoredRun as RunRecord } from './profile-types.js';
+import type { summarizePatterns } from './typing.js';
 
 type Point = [number, number];
 
@@ -578,4 +579,46 @@ export function monthLabels(days: string[]) {
 
     return starts ? day.toLocaleDateString(undefined, { month: 'short' }) : '';
   });
+}
+
+type PatternSummary = ReturnType<typeof summarizePatterns>;
+
+type PairEvidence = PatternSummary['pairs'][number];
+
+export interface PairChip { pair: string; note: string; label: string }
+
+// The evidence a pair needs before it is named, the same floor Train's recommendation keeps.
+const PAIR_FLOOR = 10;
+const PAIR_CHIPS = 3;
+const PAIR_MARGIN = 0.1;
+
+const tries = ({ errors, observations }: PairEvidence) => `${errors} first-try ${errors === 1 ? 'error' : 'errors'} in ${observations} ${observations === 1 ? 'try' : 'tries'}`;
+const milliseconds = (value: number) => `${value > 0 ? '+' : '−'}${Math.abs(Math.round(value))} ms`;
+
+// Friction is a pair missed on the first try, or typed at least a tenth slower than the person's median, with enough
+// tries to say so: the most missed first, then the slowest. Flow is a pair never missed and typed at least a tenth
+// faster than the median: the fastest first. The tenth keeps a few milliseconds of jitter from naming a pair either
+// way. The two tests exclude each other (a pair has errors or none, a slowdown above the median or below), so no pair
+// is named in both.
+export function bigramChips(summary: PatternSummary, limit = PAIR_CHIPS) {
+  const margin = Math.max(1, (summary.personalMedianMs ?? 0) * PAIR_MARGIN);
+  const evidenced = summary.pairs.filter((pair) => pair.observations >= PAIR_FLOOR || pair.timings.length >= PAIR_FLOOR);
+  const slowdown = (pair: PairEvidence) => (pair.timings.length >= PAIR_FLOOR ? pair.slowdownMs ?? 0 : 0);
+
+  const friction = evidenced.filter((pair) => (pair.observations >= PAIR_FLOOR && pair.errors > 0) || slowdown(pair) >= margin)
+    .sort((a, b) => b.errorRate - a.errorRate || slowdown(b) - slowdown(a) || a.pair.localeCompare(b.pair))
+    .slice(0, limit)
+    .map((pair): PairChip => {
+      const missed = pair.observations >= PAIR_FLOOR && pair.errors > 0;
+      const note = missed ? `${Math.round(pair.errorRate * 100)}% missed` : milliseconds(slowdown(pair));
+
+      return { pair: pair.pair, note, label: `Practice “${pair.pair}”: ${missed ? tries(pair) : `${note} against your median`}` };
+    });
+
+  const flow = evidenced.filter((pair) => pair.errors === 0 && pair.timings.length >= PAIR_FLOOR && slowdown(pair) <= -margin)
+    .sort((a, b) => slowdown(a) - slowdown(b) || a.pair.localeCompare(b.pair))
+    .slice(0, limit)
+    .map((pair): PairChip => ({ pair: pair.pair, note: milliseconds(slowdown(pair)), label: `“${pair.pair}”: ${milliseconds(slowdown(pair))} against your median, never missed` }));
+
+  return { friction, flow };
 }

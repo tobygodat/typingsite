@@ -5,14 +5,19 @@ interface SpeedPoint { t: number; wpm: number; misses: number }
 
 interface SpeedSeries { points: SpeedPoint[]; durationS: number }
 
-interface Plot { svg: SVGElement; x: (t: number) => number; y: (speed: number) => number; left: number; right: number }
+interface Plot { svg: SVGElement; ink: SVGElement; x: (t: number) => number; y: (speed: number) => number; left: number; right: number; top: number; bottom: number }
 
 interface DrawnPoint { t: number; speed: number }
+
+// One place the scrubber can rest: the crosshair's x, a dot's y per series (null where that series has no point),
+// the readout, and, when the readout can be shortened, the readout in at most that many characters.
+interface ScrubStop { x: number; ys: (number | null)[]; text: string; fit?: (chars: number) => string }
 
 // Speed graph: the run's typing speed over time, with mistakes marked, as an SVG line chart.
 // Presentational only. Scoring never reads from here; it reads the event log.
 import { CHARS_PER_WORD } from './typing.js';
 import { formatSpeed, speedValue } from './units.js';
+import { skippedText } from './word-flow.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 const WINDOW_MS = 3000; // speed is averaged over the trailing three seconds, so single pauses don't spike
@@ -26,10 +31,11 @@ function stepMs(durationMs: number) {
 
 // Speed points (wpm from correct keystrokes) and mistake counts per point, times in seconds from the first key.
 // Speed at each point is measured over exactly the trailing three seconds of keystroke timestamps,
-// however coarse the drawn points are; mistakes are summed per drawn point.
+// however coarse the drawn points are; mistakes are summed per drawn point. In fluid word flow a space that skips
+// letters and a letter past a word's end are each a wrong key, as replayAttempt scores them.
 export function speedSeries(attempt: ReplaySource) {
   const all = attempt?.events || [];
-  const events = all.filter((event): event is Extract<AttemptEvent, { text: string }> => event.type === 'insert' || event.type === 'blocked-insert');
+  const events = all.filter((event): event is Extract<AttemptEvent, { type: 'insert' | 'blocked-insert' | 'skip' | 'extra' }> => event.type === 'insert' || event.type === 'blocked-insert' || event.type === 'skip' || event.type === 'extra');
 
   if (!events.length) return { points: [], durationS: 0 };
   const start = attempt.startedAt ?? indexed(events, 0).offsetMs;
@@ -46,6 +52,19 @@ export function speedSeries(attempt: ReplaySource) {
   for (const event of all) {
     if (event.type === 'delete') {
       kept.splice(Math.max(0, kept.length - Math.max(1, event.count || 1)));
+      continue;
+    }
+
+    if (event.type === 'skip' || event.type === 'extra') {
+      const length = attempt.text?.length ?? 0;
+
+      if (event.position >= length) continue;
+      const at = Math.max(0, event.offsetMs - start);
+      const bucket = Math.min(count - 1, Math.floor(at / step));
+      misses[bucket] = indexed(misses, bucket) + 1;
+
+      // The skipped letters and the space after them stay in the kept text, so a later delete takes them first.
+      if (event.type === 'skip') kept.push(...[...skippedText(length, event.position, event.count)].map((char, offset) => ({ at, hit: attempt.text?.[event.position + offset] === char })));
       continue;
     }
 
@@ -140,14 +159,17 @@ function plot(container: HTMLElement, { durationS, top, animate }: { durationS: 
   const ticks = durationS ? [0, durationS / 2, durationS] : [0];
   ticks.forEach((t, index) => {
     const anchor = index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle';
-    svg.append(el('text', { class: 'graph-label', x: x(t), y: height - 4, 'text-anchor': anchor }, seconds(Math.round(t * 10) / 10)));
+    svg.append(el('text', { class: 'graph-label graph-tick', x: x(t), y: height - 4, 'text-anchor': anchor }, seconds(Math.round(t * 10) / 10)));
   });
 
-  return { svg, x, y, left, right };
+  const ink = el('g', { class: 'graph-ink' });
+  svg.append(ink);
+
+  return { svg, ink, x, y, left, right, top: PAD.top, bottom: PAD.top + plotH };
 }
 
 // Straight segments, or with smooth a Catmull-Rom curve through every point, so the mistake dots stay on it.
-function line({ svg, x, y, left }: Plot, points: DrawnPoint[], className: string, { smooth = false } = {}) {
+function line({ ink, x, y, left }: Plot, points: DrawnPoint[], className: string, { smooth = false } = {}) {
   const coords: [number, number][] = points.map((point) => [x(point.t), y(point.speed)]);
 
   if (coords.length === 1) coords.unshift([left, indexed(coords, 0)[1]]);
@@ -170,7 +192,7 @@ function line({ svg, x, y, left }: Plot, points: DrawnPoint[], className: string
     return `C${at(out)} ${at(into)} ${at(point)}`;
   }).join(' ');
 
-  svg.append(el('path', { class: className, d, pathLength: 1 }));
+  ink.append(el('path', { class: className, d }));
 }
 
 // Speed points in the display unit, so the gridline labels are round numbers in that unit.
@@ -199,10 +221,13 @@ function trace(container: HTMLElement, { durationS, low, high, animate }: { dura
   svg.append(el('line', { class: 'graph-axis', x1: 0, x2: width, y1: floor - 0.5, y2: floor - 0.5 }));
   const ticks = durationS ? [0, durationS / 2, durationS] : [0];
   ticks.forEach((t, index) => {
-    svg.append(el('text', { class: 'graph-label', x: x(t), y: height - 4, 'text-anchor': index && index === ticks.length - 1 ? 'end' : 'start' }, seconds(Math.round(t * 10) / 10)));
+    svg.append(el('text', { class: 'graph-label graph-tick', x: x(t), y: height - 4, 'text-anchor': index && index === ticks.length - 1 ? 'end' : 'start' }, seconds(Math.round(t * 10) / 10)));
   });
 
-  return { svg, x, y, left: 0, right: width };
+  const ink = el('g', { class: 'graph-ink' });
+  svg.append(ink);
+
+  return { svg, ink, x, y, left: 0, right: width, top: 0, bottom: floor };
 }
 
 export function renderSpeedGraph(container: HTMLElement, attempt: ReplaySource & Pick<Attempt, 'summary'>, { animate = true } = {}) {
@@ -215,30 +240,209 @@ export function renderSpeedGraph(container: HTMLElement, attempt: ReplaySource &
   const speeds = [average, ...points.map((point) => point.speed)];
   const chart = trace(container, { durationS: series.durationS, low: Math.min(...speeds), high: Math.max(...speeds), animate });
 
-  if (!chart || !points.length) return;
-  const { svg, y, left, right } = chart;
-  svg.append(el('line', { class: 'graph-average', x1: left, x2: right, y1: y(average), y2: y(average) }));
+  if (!chart || !points.length) {
+    scrub(container, null, [], false);
+
+    return;
+  }
+
+  const { svg, ink, y, left, right } = chart;
+  svg.insertBefore(el('line', { class: 'graph-average', x1: left, x2: right, y1: y(average), y2: y(average) }), ink);
   line(chart, points, 'graph-line', { smooth: true });
 
   // Mistakes sit on the line where they happened, so a slip and the dip after it read together.
   for (const point of points) {
     if (!point.misses) continue;
-    svg.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r: 4 }));
+    ink.append(el('circle', { class: 'graph-miss', cx: chart.x(point.t).toFixed(1), cy: y(point.speed).toFixed(1), r: 4 }));
   }
+
+  scrub(container, chart, points.map((point) => ({ x: chart.x(point.t), ys: [y(point.speed)], text: scrubReadout(point) })), !animate);
 }
 
 // An online race: both racers' speed on one chart over the race clock, which both traces start from the
 // shared start, so the two lines compare directly. Yours is the accent, theirs the text colour.
-export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [ReplaySource, ReplaySource], { animate = true } = {}) {
+export function renderDuelGraph(container: HTMLElement, [mine, theirs]: [ReplaySource, ReplaySource], { animate, name }: { animate: boolean; name: string }) {
   const series = [mine, theirs].map(speedSeries);
   const ours = inUnit(indexed(series, 0).points);
   const others = inUnit(indexed(series, 1).points);
   const top = niceMax(Math.max(0, ...ours.map((point) => point.speed), ...others.map((point) => point.speed)));
   const chart = plot(container, { durationS: Math.max(...series.map((each) => each.durationS)), top, animate });
 
-  if (!chart) return;
+  if (!chart) {
+    scrub(container, null, [], false);
+
+    return;
+  }
 
   if (others.length) line(chart, others, 'graph-line graph-line-theirs');
 
   if (ours.length) line(chart, ours, 'graph-line');
+  const times = [...new Set([...ours, ...others].map((point) => point.t))].sort((a, b) => a - b);
+
+  scrub(container, chart, times.map((t) => {
+    const racers = [{ name: 'You', point: scrubPointAt(ours, t, indexed(series, 0).durationS) }, { name, point: scrubPointAt(others, t, indexed(series, 1).durationS) }];
+
+    return { x: chart.x(t), ys: racers.map(({ point }) => (point ? chart.y(point.speed) : null)), text: duelReadout(t, racers), fit: (chars: number) => duelReadout(t, racers, undefined, chars) };
+  }), !animate);
+}
+
+// The index of the value nearest `value` in ascending `values`, or -1 when there are none. The scrubber snaps to
+// drawn points, so a pointer between two reads the closer one.
+export function scrubIndexAt(values: readonly number[], value: number) {
+  if (!values.length) return -1;
+  let low = 0;
+  let high = values.length - 1;
+
+  while (high - low > 1) {
+    const middle = (low + high) >> 1;
+
+    if (indexed(values, middle) <= value) low = middle;
+    else high = middle;
+  }
+
+  return Math.abs(indexed(values, high) - value) < Math.abs(indexed(values, low) - value) ? high : low;
+}
+
+// The drawn point nearest `t` seconds, or null once `t` is past the racer's finish (`end`), when their line has ended.
+export function scrubPointAt<P extends { t: number }>(points: readonly P[], t: number, end = Infinity) {
+  if (t > end) return null;
+
+  return points[scrubIndexAt(points.map((point) => point.t), t)] ?? null;
+}
+
+const stamp = (t: number) => seconds(Math.round(t * 10) / 10);
+
+// "4.1s · 62 wpm · 1 mistake": the moment, the trailing speed there, and the mistakes in that step.
+export function scrubReadout(point: SpeedPoint, unit?: string) {
+  return `${stamp(point.t)} · ${formatSpeed(point.wpm, { whole: true }, unit)} · ${point.misses} ${point.misses === 1 ? 'mistake' : 'mistakes'}`;
+}
+
+// "4.1s · You 62 wpm · Lin 58 wpm", with a dash for a racer who has finished by then. Given at most `chars`
+// characters, the names give way first, each cut to an ellipsis, so the moment and both speeds always read whole.
+export function duelReadout(t: number, racers: readonly { name: string; point: SpeedPoint | null }[], unit?: string, chars = Infinity) {
+  const readout = (names: readonly string[]) => [stamp(t), ...racers.map(({ point }, index) => `${names[index]} ${point ? formatSpeed(point.wpm, { whole: true }, unit) : '—'}`)].join(' · ');
+  const names = racers.map(({ name }) => name);
+
+  while (readout(names).length > chars) {
+    const longest = names.reduce((most, name, index) => (name.length > indexed(names, most).length ? index : most), 0);
+    const name = indexed(names, longest).replace(/…$/, '');
+
+    if (name.length <= 1) break;
+    names[longest] = `${name.slice(0, -1).trimEnd()}…`;
+  }
+
+  return readout(names);
+}
+
+const IDLE = 'Arrow keys read the speed at each point';
+const scrubs = new WeakMap<HTMLElement, AbortController>();
+
+// Hover, drag or arrow across a chart: a hairline and a dot per series snap to the nearest point, and the readout
+// takes the time axis's row, centred under the hairline and kept inside the chart. Every coordinate is worked out at
+// draw time, the readout's width from one measure of the longest text in its monospaced face; a move only writes, so
+// it never forces layout. A readout too wide for the chart is shortened by its own fit. Each drawing replaces the
+// last one's listeners; with `keep`, a redraw (a resize, or the speed unit changing) reads the same point again.
+function scrub(container: HTMLElement, chart: Plot | null, stops: ScrubStop[], keep: boolean) {
+  const kept = keep && container.dataset.scrubbing !== undefined ? Number(container.getAttribute('aria-valuenow')) : -1;
+  scrubs.get(container)?.abort();
+  delete container.dataset.scrubbing;
+  container.setAttribute('aria-valuemin', '0');
+  container.setAttribute('aria-valuemax', String(Math.max(0, stops.length - 1)));
+  container.setAttribute('aria-valuenow', '0');
+  container.setAttribute('aria-valuetext', stops.length ? IDLE : 'No points to read');
+
+  if (!chart || !stops.length) return;
+  const controller = new AbortController();
+  scrubs.set(container, controller);
+  const { svg } = chart;
+  const hair = el('line', { class: 'graph-scrub', x1: 0, x2: 0, y1: chart.top, y2: chart.bottom });
+  const dots = indexed(stops, 0).ys.map((_, index) => el('circle', { class: `graph-scrub-dot${index ? ' graph-scrub-theirs' : ''}`, cx: 0, cy: 0, r: 3.5 }));
+  svg.append(hair, ...dots);
+  const readout = document.createElement('div');
+  readout.className = 'graph-readout';
+  readout.setAttribute('aria-hidden', 'true');
+  container.append(readout);
+  const xs = stops.map((stop) => stop.x);
+  const longest = stops.reduce((most, stop) => (stop.text.length > most.length ? stop.text : most), '');
+  readout.textContent = longest;
+  const perCharacter = readout.scrollWidth / Math.max(1, longest.length);
+  readout.textContent = '';
+  readout.style.setProperty('--scrub-y', `${chart.bottom + 2}px`);
+  const width = Number(svg.getAttribute('width'));
+  const room = Math.floor((width - 2) / Math.max(1, perCharacter));
+  const texts = stops.map((stop) => (stop.text.length > room && stop.fit ? stop.fit(room) : stop.text));
+
+  const lefts = texts.map((text, index) => {
+    const wide = Math.min(width, Math.ceil(perCharacter * text.length) + 1);
+
+    return Math.max(0, Math.min(width - wide, indexed(stops, index).x - wide / 2)).toFixed(1);
+  });
+
+  let origin = Number.NaN;
+  let active = -1;
+
+  function show(index: number) {
+    if (index === active) return;
+    active = index;
+    const stop = stops[index];
+
+    if (!stop) {
+      delete container.dataset.scrubbing;
+      readout.textContent = '';
+      container.setAttribute('aria-valuenow', '0');
+      container.setAttribute('aria-valuetext', IDLE);
+
+      return;
+    }
+
+    container.dataset.scrubbing = '';
+    const x = stop.x.toFixed(1);
+    hair.setAttribute('x1', x);
+    hair.setAttribute('x2', x);
+    dots.forEach((dot, series) => {
+      const y = stop.ys[series] ?? null;
+      dot.setAttribute('visibility', y === null ? 'hidden' : 'visible');
+
+      if (y === null) return;
+      dot.setAttribute('cx', x);
+      dot.setAttribute('cy', y.toFixed(1));
+    });
+    readout.style.setProperty('--scrub-x', `${lefts[index]}px`);
+    readout.textContent = texts[index] ?? stop.text;
+    container.setAttribute('aria-valuenow', String(index));
+    container.setAttribute('aria-valuetext', stop.text);
+  }
+
+  const follow = (event: PointerEvent) => {
+    if (Number.isNaN(origin)) origin = svg.getBoundingClientRect().left;
+    show(scrubIndexAt(xs, event.clientX - origin));
+  };
+
+  const enter = (event: PointerEvent) => { origin = svg.getBoundingClientRect().left; follow(event); };
+  const signal = controller.signal;
+  container.addEventListener('pointerenter', enter, { signal });
+  container.addEventListener('pointerdown', enter, { signal });
+  container.addEventListener('pointermove', follow, { signal });
+  container.addEventListener('pointerleave', (event) => { if (event.pointerType === 'mouse') show(-1); }, { signal });
+  container.addEventListener('blur', () => show(-1), { signal });
+  container.addEventListener('keydown', (event) => {
+    const last = stops.length - 1;
+
+    if (event.key === 'Escape') {
+      if (active < 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      show(-1);
+
+      return;
+    }
+
+    const next = { ArrowLeft: active < 0 ? last : active - 1, ArrowRight: active + 1, Home: 0, End: last }[event.key];
+
+    if (next === undefined) return;
+    event.preventDefault();
+    show(Math.max(0, Math.min(last, next)));
+  }, { signal });
+
+  if (kept >= 0) show(Math.min(kept, stops.length - 1));
 }

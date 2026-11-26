@@ -40,6 +40,7 @@ function ResultWords({ result }: { result: ResultView | null }) {
 
 export function ResultsCard({ practice }: { practice: PracticeSession }) {
   const result = useSyncExternalStore(practice.result.subscribe, practice.result.getSnapshot, practice.result.getSnapshot);
+  const [inspecting, inspect] = useState(true);
   const { commands } = practice;
   const versus = result?.versus;
   const missed = result?.words.filter((word) => word.wrong).length ?? 0;
@@ -65,12 +66,12 @@ export function ResultsCard({ practice }: { practice: PracticeSession }) {
       <section className="panel run-card-trace" aria-labelledby="speed-title" hidden={result?.graph === false}>
         <header className="panel-head"><h3 id="speed-title" className="panel-title">speed</h3><span className="trace-legend" aria-hidden="true"><i className="legend-average"></i>{result?.wpm === null || !result ? 'average' : <Copy parts={[{ kind: 'speed', wpm: result.wpm }]} />}<i className="legend-miss"></i>mistake</span></header>
         <figure className="run-card-graph">
-          <div id="speed-graph" className="speed-graph" role="img" aria-label="Speed over time"></div>
+          <div id="speed-graph" className="speed-graph" role="slider" tabIndex={0} aria-label="Speed over time"></div>
         </figure>
       </section>
       <section className="panel run-card-wordlist" aria-labelledby="typed-title">
-        <header className="panel-head"><h3 id="typed-title" className="panel-title">typed</h3><button id="practice-words" className="run-card-practice" type="button" data-action="practice-words" hidden={!result?.practiceWords.length} onClick={commands.practiceWords}>{result?.practiceWords.length === 1 ? 'Practice this word' : result ? `Practice these ${result.practiceWords.length} words` : 'Practice missed words'}</button></header>
-        <ResultWords result={result} />
+        <header className="panel-head"><h3 id="typed-title" className="panel-title">typed</h3><div className="run-card-tools"><button id="practice-words" className="run-card-practice" type="button" data-action="practice-words" hidden={!result?.practiceWords.length} onClick={commands.practiceWords}>{result?.practiceWords.length === 1 ? 'Practice this word' : result ? `Practice these ${result.practiceWords.length} words` : 'Practice missed words'}</button><button id="inspect-words" className="run-card-practice run-card-toggle" type="button" aria-expanded={inspecting} aria-controls="result-words-drawer" onClick={() => inspect(!inspecting)}>Inspect words<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" /></svg></button></div></header>
+        <div id="result-words-drawer" className="word-drawer" data-open={inspecting} inert={!inspecting}><div className="word-drawer-inner"><ResultWords result={result} /></div></div>
       </section>
       <div className="result-actions">
         <div className="result-buttons">
