@@ -1,11 +1,11 @@
 // Splits the e2e tests one CI job would run into shards of about equal recorded duration, where
 // Playwright's --shard cuts them into equal counts in file order and leaves the slow specs together.
 //
-//   node scripts/e2e-shards.mjs <current>/<total> <file>   write shard <current>'s tests to <file>,
+//   bun scripts/e2e-shards.mjs <current>/<total> <file>    write shard <current>'s tests to <file>,
 //                                                          then: bunx playwright test --test-list <file>
 //                                                          E2E_SPECS='["e2e/a.spec.js"]' keeps only those
 //                                                          files' tests (scripts/e2e-scope.mjs)
-//   node scripts/e2e-shards.mjs --refresh <dir>...         rewrite scripts/e2e-durations.json from the
+//   bun scripts/e2e-shards.mjs --refresh <dir>...          rewrite scripts/e2e-durations.json from the
 //                                                          e2e-timings artifacts of a Chromium run
 //
 // Every job lists the same tests (same commit and E2E_* env) and reads the same durations, so every
@@ -187,7 +187,7 @@ if (process.argv[1] === import.meta.filename) {
   if (first === '--refresh' && rest.length) refresh(rest);
   else if (first && rest.length === 1) writeShard(first, rest[0]);
   else {
-    console.error('usage: node scripts/e2e-shards.mjs <current>/<total> <file> | --refresh <dir>...');
+    console.error('usage: bun scripts/e2e-shards.mjs <current>/<total> <file> | --refresh <dir>...');
     process.exit(2);
   }
 }
