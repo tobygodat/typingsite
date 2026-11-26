@@ -14,6 +14,12 @@
 //
 //   bun run evaluate:start -- --guard [--json out.json]
 //
+//   bun run evaluate:start -- --profile <profile.json>        (also: bun run evaluate:learner -- --profile <profile.json>)
+//
+// Scores the default and ADR 0026's starting-view versions on a profile exported from the app, on its own eligible runs
+// oldest first, with the same measures: log loss, calibration error, pace error and captured share, overall and by runs
+// seen (0, 1-2, 3-5, 6-9, 10+). The file is read here and nothing is written or sent.
+//
 // Clauses (d) and (e), which read no participant: ADR 0015's simulated typists on seeds 401 to 430 (does a starting
 // view make the learner slow to follow a person who differs from it?), the shipped table's size, and the time a
 // recommendation takes.
@@ -29,7 +35,7 @@ import { pathToFileURL } from 'node:url';
 import { createGunzip, gzipSync } from 'node:zlib';
 import { DEFAULT_POLICY, LEAN_UNITS, LEARNER_VARIANTS, MISS_INTERVALS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY, drilledTargets, fitLearner,
   learnerEvidence, learnerRecommendation } from '../src/learner.js';
-import { SHIPPED, SKILLS, calibration, evaluate0015, makeTypist, median, paired, seeded, timingRows, typeRun } from './evaluate-learner.mjs';
+import { SHIPPED, SKILLS, calibration, evaluate0015, evaluateProfile, makeTypist, median, paired, seeded, timingRows, typeRun } from './evaluate-learner.mjs';
 
 export const KEYBOARD = 'physical-keyboard:qwerty';
 export const BANDS = [{ name: '0', from: 0, to: 0 }, { name: '1-2', from: 1, to: 2 }, { name: '3-5', from: 3, to: 5 }, { name: '6-9', from: 6, to: 9 }, { name: '10-14', from: 10, to: 14 }];
@@ -52,7 +58,11 @@ const PROBABILITY_FLOOR = 1e-6;
 const INTERVAL_LOW = 0.025;
 const INTERVAL_HIGH = 0.975;
 
-export const bandOf = (k) => BANDS.findIndex((band) => k >= band.from && k <= band.to);
+export const bandOf = (k, bands = BANDS) => bands.findIndex((band) => k >= band.from && k <= band.to);
+
+// A local profile's bands: the same edges as BANDS, with the last one open-ended, since a profile can hold many runs.
+export const PROFILE_BANDS = [...BANDS.slice(0, 4), { name: '10+', from: 10, to: Infinity }];
+const ALL_RUNS = [{ name: 'all', from: 0, to: Infinity }];
 
 // The versions compared: S0, the shipped learner, then the shipped learner with each starting view given.
 export const versionsOf = (views = []) => [{ name: 'S0', variant: LEARNER_VARIANTS[DEFAULT_POLICY] },
@@ -101,12 +111,12 @@ const topFour = (lost) => new Set([...lost].sort((a, b) => b[1] - a[1]).slice(0,
 
 // One participant under one version: for every k, the version fitted on the first k runs, read against run k + 1
 // and against every run after k. Returns one row per k.
-export function replayParticipant(runs, variant) {
+export function replayParticipant(runs, variant, keyboard = KEYBOARD) {
   const rows = [];
 
   for (let k = 0; k < runs.length; k += 1) {
     const next = runs[k];
-    const model = fitLearner(learnerEvidence(runs.slice(0, k), KEYBOARD), Date.parse(next.at), variant);
+    const model = fitLearner(learnerEvidence(runs.slice(0, k), keyboard), Date.parse(next.at), variant);
     const byUnit = new Map(model.units.map((estimate) => [estimate.unit, estimate]));
     const recommendation = learnerRecommendation(model);
     const predictions = [];
@@ -138,9 +148,9 @@ export function replayParticipant(runs, variant) {
 }
 
 // One participant's rows as one figure per band and measure, null where the band holds nothing to measure.
-export function participantBands(rows) {
-  return BANDS.map((_, band) => {
-    const inBand = rows.filter((row) => bandOf(row.k) === band);
+export function participantBands(rows, bands = BANDS) {
+  return bands.map((_, band) => {
+    const inBand = rows.filter((row) => bandOf(row.k, bands) === band);
     const sum = (field) => inBand.reduce((total, row) => total + row[field], 0);
     const meanOf = (values) => (values.length ? values.reduce((total, value) => total + value, 0) / values.length : null);
     const tries = sum('tries');
@@ -169,6 +179,45 @@ export function bootstrap(values, random) {
   }).sort((a, b) => a - b);
 
   return { n: present.length, mean, low: means[Math.floor(INTERVAL_LOW * RESAMPLES)], high: means[Math.ceil(INTERVAL_HIGH * RESAMPLES) - 1] };
+}
+
+// Every learner version ADR 0026 compares, scored on one person's own runs.
+export const PROFILE_VERSIONS = [DEFAULT_POLICY, START_RATE_POLICY, START_PACE_POLICY, START_POLICY, START_MISSES_POLICY];
+
+// One person's runs (eligible, chronological, on one keyboard) under each named version, with the measures the
+// participants are scored on, overall and by runs seen before the predicted run. Nothing leaves the process.
+export function evaluateRuns(runs, keyboard, names = PROFILE_VERSIONS) {
+  const figures = (rows, bands) => participantBands(rows, bands).map((band, at) => {
+    const inBand = rows.filter((row) => bandOf(row.k, bands) === at);
+    const predictions = inBand.flatMap((row) => row.predictions);
+
+    return { ...band, calibration: predictions.length ? calibration(predictions) : null, runs: inBand.length };
+  });
+
+  return names.map((name) => {
+    if (!LEARNER_VARIANTS[name]) throw new Error(`no learner version named ${name}`);
+    const rows = replayParticipant(runs, LEARNER_VARIANTS[name], keyboard);
+
+    return { name, overall: figures(rows, ALL_RUNS)[0], bands: figures(rows, PROFILE_BANDS).map((figure, at) => ({ band: PROFILE_BANDS[at].name, ...figure })) };
+  });
+}
+
+// The scores of evaluateRuns as text: a table of the four measures per version, overall and per band.
+export function profileReport(versions) {
+  const text = (value, format) => (value === null || value === undefined ? 'n/a' : format(value));
+  const lines = [];
+
+  for (const { name, overall, bands } of versions) {
+    lines.push(name, '| runs seen | predicted runs | log loss | calibration | pace error | captured |', '| --- | --- | --- | --- | --- | --- |');
+
+    for (const [label, figure] of [['all', overall], ...bands.map((item) => [item.band, item])]) {
+      lines.push(`| ${label} | ${figure.runs} | ${text(figure.logLoss, FORMATS.logLoss)} | ${text(figure.calibration, FORMATS.logLoss)} | ${text(figure.paceError, FORMATS.paceError)} | ${text(figure.captured, FORMATS.captured)} |`);
+    }
+
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }
 
 async function* participants(path, limit) {
@@ -407,6 +456,17 @@ function option(name, fallback) {
 }
 
 async function main() {
+  if (option('profile', null)) {
+    const path = option('profile', null);
+    const profile = await evaluateProfile(JSON.parse(readFileSync(path, 'utf8')), {}, evaluateRuns);
+    console.log(`profile ${path}: ${profile.runs} eligible runs on ${profile.keyboard}, oldest first. Each run is predicted from the runs before it.\n`);
+
+    if (!profile.versions.length) return void console.log('No run on one keyboard has pattern evidence yet, so there is nothing to score.');
+    console.log(profileReport(profile.versions));
+
+    return;
+  }
+
   if (process.argv.includes('--guard')) {
     const record = { guard: guardWorld(), cost: cost() };
 

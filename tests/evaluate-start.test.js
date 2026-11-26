@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, LEARNER_VARIANTS, START_MISSES_POLICY, START_PACE_POLICY, START_POLICY, START_RATE_POLICY } from '../src/learner.js';
-import { BANDS, GUARD_MEASURES, JUDGED, MEASURES, SIZE_LIMIT_BYTES, bandOf, bootstrap, capturedShare, cost, guardReport, judge, namedVersions, participantBands, replayParticipant, slicesOf,
+import { BANDS, GUARD_MEASURES, PROFILE_BANDS, PROFILE_VERSIONS, evaluateRuns, profileReport, JUDGED, MEASURES, SIZE_LIMIT_BYTES, bandOf, bootstrap, capturedShare, cost, guardReport, judge, namedVersions, participantBands, replayParticipant, slicesOf,
   timeLost } from '../scripts/evaluate-start.mjs';
 import { parseRow, sentenceRun } from '../scripts/keystrokes-to-runs.mjs';
-import { seeded } from '../scripts/evaluate-learner.mjs';
+import { calibration, evaluateProfile, seeded } from '../scripts/evaluate-learner.mjs';
 
 const START = 1_473_275_372_000;
 const STEP_MS = 120;
@@ -174,4 +174,59 @@ test('the guard report says which versions hold clause (d) and clause (e)', () =
   assert.match(text, /learner-start@3: \(d\) fails/);
   assert.match(text, /\+2\.000 \[1\.200, 2\.800\]/);
   assert.match(text, /learner-start@3: 15\.10 ms, \(e\) holds/);
+});
+
+const profileRuns = Array.from({ length: 13 }, (_, index) => typedRun(index, index % 3 === 0 ? 3 : 0));
+const profileOf = (runs) => ({ version: 2, runs });
+
+test("a profile is scored on its eligible runs, oldest first, by the same replay and measures as a participant's", async () => {
+  const shuffled = [8, 2, 11, 0, 5, 12, 1, 9, 3, 7, 10, 4, 6].map((at) => profileRuns[at]);
+  const profile = await evaluateProfile(profileOf(shuffled), {});
+  assert.equal(profile.runs, 13);
+  assert.equal(profile.keyboard, 'physical-keyboard:qwerty');
+  assert.deepEqual(profile.versions.map((version) => version.name), PROFILE_VERSIONS);
+  assert.deepEqual(profile.versions, evaluateRuns(profileRuns, profile.keyboard));
+
+  for (const { name, overall } of profile.versions) {
+    const rows = replayParticipant(profileRuns, LEARNER_VARIANTS[name]);
+    const [all] = participantBands(rows, [{ name: 'all', from: 0, to: Infinity }]);
+    assert.equal(overall.runs, 13);
+    close(overall.logLoss, all.logLoss);
+    close(overall.paceError, all.paceError);
+    close(overall.captured, all.captured);
+    close(overall.calibration, calibration(rows.flatMap((row) => row.predictions)));
+  }
+});
+
+test('a profile reads its bands as 0, 1-2, 3-5, 6-9 and 10 or more, and every run falls in one', async () => {
+  const { versions } = await evaluateProfile(profileOf(profileRuns), {});
+
+  for (const { bands, overall } of versions) {
+    assert.deepEqual(bands.map((band) => band.band), ['0', '1-2', '3-5', '6-9', '10+']);
+    assert.deepEqual(bands.map((band) => band.runs), [1, 2, 3, 4, 3]);
+    assert.equal(bands.reduce((sum, band) => sum + band.runs, 0), overall.runs);
+  }
+
+  assert.equal(PROFILE_BANDS.length, 5);
+});
+
+test("a profile's start-view versions differ from the default only where a start view can act", async () => {
+  const { versions } = await evaluateProfile(profileOf(profileRuns), {});
+  const byName = Object.fromEntries(versions.map((version) => [version.name, version]));
+
+  assert.notEqual(byName[START_RATE_POLICY].bands[0].logLoss, byName[DEFAULT_POLICY].bands[0].logLoss);
+  assert.ok(Object.values(byName).every(({ overall }) => Number.isFinite(overall.logLoss) && overall.calibration >= 0));
+});
+
+test('a profile with no eligible runs, or an unknown version, is reported plainly', async () => {
+  assert.deepEqual((await evaluateProfile(profileOf([]), {})).versions, []);
+  assert.throws(() => evaluateRuns(profileRuns, 'physical-keyboard:qwerty', ['learner-nope@1']), /no learner version named/);
+});
+
+test('the profile report shows the four measures per version, overall and per band', async () => {
+  const text = profileReport((await evaluateProfile(profileOf(profileRuns), {})).versions);
+
+  for (const name of PROFILE_VERSIONS) assert.ok(text.includes(`${name}\n| runs seen | predicted runs | log loss | calibration | pace error | captured |`));
+
+  for (const band of ['all', '0', '1-2', '3-5', '6-9', '10+']) assert.ok(text.includes(`| ${band} | `));
 });

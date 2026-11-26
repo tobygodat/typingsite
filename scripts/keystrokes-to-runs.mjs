@@ -142,22 +142,69 @@ export function shiftedMisses(firstAttempts) {
   return { misses: wrong.size, shifted };
 }
 
-// A participant's sentences as runs in the order typed, with what was dropped and why.
-export function participantRuns(rows) {
+// Each sentence's timestamp checks, in the order the file lists them. `releaseBeforePress` counts rows released before
+// they were pressed. `startsBeforePreviousEnd` is set when the sentence's first press is before the last release of the
+// sentence listed before it. `outOfOrderRows` counts rows listed after a later press: file disorder, benign because
+// the replay sorts by press.
+export function timestampFlags(sections) {
+  let previousEnd = null;
+
+  return sections.map((rows) => {
+    const start = Math.min(...rows.map((row) => row.pressMs));
+    const end = Math.max(...rows.map((row) => (Number.isFinite(row.releaseMs) ? Math.max(row.releaseMs, row.pressMs) : row.pressMs)));
+    const releaseBeforePress = rows.filter((row) => row.releaseMs < row.pressMs).length;
+    const outOfOrderRows = rows.filter((row, at) => at > 0 && row.pressMs < rows[at - 1].pressMs).length;
+    const flags = { rows: rows.length, releaseBeforePress, outOfOrderRows, startsBeforePreviousEnd: previousEnd !== null && start < previousEnd };
+
+    previousEnd = end;
+
+    return flags;
+  });
+}
+
+export const emptyAnomalies = () => ({ sentences: 0, rows: 0, releaseBeforePressRows: 0, sentencesReleaseBeforePress: 0, outOfOrderRows: 0, sentencesOutOfOrder: 0,
+  sentencesStartingBeforePreviousEnd: 0, sentencesWithTimestampAnomaly: 0, sentencesOnlyOutOfOrder: 0 });
+
+// Adds sentences' flags to a running tally. A timestamp anomaly is a release before a press or a start before the
+// previous end; a sentence with only out-of-order rows is counted apart.
+export function addAnomalies(tally, flagged) {
+  for (const flags of flagged) {
+    const anomaly = flags.releaseBeforePress > 0 || flags.startsBeforePreviousEnd;
+    tally.sentences += 1;
+    tally.rows += flags.rows;
+    tally.releaseBeforePressRows += flags.releaseBeforePress;
+    tally.sentencesReleaseBeforePress += flags.releaseBeforePress > 0 ? 1 : 0;
+    tally.outOfOrderRows += flags.outOfOrderRows;
+    tally.sentencesOutOfOrder += flags.outOfOrderRows > 0 ? 1 : 0;
+    tally.sentencesStartingBeforePreviousEnd += flags.startsBeforePreviousEnd ? 1 : 0;
+    tally.sentencesWithTimestampAnomaly += anomaly ? 1 : 0;
+    tally.sentencesOnlyOutOfOrder += !anomaly && flags.outOfOrderRows > 0 ? 1 : 0;
+  }
+
+  return tally;
+}
+
+// A participant's sentences as runs in the order typed, with what was dropped and why, and the timestamp flags of
+// every sentence read (`flags`) and of each one kept (on `kept[i].flags`). With `dropBadTimestamps`, a sentence with
+// a timestamp anomaly is dropped first, as 'bad-timestamps'.
+export function participantRuns(rows, { dropBadTimestamps = false } = {}) {
   const sections = Map.groupBy(rows, (row) => row.section);
+  const lists = [...sections.values()];
+  const flags = timestampFlags(lists);
   const dropped = {};
   const kept = [];
 
-  for (const sectionRows of sections.values()) {
-    const result = sentenceRun(sectionRows);
+  lists.forEach((sectionRows, at) => {
+    const bad = flags[at].releaseBeforePress > 0 || flags[at].startsBeforePreviousEnd;
+    const result = dropBadTimestamps && bad ? { dropped: 'bad-timestamps' } : sentenceRun(sectionRows);
 
-    if (result.run) kept.push(result);
+    if (result.run) kept.push({ ...result, flags: flags[at] });
     else dropped[result.dropped] = (dropped[result.dropped] ?? 0) + 1;
-  }
+  });
 
   kept.sort((a, b) => a.run.at.localeCompare(b.run.at));
 
-  return { kept, dropped, sentences: sections.size };
+  return { kept, dropped, sentences: sections.size, flags };
 }
 
 // The participants ADR 0026 keeps: QWERTY on a full or laptop keyboard.
@@ -182,17 +229,19 @@ function option(name, fallback) {
   return index === -1 ? fallback : process.argv[index + 1];
 }
 
-const emptyTally = () => ({ participants: 0, kept: 0, tooFewSentences: 0, sentences: 0, runs: 0, dropped: {}, misses: 0, shiftedMisses: 0, tries: 0 });
+const emptyTally = () => ({ participants: 0, kept: 0, tooFewSentences: 0, sentences: 0, runs: 0, dropped: {}, misses: 0, shiftedMisses: 0, tries: 0,
+  anomalies: { beforeReplay: emptyAnomalies(), retained: emptyAnomalies() } });
 
 async function main() {
   const out = option('out', null);
   const metadata = option('metadata', null);
   const limit = Number(option('limit', Infinity));
+  const dropBadTimestamps = process.argv.includes('--drop-bad-timestamps');
 
-  if (!out || !metadata) throw new Error('usage: --metadata <metadata_participants.txt> --out <dir> [--limit n], with the keystroke rows on stdin');
+  if (!out || !metadata) throw new Error('usage: --metadata <metadata_participants.txt> --out <dir> [--limit n] [--drop-bad-timestamps], with the keystroke rows on stdin');
   mkdirSync(out, { recursive: true });
   const wanted = keptParticipants(readFileSync(metadata, 'utf8'));
-  const report = { minSentences: MIN_SENTENCES, wrongKeyboardOrLayout: 0, unreadableRows: 0, splits: { train: emptyTally(), validation: emptyTally(), test: emptyTally() } };
+  const report = { minSentences: MIN_SENTENCES, dropBadTimestamps, wrongKeyboardOrLayout: 0, unreadableRows: 0, splits: { train: emptyTally(), validation: emptyTally(), test: emptyTally() } };
 
   const writers = Object.fromEntries(Object.keys(report.splits).map((split) => {
     const gzip = createGzip();
@@ -217,8 +266,9 @@ async function main() {
 
     const split = splitOf(current);
     const tally = report.splits[split];
-    const { kept, dropped, sentences } = participantRuns(rows);
+    const { kept, dropped, sentences, flags } = participantRuns(rows, { dropBadTimestamps });
     tally.participants += 1;
+    addAnomalies(tally.anomalies.beforeReplay, flags);
     tally.sentences += sentences;
 
     for (const [reason, count] of Object.entries(dropped)) tally.dropped[reason] = (tally.dropped[reason] ?? 0) + count;
@@ -231,6 +281,7 @@ async function main() {
 
     tally.kept += 1;
     tally.runs += kept.length;
+    addAnomalies(tally.anomalies.retained, kept.map((item) => item.flags));
 
     for (const { attempt } of kept) {
       const counts = shiftedMisses(attempt.summary.firstAttempts);

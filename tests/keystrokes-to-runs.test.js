@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { learnerEvidence } from '../src/learner.js';
-import { keptParticipants, parseRow, participantRuns, sentenceRun, shiftedMisses, splitOf } from '../scripts/keystrokes-to-runs.mjs';
+import { addAnomalies, emptyAnomalies, keptParticipants, parseRow, participantRuns, sentenceRun, shiftedMisses, splitOf, timestampFlags } from '../scripts/keystrokes-to-runs.mjs';
 
 const KEYBOARD = 'physical-keyboard:qwerty';
 const START = 1_473_275_372_000;
@@ -114,4 +114,58 @@ test('only QWERTY participants on a full or laptop keyboard are kept', () => {
   const metadata = ['PARTICIPANT_ID\tAGE\tLAYOUT\tKEYBOARD_TYPE', '3\t30\tqwerty\tfull', '5\t27\tqwerty\tlaptop', '7\t13\tazerty\tfull', '9\t40\tqwerty\ton-screen'].join('\n');
 
   assert.deepEqual([...keptParticipants(metadata)], ['3', '5']);
+});
+
+test('a row released before it was pressed, and a sentence starting before the last ended, are timestamp anomalies', () => {
+  const first = rows('the', 'the', [...'the'], { section: '1', at: START });
+  const second = rows('then', 'then', [...'then'], { section: '2', at: START + 10_000 });
+  const clean = timestampFlags([first, second]);
+
+  assert.deepEqual(clean.map((flags) => [flags.releaseBeforePress, flags.outOfOrderRows, flags.startsBeforePreviousEnd]), [[0, 0, false], [0, 0, false]]);
+
+  const reversed = rows('the', 'the', [...'the'], { section: '3', at: START + 5_000 });
+  reversed[1] = { ...reversed[1], releaseMs: reversed[1].pressMs - 1 };
+  const flagged = timestampFlags([first, second, reversed]);
+
+  assert.deepEqual(flagged.map((flags) => [flags.releaseBeforePress, flags.startsBeforePreviousEnd]), [[0, false], [0, false], [1, true]]);
+});
+
+test('rows listed out of press order are benign file disorder, not a timestamp anomaly', () => {
+  const typed = rows('the', 'the', [...'the']);
+  const [disordered] = timestampFlags([[typed[1], typed[0], typed[2]]]);
+  const tally = addAnomalies(emptyAnomalies(), [disordered]);
+
+  assert.equal(disordered.outOfOrderRows, 1);
+  assert.deepEqual(tally, { ...emptyAnomalies(), sentences: 1, rows: 3, outOfOrderRows: 1, sentencesOutOfOrder: 1, sentencesOnlyOutOfOrder: 1 });
+});
+
+test('anomalies are tallied before replay and among the runs kept, and nothing is dropped unless asked', () => {
+  const good = rows('the then', 'the then', [...'the then'], { section: '1', at: START });
+  const bad = rows('then the', 'then the', [...'then the'], { section: '2', at: START + 60_000 });
+  bad[2] = { ...bad[2], releaseMs: bad[2].pressMs - 5 };
+  const early = rows('the then', 'the then', [...'the then'], { section: '3', at: START - 30_000 });
+  const unflagged = participantRuns([...good, ...bad, ...early]);
+
+  assert.deepEqual(unflagged.kept.map((item) => item.run.id), ['100001-3', '100001-1', '100001-2']);
+  assert.deepEqual(unflagged.dropped, {});
+  const before = addAnomalies(emptyAnomalies(), unflagged.flags);
+  const retained = addAnomalies(emptyAnomalies(), unflagged.kept.map((item) => item.flags));
+
+  assert.deepEqual([before.sentences, before.sentencesReleaseBeforePress, before.sentencesStartingBeforePreviousEnd, before.sentencesWithTimestampAnomaly], [3, 1, 1, 2]);
+  assert.deepEqual(retained, before);
+
+  const audited = participantRuns([...good, ...bad, ...early], { dropBadTimestamps: true });
+
+  assert.deepEqual(audited.kept.map((item) => item.run.id), ['100001-1']);
+  assert.deepEqual(audited.dropped, { 'bad-timestamps': 2 });
+  assert.deepEqual(addAnomalies(emptyAnomalies(), audited.flags), before);
+  assert.equal(addAnomalies(emptyAnomalies(), audited.kept.map((item) => item.flags)).sentencesWithTimestampAnomaly, 0);
+});
+
+test('the default pipeline keeps exactly the runs it kept before the anomaly counters', () => {
+  const good = rows('the then', 'the then', [...'the then'], { section: '1', at: START });
+  const bad = rows('then the', 'then the', [...'then the'], { section: '2', at: START + 60_000 });
+  bad[2] = { ...bad[2], releaseMs: bad[2].pressMs - 5 };
+
+  assert.deepEqual(participantRuns([...good, ...bad]).kept.map((item) => item.run), [sentenceRun(good).run, sentenceRun(bad).run]);
 });
