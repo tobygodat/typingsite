@@ -1285,8 +1285,9 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .dock-zone .footer-links { flex-wrap: wrap; gap: 0 var(--space-4); margin-top: var(--space-1); }
   :root[data-navigation="side"] .dock-zone .footer-link { white-space: nowrap; }
   :root[data-navigation="side"] .challenge-toast { top: var(--space-4); }
-  /* The side bar is its own slab, so the picture never runs behind its letters. */
+  /* The side bar is its own slab, so the picture never runs behind its letters or icons. */
   :root[data-navigation="side"] .dock-zone[data-halo] { -webkit-text-stroke: 0; }
+  :root[data-navigation="side"] .dock-zone[data-halo] svg { filter: none; }
   :root[data-navigation="side"] { --frame-top: 0px; }
   :root[data-navigation="side"] body[data-view="practice"]:not([data-compose="true"]) .shortcut-row { top: auto; bottom: var(--space-4); }
 }
@@ -2046,8 +2047,18 @@ body:not([data-view="practice"]) .wallpaper { --wallpaper-end: var(--wallpaper-t
 body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim); }
 @supports not (color: light-dark(#000, #fff)) { .wallpaper { display: none; } }
 /* src/wallpaper.js marks text the picture would make hard to read: a stroke in the ground colour drawn under each
-   letter, so it never thins the letter itself. */
+   letter, so it never thins the letter itself, and a matching ground outline around SVG icons on those surfaces. */
 [data-halo] { -webkit-text-stroke: var(--wallpaper-halo) var(--ground); paint-order: stroke fill; }
+[data-halo] svg {
+  --icon-halo: calc(var(--wallpaper-halo) / 2);
+  filter:
+    drop-shadow(var(--icon-halo) 0 0 var(--ground))
+    drop-shadow(calc(-1 * var(--icon-halo)) 0 0 var(--ground))
+    drop-shadow(0 var(--icon-halo) 0 var(--ground))
+    drop-shadow(0 calc(-1 * var(--icon-halo)) 0 var(--ground));
+}
+:is(.corner-popover, .rank-card) { -webkit-text-stroke: 0; }
+:is(.corner-popover, .rank-card) svg { filter: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable

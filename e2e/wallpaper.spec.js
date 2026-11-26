@@ -336,6 +336,41 @@ test('desktop: the picture runs on behind the top bar, which outlines its letter
   expect(share, 'the picture shows behind the bar').toBeGreaterThan(0.8);
   await expect(bar).toHaveAttribute('data-halo', '');
 
+  // Top-bar icons keep their contrast over a bright picture through the same ground outline, while open popovers
+  // sit on their own panel and stay unoutlined.
+  for (const selector of ['#settings-trigger', '#account-trigger']) {
+    await expect(page.locator(`${selector} svg`)).not.toHaveCSS('filter', 'none');
+    const iconBox = await page.locator(selector).boundingBox();
+    const iconPng = await page.screenshot({ clip: { x: Math.round(iconBox.x), y: Math.round(iconBox.y), width: Math.round(iconBox.width), height: Math.round(iconBox.height) } });
+
+    const [corner, darkest] = await page.evaluate(async (png) => {
+      const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
+      const context = Object.assign(document.createElement('canvas'), { width: bitmap.width, height: bitmap.height }).getContext('2d');
+      context.drawImage(bitmap, 0, 0);
+      const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data;
+      const bg = [data[0], data[1], data[2]];
+      let min = 999;
+      let ink = bg;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const sum = data[i] + data[i + 1] + data[i + 2];
+
+        if (sum < min) {
+          min = sum;
+          ink = [data[i], data[i + 1], data[i + 2]];
+        }
+      }
+
+      return [bg, ink];
+    }, iconPng.toString('base64'));
+
+    expect(ratio(darkest, corner), `${selector} icon keeps contrast over a bright picture`).toBeGreaterThanOrEqual(3);
+  }
+
+  await page.locator('#account-trigger').click();
+  await expect(page.locator('#account .corner-popover')).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await page.locator('#account-trigger').click();
+
   // Progress, taller than the window once there is a run, scrolls the bar away with it.
   await chooseWords(page, 10);
   await completePassage(page);
