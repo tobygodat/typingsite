@@ -22,6 +22,7 @@
     "test:e2e:changed": "playwright test --only-changed=origin/master --pass-with-no-tests",
     "test:e2e:quick": "playwright test e2e/typing.spec.js e2e/layout.spec.js e2e/chrome.spec.js e2e/practice-more.spec.js e2e/touch-targets.spec.js e2e/learning-loop.spec.js e2e/quick-restart.spec.js e2e/light-contrast.spec.js e2e/code-mode.spec.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
+    "verify": "node scripts/verify.mjs",
     "pretest": "bun run build",
     "prebuild": "bun run typecheck"
   },
@@ -31,6 +32,7 @@
     "@types/node": "26.6.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "fast-check": "4.11.0",
     "oxlint": "1.90.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",

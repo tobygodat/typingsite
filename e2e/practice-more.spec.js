@@ -3,10 +3,11 @@ import { test, expect, openApp, passageText } from './fixtures.js';
 
 const MORE = ['code', 'standard', 'book', 'compose', 'custom', 'drill', 'learn to type'];
 
-test('modes, lengths and punctuation sit in one strip, side by side; "more" names the mode chosen inside it', async ({ page }) => {
+test('modes, lengths and punctuation sit in one borderless line, side by side; "more" names the mode chosen inside it', async ({ page }) => {
   await openApp(page);
   const rail = page.locator('.practice-rail');
-  await expect(rail).toHaveCSS('border-top-style', 'solid');
+  await expect(rail).toHaveCSS('border-top-style', 'none');
+  await expect(rail).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   let previous;
 
   for (const group of ['.mode-options', '#duration-options', '#punctuation-switch']) {
@@ -33,13 +34,14 @@ test('modes, lengths and punctuation sit in one strip, side by side; "more" name
   await expect(page.locator('#mode-more-label')).toHaveText('standard');
   await expect(page.locator('#mode-more')).toHaveAttribute('data-active', '');
 
-  // The gliding pill rests under the renamed summary, as it would under any chosen mode.
+  // The ink window rests on the renamed summary, as it would on any chosen mode, and inks its name.
   const summary = await page.locator('#mode-more-label').boundingBox();
-  await expect.poll(async () => {
-    const pill = await rail.locator('.mode-options > .glide-pill').boundingBox();
+  await expect.poll(() => rail.locator('.mode-options > .glide-ink').evaluate((ink) => {
+    const box = ink.getBoundingClientRect();
+    const [right, left] = getComputedStyle(ink).clipPath.match(/inset\([-\d.]+px ([-\d.]+)px [-\d.]+px ([-\d.]+)px/).slice(1).map(Number);
 
-    return Math.abs(pill.x - summary.x) + Math.abs(pill.width - summary.width);
-  }).toBeLessThan(2);
+    return { left: box.left + left, width: box.width - left - right, label: ink.querySelector('.is-disclosure')?.textContent };
+  }).then(({ left, width, label }) => ({ off: Math.abs(left - summary.x) + Math.abs(width - summary.width) < 2, label }))).toEqual({ off: true, label: 'standard' });
 
   await page.locator('#mode-time').click();
   await expect(page.locator('#mode-more-label')).toHaveText('more');
@@ -58,7 +60,7 @@ test('Escape closes "more" without restarting, and a click elsewhere closes it t
 
   await page.locator('#mode-more-label').click();
   await expect(page.locator('.mode-more-menu')).toBeVisible();
-  await page.locator('#text-display').click();
+  await page.locator('#typing-wrap').click();
   await expect(page.locator('#mode-more')).not.toHaveAttribute('open');
 });
 

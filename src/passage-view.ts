@@ -1,4 +1,5 @@
 import { wordIndexes, wordsAt } from './word-highlight.js';
+import { MISSED } from './word-flow.js';
 
 interface PassageWords {
   indexes: ReturnType<typeof wordIndexes>;
@@ -38,6 +39,7 @@ export function renderText(display: HTMLElement, text: string, { tape = () => fa
   let firstRenderedWord = 0;
   let lastTrimPosition = 0;
   let lastPosition = 0;
+  const extraSpans = new Map<number, HTMLSpanElement[]>();
 
   words.forEach((word, wordIndex) => {
     const group = document.createElement('span');
@@ -134,6 +136,37 @@ export function renderText(display: HTMLElement, text: string, { tape = () => fa
 
   return {
     characters,
+    // Letters typed past a word's end (fluid word flow), shown inside that word before its space.
+    showExtras(extras: ReadonlyMap<number, string>) {
+      for (const [end, spans] of extraSpans) {
+        if (extras.has(end)) continue;
+
+        for (const span of spans) span.remove();
+        extraSpans.delete(end);
+      }
+
+      for (const [end, letters] of extras) {
+        const word = groups[characterWords[end - 1] ?? -1]?.[0];
+
+        if (!word) continue;
+        const spans = extraSpans.get(end) ?? [];
+
+        while (spans.length > letters.length) spans.pop()?.remove();
+        [...letters].forEach((letter, index) => {
+          let span = spans[index];
+
+          if (!span) {
+            span = document.createElement('span');
+            span.className = 'char extra';
+            word.append(span);
+            spans.push(span);
+          }
+
+          if (span.textContent !== letter) span.textContent = letter;
+        });
+        extraSpans.set(end, spans);
+      }
+    },
     ensureAhead(position: number) {
       const currentWord = characterWords[Math.min(position, characters.length - 1)] || 0;
       const back = position < lastPosition;
@@ -200,13 +233,13 @@ export function renderText(display: HTMLElement, text: string, { tape = () => fa
 }
 
 export function updateCharacterStates(characters: HTMLSpanElement[], typed: string, target: string, start = 0) {
-  const from = Math.max(0, start - 1);
+  const from = Math.max(0, Math.min(start, typed.length) - 1);
   const to = Math.min(characters.length, Math.max(typed.length + 2, start + 2));
 
   for (let index = from; index < to; index += 1) {
     let state = 'char';
 
-    if (index < typed.length) state = typed[index] === target[index] ? 'char correct' : 'char wrong';
+    if (index < typed.length) state = typed[index] === target[index] ? 'char correct' : typed[index] === MISSED ? 'char missed' : 'char wrong';
     else if (index === typed.length) state = 'char current';
 
     // Only touch changed characters so settled letters keep their finished animation.

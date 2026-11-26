@@ -8,13 +8,14 @@ import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('typing and app fonts default to Literata and drop unknown values', () => {
-  assert.equal(DEFAULT_FONT, 'literata');
-  assert.equal(preferencesInUse({}).typingFont, 'literata');
-  assert.equal(preferencesInUse({}).appFont, 'literata');
-  assert.equal(preferencesInUse({ typingFont: 'jetbrains-mono', appFont: 'inter' }).typingFont, 'jetbrains-mono');
-  assert.equal(preferencesInUse({ appFont: 'jetbrains-mono' }).appFont, 'literata');
-  assert.equal(preferencesInUse({ typingFont: 'comic-sans' }).typingFont, 'literata');
+test('typing and app fonts default to Inter and drop unknown values', () => {
+  assert.equal(DEFAULT_FONT, 'inter');
+  assert.equal(preferencesInUse({}).typingFont, 'inter');
+  assert.equal(preferencesInUse({}).appFont, 'inter');
+  assert.equal(preferencesInUse({ typingFont: 'jetbrains-mono', appFont: 'literata' }).typingFont, 'jetbrains-mono');
+  assert.equal(preferencesInUse({ typingFont: 'literata', appFont: 'literata' }).appFont, 'literata');
+  assert.equal(preferencesInUse({ appFont: 'jetbrains-mono' }).appFont, 'inter');
+  assert.equal(preferencesInUse({ typingFont: 'comic-sans' }).typingFont, 'inter');
   const stored = normalizeProfile({ version: 2, preferences: { fontSize: '36' } }).preferences;
   assert.equal(Object.hasOwn(stored, 'typingFont') || Object.hasOwn(stored, 'appFont'), false);
 });
@@ -39,7 +40,8 @@ test('the paint script, settings and stylesheet offer exactly the fonts src/font
 
   const settings = settingsMarkup();
   const radios = (name) => [...settings.matchAll(/<input\b[^>]*>/g)].flatMap(([input]) => (input.includes(`name="${name}"`) ? [input.match(/\bvalue="([^"]+)"/)[1]] : []));
-  assert.deepEqual(radios('typing-font'), TYPING_FONTS);
+  const select = settings.match(/<select\b[^>]*id="typing-font"[^>]*>(.*?)<\/select>/s)[1];
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), TYPING_FONTS);
   assert.deepEqual(radios('app-font'), APP_FONTS);
 
   for (const font of TYPING_FONTS.filter((id) => id !== DEFAULT_FONT)) assert.match(css, new RegExp(`:root\\[data-typing-font="${font}"\\] \\{ --font-typing: `));

@@ -1,7 +1,7 @@
 import { appEntry } from './built-assets.js';
 // Custom themes: settings → appearance → theme → new / edit, and generating one from a vibe
 // (supabase/functions/generate-theme, stood in for here by a routed reply).
-import { test, expect, openApp, openSettings, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openSettings, closeSettings, passageText, typeInto, signInWithEmail } from './fixtures.js';
 
 const EMAIL = 'themes@stilltype.test';
 
@@ -22,7 +22,7 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
   await page.locator('#theme-new').click();
   await expect(page.locator('#theme-editor')).toBeVisible();
   await expect(page.locator('#theme-name')).toHaveValue('dark copy');
-  await expect(hex(page, 'ground')).toHaveValue('#0f0f0e');
+  await expect(hex(page, 'ground')).toHaveValue('#0b0b0d');
   // A derived tint shows what it derives to and stores nothing.
   await expect(hex(page, 'accent-soft')).toHaveValue('');
 
@@ -45,6 +45,57 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   await expect(page.locator('html')).not.toHaveAttribute('data-custom', '');
   await expect(page.locator('#theme-new')).toBeFocused();
+});
+
+// The contrast an element's colour has on the page's ground, as painted: computed colours from color-mix() come
+// back in several notations, so each is painted onto a canvas and read back.
+const paintedContrast = (page, selector) => page.evaluate((css) => {
+  const context = Object.assign(document.createElement('canvas'), { width: 1, height: 1 }).getContext('2d', { willReadFrequently: true });
+
+  const rgb = (colour) => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = colour;
+    context.fillRect(0, 0, 1, 1);
+
+    return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+  };
+
+  const linear = (value) => (value / 255 <= 0.04045 ? value / 255 / 12.92 : ((value / 255 + 0.055) / 1.055) ** 2.4);
+  const luminance = ([r, g, b]) => 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  const [a, b] = [rgb(getComputedStyle(document.querySelector(css)).color), rgb(getComputedStyle(document.body).backgroundColor)].map(luminance).sort((x, y) => y - x);
+
+  return (a + 0.05) / (b + 0.05);
+}, selector);
+
+test('the editor holds the accent to 4.5:1 and untyped letters to 2.2:1, and a theme that passes keeps both on the page', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await openApp(page);
+  await openSettings(page, 'appearance');
+  await page.locator('#theme-new').click();
+
+  for (const [name, value] of [['ground', '#000000'], ['text', '#ffffff'], ['muted', '#777777'], ['accent', '#6d6d6d'], ['danger', '#ff6b6b']]) await hex(page, name).fill(value);
+  // The accent sets the selected setup choices and the running clock, so 4.06:1 is too low.
+  await expect(page.locator('#theme-issue-accent')).toHaveText('4:1, needs 4.5:1');
+  await expect(page.locator('#theme-issue-muted')).toHaveText('');
+  await expect(page.locator('#theme-issue-untyped')).toHaveText('');
+  // Untyped letters set by hand are checked as they are.
+  await page.locator('.theme-more > summary').click();
+  await hex(page, 'untyped').fill('#333333');
+  await expect(page.locator('#theme-issue-untyped')).toHaveText('1.6:1, needs 2.2:1');
+  await hex(page, 'untyped').fill('');
+  await hex(page, 'untyped').blur();
+  await expect(page.locator('#theme-issue-untyped')).toHaveText('');
+  await hex(page, 'accent').fill('#7b7b7b');
+  await expect(page.locator('#theme-issue-accent')).toHaveText('');
+  await page.locator('#theme-save').click();
+  await expect(page.locator('html')).toHaveAttribute('data-custom', '');
+  await closeSettings(page);
+
+  expect(await paintedContrast(page, '#text-display .char')).toBeGreaterThanOrEqual(2.2);
+  expect(await paintedContrast(page, '.practice-rail button[aria-pressed="true"]')).toBeGreaterThanOrEqual(4.5);
+  await typeInto(page, (await passageText(page)).slice(0, 3));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+  expect(await paintedContrast(page, '#timer')).toBeGreaterThanOrEqual(4.5);
 });
 
 test('a saved theme is another theme: it syncs, wears before the application entry on reload, and can be deleted', async ({ page, browser, supabase }) => {

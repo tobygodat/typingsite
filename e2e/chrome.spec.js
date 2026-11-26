@@ -17,13 +17,13 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'light' });
     await openApp(page);
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
-    await expect(themeColor(page)).toHaveAttribute('content', '#f4f1eb');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#f6f6f4');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
-    await expect(themeColor(page)).toHaveAttribute('content', '#0f0f0e');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#0b0b0d');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
 
     await openSettings(page);
     await chooseSetting(page, 'theme-select', 'light');
@@ -93,7 +93,7 @@ test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
 
-  for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
+  for (const [size, px] of [['22', '22px'], ['36', '34px'], ['28', '26px']]) {
     await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }
@@ -274,28 +274,26 @@ test.describe('reduced motion', () => {
   });
 });
 
-// ⌘K pressed while the palette fades out after Escape opens it again (TOB-448). The fade once counted as open, so the
-// press closed it a second time and the palette was gone. The page's clock holds the fade still, so this is the
-// same on any machine.
-test('the commands binding reopens the palette while it fades out', async ({ page }) => {
+// The palette closes on Escape's own frame, with no fade, so ⌘K pressed straight after opens it again (TOB-448: a
+// fade once counted as open, and that press closed it a second time). The page's clock stands still, so nothing
+// here waits on a timer.
+test('Escape closes the palette at once, and the commands binding reopens it straight after', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#palette')).toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
+  await expect(page.locator('#typing-input')).toBeFocused();
   await page.keyboard.press('Control+k');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).toHaveAttribute('open', '');
-  await expect(page.locator('#palette')).not.toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(true);
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.locator('#palette-input').fill('practice c');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
 
   // Escape still closes it, and focus goes back where it was before the first press.
   await page.keyboard.press('Escape');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).not.toHaveAttribute('open', '');
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
   await expect(page.locator('#typing-input')).toBeFocused();
 });
 
@@ -329,5 +327,41 @@ test('a palette jump puts focus on the new screen’s heading, or in the passage
     await expect(page.locator('#palette-list [aria-selected="true"] .opt-label')).toHaveText(label);
     await page.keyboard.press('Enter');
     await expect(page.locator(target)).toBeFocused();
+  }
+});
+
+async function holdJustInside(page, locator, edge) {
+  const box = await locator.boundingBox();
+  const x = { left: box.x + 0.5, right: box.x + box.width - 0.5 }[edge] ?? box.x + box.width / 2;
+  const y = { top: box.y + 0.5, bottom: box.y + box.height - 0.5 }[edge] ?? box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+// A press scales its control to 97%. Held just inside an edge, the release must still land on the control the press
+// began on, not on the neighbour or the group around both. Engines hit-test a little past a box's edge, so the check
+// compares the two targets instead of naming one.
+test('a press held just inside a control’s edge clicks the control it began on', { tag: '@compat' }, async ({ page }) => {
+  await openApp(page);
+
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    await page.locator('#mode-time').click();
+    await expect(page.locator('#mode-time')).toHaveCSS('transform', 'none');
+    await expect(page.locator('#mode-words')).toHaveCSS('transform', 'none');
+
+    const targets = page.evaluate(() => new Promise((resolve) => {
+      let down;
+
+      document.addEventListener('pointerdown', (event) => { down = event.target.id; }, { once: true, capture: true });
+      document.addEventListener('click', (event) => resolve({ down, click: event.target.id }), { once: true, capture: true });
+    }));
+
+    await holdJustInside(page, page.locator('#mode-words'), edge);
+    const { down, click } = await targets;
+    expect(down, edge).toMatch(/^mode-/);
+    expect(click, edge).toBe(down);
+    await expect(page.locator(`#${down}`), edge).toHaveAttribute('aria-pressed', 'true');
   }
 });

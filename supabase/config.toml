@@ -1,0 +1,12 @@
+# The local Supabase stack that CI's "Supabase" job starts (`supabase start`), and anyone can start on a
+# desktop with Docker. Every setting not named here is the CLI's default. It configures only the local
+# stack: the production project takes migrations and functions by hand (docs/CONVENTIONS.md, Deploying).
+project_id = "stilltype"
+
+[db]
+# Postgres 17, which docs/online-races.md records the SQL tests passing on.
+major_version = 17
+
+[db.seed]
+# The SQL tests create their own users and rows, and roll them back.
+enabled = false

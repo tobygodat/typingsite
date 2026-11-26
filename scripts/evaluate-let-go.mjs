@@ -4,6 +4,7 @@
 //
 //   bun run evaluate:learner -- --rule 0019 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go.mjs ...)
 //   bun run evaluate:learner -- --rule 0019 --validation-only
+//   bun run evaluate:learner -- --rule 0019 --check   (CI: validation only, exits 1 when a check below fails)
 //
 // Two simulators. The guard world is ADR 0015's, with drills saved at run 20, scored on ADR 0015's measures. The season
 // is months of practice, light and heavy, careful and careless, with and without bad days, in which a drill fixes a
@@ -11,7 +12,7 @@
 // a simulated typist gets better after a drill only because the season says so.
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { DECAY_TIMING_POLICY, DEFAULT_POLICY, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, LEARNER_VARIANTS, drillSplit, drilledTargets, fitLearner, learnerEvidence,
   learnerRecommendation, letGo, letGoIndex, recommendFor } from '../src/learner.js';
@@ -290,7 +291,7 @@ export async function validate0019(workers) {
       return { value, falseLetGo: all.falseLetGo.share, runsToFixed: summarize(first, policy, at25)[kind].runsToFixed.median };
     });
 
-    const eligible = rows.filter((row) => row.falseLetGo <= RULE_0019.validationCeiling.letGo);
+    const eligible = rows.filter((row) => Number.isFinite(row.falseLetGo) && row.falseLetGo <= RULE_0019.validationCeiling.letGo);
     const chosen = eligible.length ? eligible.reduce((a, b) => (b.runsToFixed < a.runsToFixed ? b : a)).value : Math.min(...values);
 
     return { rows, chosen };
@@ -308,12 +309,35 @@ export async function validate0019(workers) {
     return { returnOdds, falseReturn: Object.fromEntries(KINDS.map((kind) => [kind, s[kind].falseReturn.share])), namedAgain: again.length ? median(again) : null };
   });
 
-  const eligible = returns.filter((row) => KINDS.every((kind) => (row.falseReturn[kind] ?? 0) <= RULE_0019.validationCeiling.return));
+  const eligible = returns.filter((row) => KINDS.every((kind) => Number.isFinite(row.falseReturn[kind]) && row.falseReturn[kind] <= RULE_0019.validationCeiling.return));
 
   const returnOdds = eligible.length ? eligible.reduce((a, b) => (b.namedAgain < a.namedAgain || (b.namedAgain === a.namedAgain && b.returnOdds > a.returnOdds) ? b : a)).returnOdds
     : Math.max(...RULE_0019.returnOdds);
 
   return { weakRatio: weak, slowShare: slow, returnOdds: { rows: returns, chosen: returnOdds }, constants: { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds } };
+}
+
+const VALIDATED = [
+  { name: 'weakRatio', key: 'R', measures: (row) => [['false let-go', row?.falseLetGo, RULE_0019.validationCeiling.letGo]] },
+  { name: 'slowShare', key: 'q0', measures: (row) => [['false let-go', row?.falseLetGo, RULE_0019.validationCeiling.letGo]] },
+  // No H met the eligibility ceiling in ADR 0019. CI compares H against the recorded rates at the chosen value.
+  { name: 'returnOdds', key: 'H', measures: (row, baseline) => KINDS.map((kind) => [`false return (${kind})`, row?.falseReturn?.[kind], baseline?.falseReturn?.[kind]]) },
+];
+
+export function check0019(validation, recorded) {
+  return VALIDATED.flatMap(({ name, key, measures }) => {
+    const chosen = validation[name]?.chosen;
+    const atChosen = (entry) => entry?.rows?.find((candidate) => (candidate.value ?? candidate.returnOdds) === chosen);
+
+    return [{ label: `${key} chosen`, ok: chosen === LET_GO[name], detail: `${chosen}, shipped ${LET_GO[name]}` },
+      ...measures(atChosen(validation[name]), atChosen(recorded[name])).map(([measure, value, limit]) => {
+        const measured = Number.isFinite(value);
+        const hasLimit = Number.isFinite(limit);
+
+        return { label: `${key} ${measure}`, ok: measured && hasLimit && value <= limit,
+          detail: `${measured ? percent(value) : 'no observations'}, limit ${hasLimit ? percent(limit) : 'missing'}` };
+      })];
+  });
 }
 
 const reallyWorse = (result, a, b, measure) => {
@@ -511,6 +535,23 @@ function option(name, fallback) {
 
 async function main() {
   const workers = Number(option('workers', 12));
+
+  if (!Number.isSafeInteger(workers) || workers < 1) {
+    console.error('--workers must be a positive integer');
+    process.exitCode = 2;
+
+    return;
+  }
+
+  if (process.argv.includes('--check')) {
+    const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+    const rows = check0019(await validate0019(workers), recorded);
+
+    for (const row of rows) console.log(`${row.ok ? 'pass' : 'FAIL'}  ${row.label}: ${row.detail}`);
+    process.exitCode = rows.every((row) => row.ok) ? 0 : 1;
+
+    return;
+  }
 
   if (process.argv.includes('--validation-only')) {
     console.log(JSON.stringify(await validate0019(workers), null, 1));

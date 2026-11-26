@@ -38,7 +38,7 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
     await openSettings(page, category);
     await expect(page.locator(`#settings-${category}`)).toBeVisible();
     await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveAttribute('aria-current', 'true');
-    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(143, 209, 138)');
+    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(45, 212, 160)');
     await expect(page.locator('#settings-dialog .settings-category:visible')).toHaveCount(1);
   }
 
@@ -86,18 +86,28 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await openApp(page);
   const text = await passageText(page);
   await openSettings(page, 'appearance');
-  await page.locator('#font-size input:checked').focus();
+  await page.locator('#app-font input:checked').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#font-size input:checked')).toBeFocused();
   await page.keyboard.press('ArrowRight');
-  await expect(page.locator('#font-size input[value="36"]')).toBeFocused();
+  const large = page.locator('#font-size input[value="36"]');
+  await expect(large).toBeFocused();
+  await expect(large).toBeChecked();
+  const selected = page.locator('#font-size input[value="36"] + span');
+  await expect(selected).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(selected).toHaveCSS('border-color', 'rgba(0, 0, 0, 0)');
+  await expect(selected).toHaveCSS('outline-style', 'solid');
+  await expect(page.locator('#font-size input[value="28"] + span')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await expect(page.locator('body')).toHaveAttribute('data-font-size', '36');
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('font-size', '36px');
   await chooseSetting(page, 'word-highlight', 'next');
+  await expect(page.locator('#word-highlight input:checked + span')).toHaveCSS('outline-style', 'none');
   const previewWord = page.locator('#settings-preview-passage span').nth(3);
   await expect(previewWord).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await chooseSetting(page, 'tape-toggle', true);
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('white-space', 'nowrap');
   await chooseSetting(page, 'theme-select', 'light');
-  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(251, 249, 245)');
+  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   expect(await passageText(page)).toBe(text);
   await expect(page.locator('#typing-input')).toHaveValue('');
 });
@@ -154,6 +164,10 @@ test('glide speed adjusts the running caret and is saved for Smooth', { tag: '@c
   await typeInto(page, text.slice(0, 1));
   await openSettings(page, 'appearance');
   const slider = page.getByRole('slider', { name: /glide speed/i });
+  // Spring is the default motion, and the glide speed is Smooth's alone.
+  await expect(slider).toBeDisabled();
+  await chooseSetting(page, 'typing-motion', 'smooth');
+  await expect(slider).toBeEnabled();
   await expect(slider).toHaveValue('80');
   await slider.fill('120');
   await slider.press('ArrowRight');
@@ -313,7 +327,7 @@ test('palette opens shortcuts and import returns focus to a visible settings ope
 });
 
 for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'], [320, 568, 'dark'], [375, 420, 'light']]) {
-  test(`dialog fits ${width}×${height} ${theme} with a fixed footer`, async ({ page }, testInfo) => {
+  test(`dialog fits ${width}×${height} ${theme} with categories and actions in view`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height });
     await page.emulateMedia({ colorScheme: theme });
     await openApp(page);
@@ -323,7 +337,6 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
       const bounds = await dialog(page).boundingBox();
       expect(bounds.width).toBe(1080);
       expect(bounds.height).toBe(704);
-      expect(await page.locator('.settings-nav').evaluate((node) => node.getBoundingClientRect().width)).toBe(216);
     }
 
     await page.screenshot({ path: testInfo.outputPath(`settings-${width}-${height}-${theme}.png`) });
@@ -337,10 +350,13 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
         expect(new Set(options).size).toBe(1);
         const label = await page.locator('#correction-select-label').boundingBox();
         const group = await page.locator('#correction-select').boundingBox();
-        expect(label.y + label.height).toBeLessThanOrEqual(group.y);
+        expect(label.x + label.width).toBeLessThanOrEqual(group.x);
+        expect(label.y).toBeGreaterThanOrEqual(group.y);
+        expect(label.y + label.height).toBeLessThanOrEqual(group.y + group.height);
       }
 
       const footer = await page.locator('.settings-footer').boundingBox();
+      const navigation = await page.getByRole('navigation', { name: 'Settings categories' }).boundingBox();
       const controls = page.locator(`#settings-${category} input, #settings-${category} button`);
 
       for (const control of await controls.all()) {
@@ -353,6 +369,8 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
       }
 
       expect(await page.locator('.settings-footer').boundingBox()).toEqual(footer);
+      expect(await page.getByRole('navigation', { name: 'Settings categories' }).boundingBox()).toEqual(navigation);
+      await expect(page.locator('#import-trigger')).toBeInViewport();
       await expect(page.locator('#settings-done')).toBeInViewport();
     }
 

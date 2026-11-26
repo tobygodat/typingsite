@@ -1,11 +1,11 @@
 // Typing and app fonts: picks each typing font in settings → appearance (with a non-default app font),
 // on three lines and on the one-line tape, with the custom pace caret on. Types past the second line,
 // then measures from the rendered glyphs (a Range over the current letter, and canvas metrics for the
-// font in use): the caret bar's x against the letter's left edge, the bar against the baseline (Literata's
+// font in use): the caret bar's x against the letter's left edge, the bar against the baseline (the caret's
 // place, 0.985em above to 0.165em below), the current letter inside the visible lines, and the pace caret on a letter boundary of a line.
 // Shots: <font>-lines, <font>-tape. run.json notes every measurement under `fonts`.
 const TYPING = ['literata', 'source-serif', 'inter', 'jetbrains-mono', 'ibm-plex-mono', 'roboto-mono', 'fira-code'];
-const APP = { literata: 'inter', 'source-serif': 'inter', inter: 'source-serif' };
+const APP = { literata: 'source-serif', 'source-serif': 'literata', inter: 'literata' };
 
 export default async ({ page, h, shot, note, check }) => {
   const pick = async (group, value) => {
@@ -18,7 +18,7 @@ export default async ({ page, h, shot, note, check }) => {
     for (const tape of [false, true]) {
       await h.openApp();
       await h.openSettings('appearance');
-      await pick('typing-font', font);
+      await page.getByRole('combobox', { name: 'typing font' }).selectOption(font);
       await pick('app-font', APP[font] || 'literata');
       await pick('tape-toggle', String(tape));
       await h.openSettings('practice');
@@ -56,7 +56,7 @@ export default async ({ page, h, shot, note, check }) => {
           family: style.fontFamily.split(',')[0].replaceAll('"', ''),
           loaded: document.fonts.check(`${style.fontWeight} ${size}px ${style.fontFamily}`),
           caretToLetter: +((bar.left + bar.right) / 2 - glyph.left).toFixed(2),
-          // The bar against the baseline, in em: Literata's place is 0.985 above and 0.165 below.
+          // The bar against the baseline, in em: the caret's place is 0.985 above and 0.165 below.
           barTop: +((baseline - bar.top) / size).toFixed(3),
           barBottom: +((bar.bottom - baseline) / size).toFixed(3),
           fontSize: size,
@@ -74,7 +74,7 @@ export default async ({ page, h, shot, note, check }) => {
       check(m.loaded, `${label}: the font file loaded`);
       check(Math.abs(m.caretToLetter) <= 1, `${label}: caret sits on the letter's left edge (${m.caretToLetter}px)`);
       // Layout rounds a font's ascent and descent to whole pixels, so allow a pixel.
-      check(Math.abs(m.barTop - 0.985) * m.fontSize <= 1 && Math.abs(m.barBottom - 0.165) * m.fontSize <= 1, `${label}: caret stands on the baseline as on Literata (${m.barTop}em above, ${m.barBottom}em below)`);
+      check(Math.abs(m.barTop - 0.985) * m.fontSize <= 1 && Math.abs(m.barBottom - 0.165) * m.fontSize <= 1, `${label}: caret stands on the baseline (${m.barTop}em above, ${m.barBottom}em below)`);
       check(m.letterInView, `${label}: the current letter is in view`);
       check(m.ghostShown && m.ghostOnLine && m.ghostInLetters, `${label}: pace caret sits on a line of letters`);
       await h.settle();

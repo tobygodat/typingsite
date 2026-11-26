@@ -46,9 +46,9 @@ async function advance(page, ms) {
 }
 
 // Ada hosts a race (a quote race, which ends with its passage rather than on the clock, unless `setup` picks another
-// practice setup first) and invites Lin's account; both ready, and the race is on. With `clock`, both pages run on
-// Playwright's clock (onTestClock).
-async function pairInRace(page, browser, supabase, setup = () => page.locator('#mode-quote').click(), { clock = false } = {}) {
+// practice setup first) and invites Lin's account, raced under `name`; both ready, and the race is on. With `clock`,
+// both pages run on Playwright's clock (onTestClock).
+async function pairInRace(page, browser, supabase, setup = () => page.locator('#mode-quote').click(), { clock = false, name = 'Lin' } = {}) {
   supabase.addUser('ada@stilltype.test');
   supabase.addUser('lin@stilltype.test');
 
@@ -68,7 +68,7 @@ async function pairInRace(page, browser, supabase, setup = () => page.locator('#
   await openApp(lin);
   await signInWithEmail(lin, 'lin@stilltype.test');
   await openView(lin, 'Challenge');
-  await setRaceName(lin, 'Lin');
+  await setRaceName(lin, name);
   await lin.locator('[data-accept-invite]').click();
   await expect(lin.locator('#online-room')).toBeVisible();
   await page.locator('#online-ready').click();
@@ -152,6 +152,59 @@ test('under the results, Graph shows both racers\' speed and Replay plays the pa
     await expect(lin.locator('#online-replay-display .ghost-caret .caret-tag')).toHaveText('Ada');
     await page.locator('#online-show-graph').click();
     await expect(page.locator('#online-duel-graph path.graph-line')).toHaveCount(2);
+  } finally { await context.close(); }
+});
+
+// A long name at 320 px: the readout cuts the name, never the moment or either speed, and stays inside the chart.
+// Switching the speed unit with the graph open redraws it: the point being read, and every point after, read in the
+// new unit at once.
+test('the duel readout fits a long name at 320 px and follows a speed unit switch at once', async ({ page, browser, supabase }) => {
+  const { context } = await racePair(page, browser, supabase, { name: 'Christopher Montgomery' });
+
+  try {
+    await page.setViewportSize({ width: 320, height: 568 });
+    const duel = page.locator('#online-duel-graph');
+    const readout = duel.locator('.graph-readout');
+    await expect.poll(() => duel.evaluate((node) => Math.abs(Number(node.querySelector('svg')?.getAttribute('width')) - node.clientWidth))).toBeLessThanOrEqual(1);
+    await duel.scrollIntoViewIfNeeded();
+    const area = await duel.boundingBox();
+
+    const fit = () => page.evaluate(() => {
+      const node = document.querySelector('#online-duel-graph .graph-readout');
+      const box = node.getBoundingClientRect();
+
+      return { page: document.documentElement.scrollWidth, left: box.left, right: box.right, clipped: node.scrollWidth > node.clientWidth };
+    });
+
+    for (const at of [0, 0.4, 1]) {
+      await page.mouse.move(area.x + Math.min(area.width - 1, area.width * at), area.y + area.height / 2);
+      await expect(readout).toHaveText(/^\d+(\.\d)?s · You (\d+ wpm|—) · Christ[^·]*… (\d+ wpm|—)$/);
+      expect(await fit()).toEqual(expect.objectContaining({ page: 320, clipped: false }));
+      const { left, right } = await fit();
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(right).toBeLessThanOrEqual(320);
+      await expect(duel).toHaveAttribute('aria-valuetext', /· Christopher Montgomery (\d+ wpm|—)$/);
+    }
+
+    for (const unit of ['cpm', 'wpm']) {
+      const reading = new RegExp(`^\\d+(\\.\\d)?s · You (\\d+ ${unit}|—) · Christ[^·]*… (\\d+ ${unit}|—)$`);
+      await page.mouse.move(area.x + area.width * 0.4, area.y + area.height / 2);
+      await page.keyboard.press('Control+k');
+      await page.keyboard.type(`speed unit · ${unit}`);
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#online-results')).toContainText(unit);
+      // The pointer that was reading the graph, and the next move, read the new unit.
+      await page.mouse.move(area.x + area.width * 0.4 + 1, area.y + area.height / 2);
+      await expect(readout).toHaveText(reading);
+      await page.mouse.move(area.x + area.width * 0.7, area.y + area.height / 2);
+      await expect(readout).toHaveText(reading);
+      // So do the keys, and what the slider says.
+      await duel.focus();
+      await page.keyboard.press('End');
+      await expect(readout).toHaveText(reading);
+      await expect(duel).toHaveAttribute('aria-valuetext', new RegExp(`· You (\\d+ ${unit}|—) · Christopher Montgomery (\\d+ ${unit}|—)$`));
+      expect((await fit()).page).toBe(320);
+    }
   } finally { await context.close(); }
 });
 

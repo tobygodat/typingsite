@@ -141,6 +141,14 @@ function pairs(tokens) {
   // A mistyped letter on its own tint, in the passage and on a hovered danger button in a dialog.
   text('--danger on --danger-soft over ground', colour('--danger'), over(colour('--danger-soft'), ground));
   text('--danger on --danger-soft over raised', colour('--danger'), over(colour('--danger-soft'), raised));
+  // A letter typed past a word's end, as its .char.extra rule paints it: the rule's colour on the rule's
+  // tint over the passage ground, both faded by the rule's opacity, as an element's opacity fades both.
+  const extraRule = rules.find((r) => r.selectors.includes('.char.extra'));
+  assert.ok(extraRule, '.char.extra rule not found');
+  const extraOpacity = plainNumber(extraRule.declarations.opacity ?? '1', '.char.extra');
+  const extraColour = (name) => over(faded(parseColour(resolve(extraRule.declarations[name], tokens)), extraOpacity), ground);
+  const extraBackground = extraColour('background');
+  list.push({ label: '.char.extra (extra letter) on its tint over ground', value: ratio(over(faded(parseColour(resolve(extraRule.declarations.color, tokens)), extraOpacity), extraBackground), extraBackground), min: 4.5 });
   // The selected palette row and hovered rows in raised surfaces.
   text('--accent on --raised-2 over raised', colour('--accent'), washOverRaised);
   // The checked option in a settings radio group, on the raised dialog.
@@ -151,6 +159,8 @@ function pairs(tokens) {
   // A pressed challenge-mode button under the pointer.
   text('--accent on --raised-2 over ground', colour('--accent'), washOverGround);
   text('--accent-ink on --accent (primary button)', colour('--accent-ink'), colour('--accent'));
+  // The chosen mode, length or language, inked where the gliding window covers it.
+  text('--ink-label on --ink-fill (chosen segment)', colour('--ink-label'), colour('--ink-fill'));
   // Placeholders as the stylesheet paints them: the rule's colour, faded by the rule's opacity. Fields
   // are raised stock, and the palette's search field sits on the raised palette box.
   assert.ok(placeholderRules.some((r) => r.selectors.includes('.input::placeholder')), '.input::placeholder rule not found');
@@ -179,15 +189,15 @@ function pairs(tokens) {
 
 const themes = themeTokens(stylesheet);
 
-test('the stylesheet defines ten theme token sets of the same shape', () => {
-  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'soft', 'swiss', 'terminal']);
+test('the stylesheet defines eleven theme token sets of the same shape', () => {
+  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'slate', 'soft', 'swiss', 'terminal']);
   // Every theme is the same token set: one that leaves a token out would inherit dark's value for it.
   const own = (name) => [...new Set(rules.filter((rule) => rule.selectors.some((selector) => themeOf(selector) === name)).flatMap((rule) => Object.keys(rule.declarations)))].sort();
 
   for (const name of Object.keys(themes)) assert.deepEqual(own(name), own('dark'), `${name} sets exactly the tokens dark sets`);
 
   for (const [name, tokens] of Object.entries(themes)) {
-    for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
+    for (const token of ['--ground', '--ground-2', '--raised', '--raised-2', '--text', '--muted', '--untyped', '--accent', '--danger', '--danger-soft', '--ghost', '--outline', '--placeholder']) {
       assert.ok(tokens[token], `${name} theme is missing ${token}`);
     }
   }
@@ -199,6 +209,29 @@ for (const name of Object.keys(themes)) {
     assert.ok(results.length >= 25);
     const failures = results.filter((pair) => pair.value < pair.min).map((pair) => `${pair.label}: ${pair.value.toFixed(2)} < ${pair.min}`);
     assert.deepEqual(failures, []);
+  });
+}
+
+// Untyped passage letters are the one softer tone (DESIGN.md): readable on the ground, never invisible, and well
+// below typed text so the two read apart. Everything else keeps 4.5:1 in the theme tests above.
+const passageRule = rules.find((r) => r.selectors.includes('#text-display'));
+
+test('untyped passage letters use --untyped, and typed letters use --text', () => {
+  assert.equal(passageRule?.declarations.color, 'var(--untyped)');
+  assert.equal(rules.find((r) => r.selectors.includes('.char.correct'))?.declarations.color, 'var(--text)');
+});
+
+for (const name of Object.keys(themes)) {
+  test(`${name} theme: untyped letters hold 2.2:1 on the ground and sit clearly below typed text`, () => {
+    const colour = (token) => parseColour(resolve(`var(${token})`, themes[name]));
+    const ground = colour('--ground');
+    const untyped = ratio(over(colour('--untyped'), ground), ground);
+    const typed = ratio(over(colour('--text'), ground), ground);
+    const muted = ratio(over(colour('--muted'), ground), ground);
+
+    assert.ok(untyped >= 2.2, `--untyped on ground is ${untyped.toFixed(2)}, under 2.2`);
+    assert.ok(untyped < muted, `--untyped (${untyped.toFixed(2)}) is softer than --muted (${muted.toFixed(2)})`);
+    assert.ok(typed / untyped >= 3, `--text (${typed.toFixed(2)}) is at least three times --untyped (${untyped.toFixed(2)})`);
   });
 }
 

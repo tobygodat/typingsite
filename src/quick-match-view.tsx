@@ -19,7 +19,8 @@ type LastRating = Extract<QuickMatchReply, { last?: object }>;
 
 type DisplayRating = Rating & { last?: LastRating['last'] };
 
-interface QuickMatchView { label: string; status: string; rating: string; gauge: RatingGauge | null; searching: boolean; lonely: boolean; best: boolean; signedIn: boolean }
+// `mine` is the signed-in racer's own rating, never another racer's (docs/adr/0016-race-rank.md).
+interface QuickMatchView { label: string; status: string; rating: string; gauge: RatingGauge | null; mine: Rating | null; searching: boolean; lonely: boolean; best: boolean; signedIn: boolean }
 
 interface QuickMatchOptions {
   getSession(): Session | null;
@@ -36,7 +37,7 @@ type TimedEvent = Extract<QueueEvent, { now: number }>;
 type DispatchEvent = Exclude<QueueEvent, TimedEvent> | Omit<Extract<QueueEvent, { type: 'reply' }>, 'now'> | { type: 'tick' | 'keep-waiting' };
 
 export function createQuickMatch() {
-  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', gauge: null, searching: false, lonely: false, best: false, signedIn: false });
+  const view = createStore<QuickMatchView>({ label: 'Find a race', status: '', rating: '', gauge: null, mine: null, searching: false, lonely: false, best: false, signedIn: false });
   let options: QuickMatchOptions | null = null;
   let state: QueueState = QUEUE_IDLE;
   let requests = Promise.resolve();
@@ -45,6 +46,8 @@ export function createQuickMatch() {
   let rating: DisplayRating | null = null;
   let notice = '';
   let disposed = false;
+  // Set when another tab signs the account out: this tab keeps its session until it reloads, but shows no rating.
+  let signedOutElsewhere = false;
   const getSession = () => options?.getSession() ?? null;
 
   const sessionIdentity = () => { const session = getSession();
@@ -80,8 +83,9 @@ export function createQuickMatch() {
       case 'idle': status = lastResult(); break;
     }
 
+    const mine = !signedOutElsewhere && getSession() && rating ? { rating: rating.rating, races: rating.races } : null;
     flushSync(() => view.publish({ label: searching ? 'Stop looking' : 'Find a race', status, rating: getSession() ? ratingLine(rating) : '', gauge: getSession() ? ratingGauge(rating) : null,
-      searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
+      mine, searching, lonely: state.phase === 'lonely', best, signedIn: Boolean(getSession()) }));
 
     if (searching && !tickTimer) tickTimer = window.setInterval(() => dispatch({ type: 'tick' }), 1000);
     else if (!searching && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
@@ -176,11 +180,12 @@ export function createQuickMatch() {
     leave() { dispatch({ type: 'leave' }); },
     get searching() { return queued(state); },
     seen: markSeen,
+    signOutElsewhere() { signedOutElsewhere = true; rating = null; render(); },
     async refresh() {
       const session = getSession();
       const identity = sessionIdentity();
 
-      if (!session) { rating = null; render();
+      if (!session || signedOutElsewhere) { rating = null; render();
 
  return; }
 

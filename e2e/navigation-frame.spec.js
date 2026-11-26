@@ -1,5 +1,5 @@
-// The frame (TOB-470): navigation in a side bar from 960px or a bar across the top, by a saved preference, and a
-// bar at the bottom of a phone. The side bar hides and comes back, per device.
+// The frame (TOB-470): navigation in a quiet bar across the top (the default) or a side bar from 960px, by a saved
+// preference, and a bar at the bottom of a phone. The side bar hides and comes back, per device.
 import { test, expect, openApp, openView, chooseWords, passageText, typeInto, signInWithEmail, chooseNavigation, phone } from './fixtures.js';
 
 const html = (page) => page.locator('html');
@@ -19,21 +19,20 @@ test('the setting moves navigation between the side bar and the top bar, and a s
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
 
-  // The side bar: a column down the left, the page beside it.
-  await expect(html(page)).toHaveAttribute('data-navigation', 'side');
-  const column = await sideBar(page).boundingBox();
-  expect(column).toMatchObject({ x: 0, y: 0, height: page.viewportSize().height });
-  expect((await page.locator('#main-content').boundingBox()).x).toBeGreaterThanOrEqual(column.width);
-  await expect(sideBar(page).locator('.site-footer')).toBeVisible();
-
-  await chooseNavigation(page, 'top');
-  // The top bar: the navigation across the top, the corner at its end, the footer at the foot of the page.
-  expect(await sideBar(page).boundingBox()).toBeNull();
-  const bar = await page.locator('nav.dock').boundingBox();
+  // The top bar, by default: the wordmark and the screens at the left of the page's column, the corner at its right
+  // end, on no slab of its own, and the footer at the foot of the page.
+  await expect(html(page)).toHaveAttribute('data-navigation', 'top');
+  const column = await page.locator('#main-content').boundingBox();
+  const bar = await sideBar(page).boundingBox();
+  expect(Math.abs(bar.x - column.x)).toBeLessThan(1);
+  expect(Math.abs(bar.width - column.width)).toBeLessThan(1);
+  expect(bar.y + bar.height).toBeLessThanOrEqual(column.y);
   const corner = await page.locator('.corner').boundingBox();
-  expect(bar).toMatchObject({ x: 0, y: 0 });
-  expect(corner.y).toBe(0);
-  expect(Math.round(bar.width + corner.width)).toBe(page.viewportSize().width);
+  expect(Math.abs(corner.x + corner.width - (column.x + column.width))).toBeLessThan(1);
+  expect(Math.abs((await page.locator('nav.dock .brand').boundingBox()).x - column.x)).toBeLessThan(4);
+  await expect(sideBar(page)).toHaveCSS('border-bottom-width', '0px');
+  await expect(sideBar(page)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(sideBar(page)).toHaveCSS('position', 'relative');
   await expect(page.locator('#main-content + .site-footer')).toBeVisible();
   await expect(toggle(page)).toBeHidden();
   // The pill sits on the screen shown, in the row.
@@ -41,21 +40,29 @@ test('the setting moves navigation between the side bar and the top bar, and a s
   const practice = await page.locator('.dock-nav [data-nav="practice"]').boundingBox();
   expect(Math.abs(pill.x - practice.x) + Math.abs(pill.y - practice.y)).toBeLessThan(1);
 
-  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('top');
+  // The side bar: a column down the left, the page beside it.
+  await chooseNavigation(page, 'side');
+  const side = await sideBar(page).boundingBox();
+  expect(side).toMatchObject({ x: 0, y: 0, height: page.viewportSize().height });
+  expect((await page.locator('#main-content').boundingBox()).x).toBeGreaterThanOrEqual(side.width);
+  await expect(sideBar(page).locator('.site-footer')).toBeVisible();
+
+  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('side');
   await page.reload();
   await expect(page.locator('#text-display .char').first()).toBeVisible();
-  await expect(html(page)).toHaveAttribute('data-navigation', 'top');
-  expect(await sideBar(page).boundingBox()).toBeNull();
+  await expect(html(page)).toHaveAttribute('data-navigation', 'side');
+  await expect(sideBar(page).locator('.site-footer')).toBeVisible();
 
   // The palette swaps it back.
-  await runCommand(page, 'navigation · side bar');
-  await expect(html(page)).toHaveAttribute('data-navigation', 'side');
-  await expect(sideBar(page)).toBeVisible();
-  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('side');
+  await runCommand(page, 'navigation · top bar');
+  await expect(html(page)).toHaveAttribute('data-navigation', 'top');
+  await expect(sideBar(page).locator('.site-footer')).toHaveCount(0);
+  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('top');
 });
 
 test('the side bar hides and comes back by its button and by the palette', async ({ page }) => {
   await openApp(page);
+  await chooseNavigation(page, 'side');
   const nav = page.getByRole('navigation', { name: 'Main navigation' });
   await expect(toggle(page)).toHaveAttribute('aria-expanded', 'true');
   await expect(toggle(page)).toHaveAttribute('aria-controls', 'side-bar');
@@ -99,6 +106,8 @@ test('a hidden side bar stays hidden for a signed-in person on this device, and 
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseNavigation(page, 'side');
+  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('side');
   await toggle(page).click();
   await expect(html(page)).toHaveAttribute('data-side-bar', 'hidden');
 
@@ -129,7 +138,7 @@ for (const placement of ['side', 'top']) {
   test(`the ${placement} bar fades while typing, takes no pointer and hides in focus mode`, async ({ page }) => {
     await openApp(page);
 
-    if (placement === 'top') await chooseNavigation(page, 'top');
+    if (placement === 'side') await chooseNavigation(page, 'side');
     await chooseWords(page, 10);
     await page.mouse.move(600, 400);
     const text = await passageText(page);
@@ -163,10 +172,12 @@ for (const placement of ['side', 'top']) {
 }
 
 test('beside the side bar the page never scrolls sideways, on any screen', async ({ page }) => {
+  await openApp(page);
+  await chooseNavigation(page, 'side');
+
   for (const width of [960, 1000, 1100]) {
     await page.setViewportSize({ width, height: 800 });
-    await openApp(page);
-    await expect(sideBar(page)).toBeVisible();
+    await expect(sideBar(page)).toHaveCSS('position', 'fixed');
 
     for (const view of ['Practice', 'Train', 'Progress', 'Challenge']) {
       await openView(page, view);
@@ -178,9 +189,12 @@ test('beside the side bar the page never scrolls sideways, on any screen', async
 test('below 960px a chosen side bar falls back to the top bar', async ({ page }) => {
   await page.setViewportSize({ width: 959, height: 800 });
   await openApp(page);
-  await expect(html(page)).toHaveAttribute('data-navigation', 'side');
-  expect(await sideBar(page).boundingBox()).toBeNull();
-  expect((await page.locator('nav.dock').boundingBox()).y).toBe(0);
+  await chooseNavigation(page, 'side');
+  // A row across the top of the page, not a column.
+  const bar = await sideBar(page).boundingBox();
+  expect(bar.y).toBeLessThan(16);
+  expect(bar.height).toBeLessThan(80);
+  expect((await page.locator('nav.dock').boundingBox()).y).toBeLessThan(40);
   await expect(toggle(page)).toBeHidden();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
 });
@@ -195,6 +209,7 @@ test('the footer is read where it is seen: after the page below 960px, in the si
 
   await page.setViewportSize({ width: 959, height: 800 });
   await openApp(page);
+  await chooseNavigation(page, 'side');
   await expect(page.locator('#main-content + .site-footer')).toBeVisible();
   await expect(sideBar(page).locator('.site-footer')).toHaveCount(0);
   expect(await footerAfterPage()).toBe(true);
@@ -210,7 +225,8 @@ test('the footer is read where it is seen: after the page below 960px, in the si
 test('on a short window the side bar scrolls inside itself, its foot in reach', async ({ page }) => {
   await page.setViewportSize({ width: 1200, height: 420 });
   await openApp(page);
-  await expect(sideBar(page)).toBeVisible();
+  await chooseNavigation(page, 'side');
+  await expect(sideBar(page)).toHaveCSS('position', 'fixed');
 
   // The foot (the account and the footer) stays inside the window; the screens and commands scroll above it.
   for (const foot of [page.locator('#account-trigger'), sideBar(page).locator('#release-trigger')]) {
@@ -220,6 +236,9 @@ test('on a short window the side bar scrolls inside itself, its foot in reach', 
 
   const dock = page.locator('nav.dock');
   expect(await dock.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
+  // Closing settings handed focus back to its trigger before the bar became a column, so focus it afresh.
+  await page.locator('#typing-input').focus();
+  await dock.evaluate((node) => { node.scrollTop = 0; });
   await page.locator('#settings-trigger').focus();
   await expect(page.locator('#settings-trigger')).toBeInViewport();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
@@ -229,10 +248,13 @@ test('hiding the side bar in one tab hides it in the same person\'s other tabs',
   supabase.addUser('ada@stilltype.test');
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
+  await chooseNavigation(page, 'side');
+  await expect.poll(() => supabase.profileFor('ada@stilltype.test')?.preferences?.navigation).toBe('side');
   const other = await context.newPage();
   await supabase.attach(other);
   await openApp(other);
   await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+  await expect(html(other)).toHaveAttribute('data-navigation', 'side');
 
   await toggle(page).click();
   await expect(html(other)).toHaveAttribute('data-side-bar', 'hidden');
@@ -249,7 +271,7 @@ test.describe('on a phone', () => {
     test(`with the ${placement} bar chosen the navigation sits at the bottom, with 44px targets and no sideways scroll`, async ({ page }) => {
       await openApp(page);
 
-      if (placement === 'top') await chooseNavigation(page, 'top');
+      if (placement === 'side') await chooseNavigation(page, 'side');
       const dock = await page.locator('nav.dock').boundingBox();
       expect(Math.round(dock.y + dock.height)).toBe(568);
       expect(dock.width).toBe(320);

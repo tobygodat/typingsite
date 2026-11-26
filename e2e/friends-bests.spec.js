@@ -218,7 +218,7 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
   await shot(page, testInfo, 'bests-light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
   await page.waitForTimeout(400);
   await shot(page, testInfo, 'bests-dark');
 
@@ -386,7 +386,7 @@ test.describe('phone', () => {
     await scrollBelow(page, '#board-bests-heading', 24);
     await shot(page, testInfo, 'bests-phone-light');
     await page.emulateMedia({ colorScheme: 'dark' });
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
     await page.waitForTimeout(400);
     await shot(page, testInfo, 'bests-phone-dark');
     await scrollBelow(page, '#friends-board-heading', 24);

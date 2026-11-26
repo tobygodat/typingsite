@@ -6,7 +6,7 @@ import { CARET_GLIDE } from './caret-glide.js';
 
 export type SettingsCategory = 'appearance' | 'practice' | 'keyboard' | 'sound' | 'shortcuts';
 
-export type SettingId = 'wallpaper-style' | 'numbers-toggle' | 'word-list' | 'repeat-quotes-toggle' | 'daily-goal' | 'train-focus' | 'drill-length' | 'retest-toggle' | 'font-size' | 'typing-font' | 'app-font' | 'speed-unit' | 'word-highlight' | 'word-highlight-slide' | 'typing-motion' | 'live-toggle' | 'keyboard-toggle' | 'finger-toggle' | 'layout-select' | 'correction-select' | 'strict-space-toggle' | 'quick-end-toggle' | 'min-accuracy' | 'min-wpm' | 'theme-select' | 'dark-theme' | 'light-theme' | 'pace-select' | 'focus-toggle' | 'tape-toggle' | 'navigation-select' | 'sound-select';
+export type SettingId = 'wallpaper-style' | 'numbers-toggle' | 'word-list' | 'repeat-quotes-toggle' | 'daily-goal' | 'train-focus' | 'drill-length' | 'retest-toggle' | 'font-size' | 'typing-font' | 'app-font' | 'speed-unit' | 'word-highlight' | 'word-highlight-slide' | 'typing-motion' | 'live-toggle' | 'keyboard-toggle' | 'finger-toggle' | 'layout-select' | 'correction-select' | 'strict-space-toggle' | 'quick-end-toggle' | 'word-flow-toggle' | 'min-accuracy' | 'min-wpm' | 'theme-select' | 'dark-theme' | 'light-theme' | 'pace-select' | 'focus-toggle' | 'tape-toggle' | 'navigation-select' | 'sound-select';
 
 interface SettingsPresentation { slide: boolean; standard: boolean; rules: string; quickEnd: string; volume: number; soundOff: boolean; caretGlide: number; glideOff: boolean }
 

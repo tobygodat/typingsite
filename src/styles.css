@@ -1,8 +1,6 @@
 /*
- * Stilltype.
- * Literata on near-black (or warm paper), one green, and a speed graph on the
- * card of every finished run. Tokens first, then shell, then screens. DESIGN.md
- * lists the floors every change holds. Motion scales to zero under reduced motion.
+ * Stilltype. Tokens first, then shell, then screens. DESIGN.md lists the floors every change
+ * holds. Motion scales to zero under reduced motion.
  */
 
 @font-face { font-family: "Geist Mono"; src: url("/src/fonts/geist-mono-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -26,11 +24,11 @@
   --font-source-serif: "Source Serif 4", Georgia, serif;
   --font-inter: "Inter", system-ui, sans-serif;
   /* The passage, compose field and replay; --font-app is everything else readable. */
-  --font-typing: var(--font-literata);
-  --font-app: var(--font-literata);
-  /* Literata's baseline below the middle of its line; src/app.js measures the chosen typing font's.
+  --font-typing: var(--font-inter);
+  --font-app: var(--font-inter);
+  /* Inter's baseline below the middle of its line; src/display-preferences.ts measures the chosen typing font's.
      Every caret's top stands 0.985em above it, so carets keep their place against the letters in any font. */
-  --typing-baseline: 0.435em;
+  --typing-baseline: 0.364em;
   --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --text-fine: 12px;
@@ -73,6 +71,16 @@
      icons. */
   --side-bar: 216px;
   --top-bar: 56px;
+  --top-item: 34px;
+  /* Where open practice's stage starts: centred in the window under the frame, by the stage's usual height. */
+  --frame-top: calc(var(--top-bar) + var(--space-2));
+  --practice-stage: 380px;
+  /* The setup bar: its line, its type, and the room at its right end for the average and best, and the room at
+     the left of the footer for the key hints. */
+  --band: var(--space-8);
+  --text-rail: 13px;
+  --standing-reserve: 200px;
+  --hints-reserve: 300px;
   --bottom-bar: 62px;
   --frame-item: 34px;
   --frame-inset: 10px;
@@ -88,13 +96,13 @@
   --calendar-cell: 14px;
   --disabled-opacity: 0.38;
   --settings-height: 704px;
-  --settings-body-height: 520px;
-  --settings-sidebar: 216px;
-  --settings-label: 208px;
-  --settings-row: 72px;
+  --settings-sidebar: 176px;
+  --settings-label: 160px;
+  --settings-label-phone: 108px;
+  --settings-control: var(--space-8);
   --settings-selection-line: 2px;
-  --settings-title-line: 40px;
   --settings-option-line: 18px;
+  --theme-editor-column: 208px;
   --settings-preview-line: 56px;
   --settings-preview-small: 22px;
   --settings-preview-medium: var(--text-title);
@@ -135,10 +143,16 @@
   --dur-medium: calc(350ms * var(--motion-scale));
   --dur-develop: calc(450ms * var(--motion-scale));
   --dur-settle: calc(700ms * var(--motion-scale));
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --press-scale: 0.97;
   /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --stagger-step: calc(40ms * var(--motion-scale));
+
+  /* The chosen segment of the mode, length and language rows: the theme's text as a fill, its ground as ink. */
+  --ink-fill: var(--text);
+  --ink-label: var(--ground);
 
   /* The rated result card (src/rank-card.js): its width, the emblem, the rank name and the bar. Its colours live
      in that module, not here: they are the ranks' own and don't follow the theme's accent. */
@@ -148,78 +162,114 @@
   --rank-bar: 10px;
 }
 
+:root[data-typing-font="literata"] { --font-typing: var(--font-literata); }
 :root[data-typing-font="source-serif"] { --font-typing: var(--font-source-serif); }
-:root[data-typing-font="inter"] { --font-typing: var(--font-inter); }
 :root[data-typing-font="jetbrains-mono"] { --font-typing: "JetBrains Mono", ui-monospace, monospace; }
 :root[data-typing-font="ibm-plex-mono"] { --font-typing: "IBM Plex Mono", ui-monospace, monospace; }
 :root[data-typing-font="roboto-mono"] { --font-typing: "Roboto Mono", ui-monospace, monospace; }
 :root[data-typing-font="fira-code"] { --font-typing: "Fira Code", ui-monospace, monospace; }
+:root[data-app-font="literata"] { --font-app: var(--font-literata); }
 :root[data-app-font="source-serif"] { --font-app: var(--font-source-serif); }
-:root[data-app-font="inter"] { --font-app: var(--font-inter); }
 
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --backdrop: rgba(0, 0, 0, 0.5);
-  --ground: #0f0f0e;
-  --ground-2: #151514;
-  --raised: #1c1b1a;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --ground: #0b0b0d;
+  --ground-2: #111114;
+  --raised: #16161a;
   --raised-2: rgba(255, 255, 255, 0.085);
-  --text: #ece8e1;
-  --muted: #a39e96;
-  --placeholder: rgba(163, 158, 150, 0.8);
+  --text: #f3f3f5;
+  --muted: #9d9da7;
+  /* Untyped passage letters ahead of the caret: softer than --muted (about 2.7:1) so typed text stands out.
+     Every label, readout and typed or mistyped letter keeps the 4.5:1 tokens. */
+  --untyped: #565660;
+  --placeholder: rgba(157, 157, 167, 0.86);
   --hairline: rgba(255, 255, 255, 0.075);
-  --hairline-strong: rgba(255, 255, 255, 0.15);
-  --outline: #7d7972;
-  --accent: #8fd18a;
-  --accent-ink: #0f1a0e;
-  --accent-soft: rgba(143, 209, 138, 0.13);
-  --practice-level-1: rgba(143, 209, 138, 0.3);
-  --practice-level-2: rgba(143, 209, 138, 0.55);
-  --practice-level-3: rgba(143, 209, 138, 0.8);
-  --danger: #ff8a6b;
-  --danger-soft: rgba(255, 138, 107, 0.16);
-  --warning: #e0b565;
-  --selection: #34322e;
-  /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --outline: #74747e;
+  --accent: #2dd4a0;
+  --accent-ink: #071912;
+  --accent-soft: rgba(45, 212, 160, 0.12);
+  --practice-level-1: rgba(45, 212, 160, 0.3);
+  --practice-level-2: rgba(45, 212, 160, 0.55);
+  --practice-level-3: rgba(45, 212, 160, 0.8);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --warning: #fbbf24;
+  --selection: #2a2a30;
+  /* The word highlight: a faint wash of the text colour, light enough that untyped letters keep their tone. */
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
-  --ghost: #b9c3ff;
-  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --card-top: #1f1e1c;
-  --card-bottom: #121211;
+  --ghost: #a5b4fc;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --card-top: #19191d;
+  --card-bottom: #0e0e10;
   /* Finger map: one neutral band behind alternate fingers (index, ring). Not a colour. */
   --finger-band: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --backdrop: rgba(40, 32, 20, 0.22);
-  --ground: #f4f1eb;
-  --ground-2: #ece8e0;
-  --raised: #fbf9f5;
-  --raised-2: rgba(27, 26, 25, 0.07);
-  --text: #1b1a19;
-  --muted: #6b665e;
-  --placeholder: rgba(107, 102, 94, 0.92);
-  --hairline: rgba(27, 26, 25, 0.1);
-  --hairline-strong: rgba(27, 26, 25, 0.2);
-  --outline: #857f75;
-  --accent: #217245;
-  --accent-ink: #fbf9f5;
-  --accent-soft: rgba(46, 125, 79, 0.11);
-  --practice-level-1: rgba(46, 125, 79, 0.3);
-  --practice-level-2: rgba(46, 125, 79, 0.55);
-  --practice-level-3: rgba(46, 125, 79, 0.8);
-  --danger: #ad3d26;
-  --danger-soft: rgba(180, 67, 44, 0.12);
+  --backdrop: rgba(20, 20, 24, 0.22);
+  --ground: #f6f6f4;
+  --ground-2: #ecece8;
+  --raised: #ffffff;
+  --raised-2: rgba(20, 20, 22, 0.05);
+  --text: #141416;
+  --muted: #5e5e66;
+  --untyped: #96969e;
+  --placeholder: rgba(94, 94, 102, 0.94);
+  --hairline: rgba(20, 20, 22, 0.1);
+  --hairline-strong: rgba(20, 20, 22, 0.2);
+  --outline: #85858c;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(15, 118, 110, 0.1);
+  --practice-level-1: rgba(15, 118, 110, 0.3);
+  --practice-level-2: rgba(15, 118, 110, 0.55);
+  --practice-level-3: rgba(15, 118, 110, 0.8);
+  --danger: #b91c1c;
+  --danger-soft: rgba(220, 38, 38, 0.1);
   --warning: #8a5a00;
-  --selection: #e3dccf;
+  --selection: #e2e2dc;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
-  --ghost: #434db5;
-  --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
-  --card-top: #fffdf9;
-  --card-bottom: #efeae1;
-  --finger-band: rgba(27, 26, 25, 0.05);
+  --ghost: #4338ca;
+  --shadow-float: 0 8px 24px rgba(20, 20, 24, 0.1);
+  --card-top: #ffffff;
+  --card-bottom: #f0f0ec;
+  --finger-band: rgba(20, 20, 22, 0.05);
+}
+
+:root[data-theme="slate"] {
+  color-scheme: dark;
+  --backdrop: rgba(5, 8, 14, 0.6);
+  --ground: #0e1117;
+  --ground-2: #141923;
+  --raised: #1a2130;
+  --raised-2: rgba(240, 244, 248, 0.075);
+  --text: #f0f4f8;
+  --muted: #a0adbe;
+  --untyped: #505c70;
+  --placeholder: rgba(160, 173, 190, 0.88);
+  --hairline: rgba(240, 244, 248, 0.075);
+  --hairline-strong: rgba(240, 244, 248, 0.15);
+  --outline: #738096;
+  --accent: #7dd3fc;
+  --accent-ink: #06131f;
+  --accent-soft: rgba(125, 211, 252, 0.12);
+  --practice-level-1: rgba(125, 211, 252, 0.3);
+  --practice-level-2: rgba(125, 211, 252, 0.55);
+  --practice-level-3: rgba(125, 211, 252, 0.8);
+  --danger: #fb8a9c;
+  --danger-soft: rgba(251, 113, 133, 0.14);
+  --warning: #fcd34d;
+  --selection: #2a3344;
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
+  --ghost: #c4b5fd;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --card-top: #1d2433;
+  --card-bottom: #121721;
+  --finger-band: rgba(240, 244, 248, 0.09);
 }
 
 /* The other eight themes: the same tokens as dark and light, nothing else. Type, radii and motion are
@@ -233,6 +283,7 @@
   --raised-2: rgba(20, 18, 16, 0.06);
   --text: #141210;
   --muted: #5e5850;
+  --untyped: #9b968f;
   --placeholder: #5e5850;
   --hairline: rgba(20, 18, 16, 0.12);
   --hairline-strong: rgba(20, 18, 16, 0.24);
@@ -264,6 +315,7 @@
   --raised-2: #f4f4f5;
   --text: #09090b;
   --muted: #6b6b74;
+  --untyped: #9a9aa0;
   --placeholder: #6b6b74;
   --hairline: #e4e4e7;
   --hairline-strong: #d4d4d8;
@@ -295,6 +347,7 @@
   --raised-2: rgba(120, 255, 140, 0.07);
   --text: #c4ecbf;
   --muted: #80a67c;
+  --untyped: #4a6048;
   --placeholder: #80a67c;
   --hairline: rgba(120, 255, 140, 0.09);
   --hairline-strong: rgba(120, 255, 140, 0.18);
@@ -326,6 +379,7 @@
   --raised-2: rgba(91, 75, 214, 0.08);
   --text: #1e1b2e;
   --muted: #5b5670;
+  --untyped: #9692a5;
   --placeholder: #5b5670;
   --hairline: rgba(30, 27, 46, 0.08);
   --hairline-strong: rgba(30, 27, 46, 0.16);
@@ -357,6 +411,7 @@
   --raised-2: rgba(255, 240, 220, 0.06);
   --text: #cfc8bc;
   --muted: #918b80;
+  --untyped: #5a5751;
   --placeholder: #918b80;
   --hairline: rgba(255, 240, 220, 0.06);
   --hairline-strong: rgba(255, 240, 220, 0.12);
@@ -388,6 +443,7 @@
   --raised-2: #f0f0f0;
   --text: #000000;
   --muted: #555555;
+  --untyped: #9b9b9b;
   --placeholder: #555555;
   --hairline: rgba(0, 0, 0, 0.12);
   --hairline-strong: rgba(0, 0, 0, 0.3);
@@ -419,6 +475,7 @@
   --raised-2: rgba(0, 0, 0, 0.05);
   --text: #111111;
   --muted: #555552;
+  --untyped: #8f8f8c;
   --placeholder: #555552;
   --hairline: rgba(0, 0, 0, 0.1);
   --hairline-strong: rgba(0, 0, 0, 0.2);
@@ -450,6 +507,7 @@
   --raised-2: rgba(236, 239, 244, 0.045);
   --text: #eceff4;
   --muted: #b8c0ce;
+  --untyped: #707784;
   --placeholder: #b8c0ce;
   --hairline: rgba(236, 239, 244, 0.08);
   --hairline-strong: rgba(236, 239, 244, 0.16);
@@ -475,6 +533,8 @@
 /* A custom theme (src/custom-themes.js) sets its colours inline on :root, over dark or light. The surfaces
    and tints follow the colours they come from, at dark's or light's shares, unless the theme sets them too. */
 :root[data-theme][data-custom] {
+  /* 70% holds untyped letters at 2.2:1 wherever muted holds 4.5:1 (UNTYPED_SHARE in src/custom-themes.ts). */
+  --untyped: color-mix(in srgb, var(--muted) 70%, var(--ground));
   --outline: color-mix(in srgb, var(--muted) 77%, var(--ground));
   --practice-level-1: color-mix(in srgb, var(--accent) 30%, transparent);
   --practice-level-2: color-mix(in srgb, var(--accent) 55%, transparent);
@@ -618,49 +678,51 @@ kbd {
 /* ── Frame ──────────────────────────────────────────────────────────────── */
 
 /* One set of elements makes three frames. html[data-navigation] is the person's choice (src/navigation.ts); CSS
-   alone turns it and the width into a layout: a side bar from 960px when the choice is 'side', otherwise a bar
-   across the top, and a bar fixed to the bottom of a phone. .dock-zone holds the navigation (nav.dock), the corner
-   (inbox and account) and, with the side bar chosen, the footer. Outside the side bar it has no box of its own: its
-   children are cells of the .app-shell grid. */
+   alone turns it and the width into a layout: a quiet bar across the top by default, a side bar from 960px when
+   the choice is 'side', and a bar fixed to the bottom of a phone. .dock-zone holds the navigation (nav.dock), the
+   corner (rank, inbox and account) and, with the side bar chosen, the footer. The middle column is the page's own
+   column, so the top bar's ends line up with the page under it. */
 .app-shell {
   min-height: 100vh;
   min-height: 100svh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(var(--space-6), 1fr) minmax(0, var(--content-max)) minmax(var(--space-6), 1fr);
   grid-template-rows: auto 1fr auto;
 }
-
-.dock-zone { display: contents; }
 
 #main-content,
 .site-footer { grid-column: 1 / -1; justify-self: center; width: min(var(--content-max), calc(100% - 48px)); }
 #main-content { grid-row: 2; container: page / inline-size; }
 .site-footer { grid-row: 3; }
 
-/* The top bar: flat, full width, a hairline under it. The navigation fills the row and the corner ends it. */
-.dock,
-.corner {
-  position: sticky;
-  top: 0;
+/* The top bar: no slab and no rule, just the wordmark, the screens and the commands at the left of the page's
+   column and the corner at its right, straight on the page, so a background image runs on behind it. It scrolls
+   with the page, so nothing scrolls under its letters; where the image would make them hard to read,
+   src/wallpaper-layer.ts outlines them as it does the passage. */
+.dock-zone {
+  position: relative;
   z-index: 40;
+  grid-column: 2;
   grid-row: 1;
   height: var(--top-bar);
+  margin-top: var(--space-2);
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  background: var(--ground-2);
-  border-bottom: 1px solid var(--hairline-strong);
+  gap: var(--space-2);
+  background: transparent;
 }
 
-.dock { grid-column: 1; min-width: 0; padding: 0 var(--space-1) 0 var(--space-6); }
-.corner { grid-column: 2; padding-right: var(--space-4); }
+.dock,
+.corner { display: flex; align-items: center; gap: var(--space-1); }
+
+.dock { flex: 1; min-width: 0; }
 
 .brand {
-  margin-right: var(--space-4);
+  margin-right: var(--space-6);
   padding: 4px 2px;
   color: var(--text);
   text-decoration: none;
-  font-size: var(--text-lead);
+  font-size: var(--text-body);
   line-height: 1;
   white-space: nowrap;
 }
@@ -685,42 +747,59 @@ kbd {
   transition: transform var(--dur-base) var(--ease-out);
 }
 
-.glide.no-anim .glide-pill { transition: none; }
+.glide.no-anim :is(.glide-pill, .glide-ink) { transition: none; }
+
+/* The segmented rows ink their choice instead: a layer of label copies (src/control-glide.ts) in the fill's own
+   ink, clipped to the chosen segment. The window wipes from one segment to the next, and each label turns to ink
+   exactly where the window's edge crosses it. The layer takes no pointer, so every segment keeps its whole box. */
+.glide-ink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  background: var(--ink-fill);
+  color: var(--ink-label);
+  clip-path: inset(var(--ink-t, 0) var(--ink-r, 100%) var(--ink-b, 0) var(--ink-l, 0) round var(--radius));
+  opacity: var(--ink-o, 0);
+  pointer-events: none;
+  transition: clip-path var(--dur-base) var(--ease-out);
+  will-change: clip-path;
+}
+
+.glide-ink-label { position: absolute; box-sizing: border-box; display: flex; align-items: center; white-space: nowrap; }
 
 .dock-nav { display: flex; align-items: center; gap: 2px; }
 /* The list runs across or down, so its pill moves on both axes, by transform alone. */
 .dock-nav .glide-pill { top: 0; border-radius: var(--radius-sm); transform: translate(var(--pill-x, 0), var(--pill-y, 0)); }
 
 .nav-item {
-  height: var(--control);
-  padding: 0 14px;
+  height: var(--top-item);
+  padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  font-size: var(--text-small);
+  font-size: var(--text-label);
   white-space: nowrap;
-  transition: color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.nav-item:hover,
 .nav-item.is-active { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .nav-item:hover { color: var(--text); } }
 
 .nav-label-short { display: none; }
 
 .dock-sep {
-  width: 1px;
-  height: 24px;
-  margin: 0 var(--space-2) 0 auto;
-  background: var(--hairline-strong);
+  width: 0;
+  margin-left: auto;
   flex: none;
 }
 
 .dock-command,
 .corner-trigger {
   position: relative;
-  width: var(--control);
-  height: var(--control);
+  width: var(--top-item);
+  height: var(--top-item);
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
@@ -733,12 +812,14 @@ kbd {
   font-size: var(--text-label);
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.dock-command:hover,
-.corner-trigger:hover,
 .corner details[open] > .corner-trigger { color: var(--text); background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) {
+  .dock-command:hover,
+  .corner-trigger:hover { color: var(--text); background: var(--raised-2); }
+}
 
 .dock-command svg,
 .corner-trigger svg { width: var(--frame-glyph); height: var(--frame-glyph); flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -748,9 +829,13 @@ kbd {
 .corner-label,
 .side-toggle { display: none; }
 
-/* Settings is labelled in the top bar so it is findable from every screen. */
-.dock-settings { width: auto; padding: 0 14px 0 12px; }
-.dock-settings .dock-label { display: inline; }
+/* The commands trigger reads as its key, a small keycap, wherever a key can press it; on a touch-only device the
+   key hint hides and the magnifier stays. */
+@media (any-pointer: fine) {
+  #palette-trigger { width: auto; padding: 0 var(--space-2); }
+  #palette-trigger .search-glyph { display: none; }
+  #palette-trigger .dock-key { display: inline-grid; }
+}
 
 .icon-control {
   width: var(--control);
@@ -765,7 +850,7 @@ kbd {
   transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
 }
 
-.icon-control:hover { color: var(--text); background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) { .icon-control:hover { color: var(--text); background: var(--raised-2); } }
 
 .icon-control svg,
 .palette-search svg {
@@ -791,36 +876,38 @@ kbd {
   box-shadow: var(--shadow-float);
   overflow: clip;
 }
-#settings-dialog[open] { display: flex; flex-direction: column; animation: palette-in var(--dur-quick) var(--ease-out); }
+#settings-dialog[open] { display: flex; flex-direction: column; animation: dialog-in var(--dur-quick) var(--ease-out); }
 #settings-dialog::backdrop { background: var(--backdrop); }
-.settings-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: var(--space-6) var(--space-8) var(--space-4); }
-.settings-header h2 { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: var(--settings-title-line); }
+.settings-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: var(--space-2) var(--space-6); border-bottom: 1px solid var(--hairline-strong); }
+.settings-header h2 { margin: 0; font-size: var(--text-title); font-weight: 400; line-height: 1.2; }
 :is(#settings-close, #release-close) { display: flex; align-items: center; gap: var(--space-3); min-height: var(--control); padding-inline: var(--space-3); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; color: var(--muted); cursor: pointer; font: var(--text-mono)/var(--space-4) var(--font-mono); }
 :is(#settings-close, #release-close):hover { color: var(--text); background: var(--raised-2); }
 .release-notes { display: grid; gap: var(--space-3); margin: 0; padding: 0 var(--space-8) var(--space-8) calc(var(--space-8) + var(--space-4)); font-size: var(--text-small); }
-.settings-body { display: flex; flex: 1; min-height: 0; max-height: var(--settings-body-height); }
-.settings-nav { width: var(--settings-sidebar); flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); border-right: 1px solid var(--hairline-strong); }
-.settings-nav button { flex: none; text-align: left; padding: var(--space-2) var(--space-4); min-height: var(--control); border: 0; border-left: var(--settings-selection-line) solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; font: var(--text-small)/var(--settings-option-line) var(--font-app); cursor: pointer; }
+.settings-body { display: flex; flex: 1; min-height: 0; }
+.settings-nav { width: var(--settings-sidebar); flex: none; display: flex; flex-direction: column; gap: var(--space-1); overflow-y: auto; padding: var(--space-3); border-right: 1px solid var(--hairline-strong); }
+.settings-nav button { flex: none; text-align: left; padding: var(--space-1) var(--space-3); min-height: var(--settings-control); border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); background: transparent; font: var(--text-label)/var(--settings-option-line) var(--font-app); cursor: pointer; }
 .settings-nav button:hover { background: var(--raised-2); color: var(--text); }
-.settings-nav button[aria-current] { color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
-.settings-nav .settings-import { margin-top: var(--space-6); font-size: var(--text-label); line-height: 1.7; }
-.settings-content { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-4) var(--space-8); }
-.settings-intro { display: grid; gap: var(--space-1); padding-block: var(--space-2); }
-.settings-intro h3 { font-size: var(--text-lead); font-weight: 400; line-height: 1.6; margin: 0; }
-.preference-row { display: flex; align-items: center; gap: var(--space-6); min-height: var(--settings-row); padding-block: var(--space-3); border-bottom: 1px solid var(--hairline); }
+.settings-nav button[aria-current] { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.settings-content { flex: 1; min-width: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-3) var(--space-6); }
+.settings-group-title { margin: var(--space-4) 0 0; padding-block: var(--space-1); color: var(--muted); font: var(--text-mono)/var(--settings-option-line) var(--font-mono); }
+.settings-group-title:first-child { margin-top: 0; }
+.preference-row { display: flex; align-items: center; gap: var(--space-4); padding-block: var(--space-1); border-bottom: 1px solid var(--hairline); }
 .preference-copy { display: flex; flex-direction: column; flex: none; width: var(--settings-label); gap: var(--space-1); }
-.preference-copy strong { font-size: var(--text-small); font-weight: 600; line-height: 1.6; }
-.preference-note, .preference-lock { color: var(--muted); font: var(--text-label)/1.4 var(--font-app); }
+.preference-copy strong { font-size: var(--text-label); font-weight: 600; line-height: 1.4; }
+.preference-note, .preference-lock { color: var(--muted); font: var(--text-fine)/1.4 var(--font-app); }
 .preference-lock { font-style: italic; }
 .setting-options { display: flex; flex: 1; flex-wrap: wrap; min-width: 0; gap: var(--space-1); margin: 0; border: 0; padding: 0; }
-.preference-row-wide { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
-.preference-row-wide .setting-options { flex: none; width: 100%; }
-.setting-option { position: relative; display: flex; cursor: pointer; }
+.setting-option { position: relative; display: flex; max-width: 100%; cursor: pointer; }
 .setting-option input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: inherit; }
-.setting-option span { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--control); padding-inline: var(--space-4); border-radius: var(--radius-sm); color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-app); }
+.setting-option span { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--settings-control); padding: var(--space-1) var(--space-2); border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--muted); font: var(--text-label)/var(--settings-option-line) var(--font-app); overflow-wrap: anywhere; }
 .setting-option:hover span { color: var(--text); background: var(--raised-2); }
-.setting-option input:checked + span { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 calc(-1 * var(--settings-selection-line)) 0 var(--accent); }
-.setting-option input:focus-visible + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
+.setting-option input:checked + span { color: var(--accent); background: var(--accent-soft); }
+/* WebKit moves focus on radio arrows without matching :focus-visible on the new radio. */
+.setting-option input:is(:focus-visible, [data-radio-keyboard-focus] input[type="radio"]:focus) + span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--settings-selection-line); }
+@media (forced-colors: active) {
+  .setting-option input:checked + span { forced-color-adjust: none; color: HighlightText; background: Highlight; }
+  .setting-option input:is(:focus-visible, [data-radio-keyboard-focus] input[type="radio"]:focus) + span { outline-color: CanvasText; }
+}
 button.setting-option { border: 0; padding: 0; background: none; outline: none; }
 button.setting-option:focus-visible span { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
 .setting-option:has(:disabled) { cursor: default; opacity: var(--disabled-opacity); }
@@ -829,6 +916,7 @@ button.setting-option:focus-visible span { outline: var(--settings-selection-lin
 .pace-note { color: var(--muted); font: var(--text-fine)/1.4 var(--font-mono); }
 .pace-note:empty { display: none; }
 .preference-row .pace-wpm { width: var(--settings-label); }
+#typing-font { min-height: var(--settings-control); max-width: 100%; padding-inline: var(--space-2); border: 1px solid var(--outline); border-radius: var(--radius-sm); background-color: var(--raised); color: var(--text); font: var(--text-label)/var(--settings-option-line) var(--font-app); }
 .settings-preview { padding-top: var(--space-4); display: grid; gap: var(--space-2); }
 #settings-preview-passage { margin: 0; border-left: var(--settings-selection-line) solid var(--accent); padding-left: var(--space-3); font-family: var(--font-typing); font-size: var(--settings-preview-medium); line-height: var(--settings-preview-line); }
 body[data-font-size="22"] #settings-preview-passage { font-size: var(--settings-preview-small); }
@@ -839,7 +927,7 @@ body[data-word-highlight="next"] #settings-preview-passage span:nth-child(4) { b
 body[data-word-highlight-slide="true"] #settings-preview-passage > span:is(:nth-child(3), :nth-child(4)) { background: none; }
 body[data-tape-preference="true"] #settings-preview-passage { white-space: nowrap; overflow: hidden; }
 /* Custom themes: new and edit sit after the theme options and read like them. */
-.setting-action { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--control); padding-inline: var(--space-4); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-small)/var(--settings-option-line) var(--font-app); cursor: pointer; }
+.setting-action { display: flex; align-items: center; justify-content: center; min-width: var(--control); min-height: var(--settings-control); padding-inline: var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font: var(--text-label)/var(--settings-option-line) var(--font-app); cursor: pointer; }
 .setting-action:hover:not(:disabled) { color: var(--text); background: var(--raised-2); }
 .setting-action:focus-visible { outline: var(--settings-selection-line) solid var(--text); outline-offset: var(--space-1); }
 .setting-action[aria-expanded="true"] { color: var(--accent); }
@@ -849,7 +937,7 @@ body[data-tape-preference="true"] #settings-preview-passage { white-space: nowra
 .theme-vibe .input { flex: 1; min-width: 0; }
 .theme-status { margin: 0; color: var(--danger); font-size: var(--text-label); }
 .theme-status:empty { display: none; }
-.theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--settings-label), 1fr)); gap: var(--space-1) var(--space-6); }
+.theme-colors { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--theme-editor-column), 1fr)); gap: var(--space-1) var(--space-6); }
 .theme-color { display: grid; grid-template-columns: minmax(0, 1fr) var(--control) 10ch; align-items: center; gap: var(--space-2); }
 .theme-color label { color: var(--muted); font-size: var(--text-small); }
 .theme-color input[type="color"] { width: var(--control); height: var(--control); padding: var(--space-1); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: transparent; cursor: pointer; }
@@ -861,26 +949,28 @@ body[data-tape-preference="true"] #settings-preview-passage { white-space: nowra
 .theme-more[open] summary { margin-bottom: var(--space-2); }
 .theme-editor-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 #theme-delete { margin-right: auto; }
-.settings-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--space-6); border-top: 1px solid var(--hairline-strong); padding: var(--space-4) var(--space-8); }
-.settings-footer p { font-size: var(--text-label); line-height: 1.7; color: var(--muted); margin: 0; }
-.settings-footer .btn { flex: none; padding-inline: var(--space-6); font-size: var(--text-small); }
+.settings-footer { display: flex; flex: none; align-items: center; gap: var(--space-2); border-top: 1px solid var(--hairline-strong); padding: var(--space-2) var(--space-6); }
+.settings-footer p { flex: 1; font-size: var(--text-fine); line-height: 1.4; color: var(--muted); margin: 0; }
+.settings-footer .btn { flex: none; padding-inline: var(--space-3); font-size: var(--text-label); }
 body:has(#settings-dialog[open]) { overflow: hidden; }
 
 @media (max-width: 760px) {
   #settings-dialog { width: calc(100% - var(--space-4)); height: min(var(--settings-height), calc(100dvh - var(--space-4))); border-radius: var(--radius-lg); }
-  .settings-header { padding: var(--space-3) var(--space-4); }
-  .settings-body { flex-direction: column; max-height: none; }
-  .settings-nav { width: auto; flex-direction: row; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-right: 0; border-bottom: 1px solid var(--hairline-strong); }
-  .settings-nav button { padding-inline: var(--space-2); border-left: 0; border-bottom: var(--settings-selection-line) solid transparent; }
-  .settings-nav [aria-current] { border-bottom-color: var(--accent); }
-  .settings-nav .settings-import { margin: 0; }
-  .settings-content { padding: var(--space-3) var(--space-4); }
-  .preference-row { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
-  .preference-copy { width: auto; }
-  .setting-options { flex: none; width: 100%; }
-  .setting-option span { padding-inline: var(--space-3); }
-  .settings-footer { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
-  .settings-footer p { font-size: var(--text-fine); }
+  .settings-header, .settings-footer { padding-inline: var(--space-3); }
+  .settings-body { flex-direction: column; }
+  .settings-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: auto; padding: var(--space-2) var(--space-3); border-right: 0; border-bottom: 1px solid var(--hairline-strong); }
+  .settings-nav button { padding-inline: var(--space-1); text-align: center; }
+  .settings-content { padding: var(--space-2) var(--space-3); }
+  .preference-row { flex-wrap: wrap; gap: var(--space-1) var(--space-2); }
+  .preference-copy { width: var(--settings-label-phone); }
+  .setting-options { flex: 1 1 max-content; max-width: 100%; }
+}
+
+@media (max-width: 460px) {
+  .settings-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .settings-footer { flex-wrap: wrap; }
+  .settings-footer p { flex-basis: 100%; }
+  #settings-done { margin-inline-start: auto; }
 }
 
 /* The track is an outline rule (3:1 on raised in both themes); the filled part and thumb are the
@@ -978,6 +1068,31 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   animation: fade-in var(--dur-quick) var(--ease-out);
 }
 
+/* The rank pill (src/rank-pill.tsx): the member's own race rank as a small dial in the corner, its ring the step
+   it sits in. Its card scales out of the pill's corner and back, and is still under reduced motion. */
+.rank { position: relative; }
+.rank-pill { width: auto; padding: 0 var(--space-3) 0 var(--space-2); gap: var(--space-2); font: var(--text-mono)/1 var(--font-mono); letter-spacing: 0.02em; }
+.rank-pill[aria-expanded="true"] { color: var(--text); background: var(--raised-2); }
+.rank-pill-rating { color: var(--text); }
+.rank-pill .rank-ring { width: var(--frame-glyph); height: var(--frame-glyph); transform: rotate(-90deg); }
+.rank-ring circle { fill: none; stroke-width: 2.25; }
+.rank-ring-track { stroke: var(--hairline-strong); }
+.rank-ring-fill { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray var(--dur-medium) var(--ease-out); }
+
+.rank-popover {
+  width: 260px;
+  transform-origin: top right;
+  animation: rank-in var(--dur-quick) var(--ease-out);
+}
+.rank-popover .gauge { margin-top: var(--space-3); }
+.rank-popover-head { margin: 0; display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); font: var(--text-mono)/1.4 var(--font-mono); letter-spacing: 0.02em; }
+.rank-popover-head strong { color: var(--text); font-weight: 500; }
+.rank-popover-head .num { color: var(--muted); }
+.rank-popover-note { margin: var(--space-2) 0 var(--space-4); color: var(--muted); font: var(--text-fine)/1.5 var(--font-mono); }
+.rank-challenge { width: 100%; }
+
+@keyframes rank-in { from { opacity: 0; transform: scale(0.95); } }
+
 /* Inbox: unread entries are counted on the envelope. The list scrolls: it keeps every open ghost race and
    the week's ghost race results, then the newest thirty others. */
 
@@ -1061,7 +1176,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
 }
 
-.footer-link:hover { color: var(--text); text-decoration-color: currentColor; }
+@media (hover: hover) and (pointer: fine) { .footer-link:hover { color: var(--text); text-decoration-color: currentColor; } }
 .footer-links { display: flex; gap: var(--space-6); }
 
 /* The side bar: from 960px, when it is the choice. A fixed column with a hairline edge: the wordmark, the screens as
@@ -1076,8 +1191,12 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     inset: 0 auto 0 0;
     z-index: 40;
     width: var(--side-bar);
+    height: auto;
+    margin: 0;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+    gap: 0;
     padding: var(--space-6) var(--space-3) var(--space-4) max(var(--space-3), env(safe-area-inset-left));
     background: var(--ground-2);
     border-right: 1px solid var(--hairline-strong);
@@ -1126,7 +1245,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
   /* A short window scrolls the screens and commands inside the bar, so its foot stays in reach; the padding keeps focus
      rings clear of the scroll edge. */
-  :root[data-navigation="side"] .dock { min-height: 0; margin: calc(var(--space-2) * -1); padding: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+  :root[data-navigation="side"] .dock { flex: 0 1 auto; min-height: 0; margin: calc(var(--space-2) * -1); padding: var(--space-2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 
   :root[data-navigation="side"] .brand { align-self: flex-start; margin: 0; padding: 0 var(--frame-inset) var(--space-6); font-size: 19px; }
   :root[data-navigation="side"] .dock-nav { display: grid; }
@@ -1139,9 +1258,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     text-align: left;
     font-size: var(--text-label);
   }
-  :root[data-navigation="side"] .dock-sep { width: auto; height: 1px; margin: var(--space-4) 0 var(--space-3); }
+  :root[data-navigation="side"] .dock-sep { width: auto; height: 1px; margin: var(--space-4) 0 var(--space-3); background: var(--hairline-strong); }
   :root[data-navigation="side"] :is(.dock-label, .corner-label) { display: block; flex: 1; text-align: left; }
   :root[data-navigation="side"] .dock-key { display: inline-grid; }
+  :root[data-navigation="side"] #palette-trigger { width: 100%; padding: 0 var(--frame-inset); }
+  :root[data-navigation="side"] #palette-trigger .search-glyph { display: block; }
 
   :root[data-navigation="side"] .corner { margin-top: auto; padding-top: var(--space-4); }
   :root[data-navigation="side"] .inbox-count { position: static; margin-left: auto; }
@@ -1150,6 +1271,10 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .corner-label small { display: block; color: var(--muted); font-size: var(--text-fine); line-height: 1.4; }
   /* Its menus open to the right of the bar, level with their row's foot, so they stay on screen. */
   :root[data-navigation="side"] .corner-popover { top: auto; bottom: 0; right: auto; left: calc(100% + var(--space-6)); }
+  :root[data-navigation="side"] .rank-popover { transform-origin: bottom left; }
+  /* Too short for the card above the row's foot: it hangs from the row's top instead. */
+  @media (max-height: 340px) { :root[data-navigation="side"] .rank-popover { top: 0; bottom: auto; transform-origin: top left; } }
+  :root[data-navigation="side"] .rank-pill-rating { margin-left: auto; }
 
   :root[data-navigation="side"] .dock-zone .site-footer {
     width: auto;
@@ -1160,6 +1285,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .dock-zone .footer-links { flex-wrap: wrap; gap: 0 var(--space-4); margin-top: var(--space-1); }
   :root[data-navigation="side"] .dock-zone .footer-link { white-space: nowrap; }
   :root[data-navigation="side"] .challenge-toast { top: var(--space-4); }
+  /* The side bar is its own slab, so the picture never runs behind its letters or icons. */
+  :root[data-navigation="side"] .dock-zone[data-halo] { -webkit-text-stroke: 0; }
+  :root[data-navigation="side"] .dock-zone[data-halo] svg { filter: none; }
+  :root[data-navigation="side"] { --frame-top: 0px; }
+  :root[data-navigation="side"] body[data-view="practice"]:not([data-compose="true"]) .shortcut-row { top: auto; bottom: var(--space-4); }
 }
 
 /* ── Panels and cells ───────────────────────────────────────────────────── */
@@ -1248,7 +1378,22 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     transform var(--dur-quick) var(--ease-out);
 }
 
-.btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active:not(:disabled, [aria-disabled="true"]),
+  .nav-item:active,
+  .dock-command:active,
+  .segmented button:active,
+  button.pair-chip:active { transform: scale(var(--press-scale)); }
+  /* The scale shrinks the hit box too, so a press held near an edge would end over the neighbour and click the
+     group around both. This layer scales back out to the resting edge (on .btn, past its 1px border), so the
+     release lands on the control the press began on. */
+  .btn:active:not(:disabled, [aria-disabled="true"])::after,
+  .nav-item:active::after,
+  .dock-command:active::after,
+  .segmented button:active::after,
+  button.pair-chip:active::after { content: ""; position: absolute; inset: 0; transform: scale(calc(1 / var(--press-scale))); }
+  .btn:active:not(:disabled, [aria-disabled="true"])::after { inset: -1px; }
+}
 .btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
 /* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
    so its own colours dim to the same 38% instead of the whole box. */
@@ -1263,19 +1408,24 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   font-weight: 600;
 }
 
-.btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
-
 .btn-secondary { border-color: var(--hairline-strong); }
-.btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
 .btn-ghost { color: var(--muted); }
-.btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
 .btn-danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
-.btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
+
+/* Hover tints only where a pointer can hover, so a tap on a touch screen leaves no tint behind. */
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+  .btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
+  .btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
+  .btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
+}
 .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
 
 /* A quiet destructive action (e.g. a ghost "Clear history" button). */
 .danger-text { color: var(--danger); }
-.danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+}
 
 .input {
   height: var(--control);
@@ -1413,7 +1563,6 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   gap: 2px;
 }
 
-.segmented .glide-pill { border-radius: var(--radius); }
 
 .segmented button,
 .segmented .custom-length-input {
@@ -1424,11 +1573,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   background: transparent;
   color: var(--muted);
   font-size: 15px;
-  transition: color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .segmented button:hover { color: var(--text); } }
 
 /* The mode buttons sit a little closer than other segmented controls, so the row stays short. */
 /* Raised over the groups after it, so the "more" menu opens above them when they wrap below. */
@@ -1476,6 +1625,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 .mode-more > summary::-webkit-details-marker { display: none; }
 /* The disclosure chevron of "drill something else", at the same rotated 1.5px corner. */
 .mode-more > summary::after,
+.glide-ink-label.is-disclosure::after,
 .conditions-disclosure > summary::after {
   content: "";
   width: 7px;
@@ -1486,7 +1636,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   transform: translateY(-2px) rotate(45deg);
   transition: transform var(--dur-quick) var(--ease-out);
 }
-:is(.mode-more, .conditions-disclosure)[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+:is(.mode-more, .conditions-disclosure)[open] > summary::after,
+.mode-options:has(> .mode-more[open]) .glide-ink-label.is-disclosure::after { transform: translateY(2px) rotate(-135deg); }
 .mode-more > summary:hover,
 .mode-more[open] > summary,
 .mode-more[data-active] > summary { color: var(--text); }
@@ -1520,13 +1671,13 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   font: 500 13px/1 var(--font-mono);
 }
 
-/* Code language names are readable words, so they set in Literata like the mode buttons and the
+/* Code language names are readable words, so they set in the app font like the mode buttons and the
    word "custom". */
 .segmented.compact button[data-language] { font: 400 var(--text-small)/1 var(--font-app); }
 
 /* The custom length: the pill becomes a short field in place, with no box of its own beyond the
    focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
-   gap under the row, so the passage never moves. The word "custom" is Literata like the mode
+   gap under the row, so the passage never moves. The word "custom" is in the app font like the mode
    options; only a number in the pill is mono, like the presets beside it. */
 .custom-length { display: flex; }
 .segmented.compact #custom-length { min-width: var(--space-16); padding: 0 var(--space-1); }
@@ -1567,7 +1718,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   transition: color var(--dur-quick) var(--ease-out);
 }
 
-.compact-switch:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .compact-switch:hover { color: var(--text); } }
 
 /* A quiet text action: the first-run "learn to type" links. */
 .quiet-link {
@@ -1584,7 +1735,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
 }
 
-.quiet-link:hover { color: var(--text); text-decoration-color: currentColor; }
+@media (hover: hover) and (pointer: fine) { .quiet-link:hover { color: var(--text); text-decoration-color: currentColor; } }
 
 .first-run-learn { margin: 0; color: var(--muted); font-size: var(--text-small); }
 .first-run-learn .quiet-link { min-height: 0; padding: var(--space-1) 0; font-size: inherit; color: var(--text); }
@@ -1728,7 +1879,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
 
 .measure-row {
   position: relative;
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-4);
   display: grid;
   gap: var(--space-6);
 }
@@ -1779,15 +1930,38 @@ body[data-session="retest"] .practice-controls,
 body[data-session="retest"] .quote-options,
 body[data-session="retest"] .standard-options { display: none; }
 
-/* The readouts: time or words, wpm, accuracy, then the average and best the run is set against, as four cells.
-   The pace label hangs under the row, so the row clips nothing. */
-.live-stats { position: relative; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: visible; }
-.live-stats .cell-figure { font-size: var(--text-title); }
-.live-stats .cell-value { display: flex; align-items: baseline; white-space: nowrap; }
+/* The readouts: one quiet line of mono above the passage. The clock reads in the accent while a run goes; wpm and
+   accuracy show beside it only with live metrics on, and the average and best the run is set against sit at the
+   right end until it starts. Every cell keeps its box, so nothing in the line moves. The pace label hangs under the
+   line, so the line clips nothing. */
+.live-stats {
+  position: relative;
+  height: var(--band);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+  color: var(--muted);
+  font: var(--text-mono)/1 var(--font-mono);
+}
+.live-stats .cell { display: flex; align-items: baseline; gap: 6px; padding: 0; border: 0; }
+.live-stats .live-stat:not(.timer-stat) { flex-direction: row-reverse; }
+.live-stats .cell-label { font: inherit; letter-spacing: 0.02em; }
+.live-stats .cell-value { display: flex; align-items: baseline; margin: 0; white-space: nowrap; }
+.live-stats .cell-figure { color: var(--text); font: 500 var(--text-mono)/1 var(--font-mono); letter-spacing: 0; }
+.live-stats .cell-unit { margin-left: 1px; color: inherit; font: inherit; }
+.timer-stat .cell-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.timer-stat .cell-value { color: var(--text); }
+.live-stats .timer-stat .cell-figure { font-size: var(--text-small); }
+.standing-stat { margin-left: auto; transition: opacity var(--dur-base) var(--ease-out); }
 #live-wpm:not([data-wpm]),
 .standing-stat [data-empty],
-.standing-stat .cell-figure { color: var(--muted); }
-body[data-running="true"] .timer-stat .cell-figure { color: var(--accent); }
+.live-stats .standing-stat .cell-figure { color: var(--muted); font-weight: 400; }
+body[data-running="true"] .timer-stat :is(.cell-value, .cell-figure) { color: var(--accent); }
+body[data-running="true"] .standing-stat { opacity: 0; }
 /* Composing's clock reads like the readouts. */
 .compose-side .live-stat { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font: var(--text-mono)/1 var(--font-mono); }
 .compose-side .live-stat strong { color: var(--accent); font: 500 var(--text-title)/1.15 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
@@ -1797,16 +1971,17 @@ body[data-running="true"] .timer-stat .cell-figure { color: var(--accent); }
   position: absolute;
   top: 100%;
   left: 0;
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
   color: var(--muted);
   font: var(--text-mono)/1 var(--font-mono);
   white-space: nowrap;
 }
 .pace-label[hidden] { display: none; }
 
-/* With live metrics off (the default) wpm and accuracy keep their cells and show a dash, before and during a run. */
+/* With live metrics off (the default) wpm and accuracy keep their cells, unseen, and hold a dash. */
 body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value > * { display: none; }
-body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { content: "—"; color: var(--muted); font: 500 var(--text-title)/1.15 var(--font-mono); }
+body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { content: "—"; color: var(--muted); font: inherit; }
+body[data-live-metrics="false"] .live-stats .live-stat:not(.timer-stat) { visibility: hidden; }
 
 /* While a run is in progress everything but the passage and the numbers steps back.
    app.js sets data-running; keyboard focus brings a control back. The side bar fades as one box; the top and
@@ -1814,6 +1989,7 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before 
 .dock-zone,
 .dock,
 .corner,
+.rank-pill,
 .practice-controls,
 .quote-options,
 .standard-options,
@@ -1822,8 +1998,8 @@ body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before 
 .site-footer,
 .compose-another { transition: opacity var(--dur-base) var(--ease-out); }
 
-body[data-running="true"] :is(.dock-zone, .dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
-body[data-running="true"] :is(.dock, .corner, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
+body[data-running="true"] :is(.dock-zone, .dock, .corner, .rank-pill, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { opacity: 0; }
+body[data-running="true"] :is(.dock, .corner, .rank-pill, .practice-controls, .quote-options, .standard-options, .custom-options, .shortcut-row, .site-footer, .compose-another):not(:focus-within) { pointer-events: none; }
 
 /* The background image. The layer fades it out and dims it mid-run; only its opacity changes, so a run never
    relays out or repaints it. Its ::before holds the style: dither is dots × the dithered image (inverted on light
@@ -1871,12 +2047,22 @@ body:not([data-view="practice"]) .wallpaper { --wallpaper-end: var(--wallpaper-t
 body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim); }
 @supports not (color: light-dark(#000, #fff)) { .wallpaper { display: none; } }
 /* src/wallpaper.js marks text the picture would make hard to read: a stroke in the ground colour drawn under each
-   letter, so it never thins the letter itself. */
+   letter, so it never thins the letter itself, and a matching ground outline around SVG icons on those surfaces. */
 [data-halo] { -webkit-text-stroke: var(--wallpaper-halo) var(--ground); paint-order: stroke fill; }
+[data-halo] svg {
+  --icon-halo: calc(var(--wallpaper-halo) / 2);
+  filter:
+    drop-shadow(var(--icon-halo) 0 0 var(--ground))
+    drop-shadow(calc(-1 * var(--icon-halo)) 0 0 var(--ground))
+    drop-shadow(0 var(--icon-halo) 0 var(--ground))
+    drop-shadow(0 calc(-1 * var(--icon-halo)) 0 var(--ground));
+}
+:is(.corner-popover, .rank-card) { -webkit-text-stroke: 0; }
+:is(.corner-popover, .rank-card) svg { filter: none; }
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
-   sentence, so it is set in Literata. */
+   sentence, so it is set in the app font. */
 .caps-warning {
   position: absolute;
   top: calc(100% + var(--space-1));
@@ -1900,59 +2086,96 @@ body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim)
 /* Next to the passage mid-run, the warning appears and leaves instantly. */
 body[data-running="true"] .caps-warning { transition: none; }
 
-/* The Instrument strip (TOB-470): the setup controls as one bordered row of groups split by hairlines, on the
-   page's left edge. On a phone the groups wrap as before, each in its own box. */
+/* The setup bar: on a wide screen the setup controls are one borderless line of mono, the groups split by short
+   hairlines and the choice in the accent. In open practice the readouts share that line: the average and best at its
+   right end, and the clock where the controls were once they fade at the start of a run. The line keeps its place
+   whatever a mode puts in it. A column too narrow for the widest mode's controls and the average and best on one
+   line (by the column's width, so beside the side bar too) gives the controls the whole line and the readouts their
+   own line under it, so no mode wraps the bar and the passage never moves when the mode changes. */
 @media (min-width: 761px) {
-  .practice-controls { justify-content: flex-start; margin: 0 0 var(--space-3); }
+  .practice-controls { justify-content: flex-start; margin: 0 0 var(--space-2); }
   .practice-rail {
+    --ink-fill: transparent;
+    --ink-label: var(--accent);
     flex: 1 1 100%;
     flex-wrap: wrap;
-    align-items: stretch;
+    align-items: center;
     gap: 0;
-    border: 1px solid var(--hairline-strong);
-    border-radius: var(--radius);
-    background: var(--ground-2);
+    margin-left: calc(-1 * var(--space-2));
+    font: 400 var(--text-rail)/1 var(--font-mono);
   }
   @container page (max-width: 852px) { .practice-rail { display: flex; } }
-  .practice-rail :is(.segmented, .compact-switch) { border: 0; border-radius: 0; background: none; }
-  .practice-rail .segmented { padding: 5px var(--space-2) 5px 5px; }
+  .practice-rail :is(.segmented, .compact-switch) { padding: 0; border: 0; border-radius: 0; background: none; }
   .practice-rail .practice-options > :not([hidden]),
-  .practice-rail #punctuation-switch { border-left: 1px solid var(--hairline); }
-  .practice-rail :is(.segmented button, .mode-more > summary) { height: var(--space-8); font-size: var(--text-label); }
-  .practice-rail .segmented.compact button { min-width: 0; padding: 0 var(--space-3); }
-  .practice-rail .segmented.compact #custom-length { font: var(--text-label)/1 var(--font-app); }
-  .practice-rail .quote-filter-trigger { min-height: var(--space-8); }
-  .practice-rail .compact-switch { height: auto; padding: 0 var(--space-3); gap: var(--space-2); font-size: var(--text-label); }
-  .practice-rail .compact-switch + .compact-switch { padding-left: var(--space-1); }
-  .practice-rail .compact-switch .switch { width: 10px; height: 10px; border: 1.5px solid var(--outline); border-radius: 3px; background: none; }
-  .practice-rail .compact-switch .switch::before { display: none; }
-  .practice-rail .compact-switch .switch:checked { border-color: var(--accent); background: var(--accent); }
-  .practice-rail .compact-switch:has(.switch:checked) { color: var(--text); }
+  .practice-rail #punctuation-switch {
+    padding-left: var(--space-4);
+    background: linear-gradient(var(--hairline-strong), var(--hairline-strong)) var(--space-2) center / 1px var(--space-3) no-repeat;
+  }
+  .practice-rail :is(.segmented button, .mode-more > summary, .segmented .custom-length-input, .segmented.compact button, .segmented.compact button[data-language]) {
+    height: var(--band);
+    min-width: 0;
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-sm);
+    font: inherit;
+  }
+  .practice-rail .segmented button[aria-pressed="true"],
+  .practice-rail .mode-more[data-active] > summary { color: var(--accent); }
+  .practice-rail .segmented.compact #custom-length { min-width: var(--space-16); font: inherit; }
+  .practice-rail .segmented .custom-length-input { width: var(--space-16); }
+  .practice-rail .mode-more > summary::after { width: 5px; height: 5px; }
+  .practice-rail .quote-filter-trigger { min-height: var(--band); font: inherit; }
+  .practice-rail .book-page { font: inherit; }
+  .practice-rail .compact-switch { position: relative; height: var(--band); padding: 0 var(--space-2); gap: 0; border-radius: var(--radius-sm); font: inherit; }
+  .practice-rail #punctuation-switch { padding-left: var(--space-6); }
+  .practice-rail .compact-switch + .compact-switch { padding-left: var(--space-2); background: none; }
+  .practice-rail .compact-switch .switch { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; opacity: 0; cursor: pointer; }
+  .practice-rail .compact-switch:has(.switch:checked) { color: var(--accent); }
+  .practice-rail .compact-switch:has(.switch:focus-visible) { outline: 2px solid var(--text); outline-offset: -2px; }
   .practice-rail .mode-more-menu { left: 0; transform: none; }
-  /* The custom text panel sits under the strip, across the page. */
+  .minimum-note { text-align: left; }
+  /* The custom text panel sits under the bar, across the page. */
   .custom-options { width: 100%; margin: 0 0 var(--space-6); }
+
+  /* Where the line has room for both, the bar leaves its right end to the readouts, and they rise into it while
+     nothing opens between them. */
+  @container page (min-width: 860px) {
+    body[data-session="practice"] .practice-controls { padding-inline-end: var(--standing-reserve); }
+    body[data-session="practice"] #typing-screen:has(> .practice-controls:not([hidden])):not(:has(> :is(#custom-options, #manual-target):not([hidden]))) .measure-row { margin-top: calc(-1 * (var(--band) + var(--space-2))); }
+  }
+  body[data-session="practice"]:not([data-running="true"]) .live-stats .live-stat,
+  body[data-session="practice"] #typing-screen:has(> .practice-controls:focus-within) .live-stats .live-stat { visibility: hidden; }
 }
 
-/* The key hints share the row under the track with the restart button: they rise into the left of the typing
-   footer, where a passage notice takes their place while it shows, so the notice still never changes a height.
-   Composing has no typing footer, so there they keep their own row. */
+/* The key hints sit at the foot of the page, at the left of the footer's line, and the footer's notes move to its
+   right. Beside the side bar, where the footer is in the bar, they sit at the foot of the screen. */
 @media (min-width: 761px) {
-  #typing-form .typing-footer { margin-top: var(--space-2); }
-  body:not([data-compose="true"]) .shortcut-row { min-height: var(--control); margin-top: calc(var(--control) * -1); align-items: center; pointer-events: none; }
-  #typing-form:has(#input-help:not(:empty)) ~ .shortcut-row { visibility: hidden; }
+  .typing-screen { position: relative; }
+  #typing-form .typing-footer { margin-top: 0; }
+  body[data-view="practice"]:not([data-compose="true"]) .shortcut-row {
+    position: absolute;
+    top: calc(100% + var(--space-8));
+    left: 0;
+    width: auto;
+    height: 18px;
+    margin: 0;
+    align-items: center;
+  }
+  body[data-view="practice"]:not([data-compose="true"]) .site-footer { justify-content: flex-end; padding-left: var(--hints-reserve); }
 }
 
-/* A phone keeps the three live readouts in one short row, so the passage stays above the bottom bar; the best
-   stays in the footer. */
+/* Open practice sits in the middle of the window, in open space. The offset follows the window alone, so a mode,
+   a panel or composing never moves the bar or the passage; results, sessions and the keyboard start at the top. */
+@media (min-width: 761px) and (min-height: 600px) {
+  body[data-view="practice"][data-session="practice"]:not([data-keyboard="true"]) .typing-screen {
+    padding-top: max(var(--screen-top), calc((100svh - var(--frame-top) - var(--practice-stage)) / 2));
+  }
+}
+
+/* A phone keeps the readouts on their own short line under the controls, so the passage stays above the bottom
+   bar; the best stays in the footer. */
 @media (max-width: 760px) {
-  .measure-row { margin-bottom: var(--space-4); gap: var(--space-3); }
-  .live-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .live-stats .cell { padding: var(--space-2) var(--space-3); border-top: 0; }
-  .live-stats .cell:nth-child(odd) { border-left: 1px solid var(--hairline); }
-  .live-stats .cell:first-child { border-left: 0; }
-  .live-stats .cell-figure,
-  body[data-live-metrics="false"] .live-stat:not(.timer-stat) .cell-value::before { font-size: var(--text-lead); }
-  .standing-stat { display: none; }
+  .measure-row { gap: var(--space-3); }
+  .live-stats .standing-stat { display: none; }
 }
 
 /* ── Typing zone ────────────────────────────────────────────────────────── */
@@ -1961,19 +2184,19 @@ body[data-running="true"] .caps-warning { transition: none; }
 .race-typing-wrap,
 .online-typing-wrap,
 .duel-replay-wrap {
-  --passage-size: 36px;
-  --typing-line: calc(var(--passage-size) * 1.75);
+  --passage-size: 26px;
+  --typing-line: calc(var(--passage-size) * 1.74);
   position: relative;
   height: calc(var(--typing-line) * 3);
-  margin: var(--space-2) 0 var(--space-10);
+  margin: var(--space-2) 0 var(--space-4);
   isolation: isolate;
   overflow: hidden;
   cursor: text;
 }
 
-body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 29px; }
-body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 36px; }
-body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44px; }
+body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
+body[data-font-size="28"] :is(.typing-wrap, .compose-wrap) { --passage-size: 26px; }
+body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 34px; }
 
 /* A lesson passage is about 60 characters, at most two lines from 901px wide at every text size.
    It reserves two lines there and sits closer to the finger map, so the map's finger names and
@@ -1994,16 +2217,25 @@ body[data-font-size="36"] :is(.typing-wrap, .compose-wrap) { --passage-size: 44p
 #online-text-display,
 #online-replay-display {
   position: relative;
-  color: var(--muted);
+  color: var(--untyped);
   font-family: var(--font-typing);
   font-size: var(--passage-size);
   font-weight: 400;
   line-height: var(--typing-line);
-  letter-spacing: -0.004em;
+  letter-spacing: -0.016em;
+  /* Every key shows as the character it is: no ligature or contextual alternate joins <= or -> into one glyph. */
   font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   transition: transform var(--dur-quick) var(--ease-out);
+}
+
+/* Code keeps every operator apart, and drops the prose tracking so columns of symbols stay even. */
+#text-display[data-passage="code"] {
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0, "dlig" 0;
 }
 
 .word { display: inline-block; }
@@ -2030,14 +2262,32 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
   background: var(--danger-soft);
 }
 
+/* Fluid word flow (ADR 0027). A letter a space skipped is underlined in the miss colour, so it reads
+   as untyped rather than mistyped. Letters typed past a word's end sit inside that word, struck through
+   and tinted, so the words after it never move. */
+.char.missed {
+  color: var(--muted);
+  text-decoration: underline 2px var(--danger);
+  text-underline-offset: 0.18em;
+}
+
+.char.extra {
+  color: var(--danger);
+  background: var(--danger-soft);
+  text-decoration: line-through 1.5px;
+}
+
 /* A space is a plain inline box, shorter than the letter boxes, so its own
-   tint would notch the row. Paint it at full line height instead. */
+   tint would notch the row. Paint it at full line height instead. Its box starts the
+   half-leading below the line's top. Chromium floors that half-leading to whole pixels, so the
+   tint rises by the same floored amount and meets the letters' tint edge to edge there. WebKit
+   leaves a subpixel offset. */
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong { background: none; }
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
   content: "";
   position: absolute;
   inset-inline: 0;
-  top: calc(50% - var(--typing-line) / 2);
+  top: calc(-1 * round(down, (var(--typing-line) - 100%) / 2, 1px));
   height: var(--typing-line);
   background: var(--danger-soft);
 }
@@ -2097,6 +2347,7 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 /* Forced colours strip the tint, so keep the mark as a system highlight. */
 @media (forced-colors: active) {
   .char.wrong,
+  .char.extra,
   :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
     forced-color-adjust: none;
     color: MarkText;
@@ -2122,6 +2373,9 @@ body[data-word-highlight="off"] .word-glide { display: none; }
 }
 
 .caret.is-snapping { transition: none; }
+
+/* The Spring caret moves on its own frames (src/motion.ts). */
+body[data-typing-motion="spring"] .caret { transition: none; }
 
 .caret-bar {
   position: absolute;
@@ -2222,6 +2476,21 @@ body[data-typing-motion="instant"] :is(#text-display, #race-text-display, #onlin
   background: var(--raised-2);
   overflow: hidden;
 }
+
+/* A practice run's progress is a hairline across the top edge of the window, drawn by transform alone. It shows
+   once the run starts and stays while it runs, whether the frame is shown or not. */
+#progress-track {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  height: 2px;
+  border-radius: 0;
+  background: none;
+  pointer-events: none;
+  opacity: 0.95;
+  transition: opacity var(--dur-base) var(--ease-out);
+}
+#progress-track[aria-valuetext="Not started"] { opacity: 0; }
 
 #progress-bar,
 #compose-progress-bar {
@@ -2603,8 +2872,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .result-heading:has(> h2.sr-only):has(> .result-note:empty) { display: contents; }
 .result-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-title); font-weight: 400; line-height: 1.2; letter-spacing: -0.015em; }
 
-/* The run as figures, then its speed and the words typed in panels, then the actions. A static print: nothing
-   counts up or draws in but the trace. */
+/* The run as figures, then its speed and the words typed in panels, then the actions. Nothing counts up: the parts
+   arrive in order, each rising its last few pixels, and the trace draws in. The actions only fade, so the button
+   under the pointer never moves, and opacity never stops a press: Run again works from the first frame. */
 .run-card {
   min-width: 0;
   display: grid;
@@ -2612,6 +2882,15 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   /* A finished run scrolls the card clear of the bottom edge (focusResult in src/application-host.ts). */
   scroll-margin-bottom: var(--space-6);
 }
+@media (prefers-reduced-motion: no-preference) {
+  body[data-view="results"] .run-card > * { animation: card-rise var(--dur-fast) var(--ease-out) calc(var(--stagger-step) * var(--stagger, 0)) both; }
+  body[data-view="results"] .run-card > .result-actions { animation-name: card-fade; }
+}
+.run-card > .run-card-trace { --stagger: 1; }
+.run-card > .run-card-wordlist { --stagger: 2; }
+.run-card > .result-actions { --stagger: 3; }
+@keyframes card-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes card-fade { from { opacity: 0; } }
 
 .run-card-facts { margin: 0; grid-template-columns: minmax(0, 1.5fr) repeat(3, minmax(0, 1fr)); }
 .run-card-facts dd { margin: 0; }
@@ -2661,6 +2940,36 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 }
 @media (hover: hover) and (pointer: fine) { .run-card-practice:hover { color: var(--text); } }
 @media (pointer: coarse) { .run-card-practice { min-height: var(--control); } }
+.run-card-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.run-card-toggle { display: inline-flex; align-items: center; gap: var(--space-1); }
+.run-card-toggle svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; transition: transform var(--dur-quick) var(--ease-out); }
+.run-card-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+/* Inspect words opens and closes the list on its own height. The inner box takes the list's outset (its ring room)
+   as padding, so clipping it for the slide never cuts a focus ring; closed, it is hidden once the slide ends. */
+.word-drawer {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--dur-drawer) var(--ease-drawer), visibility 0s;
+}
+.word-drawer[data-open="false"] {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows var(--dur-drawer) var(--ease-drawer), visibility 0s var(--dur-drawer);
+}
+.word-drawer-inner {
+  min-height: 0;
+  overflow: hidden;
+  margin: calc(var(--space-1) * -1) calc(var(--space-2) * -1);
+  padding: var(--space-1) var(--space-2);
+}
+/* Closed, the panel ends at its head: the head's rule and the room under it go with the list, on the same timing. */
+.run-card-wordlist > .panel-head { transition: margin-bottom var(--dur-drawer) var(--ease-drawer), border-color var(--dur-drawer) var(--ease-drawer); }
+.run-card-wordlist:has(> .word-drawer[data-open="false"]) > .panel-head { margin-bottom: calc(var(--panel-inset) * -1); border-bottom-color: transparent; }
+/* The global 1ms floor would still hold the old height for a frame: with reduced motion the drawer simply switches. */
+@media (prefers-reduced-motion: reduce) {
+  :is(.word-drawer, .word-drawer[data-open="false"], .run-card-wordlist > .panel-head, .run-card-toggle svg) { transition-property: none; }
+}
 
 /* The actions, the average and best and the conditions line set against them on the right. */
 .result-actions {
@@ -2856,11 +3165,33 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .run-card-graph { margin: 0; }
 
-.speed-graph { height: var(--result-trace); }
+.speed-graph { position: relative; height: var(--result-trace); cursor: crosshair; touch-action: pan-y; border-radius: var(--radius-sm); }
 /* Drawn at the container's pixel size. Capping it at the container keeps the old drawing from
    holding the card at its old width when the window narrows, so the observer sees the new width
    and redraws; until then it scales evenly rather than stretching. */
 .speed-graph svg { display: block; max-width: 100%; height: auto; overflow: visible; }
+
+/* The scrubber: a hairline and a dot per racer at the point read, and the readout beside the hairline, on the side
+   with room. Hidden until something is read. */
+.graph-scrub { stroke: var(--text); stroke-width: 1; opacity: 0.5; shape-rendering: crispEdges; }
+.graph-scrub-dot { fill: var(--accent); stroke: var(--card-top); stroke-width: 1.5; }
+.graph-scrub-dot.graph-scrub-theirs { fill: var(--text); }
+.graph-readout {
+  position: absolute;
+  top: 0;
+  left: 0;
+  color: var(--text);
+  font: var(--text-fine)/1.6 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  transform: translate(var(--scrub-x, 0), var(--scrub-y, 0));
+}
+.speed-graph:not([data-scrubbing]) :is(.graph-scrub, .graph-scrub-dot, .graph-readout) { visibility: hidden; }
+.speed-graph[data-scrubbing] .graph-tick { visibility: hidden; }
 
 .graph-axis { stroke: var(--hairline-strong); stroke-width: 1; }
 .graph-grid { stroke: var(--hairline); stroke-width: 1; }
@@ -2869,11 +3200,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .graph-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .graph-miss { fill: var(--danger); stroke: var(--card-top); stroke-width: 2; }
 
-/* The line draws once, left to right, and the mistakes fade in to finish with it. */
-.is-drawing .graph-line { stroke-dasharray: 1; animation: graph-draw var(--dur-develop) var(--ease-out) both; }
-.is-drawing .graph-miss { animation: graph-fade var(--dur-base) var(--ease-out) calc(var(--dur-develop) - var(--dur-base)) both; }
-@keyframes graph-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-@keyframes graph-fade { from { opacity: 0; } }
+/* The lines and their mistakes are wiped in once, left to right. The clip reaches a little past the ink so no
+   round cap is cut, and it is gone once the wipe ends. */
+@media (prefers-reduced-motion: no-preference) { .is-drawing .graph-ink { animation: graph-wipe var(--dur-develop) var(--ease-out) backwards; } }
+@keyframes graph-wipe { from { clip-path: inset(-8px 100% -8px -8px); } to { clip-path: inset(-8px); } }
 
 .metric-note {
   margin: 0;
@@ -3189,6 +3519,32 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 
 .panel-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
 .panel-count { color: var(--muted); font: 400 var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; }
+/* The two lists never share a pair (bigramChips in src/progress-view.ts). */
+.pair-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: var(--space-4) var(--space-6); }
+.pair-group { min-width: 0; display: grid; gap: var(--space-2); align-content: start; }
+.pair-group-title { margin: 0; color: var(--muted); font: var(--text-caption)/1.4 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+.pair-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.pair-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-height: var(--space-8);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  color: var(--text);
+  font: var(--text-label)/1.6 var(--font-app);
+  transition: border-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.pair-chip-pair { font-family: var(--font-mono); font-weight: 500; }
+.pair-chip-note { color: var(--muted); font: var(--text-fine)/1.6 var(--font-mono); font-variant-numeric: tabular-nums; }
+button.pair-chip { border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline-strong)); }
+.pair-chip[data-kind="flow"] { border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline-strong)); }
+@media (hover: hover) and (pointer: fine) { button.pair-chip:hover { border-color: var(--danger); } }
+@media (pointer: coarse) { button.pair-chip { min-height: var(--control); align-items: center; } }
+
 .week-charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .week-charts[hidden] { display: none; }
 .week-chart-slot { --week-chart-height: 220px; min-width: 0; }
@@ -3649,11 +4005,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .ghost-caret .caret-tag > span { color: var(--text); }
 .duel-replay-controls { margin-top: var(--space-4); display: flex; justify-content: center; gap: var(--space-3); }
 
-.online-players { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6); margin: var(--space-6) 0; }
-.online-player-row { min-width: 0; display: grid; grid-template-columns: 1fr; gap: var(--space-2); }
-.online-player-row strong { font-weight: 400; overflow-wrap: anywhere; }
-.online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); }
-.online-player-row .progress-track > span { transition: none; }
+.online-players { display: grid; gap: var(--space-3); margin: var(--space-6) 0; }
+.online-player-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 10rem) minmax(0, 1fr) minmax(0, 8rem); align-items: center; gap: var(--space-4); }
+.online-player-row strong { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.online-player-row > span { color: var(--muted); font: var(--text-mono)/1.4 var(--font-mono); font-variant-numeric: tabular-nums; text-align: end; }
+.online-player-row .progress-track { grid-column: 2; grid-row: 1; }
+.online-player-row .progress-track > span { transition: transform var(--dur-quick) var(--ease-out); }
+.online-player-row:not([data-self]) .progress-track > span { background: var(--text); }
 .online-countdown { min-height: var(--space-10); margin: var(--space-6) 0 var(--space-2); font-size: var(--text-title); color: var(--accent); }
 .online-typing-wrap { margin-top: var(--space-6); }
 #online-connection:not(:empty) { color: var(--warning); }
@@ -3683,7 +4041,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .friends-board-empty p { margin: 0 0 var(--space-3); max-width: 60ch; color: var(--muted); font-size: var(--text-small); }
 
 @media (max-width: 760px) {
-  .online-setup, .online-players { grid-template-columns: 1fr; }
+  .online-setup { grid-template-columns: 1fr; }
+  .online-player-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
+  .online-player-row .progress-track { grid-column: 1 / -1; grid-row: 2; }
   .online-link-row { flex-wrap: wrap; }
   .online-link-row input { flex-basis: 100%; }
   .online-friend-row { flex-wrap: wrap; }
@@ -3822,10 +4182,8 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   overflow: visible;
 }
 
-.palette::backdrop {
-  background: var(--backdrop);
-  animation: fade-in var(--dur-quick) var(--ease-out);
-}
+/* The palette opens and closes on the frame of the key, with no motion either way, so the next key always lands. */
+.palette::backdrop { background: var(--backdrop); }
 
 .palette-box {
   border: 1px solid var(--hairline-strong);
@@ -3833,15 +4191,9 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   background: var(--raised);
   box-shadow: var(--shadow-float);
   overflow: hidden;
-  animation: palette-in var(--dur-quick) var(--ease-out);
 }
 
-/* palette.js waits 150ms before closing; keep palette-out at --dur-quick. */
-.palette.is-closing .palette-box { animation: palette-out var(--dur-quick) var(--ease-out) forwards; }
-.palette.is-closing::backdrop { opacity: 0; transition: opacity var(--dur-quick) var(--ease-out); }
-
-@keyframes palette-in { from { opacity: 0; transform: translateY(-4px); } }
-@keyframes palette-out { to { opacity: 0; transform: translateY(-4px); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(-4px); } }
 
 .palette-search {
   height: 62px;
@@ -3917,13 +4269,31 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .palette-option[aria-selected="true"] .opt-mark { background: var(--accent); }
 .palette-option .opt-hint { color: var(--muted); font: var(--text-fine)/1 var(--font-mono); letter-spacing: 0.03em; white-space: nowrap; }
 .palette-option .opt-hint.is-on { color: var(--accent); }
-/* Centre each row on its lowercase letters, not the font's line box: Literata's sits about 2px low.
+/* Centre each row on its lowercase letters, not the font's line box, which sits low in some fonts.
    The trimmed text still hit-tests over its full line, into the next row, so only the row takes the pointer. */
 .palette-option :is(.opt-text, .opt-hint) { text-box: trim-both ex alphabetic; pointer-events: none; }
 .palette-option.is-secret { color: var(--ghost); }
 .palette-option.is-secret .opt-mark { background: var(--ghost); }
 
 .palette-empty { margin: 0; padding: var(--space-6) var(--space-4); color: var(--muted); font-style: italic; }
+
+.palette-theme {
+  min-height: var(--control);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-label);
+}
+.palette-theme[data-status="idle"] { display: none; }
+.palette-theme-text { flex: 1 1 12em; min-width: 0; }
+.palette-swatches { display: inline-flex; gap: 3px; flex: none; }
+.palette-swatches i { width: var(--space-3); height: var(--space-3); border-radius: var(--radius-full); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.palette-contrast { flex: none; color: var(--accent); font: var(--text-fine)/1.4 var(--font-mono); letter-spacing: 0.03em; white-space: nowrap; }
+.palette-contrast.is-low { color: var(--warning); white-space: normal; }
 
 #clear-dialog,
 #account-dialog,
@@ -3947,7 +4317,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 #replay-dialog[open],
 #import-dialog[open],
 #suggest-dialog[open],
-#release-dialog[open] { animation: palette-in var(--dur-quick) var(--ease-out); }
+#release-dialog[open] { animation: dialog-in var(--dur-quick) var(--ease-out); }
 #clear-dialog::backdrop,
 #account-dialog::backdrop,
 #delete-account-dialog::backdrop,
@@ -4009,6 +4379,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   white-space: pre-wrap;
   overflow-wrap: break-word;
   font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
 }
 .replay-text .char.is-caret::after {
   content: "";
@@ -4116,11 +4487,10 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .race-result-row { grid-template-columns: 1fr 1fr; }
 }
 
-/* The top bar keeps every control on one row: below 900px settings drops to its icon. */
+/* The top bar keeps every control on one row: below 900px the screens sit closer. */
 @media (max-width: 900px) and (min-width: 761px) {
-  .nav-item { padding: 0 var(--space-3); }
-  .dock-settings { width: var(--control); padding: 0; justify-content: center; }
-  .dock-settings .dock-label { display: none; }
+  .nav-item { padding: 0 var(--space-2); }
+  .brand { margin-right: var(--space-3); }
 }
 
 @media (max-width: 760px) {
@@ -4129,9 +4499,13 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   #main-content, .site-footer { width: calc(100% - 32px); }
 
   /* The navigation is a flat bar fixed to the bottom, with the short labels where the full ones don't fit. */
+  .dock-zone { display: contents; }
   .dock {
     position: fixed;
+    z-index: 40;
     inset: auto 0 0;
+    align-items: center;
+    background: var(--ground-2);
     height: calc(var(--bottom-bar) + env(safe-area-inset-bottom));
     padding: 6px 4px env(safe-area-inset-bottom);
     gap: 2px;
@@ -4141,17 +4515,22 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   }
   .brand, .dock-sep { display: none; }
   .dock-nav { flex: 1; min-width: 0; justify-content: space-between; gap: 0; }
-  .nav-item { flex: 1 1 auto; min-width: var(--control); padding: 0 4px; font-size: 14px; }
-  .dock-command { flex: none; }
+  .nav-item { flex: 1 1 auto; height: var(--control); min-width: var(--control); padding: 0 4px; font-size: 14px; }
+  .dock-command, #palette-trigger { flex: none; width: var(--control); height: var(--control); padding: 0; }
+  #palette-trigger .search-glyph { display: block; }
+  #palette-trigger .dock-key { display: none; }
+  .corner-trigger { width: var(--control); height: var(--control); }
   .dock-settings { width: var(--control); padding: 0; justify-content: center; }
   .dock-settings .dock-label { display: none; }
 
   /* The corner stays top right and scrolls with the page. */
   .app-shell { padding-top: var(--space-10); }
-  .corner { position: absolute; top: var(--space-3); right: var(--space-4); height: auto; padding: 0; gap: var(--space-2); background: none; border: 0; }
+  .corner { position: absolute; z-index: 40; top: var(--space-3); right: var(--space-4); height: auto; padding: 0; gap: var(--space-2); background: none; border: 0; }
   .corner-trigger { border: 1px solid var(--hairline-strong); border-radius: var(--radius-control); background: var(--ground-2); }
   .corner-popover { width: min(300px, calc(100vw - var(--space-8))); }
   .inbox-popover { right: calc(-1 * (var(--control) + var(--space-2))); width: min(340px, calc(100vw - var(--space-8))); }
+  /* The pill stands before the inbox and the person, so its card reaches past both to the screen's edge. */
+  .rank-popover { right: calc(-2 * (var(--control) + var(--space-2))); width: min(260px, calc(100vw - var(--space-8))); }
 
 
   .screen { padding-top: var(--screen-top-phone); }
@@ -4168,13 +4547,14 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
   .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
-  /* On a phone the recipe takes the lengths' row, which stays laid out (unseen) so the row keeps its
-     height; it wraps within the lengths' width. */
+  /* On a phone the recipe, quote filters, book and code languages take the lengths' row, which stays laid
+     out (unseen) so the row keeps its height and width whatever the font, and the switches after it wrap as
+     they do beside the lengths. The recipe wraps within the lengths' width. */
   .practice-options { display: grid; }
   .practice-options > * { grid-area: 1 / 1; }
   .standard-options { position: static; width: auto; height: auto; transform: none; contain: inline-size; }
   .standard-options p { line-height: 1.4; }
-  .standard-options:not([hidden]) ~ #duration-options[hidden] { display: flex !important; visibility: hidden; }
+  .practice-options:has(> :not(#duration-options, [hidden])) > #duration-options[hidden] { display: flex !important; visibility: hidden; }
   .quote-filter-trigger { min-height: var(--space-10); }
 
   body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
@@ -4238,6 +4618,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 @media (any-pointer: coarse) {
   /* The side bar's rows and its toggle grow to a finger's reach. */
   :root { --frame-item: var(--control); --side-toggle: var(--control); }
+  #settings-dialog { --settings-control: var(--control); }
   .quote-filter-trigger { min-height: var(--control); }
   .goal-day-picker { display: block; }
   .btn, .input, .nav-item, .segmented button, .segmented .custom-length-input, .icon-control, .mode-more > summary, .range { min-height: var(--control); }
@@ -4251,6 +4632,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   /* "View passage" and "Your daily results": a 27px line, 51px with 12px each side. */
   .run-detail summary::after, .daily-challenge summary::after { inset: calc(var(--space-3) * -1) 0; }
   .toast-close { min-width: var(--control); }
+  .dock-command, .corner-trigger { min-width: var(--control); min-height: var(--control); }
   /* Chart points: 48px tall and up to 48px wide, so the reach through the centre clears 44 at any
      sub-pixel offset, but never wider than the gap to the next point (see progress-view.js).
      The date labels are drawn over the end points; taps pass through every axis label. */

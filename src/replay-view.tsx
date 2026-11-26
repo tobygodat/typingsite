@@ -3,13 +3,14 @@ import { flushSync } from 'react-dom';
 import { createStore } from './store.js';
 import type { SealedRun } from './practice-session.js';
 // Watch replay: plays a finished attempt's event log back in real time inside a dialog.
-// Presentational only. The typed text comes from replayCursor, which applies the events exactly
+// Presentational only. The typed text and extras come from replayFlow, which applies the events exactly
 // as the scoring replay does, so the last frame matches the scored run. Each frame applies only
 // the events that came due and classifies only the mounted letters. Letter states are instant
 // and the caret jumps (no spring).
 // Like the live passage, only a short stretch is mounted and three lines show: a timed run's
 // 1,600-word passage costs no more to draw than a ten-word one.
-import { RATE_FLOOR_MS, replayCursor, replayScoreAt, replaySpan } from './typing.js';
+import { RATE_FLOOR_MS, replayFlow, replayScoreAt, replaySpan } from './typing.js';
+import { MISSED, type WordFlowState } from './word-flow.js';
 import { formatSpeed, unitText } from './units.js';
 
 
@@ -27,7 +28,7 @@ export function createReplayView() {
 
   let attempt: SealedRun | null = null;
   let span = { start: 0, end: 0 };
-  let typedAt: (t: number) => string = () => '';
+  let flowAt: (t: number) => Pick<WordFlowState, 'typed' | 'extras'> = () => ({ typed: '', extras: new Map() });
   let first = 0; // text index of the first mounted letter, always the start of a line
   let chars: HTMLSpanElement[] = []; // chars[i] shows text index first + i
   let lines: number[] = []; // text index where each mounted line starts
@@ -37,6 +38,8 @@ export function createReplayView() {
   let frame = 0;
   let lastNow = 0;
   let drawn: string[] = [];
+  // Letters typed past a word's end (fluid word flow), by that word's end, drawn before its space.
+  let extraNodes = new Map<number, HTMLSpanElement[]>();
   let misses: number[] = []; // attempt-clock offsets of the run's first-try misses
   let scored: { second: number; due: number; position: number } | null = null; // the replay second, misses due and position the stats were last computed at
 
@@ -57,11 +60,16 @@ export function createReplayView() {
     });
     display.replaceChildren(...chars);
     drawn = [];
+    extraNodes = new Map();
+    measureLines();
+  }
+
+  function measureLines() {
     lines = [];
     let top = -Infinity;
     chars.forEach((node, offset) => {
       if (node.offsetTop > top + 1) {
-        lines.push(from + offset);
+        lines.push(first + offset);
         top = node.offsetTop;
       }
     });
@@ -107,15 +115,44 @@ export function createReplayView() {
     view.publish({ ...current, wpm: advances ? rated ? wpm : null : current.wpm, accuracy: rated ? String(accuracy) : '—', errors });
   }
 
+  function showExtras(extras: ReadonlyMap<number, string>) {
+    let changed = false;
+
+    for (const [end, nodes] of extraNodes) {
+      if (extras.get(end) === nodes.map((node) => node.textContent).join('')) continue;
+
+      for (const node of nodes) node.remove();
+      extraNodes.delete(end);
+      changed = true;
+    }
+
+    for (const [end, letters] of extras) {
+      const before = chars[end - first];
+
+      if (extraNodes.has(end) || !before || end <= first) continue;
+      const nodes = [...letters].map((letter) => Object.assign(document.createElement('span'), { className: 'char extra', textContent: letter }));
+
+      before.before(...nodes);
+      extraNodes.set(end, nodes);
+      changed = true;
+    }
+
+    if (changed) measureLines();
+  }
+
   function draw() {
     if (!attempt || !dialog) return;
     const text = attempt.text;
-    const typed = typedAt(span.start + position);
+    const { typed, extras } = flowAt(span.start + position);
     const caret = typed.length;
+    // Extras can move a line break, so the caret's line is found again once they are drawn.
     follow(caret);
+    showExtras(extras);
+    follow(caret);
+    showExtras(extras);
     chars.forEach((node, offset) => {
       const index = first + offset;
-      const letter = index < caret ? (typed[index] === text[index] ? ' correct' : ' wrong') : '';
+      const letter = index < caret ? (typed[index] === text[index] ? ' correct' : typed[index] === MISSED ? ' missed' : ' wrong') : '';
       const name = `char${letter}${index === caret ? ' is-caret' : ''}`;
 
       if (drawn[offset] !== name) node.className = drawn[offset] = name;
@@ -177,7 +214,7 @@ export function createReplayView() {
       if (!finished?.events?.length || !dialog) return;
       attempt = finished;
       span = replaySpan(finished);
-      typedAt = replayCursor(finished);
+      flowAt = replayFlow(finished);
       misses = finished.summary.firstAttempts.filter((entry) => !entry.correct).map((missed) => missed.offsetMs);
       position = 0;
       scored = null;

@@ -1,6 +1,6 @@
 // Word highlight: settings → word highlight (off, current, next) and its palette commands.
 // A display preference: it tints one passage word, changes instantly and never enters the conditions.
-import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, phone } from './fixtures.js';
+import { test, expect, openApp, openView, openSettings, passageText, typeInto, signInWithEmail, chooseMore, chooseSetting, phone, chooseLinearWordFlow } from './fixtures.js';
 
 // Committed docs screenshots are refreshed only with SCREENSHOTS=1; normal runs write to the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/word-highlight/${name}.png` : testInfo.outputPath(`${name}.png`));
@@ -36,6 +36,8 @@ const firstWord = (text) => text.split(' ')[0];
 
 test('nothing is tinted by default, and current tints the word being typed until its space, instantly and without motion', async ({ page }) => {
   await openApp(page);
+  // Backspace over a clean word's space is the geometry under test; fluid word flow locks that word.
+  await chooseLinearWordFlow(page);
   await expect(page.locator('body')).toHaveAttribute('data-word-highlight', 'off');
   expect(await tinted(page)).toEqual([]);
   await openSettings(page);
