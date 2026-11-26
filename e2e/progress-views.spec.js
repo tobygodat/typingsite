@@ -1,7 +1,7 @@
 // Progress, "What changed" (TOB-420): the lead, what moved it, the small charts, and every view one step away.
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { englishFrequency } from '../src/learner.js';
-import { test, expect, openApp, openView, openProgressDetail, openProgressView, signInWithEmail, completePassage } from './fixtures.js';
+import { test, expect, openApp, openView, openProgressDetail, openProgressView, signInWithEmail, completePassage, chooseWords, passageText, storageKeys, typeInto } from './fixtures.js';
 
 // A Saturday afternoon: this week is Oct 11 to 17, the week before Oct 4 to 10.
 const NOW = new Date('2026-10-17T15:00:00');
@@ -1074,4 +1074,90 @@ test('each id-less retained loop practices the target of its own row', async ({ 
     await row.getByRole('button', { name: `Practice “${target}” again` }).click();
     await expect(page.locator('#session-title')).toHaveText(`Practice “${target}”`);
   }
+});
+
+// Clearing history: an Undo timer left from an earlier clear never hides the confirmation of a newer one.
+test('an earlier Undo timeout never hides a new clear confirmation', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.clock.install({ time: new Date('2026-10-15T12:00:00Z') });
+  await page.clock.pauseAt(new Date('2026-10-15T12:00:01Z'));
+
+  const clear = async () => {
+    await openView(page, 'Progress');
+    await page.locator('#clear-history').click();
+    await page.locator('#confirm-clear-input').fill('clear');
+    await page.locator('#confirm-clear').click();
+    await expect(page.locator('#undo-clear')).toBeVisible();
+  };
+
+  await clear();
+  await page.locator('#undo-clear').click();
+  await clear();
+  await page.clock.runFor(1601);
+  await expect(page.locator('#undo-clear')).toBeVisible();
+  await page.locator('#undo-clear').click();
+  await expect(page.locator('#history-feedback')).toHaveText('History restored.');
+});
+
+// Runs started on Practice's stats: every first key counts a start, and only a finish counts a finish.
+const figure = (page, label) => page.locator('#practice-stats .progress-figure').filter({ has: page.locator('dt', { hasText: new RegExp(`^${label}$`) }) });
+
+const totals = (counts) => Object.values(counts || {}).flatMap(Object.values)
+  .reduce((sum, [started, finished]) => ({ started: sum.started + started, finished: sum.finished + finished }), { started: 0, finished: 0 });
+
+// The first key starts a run; Escape restarts it before it ends.
+async function startRun(page) {
+  await typeInto(page, (await passageText(page)).slice(0, 6));
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'true');
+}
+
+async function restartRun(page) {
+  await startRun(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
+}
+
+test('a restarted and an abandoned run count as started, and only the finished one as finished', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await page.keyboard.press('Enter');
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await restartRun(page);
+  await startRun(page);
+  await openView(page, 'Progress');
+  await openProgressView(page, 'Practice');
+
+  await expect(figure(page, 'Runs started').locator('.figure-value')).toHaveText('3 1 finished');
+  expect(await storageKeys(page), 'a guest writes nothing').toEqual([]);
+});
+
+test('two tabs of an account count their own starts, and a restart is saved without a finish', async ({ page, supabase }) => {
+  const user = supabase.addUser('starts@stilltype.test');
+  await openApp(page);
+  await signInWithEmail(page, user.email);
+  const other = await page.context().newPage();
+  await supabase.attach(other);
+  await openApp(other);
+  await expect(other.locator('#account')).toHaveAttribute('data-state', 'member');
+
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await chooseWords(other, 10);
+  await restartRun(other);
+  await expect.poll(() => totals(supabase.profileFor(user.email)?.runCounts)).toEqual({ started: 2, finished: 1 });
+  expect(Object.keys(supabase.profileFor(user.email).runCounts), 'one counter per tab').toHaveLength(2);
+
+  await page.keyboard.press('Enter');
+  await restartRun(page);
+  await expect.poll(() => totals(supabase.profileFor(user.email)?.runCounts)).toEqual({ started: 3, finished: 1 });
+
+  await other.reload();
+  await expect(other.locator('#account')).toHaveAttribute('data-sync', 'synced');
+  await openView(other, 'Progress');
+  await openProgressView(other, 'Practice');
+  await expect(figure(other, 'Runs started').locator('.figure-value')).toHaveText('3 1 finished');
 });
