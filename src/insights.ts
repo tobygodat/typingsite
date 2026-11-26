@@ -33,7 +33,7 @@ import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, re
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
 
-// ADR 0027. Pattern evidence is also kept for the runs since each kept drill, so the let-go walk never restarts when
+// ADR 0029. Pattern evidence is also kept for the runs since each kept drill, so the let-go walk never restarts when
 // a retest leaves the newest 120: from TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest on, at most
 // MAX_DRILL_WINDOW pattern-carrying runs. The typical rate of a drill is read from the TYPICAL_RUNS before it.
 export const TYPICAL_RUNS = 40;
@@ -241,7 +241,7 @@ export function retainRuns<T extends RetentionRun>(runs: T[], { drills = true } 
   const other = runs.filter((run) => !comparableKind(run.kind));
   const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
   const carrying = comparable.filter((run) => kept.has(run) && carriesCounts(run));
-  // ADR 0027: with `drills`, the window reaches back TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest.
+  // ADR 0029: with `drills`, the window reaches back TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest.
   const retests = carrying.flatMap((run, at) => (run.kind === 'retest' ? [at] : []));
   const anchor = drills && retests.length ? Math.max(0, (retests[Math.max(0, retests.length - KEPT_RETESTS)] ?? 0) - TYPICAL_RUNS) : carrying.length;
   const start = Math.max(carrying.length - MAX_DRILL_WINDOW, Math.min(carrying.length - MAX_PATTERN_RUNS, anchor), 0);

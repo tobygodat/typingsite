@@ -1,6 +1,6 @@
 # 0029. learner-let-go@3: a drilled target is let go on evidence fixed at its drill
 
-Status: Proposed, 2026-11-26. TOB-511. This file holds the rule and its decision clauses. Results are added below only after the test seeds run, and nothing above "Results" changes after that.
+Status: Accepted, 2026-11-26. TOB-511. Both candidates failed the rule below; the default is unchanged.
 
 Written and committed as ADR 0027 (`aea5944`); renumbered 0029 because `0026-architectural-tokens-and-default-inter.md` and `0027-fluid-word-flow-and-spring-caret.md` already existed on master and `0028` is used by the Progress slipping rule (`0028-progress-slipping-rule.md`). Nothing else in the rule changed. [ADR 0019](0019-learner-lets-go.md) is accepted and is not edited.
 
@@ -99,9 +99,13 @@ Per kind (misses, pace), over counted targets, per arm: **runs to read fixed** (
 
 ## Results
 
+The rule was committed (`aea5944`, "Write learner-let-go@3's decision rule before any code or run (TOB-511)") before any code and before any run. Validation chose the constants on seeds 9001 and 9002 (`4abdeb8`, test updated at `ac2561f`), and the fresh test seeds 501 to 530 ran **once**. The full record is in [`0029-evaluation.json`](0029-evaluation.json). `bun run evaluate:learner -- --rule 0029` reproduces it, and ADR 0013's, 0015's and 0019's records still reproduce.
+
+**Both `learner-let-go@3` and `learner-let-go-misses@3` fail. The default stays `learner-decay-timing@1`, and Train keeps its rule for "fixed".**
+
 ### Validation (seeds 9001 and 9002, run after this rule was committed and before any test seed)
 
-`bun run evaluate:learner -- --rule 0027 --validation-only`. Each season row below counts the targets the shipped default queued before their drill, drilled for the kind it queued them for.
+`bun run evaluate:learner -- --rule 0029 --validation-only`. Each season row below counts the targets the shipped default queued before their drill, drilled for the kind it queued them for.
 
 | R | false let-go, misses | median runs to read fixed, 25 words |
 | --- | --- | --- |
@@ -128,10 +132,82 @@ Per kind (misses, pace), over counted targets, per arm: **runs to read fixed** (
 | 0.75 | 2.8% / 1.9% | 14 / 19 | 7 / 9 |
 | 0.9 | 0.9% / 1.3% | 10 / 14 | 8 / 10.75 |
 
-Two rules gave "none eligible": q0 (every value above the 1% ceiling) and S (no value under 1% for both kinds). Each fell to the rule's stated default, the smallest value, and the constants were fixed as the rule says: **R = 3, q0 = 0.75, H = ln 10³, S = 0.5**. Validation was not repeated with any other choice. A reader can see that S = 0.9 would have cleared the misses ceiling and would have read fixed in about half the runs; the rule committed above did not let validation pick it, and the test below runs S = 0.5.
+Two rules gave "none eligible": q0 (every value above the 1% ceiling) and S (no value under 1% for both kinds). Each fell to the rule's stated default, the smallest value, and the constants were fixed as the rule says: **R = 3, q0 = 0.75, H = ln 10³, S = 0.5**. Validation was not repeated with any other choice.
 
-Test results: not yet run.
+### The season, test seeds 501 to 530
+
+14,996 drilled targets across the four worlds (3,749 per world: 1,485 for misses, 2,264 for pace) were queued before their drill and counted in each arm; 10,924 across the four worlds (2,731 per world) were not queued and are left out, most at 10 words a run. Shares carry their 95% Wilson interval.
+
+| slice | arm | kind | targets | median runs to read fixed | p90 | ≤10 | false let-go | false return | named again | halved read fixed | tries a run |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| all | normal | misses | 1,485 | 39.0 | 141.0 | 12.7% | **2.4% [1.8, 3.3]** (36/1,485) | 3.1% [2.3, 4.2] (38/1,230) | 17.0 | 32.7% | – |
+| all | normal | pace | 2,264 | 31.0 | 141.0 | 13.0% | **2.3% [1.8, 3.0]** (52/2,264) | 0.4% [0.2, 0.7] (7/1,984) | 29.0 | 24.2% | – |
+| all | adaptive | misses | 1,485 | 9.0 | 62.0 | 55.4% | **3.6% [2.7, 4.6]** (53/1,485) | 1.3% [0.9, 2.1] (19/1,427) | 81.0 | 46.7% | 13.0 |
+| all | adaptive | pace | 2,264 | 18.0 | 141.0 | 32.8% | **1.5% [1.0, 2.04]** (33/2,264) | 0.0% [0.0, 0.2] (0/1,978) | 81.0 | 20.6% | 14.0 |
+| all | shipped | misses | 1,485 | 107.0 | 141.0 | 0.5% | 0.7% [0.4, 1.2] (10/1,485) | 54.2% [50.8, 57.5] (467/862) | – | – | – |
+| all | shipped | pace | 2,264 | 73.0 | 141.0 | 2.2% | 1.1% [0.7, 1.6] (24/2,264) | 30.5% [28.5, 32.5] (603/1,980) | – | – | – |
+| 25 words | normal | misses | 493 | **69.0** | 141.0 | 0.4% | 1.6% [0.8, 3.2] (8/493) | 1.4% [0.6, 3.3] (5/352) | 24.0 | 22.1% | – |
+| 25 words | normal | pace | 844 | **40.0** | 141.0 | 1.5% | 3.7% [2.6, 5.2] (31/844) | 0.1% [0.0, 0.8] (1/721) | 38.0 | 24.4% | – |
+| 25 words | adaptive | misses | 493 | **18.0** | 71.0 | 28.6% | 3.0% [1.9, 5.0] (15/493) | 0.2% [0.0, 1.2] (1/477) | 81.0 | 38.7% | 6.0 |
+| 25 words | adaptive | pace | 844 | **22.0** | 141.0 | 19.7% | 2.4% [1.5, 3.6] (20/844) | 0.0% [0.0, 0.5] (0/742) | 81.0 | 21.9% | 7.0 |
+| 25 words | shipped | misses | 493 | 133.0 | 141.0 | 0.0% | 0.4% [0.1, 1.5] (2/493) | 58.7% [52.6, 64.6] (148/252) | – | – | – |
+| 25 words | shipped | pace | 844 | 73.0 | 141.0 | 0.5% | 1.7% [1.0, 2.8] (14/844) | 36.4% [33.0, 40.0] (260/714) | – | – | – |
+| 100 words | normal | misses | 869 | 24.0 | 108.0 | 21.5% | 2.9% [2.0, 4.2] (25/869) | 4.1% [2.9, 5.7] (33/805) | 13.0 | 40.4% | – |
+| 100 words | normal | pace | 1,222 | 19.0 | 141.0 | 23.0% | 1.1% [0.6, 1.8] (13/1,222) | 0.6% [0.3, 1.2] (6/1,090) | 23.0 | 23.8% | – |
+| 100 words | adaptive | misses | 869 | 6.0 | 16.0 | 78.1% | 4.1% [3.0, 5.7] (36/869) | 2.1% [1.3, 3.3] (18/862) | 81.0 | 54.4% | 17.0 |
+| 100 words | adaptive | pace | 1,222 | 12.0 | 141.0 | 47.2% | 0.8% [0.4, 1.5] (10/1,222) | 0.0% [0.0, 0.4] (0/1,079) | 81.0 | 21.8% | 25.0 |
+| 10 words | normal | misses | 123 | 106.0 | 141.0 | 0.0% | 2.4% [0.8, 6.9] (3/123) | 0.0% [0.0, 5.0] (0/73) | 41.0 | 21.1% | – |
+| 10 words | normal | pace | 198 | 51.0 | 141.0 | 0.0% | 4.0% [2.1, 7.8] (8/198) | 0.0% [0.0, 2.2] (0/173) | 48.0 | 25.3% | – |
+| 10 words | adaptive | misses | 123 | 78.0 | 141.0 | 2.4% | 1.6% [0.4, 5.7] (2/123) | 0.0% [0.0, 4.2] (0/88) | 81.0 | 24.4% | 0.0 |
+| 10 words | adaptive | pace | 198 | 58.0 | 141.0 | 0.0% | 1.5% [0.5, 4.4] (3/198) | 0.0% [0.0, 2.4] (0/157) | 81.0 | 7.6% | 0.0 |
+
+Note on `all / adaptive / pace` false let-go: the exact Wilson upper bound is `2.04%` (`0.0204`), which rounds to `2.0%` at one decimal place and exceeds the `2.0%` (`0.02`) ceiling. By skill, misses false let-go is worst for `learning` typists (`3.9%` normal, `5.2%` adaptive) and lowest for `careful` (`1.1%` normal, `1.4%` adaptive); pace false let-go is worst on short runs (`4.0%` at 10 words, `3.7%` at 25 words, vs `1.1%` at 100 words in the normal arm). Bad days shift misses false let-go from `2.1%` to `2.7%` (normal) and `2.8%` to `4.3%` (adaptive).
+
+### The guard world, test seeds 501 to 530
+
+Mean paired differences, candidate − shipped, with 95% t intervals. Log loss, calibration, captured gain at 10 and planted error pairs at 10 are exactly zero in both variants for both candidates.
+
+| variant | candidate | captured@40 (points) | pick-up (runs) | let-go (runs) | slow pick-up (runs) | slow let-go (runs) |
+| --- | --- | --- | --- | --- | --- | --- |
+| slow | `learner-let-go@3` | **+0.33 [+0.19, +0.48]** better | −0.05 [−0.15, +0.05] tie | **−0.50 [−0.85, −0.15]** better | −0.07 [−0.16, +0.03] tie | −0.30 [−0.65, +0.05] tie |
+| slow | `learner-let-go-misses@3` | +0.03 [−0.01, +0.06] tie | 0.00 tie | **−0.33 [−0.64, −0.03]** better | 0.00 tie | 0.00 tie |
+| at pace | `learner-let-go@3` | **+0.27 [+0.15, +0.39]** better | 0.00 tie | −0.13 [−0.41, +0.14] tie | −0.03 [−0.10, +0.03] tie | **−0.48 [−0.92, −0.05]** better |
+| at pace | `learner-let-go-misses@3` | +0.04 [0.00, +0.09] tie | 0.00 tie | −0.13 [−0.41, +0.14] tie | 0.00 tie | 0.00 tie |
+
+### The decision
+
+- **(a) No harm:** **PASS** for both `learner-let-go@3` and `learner-let-go-misses@3` (really worse on none of ADR 0015's guards in either variant).
+- **(b) Runs to read fixed (25 words):**
+  - normal misses: **FAIL** — median `69.0` (target ≤ 60)
+  - normal pace: **PASS** — median `40.0` (target ≤ 45)
+  - adaptive misses: **PASS** — median `18.0` (target ≤ 20)
+  - adaptive pace: **PASS** — median `22.0` (target ≤ 40)
+- **(c) False let-go ≤ 2% Wilson upper:** **FAIL** in all four cells:
+  - normal misses: `3.34%` (36/1,485)
+  - normal pace: `3.00%` (52/2,264)
+  - adaptive misses: `4.64%` (53/1,485)
+  - adaptive pace: `2.04%` (33/2,264)
+- **(d) Same-kind false return ≤ 5% Wilson upper:** **PASS** in all four cells:
+  - normal misses: `4.21%` (38/1,230)
+  - normal pace: `0.73%` (7/1,984)
+  - adaptive misses: `2.07%` (19/1,427)
+  - adaptive pace: `0.19%` (0/1,978)
+
+Because (c) fails for both misses and pace (and (b) fails for normal misses), neither `learner-let-go@3` nor `learner-let-go-misses@3` passes.
+
+### Why it failed, and what worked
+
+1. **Same-kind returns, fixed typical rate and post-drill retention solved false returns.** False return fell from 26.2% / 30.6% in ADR 0019 (and 54.2% / 30.5% shipped) to 3.1% / 0.4% in the normal arm and 1.3% / 0.0% in the adaptive arm — passing (d) comfortably even at `H = ln 10³`.
+2. **Adaptive leaning delivered the speed gain.** At 25 words, adaptive misses reached a median of 18 runs (55.4% within 10 runs across all lengths) and adaptive pace 22 runs, both passing (b). Normal 25-word misses improved from 100 runs (ADR 0019) to 69 runs, still above 60 because 25-word ordinary passages hold too few tries of a single pair.
+3. **False let-go for misses failed because `R × p` overshoots some unchanged weak pairs.** A planted error pair adds +1.6 to +2.4 in log-odds above the typist's base rate, while `p` is the raw pooled rate over the 40 runs before the drill (raised by mechanics and other weak pairs, and noisier over 20 pre-drill runs than over 160). For `learning` typists (7% base rate, pooled rate ~9–11%), `3 × p` (~27–33%) can exceed the unchanged pair's true rate, violating Wald's 1% bound (`3.9%` normal, `5.2%` adaptive). Extra tries per run in the adaptive arm let those below-`3p` pairs cross `ln 100` sooner (`3.6%` vs `2.4%`). A null hypothesis anchored to the target's *own* pre-drill rate (or a smaller `R` / log-odds shift rather than a raw multiplier `3 × p`) would avoid putting the "still weak" threshold above the target's actual pre-drill rate.
+4. **False let-go for pace failed on short runs because a 1–2 interval run median is noisy.** At 100 words, normal pace false let-go is `1.1% [0.6, 1.8]` (well under 2%); at 25 words it is `3.7%` and at 10 words `4.0%`. When a pair appears only once or twice in a short run, single-interval timing noise (~30% log-SD) frequently puts its run median below the run's overall median even for an unchanged slow pair, so its true `P(slower)` sits below `q0 = 0.75`. Weighting pace steps by interval count (or reading per-interval ratios rather than one unweighted sign per run) is the natural next fix.
+5. **Pure-adaptive regression blind spot (`named again = 81.0`).** Once the adaptive arm lets a target go, `adaptiveLean` stops leaning on it. When that target regresses at run 80 in a pure-adaptive season (no normal runs after the retest), the pair rarely reaches `ADAPTIVE_MIN_TRIES = 5` in an adaptive passage, so `adaptivePatterns` drops it and the return walk sees zero post-regression observations. In real usage mixed with normal tests, normal runs provide return evidence, or `adaptivePatterns` could also record any pair that has an active let-go loop regardless of the 5-try threshold.
 
 ## Consequences
 
-To be written with the results.
+- `DEFAULT_POLICY` stays `learner-decay-timing@1`, provisional, with no claim about learning (`PRODUCT.md` principle 4).
+- `src/train-path.ts` (`isFixed`) is unchanged.
+- `learner-let-go@3` and `learner-let-go-misses@3` remain as named, non-default variants in `src/learner.ts`, alongside `letGoV3`, `letGoIndexV3`, `typicalAt`, `queuedFor`, `adaptiveEvidence`, and `adaptiveLean`.
+- Every earlier variant (`learner@1`, `learner-decay@1`, `learner-timing@1`, `learner-decay-timing@1`, `learner-own-cost@2`, `learner-let-go@2`, `learner-let-go-misses@2`) reads the newest 120 pattern-carrying runs and computes byte for byte what it did before.
+- `retainRuns` keeps the bounded post-drill pattern window (up to 240 runs anchored `TYPICAL_RUNS = 40` runs before the 8th newest retest), `runRecord` records bounded `adaptivePatterns` on completed adaptive runs (never entering normal evidence, bests, trends, or baselines), and profile merges keep the fuller copy deterministically (ADRs 0005 and 0006).
+- `bun run evaluate:learner -- --rule 0029` runs the ADR 0029 evaluation (`--rule 0027` is kept as an alias).

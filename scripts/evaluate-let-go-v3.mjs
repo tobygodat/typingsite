@@ -1,10 +1,10 @@
-// ADR 0027's decision rule: learner-let-go@3, which lets a drilled target go on evidence fixed at its drill, against the
+// ADR 0029's decision rule: learner-let-go@3, which lets a drilled target go on evidence fixed at its drill, against the
 // shipped learner-decay-timing@1. Deterministic from its seeds: the work is split across worker threads by seed and
 // cell, and every result is put back in seed and cell order before anything is summed.
 //
-//   bun run evaluate:learner -- --rule 0027 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go-v3.mjs ...)
-//   bun run evaluate:learner -- --rule 0027 --validation-only
-//   bun run evaluate:learner -- --rule 0027 --check   (validation only, exits 1 when a check below fails)
+//   bun run evaluate:learner -- --rule 0029 [--json out.json] [--workers 12]   (or node scripts/evaluate-let-go-v3.mjs ...)
+//   bun run evaluate:learner -- --rule 0029 --validation-only
+//   bun run evaluate:learner -- --rule 0029 --check   (validation only, exits 1 when a check below fails)
 //
 // The season is ADR 0019's, in two arms. In the normal arm every run after the retest is a normal run. In the adaptive arm
 // every run after it is an adaptive passage, drawn from the candidate's own adaptive lean after the run before. The guard
@@ -22,7 +22,7 @@ import { CONDITIONS, KEYBOARD, MEASURES, RULE_0015, RUN_MS, SHIPPED, SKILLS, STA
 
 const DAY_MS = 86_400_000;
 
-export const RULE_0027 = {
+export const RULE_0029 = {
   testSeeds: Array.from({ length: 30 }, (_, i) => 501 + i),
   weakRatio: [3, 4, 6, 8],
   slowShare: [0.75, 0.85, 0.95],
@@ -45,12 +45,12 @@ export const RULE_0027 = {
 
 const KINDS = ['errors', 'slow'];
 const ARMS = ['normal', 'adaptive'];
-const NEVER = RULE_0027.runs - RULE_0027.drill + 1;
-const NEVER_AGAIN = RULE_0027.runs - RULE_0027.regress + 1;
+const NEVER = RULE_0029.runs - RULE_0029.drill + 1;
+const NEVER_AGAIN = RULE_0029.runs - RULE_0029.regress + 1;
 const SEASON_STREAM = 17_000_000;
 
 // SKILLS is imported from the shared simulator; the cells are ADR 0019's.
-export const CELLS = RULE_0027.words.flatMap((words) => RULE_0027.perDay.flatMap((perDay) => RULE_0027.badDays.flatMap((badDays) => SKILLS.map((skill) => ({ words, perDay, badDays, skill: skill.name })))))
+export const CELLS = RULE_0029.words.flatMap((words) => RULE_0029.perDay.flatMap((perDay) => RULE_0029.badDays.flatMap((badDays) => SKILLS.map((skill) => ({ words, perDay, badDays, skill: skill.name })))))
   .map((cell, index) => ({ ...cell, index }));
 
 const candidateConstants = (k) => ({ ...SHIPPED, ...LET_GO_3, ...k });
@@ -66,7 +66,7 @@ function measures({ queued, fixed: read }, world) {
   };
 
   const firstFixed = read.indexOf(true);
-  const atRegress = RULE_0027.regress - RULE_0027.drill - 1;
+  const atRegress = RULE_0029.regress - RULE_0029.drill - 1;
   let namedAgain = null;
 
   if (world === 'regress' && read[atRegress]) {
@@ -88,13 +88,13 @@ const triesBefore = (tries, read) => {
 // One typist's season in one world, one arm of `normal` and `adaptive`, and for the normal arm optionally the shipped
 // default beside it. Returns the typist's counted targets and each one's measures.
 function season(seed, cell, i, world, arm, k, withShipped) {
-  const key = (seed * CELLS.length + cell.index) * RULE_0027.typists + i;
+  const key = (seed * CELLS.length + cell.index) * RULE_0029.typists + i;
   const random = seeded(SEASON_STREAM + key);
   const skill = SKILLS.find((s) => s.name === cell.skill);
   const typist = makeTypist(random, i % 2 ? 'unrelated' : 'mechanics', skill, i, { errorPairsAtPace: true });
   const error = typist.planted.find((p) => p.stratum === (seeded(2 * SEASON_STREAM + key)() < 0.5 ? 'common' : 'middle'));
   const slow = typist.planted.find((p) => p.stratum === 'slow');
-  const { drill, regress, runs: total } = RULE_0027;
+  const { drill, regress, runs: total } = RULE_0029;
 
   for (const planted of [error, slow]) {
     if (world === 'unchanged') continue;
@@ -106,13 +106,13 @@ function season(seed, cell, i, world, arm, k, withShipped) {
   }
 
   const days = seeded(3 * SEASON_STREAM + key);
-  const bad = Array.from({ length: Math.ceil(total / cell.perDay) }, () => cell.badDays && days() < RULE_0027.badDayChance);
+  const bad = Array.from({ length: Math.ceil(total / cell.perDay) }, () => cell.badDays && days() < RULE_0029.badDayChance);
   const drawn = seeded(6 * SEASON_STREAM + key);
   const dayOf = (r) => Math.floor(r / cell.perDay);
   const atOf = (r) => START + dayOf(r) * DAY_MS + (r % cell.perDay) * ((14 * 3_600_000) / cell.perDay);
 
   const typeAt = (r, options = {}) => {
-    const { run } = typeRun(typist, random, r, `${key}-${r}`, { count: cell.words, at: atOf(r), shift: bad[dayOf(r)] ? RULE_0027.badDayShift : 0, ...options });
+    const { run } = typeRun(typist, random, r, `${key}-${r}`, { count: cell.words, at: atOf(r), shift: bad[dayOf(r)] ? RULE_0029.badDayShift : 0, ...options });
 
     return r === drill ? { ...run, kind: 'retest' } : run;
   };
@@ -215,7 +215,7 @@ function season(seed, cell, i, world, arm, k, withShipped) {
 export function seasonTask({ seed, cell, worlds, arms = ARMS, k, shipped = false }) {
   const at = CELLS[cell];
 
-  return arms.flatMap((arm) => worlds.flatMap((world) => Array.from({ length: RULE_0027.typists }, (_, i) => {
+  return arms.flatMap((arm) => worlds.flatMap((world) => Array.from({ length: RULE_0029.typists }, (_, i) => {
     const { counted, uncounted, targets } = season(seed, at, i, world, arm, k, shipped && arm === 'normal' && (world === 'fixed' || world === 'unchanged'));
 
     return { seed, cell, i, world, arm, counted, uncounted, targets };
@@ -227,7 +227,7 @@ function guardTask({ seed, variant, policies }) {
   const population = simulate(seed, { world: RULE_0015.worlds[variant] }).map((entry) => {
     const { typist, history } = entry;
     const pairs = typist.group === 'drifting' ? [[typist.fixed, 'errors'], [typist.fixedSlow, 'slow']] : [[typist.planted.find((p) => p.stratum === 'common').pair, 'errors']];
-    const drill = RULE_0027.drill;
+    const drill = RULE_0029.drill;
     const queue = recommendFor(DECAY_TIMING_POLICY, { runs: history.slice(0, drill).map((h) => h.run), source: CONDITIONS, now: START + drill * RUN_MS }).queue;
     const retest = history[drill].run;
 
@@ -333,12 +333,12 @@ export function summarize(rows, arm, where = () => true) {
 
 const seasonTasks = (seeds, worlds, arms, k, shipped = false) => seeds.flatMap((seed) => CELLS.map((cell) => ({ seed, cell: cell.index, worlds, arms, k, shipped })));
 
-// The constants, on validation seeds only (ADR 0027): R and q0 by false let-go and runs to read fixed, then H by same-kind
+// The constants, on validation seeds only (ADR 0029): R and q0 by false let-go and runs to read fixed, then H by same-kind
 // false return and how soon a target that slipped again is named again, then the drill lean share on the adaptive arm.
-export async function validate0027(workers) {
+export async function validate0029(workers) {
   const at25 = (t) => t.cell.words === 25;
-  const pairing = (i) => RULE_0027.slowShare[Math.min(i, RULE_0027.slowShare.length - 1)];
-  const grid = RULE_0027.weakRatio.map((weakRatio, i) => ({ weakRatio, slowShare: pairing(i), returnOdds: 1e4 }));
+  const pairing = (i) => RULE_0029.slowShare[Math.min(i, RULE_0029.slowShare.length - 1)];
+  const grid = RULE_0029.weakRatio.map((weakRatio, i) => ({ weakRatio, slowShare: pairing(i), returnOdds: 1e4 }));
 
   // One pass per grid point, since the season takes its constants per task.
   const first = await serial(grid, async (k) => (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'unchanged'], ['normal'], k), workers)).flat());
@@ -351,7 +351,7 @@ export async function validate0027(workers) {
       return { value, falseLetGo: summarize(rowsAt, 'normal')[kind].falseLetGo.share, runsToFixed: summarize(rowsAt, 'normal', at25)[kind].runsToFixed.median };
     });
 
-    const eligible = rows.filter((row) => Number.isFinite(row.falseLetGo) && row.falseLetGo <= RULE_0027.validationCeiling.letGo);
+    const eligible = rows.filter((row) => Number.isFinite(row.falseLetGo) && row.falseLetGo <= RULE_0029.validationCeiling.letGo);
     const chosen = eligible.length ? eligible.reduce((a, b) => (b.runsToFixed < a.runsToFixed ? b : a)).value : Math.min(...values);
 
     return { rows, chosen };
@@ -359,12 +359,12 @@ export async function validate0027(workers) {
 
   // R and q0 each come from the grid point that holds them: R3 with q0 0.75, R4 with 0.85, R6 and R8 with 0.95, as ADR 0019 paired them,
   // so a value of one is read where the other is its partner. That is the same two-column reading ADR 0019 used.
-  const weak = pick('errors', RULE_0027.weakRatio, (k) => k.weakRatio);
-  const slow = pick('slow', RULE_0027.slowShare, (k) => k.slowShare);
+  const weak = pick('errors', RULE_0029.weakRatio, (k) => k.weakRatio);
+  const slow = pick('slow', RULE_0029.slowShare, (k) => k.slowShare);
 
-  const back = await serial(RULE_0027.returnOdds, async (returnOdds) => (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'regress'], ['normal'], { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds }), workers)).flat());
+  const back = await serial(RULE_0029.returnOdds, async (returnOdds) => (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'regress'], ['normal'], { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds }), workers)).flat());
 
-  const returns = RULE_0027.returnOdds.map((returnOdds, i) => {
+  const returns = RULE_0029.returnOdds.map((returnOdds, i) => {
     const rows = back[i];
     const s = summarize(rows, 'normal');
     const again = rows.flatMap((row) => row.targets.filter((t) => t.world === 'regress').map((t) => t.results.normal.namedAgain)).filter((v) => v !== null);
@@ -372,30 +372,30 @@ export async function validate0027(workers) {
     return { returnOdds, falseReturn: Object.fromEntries(KINDS.map((kind) => [kind, s[kind].falseReturn.share])), namedAgain: again.length ? median(again) : null };
   });
 
-  const eligible = returns.filter((row) => KINDS.every((kind) => Number.isFinite(row.falseReturn[kind]) && row.falseReturn[kind] <= RULE_0027.validationCeiling.return));
+  const eligible = returns.filter((row) => KINDS.every((kind) => Number.isFinite(row.falseReturn[kind]) && row.falseReturn[kind] <= RULE_0029.validationCeiling.return));
 
   const returnOdds = eligible.length ? eligible.reduce((a, b) => (b.namedAgain < a.namedAgain || (b.namedAgain === a.namedAgain && b.returnOdds > a.returnOdds) ? b : a)).returnOdds
-    : Math.max(...RULE_0027.returnOdds);
+    : Math.max(...RULE_0029.returnOdds);
 
   const chosen = { weakRatio: weak.chosen, slowShare: slow.chosen, returnOdds };
 
-  const lean = await serial(RULE_0027.drillLeanShare, async (drillLeanShare) => (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'unchanged'], ['adaptive'], { ...chosen, drillLeanShare }), workers)).flat());
+  const lean = await serial(RULE_0029.drillLeanShare, async (drillLeanShare) => (await pool('season', seasonTasks(VALIDATION_SEEDS, ['fixed', 'unchanged'], ['adaptive'], { ...chosen, drillLeanShare }), workers)).flat());
 
-  const shares = RULE_0027.drillLeanShare.map((value, i) => {
+  const shares = RULE_0029.drillLeanShare.map((value, i) => {
     const all = summarize(lean[i], 'adaptive');
     const at = summarize(lean[i], 'adaptive', at25);
 
     return { value, falseLetGo: Object.fromEntries(KINDS.map((kind) => [kind, all[kind].falseLetGo.share])), runsToFixed: at.errors.runsToFixed.median, runsToFixedPace: at.slow.runsToFixed.median, tries: Object.fromEntries(KINDS.map((kind) => [kind, at[kind].triesPerRun])) };
   });
 
-  const open = shares.filter((row) => KINDS.every((kind) => Number.isFinite(row.falseLetGo[kind]) && row.falseLetGo[kind] <= RULE_0027.validationCeiling.letGo));
-  const drillLeanShare = open.length ? open.reduce((a, b) => (b.runsToFixed < a.runsToFixed ? b : a)).value : Math.min(...RULE_0027.drillLeanShare);
+  const open = shares.filter((row) => KINDS.every((kind) => Number.isFinite(row.falseLetGo[kind]) && row.falseLetGo[kind] <= RULE_0029.validationCeiling.letGo));
+  const drillLeanShare = open.length ? open.reduce((a, b) => (b.runsToFixed < a.runsToFixed ? b : a)).value : Math.min(...RULE_0029.drillLeanShare);
 
   return { weakRatio: weak, slowShare: slow, returnOdds: { rows: returns, chosen: returnOdds }, drillLeanShare: { rows: shares, chosen: drillLeanShare }, constants: { ...chosen, drillLeanShare } };
 }
 
 // CI-style check: the shipped constants are the ones validation picks, at the recorded false let-go.
-export function check0027(validation) {
+export function check0029(validation) {
   const c = validation.constants;
 
   return [{ label: 'R chosen', ok: c.weakRatio === LET_GO_3.weakRatio, detail: `${c.weakRatio}, shipped ${LET_GO_3.weakRatio}` },
@@ -410,14 +410,14 @@ const reallyWorse = (result, a, b, measure) => {
   return Boolean(d) && (MEASURES[measure] ? d.low > 0 : d.high < 0);
 };
 
-// ADR 0027's decision, from the guard world's per-seed scores and the season's targets.
-export function decide0027(guard, summary) {
+// ADR 0029's decision, from the guard world's per-seed scores and the season's targets.
+export function decide0029(guard, summary) {
   const harm = (name) => Object.keys(RULE_0015.worlds).flatMap((v) => RULE_0015.guards.filter((m) => reallyWorse(guard[v], name, 'shipped', m)).map((m) => `${v} ${m}`));
 
   const clauses = (kind) => Object.fromEntries(ARMS.flatMap((arm) => [
-    [`b ${arm} ${kind}`, summary.at25[arm][kind].runsToFixed.median <= RULE_0027.targets[arm][kind]],
-    [`c ${arm} ${kind}`, summary.all[arm][kind].falseLetGo.high <= RULE_0027.ceilings.letGo],
-    [`d ${arm} ${kind}`, summary.all[arm][kind].falseReturn.high <= RULE_0027.ceilings.return],
+    [`b ${arm} ${kind}`, summary.at25[arm][kind].runsToFixed.median <= RULE_0029.targets[arm][kind]],
+    [`c ${arm} ${kind}`, summary.all[arm][kind].falseLetGo.high <= RULE_0029.ceilings.letGo],
+    [`d ${arm} ${kind}`, summary.all[arm][kind].falseReturn.high <= RULE_0029.ceilings.return],
   ]));
 
   const a = { candidate: harm('candidate'), misses: harm('misses') };
@@ -429,11 +429,11 @@ export function decide0027(guard, summary) {
   return { a, clauses: { ...misses, ...pace }, default: full ? LET_GO_3_POLICY : missesOnly ? LET_GO_MISSES_3_POLICY : DECAY_TIMING_POLICY };
 }
 
-export async function rule0027({ workers = 12 } = {}) {
-  const validation = await validate0027(workers);
+export async function rule0029({ workers = 12 } = {}) {
+  const validation = await validate0029(workers);
   const chosen = validation.constants;
-  const seeds = RULE_0027.testSeeds;
-  const rows = (await pool('season', seasonTasks(seeds, RULE_0027.worlds, ARMS, chosen, true), workers)).flat();
+  const seeds = RULE_0029.testSeeds;
+  const rows = (await pool('season', seasonTasks(seeds, RULE_0029.worlds, ARMS, chosen, true), workers)).flat();
   const guardPolicies = [candidate('candidate', chosen), candidate('misses', chosen, LET_GO_MISSES_3_POLICY), { name: 'shipped', policy: DECAY_TIMING_POLICY, constants: SHIPPED }];
   const guardRows = await pool('guard', seeds.flatMap((seed) => Object.keys(RULE_0015.worlds).map((variant) => ({ seed, variant, policies: guardPolicies }))), workers);
 
@@ -449,10 +449,10 @@ export async function rule0027({ workers = 12 } = {}) {
   const season = {
     all: Object.fromEntries(arms.map((arm) => [arm, slices.all(arm)])),
     at25: Object.fromEntries(arms.map((arm) => [arm, slices.at25(arm)])),
-    byWords: Object.fromEntries(RULE_0027.words.map((w) => [w, Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.words === w)]))])),
-    byPerDay: Object.fromEntries(RULE_0027.perDay.map((d) => [d, Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.perDay === d)]))])),
+    byWords: Object.fromEntries(RULE_0029.words.map((w) => [w, Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.words === w)]))])),
+    byPerDay: Object.fromEntries(RULE_0029.perDay.map((d) => [d, Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.perDay === d)]))])),
     bySkill: Object.fromEntries(SKILLS.map((s) => [s.name, Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.skill === s.name)]))])),
-    byBadDays: Object.fromEntries(RULE_0027.badDays.map((b) => [b ? 'bad days' : 'no bad days', Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.badDays === b)]))])),
+    byBadDays: Object.fromEntries(RULE_0029.badDays.map((b) => [b ? 'bad days' : 'no bad days', Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.badDays === b)]))])),
     byCell: CELLS.map((cell) => ({ cell, ...Object.fromEntries(arms.map((arm) => [arm, summarize(rows, arm, (t) => t.cell.index === cell.index)])) })),
   };
 
@@ -466,14 +466,14 @@ export async function rule0027({ workers = 12 } = {}) {
   const guardDiffs = Object.fromEntries(Object.entries(guard).map(([variant, result]) => [variant, Object.fromEntries(['candidate', 'misses'].map((name) => [name,
     Object.fromEntries(measuresList.map((m) => [m, paired(result, name, 'shipped', m)]))]))]));
 
-  return { rule: '0027', validation, constants: chosen, seeds, targets: { normal: { counted: counted('normal'), uncounted: uncounted('normal') }, adaptive: { counted: counted('adaptive'), uncounted: uncounted('adaptive') } },
-    season, guard: { means: guardMeans, differences: guardDiffs, perSeed: guard }, decision: decide0027(guard, season) };
+  return { rule: '0029', validation, constants: chosen, seeds, targets: { normal: { counted: counted('normal'), uncounted: uncounted('normal') }, adaptive: { counted: counted('adaptive'), uncounted: uncounted('adaptive') } },
+    season, guard: { means: guardMeans, differences: guardDiffs, perSeed: guard }, decision: decide0029(guard, season) };
 }
 
 const runs1 = (v) => (v === null || v === undefined ? '–' : fixed(1)(v));
 const share = (w) => (w.share === null ? '–' : `${percent(w.share)} [${percent(w.low)}, ${percent(w.high)}] (${w.k}/${w.n})`);
 
-export function report0027(record) {
+export function report0029(record) {
   const { validation, season: s, guard, decision } = record;
   const kindName = { errors: 'misses', slow: 'pace' };
 
@@ -488,7 +488,7 @@ export function report0027(record) {
   const diff = (d) => (d ? `${signed(4)(d.mean)} [${signed(4)(d.low)}, ${signed(4)(d.high)}]` : '–');
 
   return [
-    `ADR 0027. Validation (seeds ${VALIDATION_SEEDS.join(', ')}).`,
+    `ADR 0029. Validation (seeds ${VALIDATION_SEEDS.join(', ')}).`,
     `R: ${validation.weakRatio.rows.map((r) => `${r.value}: false let-go ${percent(r.falseLetGo)}, to fixed at 25 words ${r.runsToFixed}`).join('; ')}. Chosen ${validation.weakRatio.chosen}.`,
     `q0: ${validation.slowShare.rows.map((r) => `${r.value}: false let-go ${percent(r.falseLetGo)}, to fixed at 25 words ${r.runsToFixed}`).join('; ')}. Chosen ${validation.slowShare.chosen}.`,
     `H: ${validation.returnOdds.rows.map((r) => `${r.returnOdds}: false return misses ${percent(r.falseReturn.errors ?? 0)}, pace ${percent(r.falseReturn.slow ?? 0)}, named again ${r.namedAgain}`).join('; ')}. Chosen ${validation.returnOdds.chosen}.`,
@@ -496,7 +496,7 @@ export function report0027(record) {
     '',
     `Season, test seeds ${record.seeds[0]} to ${record.seeds.at(-1)}: normal arm ${record.targets.normal.counted} drilled targets counted (${record.targets.normal.uncounted} not queued before the drill), adaptive arm ${record.targets.adaptive.counted} (${record.targets.adaptive.uncounted}).`,
     table(header, [...seasonRows('all', (a) => s.all[a]), ...seasonRows('25 words', (a) => s.at25[a]),
-      ...RULE_0027.words.flatMap((w) => seasonRows(`${w} words`, (a) => s.byWords[w][a])), ...RULE_0027.perDay.flatMap((d) => seasonRows(`${d} a day`, (a) => s.byPerDay[d][a])),
+      ...RULE_0029.words.flatMap((w) => seasonRows(`${w} words`, (a) => s.byWords[w][a])), ...RULE_0029.perDay.flatMap((d) => seasonRows(`${d} a day`, (a) => s.byPerDay[d][a])),
       ...SKILLS.flatMap((sk) => seasonRows(sk.name, (a) => s.bySkill[sk.name][a])), ...['no bad days', 'bad days'].flatMap((b) => seasonRows(b, (a) => s.byBadDays[b][a]))]),
     '',
     'Guard world, test seeds, paired differences A − shipped, mean [95% t interval].',
@@ -505,7 +505,7 @@ export function report0027(record) {
     '',
     `Decision: (a) candidate ${decision.a.candidate.length ? `really worse on ${decision.a.candidate.join(', ')}` : 'really worse on none'}, misses-only ${decision.a.misses.length ? `really worse on ${decision.a.misses.join(', ')}` : 'really worse on none'}.`,
     `Clauses: ${Object.entries(decision.clauses).map(([k, v]) => `${k} ${v ? 'pass' : 'FAIL'}`).join(', ')}.`,
-    `Default by ADR 0027: ${decision.default}. The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
+    `Default by ADR 0029: ${decision.default}. The app's DEFAULT_POLICY: ${DEFAULT_POLICY}.`,
   ].join('\n');
 }
 
@@ -526,7 +526,7 @@ async function main() {
   }
 
   if (process.argv.includes('--check')) {
-    const rows = check0027(await validate0027(workers));
+    const rows = check0029(await validate0029(workers));
 
     for (const row of rows) console.log(`${row.ok ? 'pass' : 'FAIL'}  ${row.label}: ${row.detail}`);
     process.exitCode = rows.every((row) => row.ok) ? 0 : 1;
@@ -535,13 +535,13 @@ async function main() {
   }
 
   if (process.argv.includes('--validation-only')) {
-    console.log(JSON.stringify(await validate0027(workers), null, 1));
+    console.log(JSON.stringify(await validate0029(workers), null, 1));
 
     return;
   }
 
-  const record = await rule0027({ workers });
-  console.log(report0027(record));
+  const record = await rule0029({ workers });
+  console.log(report0029(record));
   const json = option('json', null);
 
   if (json) writeFileSync(json, `${JSON.stringify(record, null, 1)}\n`);

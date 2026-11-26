@@ -65,8 +65,11 @@ export const BASELINE_POLICY = 'counting@1';
 // intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
 // worse on a guard. ADR 0019 kept it again: letting a drilled target go on the evidence since its drill
 // (LET_GO_POLICY) harmed nothing, but on simulated seasons took a median of 100 runs at 25 words to let a fixed target
-// go, and let 2.3% of still-weak targets go. It is provisional until a learning study can run, and says nothing
-// about learning.
+// go, and let 2.3% of still-weak targets go. ADR 0029 kept it again: fixing the typical rate at the drill,
+// keeping pattern evidence across the drill window, counting same-kind returns only and adding adaptive evidence
+// (LET_GO_3_POLICY) cut same-kind false returns to 0.0–3.1% and brought adaptive 25-word misses to 18 runs,
+// harming no guard, but failed false let-go (2.3–3.6%, ceiling 2% Wilson upper) and normal 25-word misses (69
+// runs, target 60). It is provisional until a learning study can run, and says nothing about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
@@ -105,9 +108,9 @@ export const WEAK_RATIO = 3;
 export const SLOW_SHARE = 0.75;
 export const RETURN_ODDS = 100_000;
 
-// ADR 0027, learner-let-go@3: the same test with its typical rate fixed at the drill (from the TYPICAL_RUNS records
+// ADR 0029, learner-let-go@3: the same test with its typical rate fixed at the drill (from the TYPICAL_RUNS records
 // before it), evidence kept since each drill, adaptive runs counted, and a return read only for the kind drilled. Its
-// constants were chosen on validation typists (ADR 0027), the same way ADR 0019 chose its own.
+// constants were chosen on validation typists (ADR 0029), the same way ADR 0019 chose its own.
 export const LET_GO_3 = { letGoOdds: LET_GO_ODDS, weakRatio: 3, slowShare: 0.75, returnOdds: 1e3 };
 
 // Adaptive text only: the newest LEAN_DRILLED drilled targets not yet let go share this part of the lean's weight.
@@ -366,7 +369,7 @@ function walkLetGo(unitRows: ReleaseRow[], p: number, basis: Basis, split: numbe
   return released;
 }
 
-// Evidence from adaptive runs (ADR 0027): one record per completed adaptive run on the keyboard, holding the rows of the
+// Evidence from adaptive runs (ADR 0029): one record per completed adaptive run on the keyboard, holding the rows of the
 // pairs it leaned on. It enters the let-go walk only, never the fit, a best, a trend or a baseline.
 export function adaptiveEvidence(runs: readonly unknown[], keyboard: string): LearnerEvidence[] {
   return analysisRuns(runs).flatMap((run) => {
@@ -422,7 +425,7 @@ export function typicalAt(index: LetGoIndexV3, split: number) {
   return Math.max(TYPICAL_FLOOR, seen ? errors / seen : 0);
 }
 
-// ADR 0027's let-go: the walk of `letGo` with the typical rate fixed at the drill. A walk whose evidence no longer
+// ADR 0029's let-go: the walk of `letGo` with the typical rate fixed at the drill. A walk whose evidence no longer
 // reaches back to its split (the window is full and its oldest run is newer than the split) reads not let go.
 export function letGoV3(index: LetGoIndexV3, unit: string | null, basis: Basis, split: number, k: typeof LET_GO = LET_GO_3) {
   if (!Number.isFinite(split) || (index.oldest !== null && index.oldest > split && index.held >= MAX_PATTERN_RUNS)) return false;
@@ -431,7 +434,7 @@ export function letGoV3(index: LetGoIndexV3, unit: string | null, basis: Basis, 
 }
 
 // Whether the queue holds the unit for this kind: a pace item for 'slow', a misses item otherwise. A target let go
-// for one kind and queued for the other is a new step on Train (ADR 0027), not a return.
+// for one kind and queued for the other is a new step on Train (ADR 0029), not a return.
 export const queuedFor = (queue: readonly { unit: string; was: TargetEvidence | null }[], unit: string | null, basis: Basis) =>
   queue.some((item) => item.unit === unit && (item.was?.basis === 'slow') === (basis === 'slow'));
 
@@ -702,7 +705,7 @@ export function countingEvidence(runs: readonly unknown[], loops: readonly unkno
   return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
 }
 
-// Adaptive text only (ADR 0027): the recommendation's lean with the newest LEAN_DRILLED drilled targets not yet let go
+// Adaptive text only (ADR 0029): the recommendation's lean with the newest LEAN_DRILLED drilled targets not yet let go
 // for the kind drilled sharing `share` of its weight, equally, and the learner's own lean units the rest, in their own
 // proportions. With no such target the lean is returned as it was.
 export function adaptiveLean(model: LearnerModel, lean: WeightedUnit[], drills: readonly AnalysisLoop[], share = DRILL_LEAN_SHARE): WeightedUnit[] {
@@ -729,7 +732,7 @@ export function recommendFor(policy: string, { runs, loops = [], traces, source,
   const three = variant?.letGoVersion === 3;
   // Only a let-go variant reads loops, so no other policy can be changed, or broken, by what a stored loop holds.
   const drills = variant?.letGo ? [...drilledTargets(loops, keyboard).values()] : [];
-  // The profile now keeps pattern evidence on more than 120 runs (ADR 0027); the other variants read the newest 120, as before.
+  // The profile now keeps pattern evidence on more than 120 runs (ADR 0029); the other variants read the newest 120, as before.
   const read = three ? runs : retainRuns(analysisRuns(runs), { drills: false });
   const model = fitLearner(learnerEvidence(read, keyboard), now, variant, focus, drills, three ? adaptiveEvidence(runs, keyboard) : []);
   const recommendation = learnerRecommendation(model);

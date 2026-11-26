@@ -6,7 +6,7 @@
 //   bun run evaluate:learner -- --miss-cost 4 --json out.json         (sensitivity: a miss costs 4 intervals, not 2)
 //   bun run evaluate:learner -- --rule 0015 --json out.json           (ADR 0015's rule: learner@2)
 //   bun run evaluate:learner -- --rule 0019 --json out.json           (ADR 0019's rule: learner-let-go@2, scripts/evaluate-let-go.mjs)
-//   bun run evaluate:learner -- --rule 0027 --json out.json           (ADR 0027's rule: learner-let-go@3, scripts/evaluate-let-go-v3.mjs)
+//   bun run evaluate:learner -- --rule 0029 --json out.json           (ADR 0029's rule: learner-let-go@3, scripts/evaluate-let-go-v3.mjs)
 //
 // The two sensitivity runs repeat rule v2's protocol on the same seeds in a changed simulator. They decide
 // nothing: rule v2's run on the shipped simulator is the record.
@@ -215,7 +215,7 @@ export function makeTypist(random, group, rawSkill, index = 0, world = {}) {
 // ADR 0019's season sets the words a run, the date, and `shift`, the log odds a bad day adds to every letter's miss.
 export function typeRun(typist, random, index, id, { count = CONDITIONS.count, at: date = START + index * RUN_MS, shift = 0, text: given = null, adaptive = false } = {}) {
   const conditions = count === CONDITIONS.count ? CONDITIONS : { ...CONDITIONS, count };
-  // ADR 0027's adaptive arm types the text it is given, as a drill-kind run; every other run draws its own passage.
+  // ADR 0029's adaptive arm types the text it is given, as a drill-kind run; every other run draws its own passage.
   const text = given ?? makePassage('words', count, false, random, CONDITIONS.wordList);
   const events = [];
   let t = 0;
@@ -860,8 +860,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(child.status ?? 1);
   }
 
-  // So does ADR 0027's.
-  if (option('rule', null) === '0027') {
+  // So does ADR 0029's.
+  if (option('rule', null) === '0029' || option('rule', null) === '0027') {
     const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(new URL('./evaluate-let-go-v3.mjs', import.meta.url)), ...process.argv.slice(2)], { stdio: 'inherit' });
     process.exit(child.status ?? 1);
   }
