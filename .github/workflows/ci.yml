@@ -112,7 +112,7 @@ jobs:
           if [ "$EVENT" != pull_request ]; then
             echo "A $EVENT run checks everything."
             echo "run=true" >> "$GITHUB_OUTPUT"
-          elif ! changed=$(git diff --name-only HEAD^1 HEAD); then
+          elif ! changed=$(git diff --name-only --no-renames HEAD^1 HEAD); then
             echo "Can't list the PR's changes, so this run checks everything."
             echo "run=true" >> "$GITHUB_OUTPUT"
           elif grep -qE '^(supabase/|\.github/workflows/ci\.yml$)' <<< "$changed"; then
