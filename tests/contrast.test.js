@@ -179,8 +179,8 @@ function pairs(tokens) {
 
 const themes = themeTokens(stylesheet);
 
-test('the stylesheet defines ten theme token sets of the same shape', () => {
-  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'soft', 'swiss', 'terminal']);
+test('the stylesheet defines eleven theme token sets of the same shape', () => {
+  assert.deepEqual(Object.keys(themes).sort(), ['dark', 'e-ink', 'light', 'midnight', 'nord', 'paper', 'shadcn', 'slate', 'soft', 'swiss', 'terminal']);
   // Every theme is the same token set: one that leaves a token out would inherit dark's value for it.
   const own = (name) => [...new Set(rules.filter((rule) => rule.selectors.some((selector) => themeOf(selector) === name)).flatMap((rule) => Object.keys(rule.declarations)))].sort();
 

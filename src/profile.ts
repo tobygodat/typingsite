@@ -100,7 +100,7 @@ export const defaultPreferences: Preferences = {
 };
 
 // Each theme by its ground's luminance (src/styles.css): dark grounds sit below 0.05, light above 0.85.
-export const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
+export const DARK_THEMES = ['dark', 'slate', 'terminal', 'midnight', 'nord'];
 export const LIGHT_THEMES = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
 
 export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];

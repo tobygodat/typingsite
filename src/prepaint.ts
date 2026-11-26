@@ -22,7 +22,7 @@ try {
   const user = isRecord(session) && isRecord(session.user) ? session.user.id : undefined;
   const profile = user ? parse(localStorage.getItem('stilltype-profile-v2:' + String(user)) ?? 'null') : null;
   const preferences = isRecord(profile) && isRecord(profile.preferences) ? profile.preferences : undefined;
-  const dark = new Set(['dark', 'terminal', 'midnight', 'nord']);
+  const dark = new Set(['dark', 'slate', 'terminal', 'midnight', 'nord']);
   const light = new Set(['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink']);
   let customs: PaintTheme[] = [];
 

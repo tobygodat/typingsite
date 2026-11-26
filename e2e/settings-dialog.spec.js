@@ -38,7 +38,7 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
     await openSettings(page, category);
     await expect(page.locator(`#settings-${category}`)).toBeVisible();
     await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveAttribute('aria-current', 'true');
-    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(143, 209, 138)');
+    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(45, 212, 160)');
     await expect(page.locator('#settings-dialog .settings-category:visible')).toHaveCount(1);
   }
 
@@ -107,7 +107,7 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await chooseSetting(page, 'tape-toggle', true);
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('white-space', 'nowrap');
   await chooseSetting(page, 'theme-select', 'light');
-  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(251, 249, 245)');
+  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   expect(await passageText(page)).toBe(text);
   await expect(page.locator('#typing-input')).toHaveValue('');
 });

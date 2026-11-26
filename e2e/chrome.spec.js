@@ -17,13 +17,13 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'light' });
     await openApp(page);
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
-    await expect(themeColor(page)).toHaveAttribute('content', '#f4f1eb');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#f6f6f4');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
-    await expect(themeColor(page)).toHaveAttribute('content', '#0f0f0e');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#0b0b0d');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
 
     await openSettings(page);
     await chooseSetting(page, 'theme-select', 'light');
@@ -329,5 +329,41 @@ test('a palette jump puts focus on the new screen’s heading, or in the passage
     await expect(page.locator('#palette-list [aria-selected="true"] .opt-label')).toHaveText(label);
     await page.keyboard.press('Enter');
     await expect(page.locator(target)).toBeFocused();
+  }
+});
+
+async function holdJustInside(page, locator, edge) {
+  const box = await locator.boundingBox();
+  const x = { left: box.x + 0.5, right: box.x + box.width - 0.5 }[edge] ?? box.x + box.width / 2;
+  const y = { top: box.y + 0.5, bottom: box.y + box.height - 0.5 }[edge] ?? box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+// A press scales its control to 97%. Held just inside an edge, the release must still land on the control the press
+// began on, not on the neighbour or the group around both. Engines hit-test a little past a box's edge, so the check
+// compares the two targets instead of naming one.
+test('a press held just inside a control’s edge clicks the control it began on', { tag: '@compat' }, async ({ page }) => {
+  await openApp(page);
+
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    await page.locator('#mode-time').click();
+    await expect(page.locator('#mode-time')).toHaveCSS('transform', 'none');
+    await expect(page.locator('#mode-words')).toHaveCSS('transform', 'none');
+
+    const targets = page.evaluate(() => new Promise((resolve) => {
+      let down;
+
+      document.addEventListener('pointerdown', (event) => { down = event.target.id; }, { once: true, capture: true });
+      document.addEventListener('click', (event) => resolve({ down, click: event.target.id }), { once: true, capture: true });
+    }));
+
+    await holdJustInside(page, page.locator('#mode-words'), edge);
+    const { down, click } = await targets;
+    expect(down, edge).toMatch(/^mode-/);
+    expect(click, edge).toBe(down);
+    await expect(page.locator(`#${down}`), edge).toHaveAttribute('aria-pressed', 'true');
   }
 });

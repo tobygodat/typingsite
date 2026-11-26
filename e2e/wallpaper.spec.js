@@ -293,8 +293,8 @@ for (const [label, viewport] of VIEWPORTS) {
   }
 }
 
-const DARK_THEMES = new Set(['dark', 'terminal', 'midnight', 'nord']);
-const THEMES = ['dark', 'light', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
+const DARK_THEMES = new Set(['dark', 'slate', 'terminal', 'midnight', 'nord']);
+const THEMES = ['dark', 'light', 'slate', 'paper', 'shadcn', 'terminal', 'soft', 'midnight', 'swiss', 'e-ink', 'nord'];
 
 const channel = (v) => {
   const s = v / 255;

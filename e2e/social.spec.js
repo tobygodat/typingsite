@@ -708,7 +708,6 @@ test('the inbox sits by the account button without touching the dock', async ({ 
   await openApp(page);
   await expect(page.locator('#inbox')).toBeHidden();
   await signInWithEmail(page, 'host@stilltype.test');
-  // The unread badge counts in the same tabular Literata figures as every other numeral.
   const badge = await page.locator('#inbox-count').evaluate((node) => getComputedStyle(node).fontVariantNumeric);
   expect(badge).toContain('tabular-nums');
 

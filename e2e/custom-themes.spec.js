@@ -22,7 +22,7 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
   await page.locator('#theme-new').click();
   await expect(page.locator('#theme-editor')).toBeVisible();
   await expect(page.locator('#theme-name')).toHaveValue('dark copy');
-  await expect(hex(page, 'ground')).toHaveValue('#0f0f0e');
+  await expect(hex(page, 'ground')).toHaveValue('#0b0b0d');
   // A derived tint shows what it derives to and stores nothing.
   await expect(hex(page, 'accent-soft')).toHaveValue('');
 

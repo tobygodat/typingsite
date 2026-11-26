@@ -1,8 +1,6 @@
 /*
- * Stilltype.
- * Literata on near-black (or warm paper), one green, and a speed graph on the
- * card of every finished run. Tokens first, then shell, then screens. DESIGN.md
- * lists the floors every change holds. Motion scales to zero under reduced motion.
+ * Stilltype. Tokens first, then shell, then screens. DESIGN.md lists the floors every change
+ * holds. Motion scales to zero under reduced motion.
  */
 
 @font-face { font-family: "Geist Mono"; src: url("/src/fonts/geist-mono-400.ttf") format("truetype"); font-weight: 400; font-display: swap; }
@@ -26,11 +24,11 @@
   --font-source-serif: "Source Serif 4", Georgia, serif;
   --font-inter: "Inter", system-ui, sans-serif;
   /* The passage, compose field and replay; --font-app is everything else readable. */
-  --font-typing: var(--font-literata);
-  --font-app: var(--font-literata);
-  /* Literata's baseline below the middle of its line; src/app.js measures the chosen typing font's.
+  --font-typing: var(--font-inter);
+  --font-app: var(--font-inter);
+  /* Inter's baseline below the middle of its line; src/display-preferences.ts measures the chosen typing font's.
      Every caret's top stands 0.985em above it, so carets keep their place against the letters in any font. */
-  --typing-baseline: 0.435em;
+  --typing-baseline: 0.364em;
   --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --text-fine: 12px;
@@ -135,7 +133,8 @@
   --dur-medium: calc(350ms * var(--motion-scale));
   --dur-develop: calc(450ms * var(--motion-scale));
   --dur-settle: calc(700ms * var(--motion-scale));
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --press-scale: 0.97;
   /* The side bar slides out and back like a drawer: quick to leave, settling at the end. */
   --dur-drawer: calc(280ms * var(--motion-scale));
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -148,78 +147,109 @@
   --rank-bar: 10px;
 }
 
+:root[data-typing-font="literata"] { --font-typing: var(--font-literata); }
 :root[data-typing-font="source-serif"] { --font-typing: var(--font-source-serif); }
-:root[data-typing-font="inter"] { --font-typing: var(--font-inter); }
 :root[data-typing-font="jetbrains-mono"] { --font-typing: "JetBrains Mono", ui-monospace, monospace; }
 :root[data-typing-font="ibm-plex-mono"] { --font-typing: "IBM Plex Mono", ui-monospace, monospace; }
 :root[data-typing-font="roboto-mono"] { --font-typing: "Roboto Mono", ui-monospace, monospace; }
 :root[data-typing-font="fira-code"] { --font-typing: "Fira Code", ui-monospace, monospace; }
+:root[data-app-font="literata"] { --font-app: var(--font-literata); }
 :root[data-app-font="source-serif"] { --font-app: var(--font-source-serif); }
-:root[data-app-font="inter"] { --font-app: var(--font-inter); }
 
 :root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --backdrop: rgba(0, 0, 0, 0.5);
-  --ground: #0f0f0e;
-  --ground-2: #151514;
-  --raised: #1c1b1a;
+  --backdrop: rgba(0, 0, 0, 0.55);
+  --ground: #0b0b0d;
+  --ground-2: #111114;
+  --raised: #16161a;
   --raised-2: rgba(255, 255, 255, 0.085);
-  --text: #ece8e1;
-  --muted: #a39e96;
-  --placeholder: rgba(163, 158, 150, 0.8);
+  --text: #f3f3f5;
+  --muted: #9d9da7;
+  --placeholder: rgba(157, 157, 167, 0.86);
   --hairline: rgba(255, 255, 255, 0.075);
-  --hairline-strong: rgba(255, 255, 255, 0.15);
-  --outline: #7d7972;
-  --accent: #8fd18a;
-  --accent-ink: #0f1a0e;
-  --accent-soft: rgba(143, 209, 138, 0.13);
-  --practice-level-1: rgba(143, 209, 138, 0.3);
-  --practice-level-2: rgba(143, 209, 138, 0.55);
-  --practice-level-3: rgba(143, 209, 138, 0.8);
-  --danger: #ff8a6b;
-  --danger-soft: rgba(255, 138, 107, 0.16);
-  --warning: #e0b565;
-  --selection: #34322e;
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --outline: #74747e;
+  --accent: #2dd4a0;
+  --accent-ink: #071912;
+  --accent-soft: rgba(45, 212, 160, 0.12);
+  --practice-level-1: rgba(45, 212, 160, 0.3);
+  --practice-level-2: rgba(45, 212, 160, 0.55);
+  --practice-level-3: rgba(45, 212, 160, 0.8);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.14);
+  --warning: #fbbf24;
+  --selection: #2a2a30;
   /* The word highlight: a faint wash of the text colour, light enough that untyped (muted) letters keep 4.5:1. */
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
-  --ghost: #b9c3ff;
-  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --card-top: #1f1e1c;
-  --card-bottom: #121211;
+  --ghost: #a5b4fc;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --card-top: #19191d;
+  --card-bottom: #0e0e10;
   /* Finger map: one neutral band behind alternate fingers (index, ring). Not a colour. */
   --finger-band: rgba(255, 255, 255, 0.1);
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --backdrop: rgba(40, 32, 20, 0.22);
-  --ground: #f4f1eb;
-  --ground-2: #ece8e0;
-  --raised: #fbf9f5;
-  --raised-2: rgba(27, 26, 25, 0.07);
-  --text: #1b1a19;
-  --muted: #6b665e;
-  --placeholder: rgba(107, 102, 94, 0.92);
-  --hairline: rgba(27, 26, 25, 0.1);
-  --hairline-strong: rgba(27, 26, 25, 0.2);
-  --outline: #857f75;
-  --accent: #217245;
-  --accent-ink: #fbf9f5;
-  --accent-soft: rgba(46, 125, 79, 0.11);
-  --practice-level-1: rgba(46, 125, 79, 0.3);
-  --practice-level-2: rgba(46, 125, 79, 0.55);
-  --practice-level-3: rgba(46, 125, 79, 0.8);
-  --danger: #ad3d26;
-  --danger-soft: rgba(180, 67, 44, 0.12);
+  --backdrop: rgba(20, 20, 24, 0.22);
+  --ground: #f6f6f4;
+  --ground-2: #ecece8;
+  --raised: #ffffff;
+  --raised-2: rgba(20, 20, 22, 0.05);
+  --text: #141416;
+  --muted: #5e5e66;
+  --placeholder: rgba(94, 94, 102, 0.94);
+  --hairline: rgba(20, 20, 22, 0.1);
+  --hairline-strong: rgba(20, 20, 22, 0.2);
+  --outline: #85858c;
+  --accent: #0f766e;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(15, 118, 110, 0.1);
+  --practice-level-1: rgba(15, 118, 110, 0.3);
+  --practice-level-2: rgba(15, 118, 110, 0.55);
+  --practice-level-3: rgba(15, 118, 110, 0.8);
+  --danger: #b91c1c;
+  --danger-soft: rgba(220, 38, 38, 0.1);
   --warning: #8a5a00;
-  --selection: #e3dccf;
+  --selection: #e2e2dc;
   --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
-  --ghost: #434db5;
-  --shadow-float: 0 8px 24px rgba(70, 56, 30, 0.12);
-  --card-top: #fffdf9;
-  --card-bottom: #efeae1;
-  --finger-band: rgba(27, 26, 25, 0.05);
+  --ghost: #4338ca;
+  --shadow-float: 0 8px 24px rgba(20, 20, 24, 0.1);
+  --card-top: #ffffff;
+  --card-bottom: #f0f0ec;
+  --finger-band: rgba(20, 20, 22, 0.05);
+}
+
+:root[data-theme="slate"] {
+  color-scheme: dark;
+  --backdrop: rgba(5, 8, 14, 0.6);
+  --ground: #0e1117;
+  --ground-2: #141923;
+  --raised: #1a2130;
+  --raised-2: rgba(240, 244, 248, 0.075);
+  --text: #f0f4f8;
+  --muted: #a0adbe;
+  --placeholder: rgba(160, 173, 190, 0.88);
+  --hairline: rgba(240, 244, 248, 0.075);
+  --hairline-strong: rgba(240, 244, 248, 0.15);
+  --outline: #738096;
+  --accent: #7dd3fc;
+  --accent-ink: #06131f;
+  --accent-soft: rgba(125, 211, 252, 0.12);
+  --practice-level-1: rgba(125, 211, 252, 0.3);
+  --practice-level-2: rgba(125, 211, 252, 0.55);
+  --practice-level-3: rgba(125, 211, 252, 0.8);
+  --danger: #fb8a9c;
+  --danger-soft: rgba(251, 113, 133, 0.14);
+  --warning: #fcd34d;
+  --selection: #2a3344;
+  --word-highlight: color-mix(in oklab, var(--text) 5%, transparent);
+  --ghost: #c4b5fd;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, 0.4);
+  --card-top: #1d2433;
+  --card-bottom: #121721;
+  --finger-band: rgba(240, 244, 248, 0.09);
 }
 
 /* The other eight themes: the same tokens as dark and light, nothing else. Type, radii and motion are
@@ -700,11 +730,11 @@ kbd {
   color: var(--muted);
   font-size: var(--text-small);
   white-space: nowrap;
-  transition: color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.nav-item:hover,
 .nav-item.is-active { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .nav-item:hover { color: var(--text); } }
 
 .nav-label-short { display: none; }
 
@@ -733,12 +763,14 @@ kbd {
   font-size: var(--text-label);
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.dock-command:hover,
-.corner-trigger:hover,
 .corner details[open] > .corner-trigger { color: var(--text); background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) {
+  .dock-command:hover,
+  .corner-trigger:hover { color: var(--text); background: var(--raised-2); }
+}
 
 .dock-command svg,
 .corner-trigger svg { width: var(--frame-glyph); height: var(--frame-glyph); flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -765,7 +797,7 @@ kbd {
   transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
 }
 
-.icon-control:hover { color: var(--text); background: var(--raised-2); }
+@media (hover: hover) and (pointer: fine) { .icon-control:hover { color: var(--text); background: var(--raised-2); } }
 
 .icon-control svg,
 .palette-search svg {
@@ -1066,7 +1098,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
 }
 
-.footer-link:hover { color: var(--text); text-decoration-color: currentColor; }
+@media (hover: hover) and (pointer: fine) { .footer-link:hover { color: var(--text); text-decoration-color: currentColor; } }
 .footer-links { display: flex; gap: var(--space-6); }
 
 /* The side bar: from 960px, when it is the choice. A fixed column with a hairline edge: the wordmark, the screens as
@@ -1253,7 +1285,20 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
     transform var(--dur-quick) var(--ease-out);
 }
 
-.btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(0.98); }
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active:not(:disabled, [aria-disabled="true"]),
+  .nav-item:active,
+  .dock-command:active,
+  .segmented button:active { transform: scale(var(--press-scale)); }
+  /* The scale shrinks the hit box too, so a press held near an edge would end over the neighbour and click the
+     group around both. This layer scales back out to the resting edge (on .btn, past its 1px border), so the
+     release lands on the control the press began on. */
+  .btn:active:not(:disabled, [aria-disabled="true"])::after,
+  .nav-item:active::after,
+  .dock-command:active::after,
+  .segmented button:active::after { content: ""; position: absolute; inset: 0; transform: scale(calc(1 / var(--press-scale))); }
+  .btn:active:not(:disabled, [aria-disabled="true"])::after { inset: -1px; }
+}
 .btn:disabled, .btn[aria-disabled="true"] { opacity: var(--disabled-opacity); cursor: not-allowed; }
 /* A waiting control (aria-disabled) can hold keyboard focus. Its focus ring stays at full strength,
    so its own colours dim to the same 38% instead of the whole box. */
@@ -1268,19 +1313,24 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   font-weight: 600;
 }
 
-.btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
-
 .btn-secondary { border-color: var(--hairline-strong); }
-.btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
 .btn-ghost { color: var(--muted); }
-.btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
 .btn-danger { color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); }
-.btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
+
+/* Hover tints only where a pointer can hover, so a tap on a touch screen leaves no tint behind. */
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover:not(:disabled, [aria-disabled="true"]) { background: color-mix(in oklab, var(--accent) 88%, var(--text)); }
+  .btn-secondary:hover:not(:disabled, [aria-disabled="true"]) { background: var(--raised-2); }
+  .btn-ghost:hover:not(:disabled, [aria-disabled="true"]) { color: var(--text); background: var(--raised-2); }
+  .btn-danger:hover:not(:disabled, [aria-disabled="true"]) { background: var(--danger-soft); }
+}
 .btn-sm { height: 34px; padding: 0 12px; font-size: 14px; }
 
 /* A quiet destructive action (e.g. a ghost "Clear history" button). */
 .danger-text { color: var(--danger); }
-.danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .danger-text:hover:not(:disabled, [aria-disabled="true"]) { color: var(--danger); background: var(--danger-soft); }
+}
 
 .input {
   height: var(--control);
@@ -1429,11 +1479,11 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   background: transparent;
   color: var(--muted);
   font-size: 15px;
-  transition: color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
 }
 
-.segmented button:hover,
 .segmented button[aria-pressed="true"] { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .segmented button:hover { color: var(--text); } }
 
 /* The mode buttons sit a little closer than other segmented controls, so the row stays short. */
 /* Raised over the groups after it, so the "more" menu opens above them when they wrap below. */
@@ -1525,13 +1575,13 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   font: 500 13px/1 var(--font-mono);
 }
 
-/* Code language names are readable words, so they set in Literata like the mode buttons and the
+/* Code language names are readable words, so they set in the app font like the mode buttons and the
    word "custom". */
 .segmented.compact button[data-language] { font: 400 var(--text-small)/1 var(--font-app); }
 
 /* The custom length: the pill becomes a short field in place, with no box of its own beyond the
    focus ring. Pill and field share one width, so the row never jumps, and the message sits in the
-   gap under the row, so the passage never moves. The word "custom" is Literata like the mode
+   gap under the row, so the passage never moves. The word "custom" is in the app font like the mode
    options; only a number in the pill is mono, like the presets beside it. */
 .custom-length { display: flex; }
 .segmented.compact #custom-length { min-width: var(--space-16); padding: 0 var(--space-1); }
@@ -1572,7 +1622,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   transition: color var(--dur-quick) var(--ease-out);
 }
 
-.compact-switch:hover { color: var(--text); }
+@media (hover: hover) and (pointer: fine) { .compact-switch:hover { color: var(--text); } }
 
 /* A quiet text action: the first-run "learn to type" links. */
 .quiet-link {
@@ -1589,7 +1639,7 @@ body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visi
   transition: color var(--dur-quick) var(--ease-out), text-decoration-color var(--dur-quick) var(--ease-out);
 }
 
-.quiet-link:hover { color: var(--text); text-decoration-color: currentColor; }
+@media (hover: hover) and (pointer: fine) { .quiet-link:hover { color: var(--text); text-decoration-color: currentColor; } }
 
 .first-run-learn { margin: 0; color: var(--muted); font-size: var(--text-small); }
 .first-run-learn .quiet-link { min-height: 0; padding: var(--space-1) 0; font-size: inherit; color: var(--text); }
@@ -1881,7 +1931,7 @@ body[data-running="true"] .wallpaper[data-shown] { opacity: var(--wallpaper-dim)
 
 /* Caps Lock warning: sits in the gap under the measure rule, so showing it moves nothing.
    It is a warning, not chrome, so the running fade leaves it alone; it is a readable
-   sentence, so it is set in Literata. */
+   sentence, so it is set in the app font. */
 .caps-warning {
   position: absolute;
   top: calc(100% + var(--space-1));
@@ -2036,13 +2086,16 @@ body[data-tape="true"] #text-display > .passage-spacer { display: inline-block; 
 }
 
 /* A space is a plain inline box, shorter than the letter boxes, so its own
-   tint would notch the row. Paint it at full line height instead. */
+   tint would notch the row. Paint it at full line height instead. Its box starts the
+   half-leading below the line's top. Chromium floors that half-leading to whole pixels, so the
+   tint rises by the same floored amount and meets the letters' tint edge to edge there. WebKit
+   leaves a subpixel offset. */
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong { background: none; }
 :is(#text-display, #race-text-display, #online-text-display) > .char.wrong::before {
   content: "";
   position: absolute;
   inset-inline: 0;
-  top: calc(50% - var(--typing-line) / 2);
+  top: calc(-1 * round(down, (var(--typing-line) - 100%) / 2, 1px));
   height: var(--typing-line);
   background: var(--danger-soft);
 }
@@ -3922,7 +3975,7 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
 .palette-option[aria-selected="true"] .opt-mark { background: var(--accent); }
 .palette-option .opt-hint { color: var(--muted); font: var(--text-fine)/1 var(--font-mono); letter-spacing: 0.03em; white-space: nowrap; }
 .palette-option .opt-hint.is-on { color: var(--accent); }
-/* Centre each row on its lowercase letters, not the font's line box: Literata's sits about 2px low.
+/* Centre each row on its lowercase letters, not the font's line box, which sits low in some fonts.
    The trimmed text still hit-tests over its full line, into the next row, so only the row takes the pointer. */
 .palette-option :is(.opt-text, .opt-hint) { text-box: trim-both ex alphabetic; pointer-events: none; }
 .palette-option.is-secret { color: var(--ghost); }
@@ -4173,13 +4226,14 @@ body[data-view="results"] :is(.typing-form, .shortcut-row) { display: none; }
   .segmented.compact button, .segmented.compact .custom-length-input { min-width: 44px; padding: 0 6px; }
   .compact-switch { padding: 0 10px; gap: var(--space-2); font-size: 14px; }
   .custom-options { margin: calc(var(--space-4) * -1) auto var(--space-6); }
-  /* On a phone the recipe takes the lengths' row, which stays laid out (unseen) so the row keeps its
-     height; it wraps within the lengths' width. */
+  /* On a phone the recipe, quote filters, book and code languages take the lengths' row, which stays laid
+     out (unseen) so the row keeps its height and width whatever the font, and the switches after it wrap as
+     they do beside the lengths. The recipe wraps within the lengths' width. */
   .practice-options { display: grid; }
   .practice-options > * { grid-area: 1 / 1; }
   .standard-options { position: static; width: auto; height: auto; transform: none; contain: inline-size; }
   .standard-options p { line-height: 1.4; }
-  .standard-options:not([hidden]) ~ #duration-options[hidden] { display: flex !important; visibility: hidden; }
+  .practice-options:has(> :not(#duration-options, [hidden])) > #duration-options[hidden] { display: flex !important; visibility: hidden; }
   .quote-filter-trigger { min-height: var(--space-10); }
 
   body[data-font-size="22"] :is(.typing-wrap, .compose-wrap) { --passage-size: 22px; }
