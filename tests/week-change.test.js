@@ -2,12 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
 import { FIXED_OBSERVATIONS, FIXED_RUNS, trainPath } from '../src/train-path.js';
-import { SHOWN_MOVERS, WEEK_MIN_RUNS, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekStart } from '../src/week-change.js';
+import { SHOWN_MOVERS, SLIP_RULE, WEEK_MIN_RUNS, detectSlips, moverCopy, moverSample, weekChange, weekLead, weekMovers, weekPractice, weekSlips, weekStart } from '../src/week-change.js';
 import { conditionKey, CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { MAX_PATTERN_RUNS, dayKey, retainRuns } from '../src/insights.js';
 import { weekChange as weekChangeBefore } from './week-change-reference.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
+import { ADR_0031_PARAMS, detectSlipsDayLevel } from '../scripts/evaluate-slipping.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -454,4 +455,228 @@ test('the overview is the same as master’s on random histories, short and trim
 
   assert.ok(trimmed >= 10, `the generator trims long profiles (${trimmed})`);
   assert.ok(movers > 20, `the generator moves units (${movers})`);
+});
+
+// TOB-511: when older pattern counts were trimmed before `began`, a unit already fixed by a pre-week drill and
+// re-drilled this week must not be falsely listed with clean-before → clean-after counts, while units drilled for
+// the first time this week or still weak before a re-drill stay listed (per-unit, never a whole-list gate).
+test('trimmed pre-week counts suppress broken pre-week re-drill artifacts per unit without hiding real movers', () => {
+  const preWeak = Array.from({ length: 10 }, (_, i) => run(`pw${i}`, daysAgo(35 - Math.floor(i / 2), 8 + (i % 2)), {
+    patterns: withBackground([['ol', 12, 0, 12, 300, 100], ['qu', 12, 4, 12, 200, 0]]),
+  }));
+
+  const oldRetestOl = run('rt-ol-old', daysAgo(29, 12), { patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 4, 12, 200, 0]]) });
+  const oldRetestQu = run('rt-qu-old', daysAgo(29, 13), { patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 4, 12, 200, 0]]) });
+
+  // Between day 28 and day 7: "ol" is already fixed (clean pace for 20 runs), while "qu" stays weak.
+  const preClean = Array.from({ length: 20 }, (_, i) => run(`pc${i}`, daysAgo(28 - i, 12), {
+    patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 4, 12, 200, 0]]),
+  }));
+
+  // This week: 125 runs push every pre-week run out of the 120-run pattern cap.
+  // Before day 3: "qu" and "ck" (never drilled before) are still weak; "ol" is already at pace.
+  const weekBeforeRedrill = Array.from({ length: 25 }, (_, i) => run(`wb${i}`, daysAgo(6 - Math.floor(i / 8), 8 + (i % 8)), {
+    patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 4, 12, 200, 0], ['ck', 12, 4, 12, 200, 0]]),
+  }));
+
+  const newRetest = run('rt-new', daysAgo(3, 12), { patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 0, 12, 200, 0], ['ck', 12, 0, 12, 200, 0]]) });
+
+  // 100 clean runs after the retest: all three leave the learner queue and pass isFixed.
+  const weekAfterRedrill = Array.from({ length: 100 }, (_, i) => run(`wa${i}`, daysAgo(2 - Math.floor(i / 40), 8 + Math.floor((i % 40) / 4), (i % 4) * 15), {
+    patterns: withBackground([['ol', 12, 0, 12, 200, 0], ['qu', 12, 0, 12, 200, 0], ['ck', 12, 0, 12, 200, 0]]),
+  }));
+
+  const all = [...preWeak, oldRetestOl, oldRetestQu, ...preClean, ...weekBeforeRedrill, newRetest, ...weekAfterRedrill];
+  const runs = retainRuns(all);
+
+  const loops = [
+    loop('l-ol-old', 'ol', oldRetestOl, 'slow'),
+    loop('l-ol-new', 'ol', newRetest, 'slow'),
+    loop('l-qu-old', 'qu', oldRetestQu, 'errors'),
+    loop('l-qu-new', 'qu', newRetest, 'errors'),
+    loop('l-ck-new', 'ck', newRetest, 'errors'),
+  ];
+
+  // Master (weekChangeBefore) falsely lists "ol" ("at your pace → at your pace") because trimming erased its pre-week fix.
+  const masterUnits = weekChangeBefore({ runs, loops, practiceDays: {}, key: KEY, conditions, focus: 'balanced', goal: 0, period: '30', now: NOW }).movers.map((m) => m.unit).sort();
+  assert.deepEqual(masterUnits, ['ck', 'ol', 'qu']);
+
+  // The per-unit fix suppresses only "ol", keeping both genuine this-week fixes ("ck" and "qu") and staying order-independent.
+  const fixedUnits = weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((m) => m.unit).sort();
+  assert.deepEqual(fixedUnits, ['ck', 'qu']);
+  assert.deepEqual(weekMovers({ runs: [...runs].reverse(), loops: [...loops].reverse(), keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((m) => m.unit).sort(), ['ck', 'qu']);
+});
+
+// TOB-511: a pace drill before the week left the pair slow in its surviving pre-week runs, so it wasn't fixed then.
+// A drill this week that brought it to pace is a real mover, even when older counts were trimmed.
+test('surviving pre-week runs that are still slow keep a real pace fix listed after trimming', () => {
+  const hour = 3_600_000;
+  const day = 24 * hour;
+  const pairs = BACKGROUND.filter((pair) => pair !== 'th').slice(0, 25);
+
+  const series = (count, start, step, label, ms, kind = 'test') => Array.from({ length: count }, (_, i) => run(`${label}${i}`, new Date(THEN + start + i * step),
+    { kind, patterns: [...pairs.map((pair, j) => [pair, 4, j % 5 ? 0 : 1, 4, 200, 0]), ['th', 10, 0, 10, 200 + ms, ms]] }));
+
+  const [oldRetest] = series(1, -8 * day, hour, 'old-r', 75, 'retest');
+  const [newRetest] = series(1, 2.5 * day, hour, 'new-r', 0, 'retest');
+
+  const history = [...series(14, -9 * day, hour, 'old-b', 105), oldRetest, ...series(20, -7 * day, hour, 'old-a', 75), ...series(3, -12 * hour, hour, 'carry-a', 65),
+    ...series(24, day, hour, 'new-b', 0), newRetest, ...series(92, 3 * day, hour / 2, 'new-a', 0)];
+
+  const runs = retainRuns(history);
+  const loops = [loop('old', 'th', oldRetest, 'slow'), loop('new', 'th', newRetest, 'slow')];
+
+  assert.ok(runs.some((item) => !item.patterns?.length), 'older pattern counts were trimmed');
+  assert.deepEqual(weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'speed', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`), ['th:drill']);
+});
+
+// TOB-511: across light (untrimmed), medium, heavy and burst-week histories, the per-unit fix matches master on
+// untrimmed histories, hides no more true movers than master, and removes false trimming artifacts.
+test('the per-unit trimming fix hides no more true movers than master while cutting false trimming artifacts', () => {
+  const random = seeded(5110);
+
+  const shapes = [
+    { name: 'light', perDay: 1, days: 35, burst: 1 },
+    { name: 'medium', perDay: 4, days: 40, burst: 1 },
+    { name: 'heavy', perDay: 12, days: 30, burst: 1 },
+    { name: 'burst', perDay: 3, days: 35, burst: 7 },
+  ];
+
+  let masterTrue = 0;
+  let fixTrue = 0;
+  let masterFalse = 0;
+  let fixFalse = 0;
+
+  for (const shape of shapes) {
+    for (let round = 0; round < 6; round += 1) {
+      const all = [];
+      const loops = [];
+      let oldSlowRetest = null;
+      let newRetest = null;
+
+      for (let back = shape.days; back >= 0; back -= 1) {
+        const nRuns = back <= 6 ? shape.perDay * shape.burst : shape.perDay;
+
+        for (let i = 0; i < nRuns; i += 1) {
+          const when = daysAgo(back, 8 + Math.floor((i / Math.max(1, nRuns)) * 11), (i * 5) % 60);
+
+          if (when.getTime() > NOW) continue;
+
+          // "ol": slow only before day 25 (already fixed before this week), re-drilled on day 3.
+          // "ck": slow before day 6, drilled on day 5 and genuinely fixed this week.
+          // "qu": normal ~3% pair throughout (occasional noise errors only).
+          const quErr = random() < 0.03 * 10 ? 1 : 0;
+
+          const rows = [
+            ['ol', 12, 0, 12, back >= 25 ? 290 : 200, back >= 25 ? 90 : 0],
+            ['ck', 12, 0, 12, back >= 6 ? 290 : 200, back >= 6 ? 90 : 0],
+            ['qu', 10, quErr, 10, 200, 0],
+          ];
+
+          const rec = run(`${shape.name}-${round}-${all.length}`, when, { patterns: withBackground(rows) });
+          all.push(rec);
+
+          if (!oldSlowRetest && back < 25) oldSlowRetest = rec;
+
+          if (!newRetest && back <= 5) newRetest = rec;
+        }
+      }
+
+      if (oldSlowRetest && newRetest) {
+        loops.push(loop(`lo-${shape.name}-${round}`, 'ol', oldSlowRetest, 'slow'));
+        loops.push(loop(`ln-${shape.name}-${round}`, 'ol', newRetest, 'slow'));
+        loops.push(loop(`lc-${shape.name}-${round}`, 'ck', newRetest, 'slow'));
+      }
+
+      const runs = retainRuns(all);
+      const args = { runs, loops, practiceDays: {}, key: KEY, conditions, focus: 'balanced', goal: 0, period: '30', now: NOW };
+      const masterMovers = weekChangeBefore(args).movers;
+      const fixMovers = weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN });
+
+      if (shape.name === 'light') assert.deepEqual(fixMovers, masterMovers, `untrimmed round ${round} matches master`);
+
+      for (const m of masterMovers) { if (m.unit === 'ck') masterTrue += 1; else masterFalse += 1; }
+
+      for (const m of fixMovers) { if (m.unit === 'ck') fixTrue += 1; else fixFalse += 1; }
+    }
+  }
+
+  assert.ok(masterTrue >= 6, `benchmark produces true movers (${masterTrue})`);
+  assert.ok(fixTrue >= masterTrue, `fix must not hide true movers vs master (${fixTrue} < ${masterTrue})`);
+  assert.ok(fixFalse < masterFalse, `fix must cut false trimming artifacts (${fixFalse} vs ${masterFalse})`);
+});
+
+// ADR 0031 (TOB-511): day-level variation slip detection catches real multi-day slips (including co-slipping pairs),
+// while rejecting single-day spikes, global bad weeks, good weeks, and pace-only slowdowns, and matching the evaluator.
+test('weekSlips catches real multi-day slips and co-slipping pairs while ignoring single-day spikes, global bad weeks, good weeks and pace', () => {
+  const bg = (rate, rows = []) => {
+    const taken = new Set(rows.map((r) => r[0]));
+    const n = 20;
+    const err = Math.round(n * rate);
+
+    return [...BACKGROUND.filter((p) => !taken.has(p)).map((p) => [p, n, err, n, 200, 0]), ...rows];
+  };
+
+  // 1) Multi-day real slip on "qu" (clean before, 35% missed across 5 days this week), plus pace-only slow "ol".
+  const before = Array.from({ length: 10 }, (_, i) => run(`sb${i}`, daysAgo(16 - i), {
+    patterns: bg(0.05, [['qu', 20, 0, 20, 200, 0], ['ol', 20, 0, 20, 200, 0]]),
+  }));
+
+  const afterMulti = Array.from({ length: 5 }, (_, i) => run(`sa${i}`, daysAgo(5 - i), {
+    patterns: bg(0.05, [['qu', 20, 7, 20, 200, 0], ['ol', 20, 0, 20, 320, 120]]),
+  }));
+
+  const multiRuns = [...before, ...afterMulti];
+  const multi = weekSlips({ runs: multiRuns, keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN });
+  assert.deepEqual(multi.map((s) => s.unit), ['qu']);
+  assert.deepEqual([multi[0].before.days, multi[0].after.days, multi[0].after.errors], [10, 5, 35]);
+
+  // Order invariance and merge commutativity.
+  assert.deepEqual(weekSlips({ runs: [...multiRuns].reverse(), keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }), multi);
+
+  // Parity with the ADR 0031 evaluator implementation.
+  const recs = multiRuns.map((r) => ({
+    id: r.id, at: Date.parse(r.at), correction: null,
+    units: r.patterns.map(([unit, seen, errors]) => ({ unit, seen, errors, timed: 0, slow: null, ratio: null, slowMs: null })),
+  }));
+
+  const queued = new Set(recommend(multiRuns, [], 'balanced').queue.map((item) => item.unit));
+  assert.deepEqual(SLIP_RULE, ADR_0031_PARAMS);
+  assert.deepEqual(detectSlips(recs, THEN, queued).slipped.map((s) => s.unit), detectSlipsDayLevel(recs, THEN, queued, ADR_0031_PARAMS).slipped);
+
+  // 2) Single-day spike (35 misses concentrated on ONE day, 0 on the other 4 days): never a slip (LODO guard).
+  const afterOneDaySpike = Array.from({ length: 5 }, (_, i) => run(`sp${i}`, daysAgo(5 - i), {
+    patterns: bg(0.05, [['qu', i === 0 ? 50 : 20, i === 0 ? 35 : 0, 20, 200, 0]]),
+  }));
+
+  assert.deepEqual(weekSlips({ runs: [...before, ...afterOneDaySpike], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }), []);
+
+  // 3) Global bad week (every pair jumps from 5% to 20% together): never a slip.
+  const afterGlobalBad = Array.from({ length: 5 }, (_, i) => run(`gb${i}`, daysAgo(5 - i), {
+    patterns: bg(0.20, [['qu', 20, 4, 20, 200, 0]]),
+  }));
+
+  assert.deepEqual(weekSlips({ runs: [...before, ...afterGlobalBad], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }), []);
+
+  // 4) Good week (rest drops from 10% to 2%, while "qu" stays at 10%): never a slip.
+  const beforeHigh = Array.from({ length: 10 }, (_, i) => run(`ghb${i}`, daysAgo(16 - i), {
+    patterns: bg(0.10, [['qu', 20, 2, 20, 200, 0]]),
+  }));
+
+  const afterGoodWeek = Array.from({ length: 5 }, (_, i) => run(`gha${i}`, daysAgo(5 - i), {
+    patterns: bg(0.02, [['qu', 20, 2, 20, 200, 0]]),
+  }));
+
+  assert.deepEqual(weekSlips({ runs: [...beforeHigh, ...afterGoodWeek], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }), []);
+
+  // 5) Three pairs co-slipping together over multiple days: all three detected.
+  const beforeCo = Array.from({ length: 10 }, (_, i) => run(`cb${i}`, daysAgo(16 - i), {
+    patterns: bg(0.05, [['qu', 20, 0, 20, 200, 0], ['ex', 20, 0, 20, 200, 0], ['ck', 20, 0, 20, 200, 0]]),
+  }));
+
+  const afterCo = Array.from({ length: 5 }, (_, i) => run(`ca${i}`, daysAgo(5 - i), {
+    patterns: bg(0.05, [['qu', 20, 7, 20, 200, 0], ['ex', 20, 7, 20, 200, 0], ['ck', 20, 7, 20, 200, 0]]),
+  }));
+
+  assert.deepEqual(weekSlips({ runs: [...beforeCo, ...afterCo], keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((s) => s.unit).sort(), ['ck', 'ex', 'qu']);
 });
