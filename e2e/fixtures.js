@@ -169,6 +169,13 @@ export async function closeSettings(page) {
   if (await page.locator('#settings-dialog').isVisible()) await page.locator('#settings-done').click();
 }
 
+// Linear word flow (ADR 0027): a space mid-word and letters past a word's end take passage positions,
+// and Backspace reaches into clean words. For specs about that geometry rather than word flow.
+export async function chooseLinearWordFlow(page) {
+  await chooseSetting(page, 'word-flow-toggle', 'linear');
+  await closeSettings(page);
+}
+
 export async function chooseSetting(page, id, value) {
   const control = page.locator(`#${id}`);
   const category = await control.evaluate((group) => group.closest('.settings-category').id.replace('settings-', ''));
@@ -182,7 +189,7 @@ export async function chooseSetting(page, id, value) {
   await option.locator('..').click();
 }
 
-// Where navigation sits (settings → appearance): a side bar from 960px, the default, or a top bar.
+// Where navigation sits (settings → appearance): a top bar, the default, or a side bar from 960px.
 export async function chooseNavigation(page, placement) {
   await chooseSetting(page, 'navigation-select', placement);
   await closeSettings(page);

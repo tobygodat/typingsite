@@ -1,5 +1,5 @@
 // Run card: consistency, the counts behind accuracy (its tooltip) and the static words list.
-import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, phone } from './fixtures.js';
+import { test, expect, firstTryErrors, finalChars, openApp, passageText, typeInto, chooseWords, phone, chooseLinearWordFlow } from './fixtures.js';
 
 // Committed screenshots are rewritten only with SCREENSHOTS=1; normal runs keep them in the test output.
 const shot = (testInfo, name) => (process.env.SCREENSHOTS ? `docs/screenshots/run-card-stats/${name}` : testInfo.outputPath(name));
@@ -148,6 +148,7 @@ test.describe('narrow phone', () => {
 
   test('long, error-heavy stats stay inside the card at 320 px', async ({ page }) => {
     await openApp(page);
+    await chooseLinearWordFlow(page);
     await chooseWords(page, 100);
     // Every letter wrong under continue on error: the breakdown reads 0/<all>/0/0.
     const text = await passageText(page);
@@ -167,4 +168,30 @@ test.describe('narrow phone', () => {
     expect(await statSpill(page)).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
   });
+});
+
+// Reduced motion: the global 1 ms floor would hold the list's old height for a frame, so the drawer has no transition
+// and Inspect words closes and opens it on the click's own frame. Practice these words stays in view while it is shut.
+test('under reduced motion Inspect words closes and opens the list at once', { tag: '@compat' }, async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await openApp(page);
+  await finishRun(page);
+  const drawer = page.locator('#result-words-drawer');
+  expect(await drawer.evaluate((node) => getComputedStyle(node).transitionProperty)).toBe('none');
+  expect(await page.locator('.run-card-wordlist > .panel-head').evaluate((node) => getComputedStyle(node).transitionProperty)).toBe('none');
+
+  const toggle = () => page.evaluate(() => new Promise((resolve) => {
+    const node = document.getElementById('result-words-drawer');
+    const before = node.getBoundingClientRect().height;
+    document.getElementById('inspect-words').click();
+    requestAnimationFrame(() => resolve({ before, after: node.getBoundingClientRect().height, visibility: getComputedStyle(node).visibility }));
+  }));
+
+  const closed = await toggle();
+  expect(closed.before).toBeGreaterThan(0);
+  expect(closed).toEqual(expect.objectContaining({ after: 0, visibility: 'hidden' }));
+  await expect(page.locator('#inspect-words')).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#practice-words')).toBeVisible();
+  const opened = await toggle();
+  expect(opened).toEqual({ before: 0, after: closed.before, visibility: 'visible' });
 });

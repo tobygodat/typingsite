@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import { Effect } from 'effect';
 import { AsyncLifetime, pageLifetime } from './async-runtime.js';
-import { BASE_TOKENS, MAX_CUSTOM_THEMES, READABLE, THEME_TOKENS, cleanThemeName, contrastIssues, newThemeId, normalizeHex, themeMode } from './custom-themes.js';
+import { BASE_TOKENS, MAX_CUSTOM_THEMES, READABLE, THEME_TOKENS, cleanThemeName, contrastIssues, generatedColors, newThemeId, normalizeHex, themeMode } from './custom-themes.js';
 import type { CustomTheme, ThemeColors } from './custom-themes.js';
 import type { GeneratedTheme } from './account.js';
 import { createStore } from './store.js';
@@ -141,17 +141,10 @@ export function createThemeEditor(initial?: ThemeEditorCallbacks) {
       const draft = view.getSnapshot().draft;
 
       if (!draft || generation !== request) return;
-      const colors: Record<string, string> = {};
-      const received = raw.colors;
+      const colors = generatedColors(raw.colors);
 
-      for (const token of BASE_TOKENS) {
-        const hex = normalizeHex(received[token]);
-
-        if (!hex) throw new Error('Couldn’t generate a theme. Try again.');
-        colors[token] = hex;
-      }
-
-      update({ ...draft, colors: palette(colors), hex: { ...colors }, invalid: {}, name: cleanThemeName(raw.name) || draft.name, nameInvalid: false });
+      if (!colors) throw new Error('Couldn’t generate a theme. Try again.');
+      update({ ...draft, colors, hex: { ...colors }, invalid: {}, name: cleanThemeName(raw.name) || draft.name, nameInvalid: false });
     } catch (error) {
       if (view.getSnapshot().draft && generation === request && !request.signal.aborted) publish({ ...view.getSnapshot(), status: error instanceof Error ? error.message : 'Couldn’t generate a theme. Try again.' });
     } finally {
@@ -234,7 +227,7 @@ export function createThemeEditor(initial?: ThemeEditorCallbacks) {
 
 export type ThemeEditorController = ReturnType<typeof createThemeEditor>;
 
-const BUILT_INS = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const BUILT_INS = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export function ThemeSettings({ controller, settings }: { controller: ThemeEditorController; settings: SettingsController }) {
   const view = useSyncExternalStore(controller.view.subscribe, controller.view.getSnapshot, controller.view.getSnapshot);
@@ -310,11 +303,11 @@ export function ThemeSettings({ controller, settings }: { controller: ThemeEdito
     <form id="theme-editor" className="theme-editor" aria-label="Custom theme" noValidate hidden={!draft} aria-busy={view.generating} onSubmit={(event) => { event.preventDefault(); controller.submit(); }} onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); controller.close(); } }}>
       <span ref={probe} hidden />
       <input ref={name} className="input" id="theme-name" type="text" maxLength={40} autoComplete="off" aria-label="Theme name" aria-invalid={draft?.nameInvalid ? 'true' : undefined} value={draft?.name ?? ''} onChange={(event) => controller.name(event.currentTarget.value)} />
-      <div className="theme-vibe"><input ref={vibe} className="input" id="theme-vibe" type="text" maxLength={120} autoComplete="off" placeholder="describe a vibe" aria-label="Describe a vibe" disabled={!view.member} value={view.vibe} onChange={(event) => controller.vibe(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void controller.runGenerate(); } }} /><button className="btn btn-ghost" id="theme-generate" type="button" disabled={view.generating} onClick={() => { void controller.runGenerate(); }}>{view.generating ? 'generating…' : view.member ? 'generate' : 'sign in'}</button></div>
+      <div className="theme-vibe"><input ref={vibe} className="input" id="theme-vibe" type="text" maxLength={120} autoComplete="off" placeholder="describe a vibe" aria-label="Describe a vibe" disabled={!view.member} value={view.vibe} onChange={(event) => controller.vibe(event.currentTarget.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void controller.runGenerate(); } }} /><button className="btn btn-ghost" id="theme-generate" type="button" disabled={view.generating} onClick={() => { void controller.runGenerate(); }}>{view.generating ? 'Generating…' : view.member ? 'Generate' : 'Sign in'}</button></div>
       <p id="theme-generate-status" className="theme-status" role="status" aria-live="polite">{view.status}</p>
       <div id="theme-key-colors" className="theme-colors">{rows(true)}</div>
       <details className="theme-more"><summary>more colours</summary><div id="theme-more-colors" className="theme-colors">{rows(false)}</div></details>
-      <div className="theme-editor-actions"><button className="btn btn-ghost" id="theme-delete" type="button" hidden={!draft?.id} onClick={() => controller.delete()}>delete</button><button className="btn btn-ghost" id="theme-cancel" type="button" onClick={() => controller.close()}>cancel</button><button className="btn btn-primary" id="theme-save" type="submit">save</button></div>
+      <div className="theme-editor-actions"><button className="btn btn-ghost" id="theme-delete" type="button" hidden={!draft?.id} onClick={() => controller.delete()}>Delete</button><button className="btn btn-ghost" id="theme-cancel" type="button" onClick={() => controller.close()}>Cancel</button><button className="btn btn-primary" id="theme-save" type="submit">Save</button></div>
     </form>
   </div>;
 }

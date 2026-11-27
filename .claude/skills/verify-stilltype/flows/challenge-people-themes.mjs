@@ -1,6 +1,6 @@
 // Challenge's people list in every built-in theme: an invitation, a ghost waiting, a finished ghost race and a
 // tally, with keyboard focus on a row's action. Shots: <theme>-people.
-const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const MODES = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 const PASSAGE = 'The quick brown fox jumps over the lazy dog.';
 const trace = (step) => ({ v: 1, k: PASSAGE, t: [...PASSAGE].map((_, index) => (index ? step : 0)), e: step * (PASSAGE.length - 1) });
 

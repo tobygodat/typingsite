@@ -86,12 +86,12 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#punctuation-switch')).toBeHidden();
   await expect(page.locator('#best')).toHaveCSS('visibility', 'hidden');
-  await expect(page.locator('#compose-conditions')).toHaveText('composing · up to 60 s · physical keyboard');
+  await expect(page.locator('#compose-conditions')).toHaveText('compose · up to 60 s · physical keyboard');
   await expect(page.locator('#compose-privacy')).toHaveText('Your words are never saved. Only the numbers are kept, for this tab.');
   await expect(page.locator('#compose-timer')).toHaveText('60');
   await expect(page.locator('#compose-done')).toBeDisabled();
 
-  // Another prompt swaps the prompt and keeps you in the field.
+  // Change prompt swaps the prompt and keeps you in the field.
   const first = await page.locator('#compose-prompt').textContent();
   await page.locator('#compose-another').click();
   await expect(page.locator('#compose-prompt')).not.toHaveText(first);
@@ -643,7 +643,7 @@ test('composing screenshots, dark and light', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   // The theme cross-fades; wait for the paper ground before taking the picture.
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
   await page.clock.runFor(400);
   await page.screenshot({ path: shot(testInfo, 'result-light') });
 
@@ -746,7 +746,7 @@ test.describe('without caret-animation', () => {
     // assistive tech and never in the way of a click.
     await expect(input).toHaveCSS('caret-color', 'rgba(0, 0, 0, 0)');
     await expect(caret).toHaveCount(1);
-    await expect(caret).toHaveCSS('background-color', 'rgb(143, 209, 138)');
+    await expect(caret).toHaveCSS('background-color', 'rgb(45, 212, 160)');
     await expect(caret).toHaveCSS('pointer-events', 'none');
     await expect(page.locator('.compose-caret-layer')).toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('.compose-caret-layer')).toHaveCSS('pointer-events', 'none');
@@ -898,9 +898,17 @@ test.describe('without caret-animation', () => {
     await openCompose(page);
     const input = page.locator('#compose-input');
     const at = () => input.evaluate((node) => node.selectionStart);
-    // Thirteen words run onto a second line; a long word after them goes whole to the third.
-    const words = 'word '.repeat(13);
-    await typePaced(page, [...words, 'm'], 60);
+    // Words until one runs onto a second line, whatever the passage size and the system's font, and two more there;
+    // then a long word after them goes whole to the third.
+    let words = '';
+
+    do {
+      words += 'word ';
+      await typePaced(page, [...'word '], 60);
+    } while (words.length < 10 || !(await wrapsBefore(page, words.length - 5)));
+
+    words += 'word '.repeat(2);
+    await typePaced(page, [...'word '.repeat(2), 'm'], 60);
 
     while (!(await wrapsBefore(page, words.length))) await typePaced(page, ['m'], 60);
     const third = words.length;
@@ -994,8 +1002,8 @@ test.describe('without caret-animation', () => {
 
     await page.emulateMedia({ colorScheme: 'light' });
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
-    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(33, 114, 69)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
+    await expect(page.locator('.compose-caret')).toHaveCSS('background-color', 'rgb(15, 118, 110)');
     await typePaced(page, [...', so I read by the window'], 210);
     await expectCaretAt(page, text.length + 24, 'right');
     await expect(page.locator('#compose-input')).toBeFocused();
@@ -1009,7 +1017,7 @@ test('where the caret can be held solid, the field keeps its own and draws none'
   await startPausedClock(page);
   await openCompose(page);
   const input = page.locator('#compose-input');
-  await expect(input).toHaveCSS('caret-color', 'rgb(143, 209, 138)');
+  await expect(input).toHaveCSS('caret-color', 'rgb(45, 212, 160)');
 
   if (await caretAnimationParses(page)) await expect(input).toHaveCSS('caret-animation', 'manual');
   await typePaced(page, [...'Toast and the radio'], 210);
@@ -1025,7 +1033,7 @@ test.describe('touchscreen laptop', () => {
     await openCompose(page);
     const conditions = page.locator('#compose-conditions');
 
-    // Another prompt by touch, then typed on the keyboard: a physical-keyboard session.
+    // Change prompt by touch, then typed on the keyboard: a physical-keyboard session.
     await page.locator('#compose-another').tap();
     await expect(page.locator('#compose-input')).toBeFocused();
     await expect(conditions).toContainText('physical keyboard');

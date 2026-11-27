@@ -1,6 +1,6 @@
 // Minimum accuracy and speed to continue: practice-only settings, judged on the timing tick after a
 // grace period, ending a run as interrupted with its reason and keeping it out of bests.
-import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, openSettings, openView, chooseMore, chooseSetting, closeSettings, phone, chooseLinearWordFlow } from './fixtures.js';
 
 const shot = (page, testInfo, name) => page.screenshot({
   path: process.env.SCREENSHOTS ? `docs/screenshots/min-thresholds/${name}.png` : testInfo.outputPath(`${name}.png`),
@@ -33,6 +33,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await openSettings(page, 'practice');
   await expect(page.locator('#min-accuracy input:checked')).toHaveValue('0');
   await expect(page.locator('#min-wpm input:checked')).toHaveValue('0');
@@ -90,6 +91,7 @@ test('falling below the minimum accuracy stops the run as interrupted, with its 
 
 test('the grace period forgives an early miss, and a run that ends above the minimum counts', async ({ page }) => {
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '90');
@@ -159,6 +161,7 @@ test('the palette sets a minimum speed, which stops a slow run and resets for a 
 test('custom text has no minimums: the note stands aside and a run under them still finishes', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '95');
   await chooseSetting(page, 'min-wpm', '100');
@@ -194,6 +197,7 @@ test('custom text has no minimums: the note stands aside and a run under them st
 test('a retest carries its baseline’s minimums, and the daily challenge has none', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-wpm', '20');
@@ -253,6 +257,7 @@ for (const end of ['last character', 'timer']) {
     await page.setViewportSize({ width: 1280, height: 1100 });
     await page.clock.install();
     await openApp(page);
+    await chooseLinearWordFlow(page);
 
     if (end === 'timer') await page.locator('#duration-options [data-length="15"]').click();
     else await chooseWords(page, 10);
@@ -335,6 +340,7 @@ for (const [keys, ending] of [[74, 'at the buzzer'], [66, 'a second before it']]
 test('a last key that misses just past a whole second finishes the run under its minimum', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
+  await chooseLinearWordFlow(page);
   await chooseWords(page, 10);
   await openSettings(page, 'practice');
   await chooseSetting(page, 'min-accuracy', '90');
@@ -450,6 +456,7 @@ test('desktop settings and the practice label, dark and light', async ({ page },
   for (const scheme of ['dark', 'light']) {
     await page.emulateMedia({ colorScheme: scheme });
     await openApp(page);
+    const before = await page.locator('.practice-rail').boundingBox();
     await openSettings(page, 'practice');
     await chooseSetting(page, 'min-accuracy', '95');
     await chooseSetting(page, 'min-wpm', '40');
@@ -458,10 +465,14 @@ test('desktop settings and the practice label, dark and light', async ({ page },
     await closeSettings(page);
     await expect(page.locator('#settings-dialog')).toBeHidden();
     await expect(page.locator('#minimum-note')).toBeVisible();
-    // The label takes its own line, so the controls' rail stays centred in the page.
+    // The label takes its own line under the controls' rail, so the rail doesn't move: it keeps its place, its
+    // labels in line with the left edge of the passage's column (the rail is pulled out by its labels' inset).
     const rail = await page.locator('.practice-rail').boundingBox();
     const column = await page.locator('#main-content').boundingBox();
-    expect(Math.abs((rail.x + rail.width / 2) - (column.x + column.width / 2))).toBeLessThanOrEqual(2);
+    const inset = await page.locator('.practice-rail').evaluate((node) => -parseFloat(getComputedStyle(node).marginLeft));
+    expect(Math.abs(rail.x - before.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(rail.y - before.y)).toBeLessThanOrEqual(2);
+    expect(Math.abs(rail.x + inset - column.x)).toBeLessThanOrEqual(2);
     expect((await page.locator('#minimum-note').boundingBox()).y).toBeGreaterThanOrEqual(rail.y + rail.height);
     await page.mouse.move(1270, 790);
     await shot(page, testInfo, `practice-${scheme}`);

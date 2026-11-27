@@ -8,13 +8,14 @@ import { normalizeProfile, preferencesInUse } from '../src/profile.js';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('typing and app fonts default to Literata and drop unknown values', () => {
-  assert.equal(DEFAULT_FONT, 'literata');
-  assert.equal(preferencesInUse({}).typingFont, 'literata');
-  assert.equal(preferencesInUse({}).appFont, 'literata');
-  assert.equal(preferencesInUse({ typingFont: 'jetbrains-mono', appFont: 'inter' }).typingFont, 'jetbrains-mono');
-  assert.equal(preferencesInUse({ appFont: 'jetbrains-mono' }).appFont, 'literata');
-  assert.equal(preferencesInUse({ typingFont: 'comic-sans' }).typingFont, 'literata');
+test('typing and app fonts default to Inter and drop unknown values', () => {
+  assert.equal(DEFAULT_FONT, 'inter');
+  assert.equal(preferencesInUse({}).typingFont, 'inter');
+  assert.equal(preferencesInUse({}).appFont, 'inter');
+  assert.equal(preferencesInUse({ typingFont: 'jetbrains-mono', appFont: 'literata' }).typingFont, 'jetbrains-mono');
+  assert.equal(preferencesInUse({ typingFont: 'literata', appFont: 'literata' }).appFont, 'literata');
+  assert.equal(preferencesInUse({ appFont: 'jetbrains-mono' }).appFont, 'inter');
+  assert.equal(preferencesInUse({ typingFont: 'comic-sans' }).typingFont, 'inter');
   const stored = normalizeProfile({ version: 2, preferences: { fontSize: '36' } }).preferences;
   assert.equal(Object.hasOwn(stored, 'typingFont') || Object.hasOwn(stored, 'appFont'), false);
 });

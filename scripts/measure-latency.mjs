@@ -214,13 +214,18 @@ try {
   for (let index = 0; index < target.length; index += 1) {
     const char = target[index];
 
-    if (index === correctionAt) {
+    // The slip lands on a letter: under fluid word flow a letter typed at a space stands past the word instead.
+    if (correctionAt >= 0 && index >= correctionAt && !correctionVerified && char !== ' ') {
       const wrong = char === 'z' ? 'q' : 'z';
       await key(wrong);
-      correctionVerified = await evaluate(`(() => { const node = document.querySelector('#${displayId} .char.wrong'); return !!node && getComputedStyle(node).textDecorationLine.includes('underline'); })()`);
+      correctionVerified = await evaluate(`(() => {
+        const node = document.querySelector('#${displayId} .char.wrong');
+        const tinted = (style) => style.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        return !!node && getComputedStyle(node).textDecorationLine === 'none' && (tinted(getComputedStyle(node)) || tinted(getComputedStyle(node, '::before')));
+      })()`);
       await backspace();
 
-      if (!correctionVerified) throw new Error('Wrong character lacked visible underline');
+      if (!correctionVerified) throw new Error('Wrong character lacked its flat tint, or had an underline');
     }
 
     await key(char);

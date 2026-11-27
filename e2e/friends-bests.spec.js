@@ -206,7 +206,7 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
     `Mara 91 wpm 98% accuracy · ${day(5)}`,
     `You ${own60.score.wpm} wpm ${own60.score.accuracy}% accuracy · ${own60.at.slice(0, 10)}`,
     `Lin 78 wpm 96% accuracy · ${day(3)}`,
-    'Sam Okafor — another version of this shape · not compared',
+    'Sam Okafor — another version of these conditions · not compared',
   ]);
   await expect(page.locator('#board-bests [data-self] .board-name')).toHaveText('You');
   // Someone who never chose Ada back, and someone Ada never chose, stay off her board.
@@ -218,7 +218,7 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
   await shot(page, testInfo, 'bests-light');
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
   await page.waitForTimeout(400);
   await shot(page, testInfo, 'bests-dark');
 
@@ -234,7 +234,7 @@ test('each mutual friend’s best on the picked shape, ranked, with a keyboard p
     `Lin 84 wpm 97% accuracy · ${day(1)}`,
     `You ${own30.score.wpm} wpm ${own30.score.accuracy}% accuracy · ${own30.at.slice(0, 10)}`,
     `Sam Okafor 69 wpm 94% accuracy · ${day(4)}`,
-    'Mara — no best on this shape yet',
+    'Mara — no best at these conditions yet',
   ]);
   // The pick holds across a Refresh.
   await page.locator('#refresh-friends-board').click();
@@ -343,7 +343,7 @@ test('a clear takes your bests off the board, and undo brings them back', async 
     await expect.poll(() => bestsIn(supabase, ada)).toEqual({});
     await lin.locator('#refresh-friends-board').click();
     await expect(lin.locator('#friends-board-status')).toHaveText('Updated.');
-    expect(await rowTexts(lin)).toContain('Ada — no best on this shape yet');
+    expect(await rowTexts(lin)).toContain('Ada — no best at these conditions yet');
 
     // Undo's save puts the history back, and with it the summary of its bests.
     await page.locator('#undo-clear').click();
@@ -386,7 +386,7 @@ test.describe('phone', () => {
     await scrollBelow(page, '#board-bests-heading', 24);
     await shot(page, testInfo, 'bests-phone-light');
     await page.emulateMedia({ colorScheme: 'dark' });
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
     await page.waitForTimeout(400);
     await shot(page, testInfo, 'bests-phone-dark');
     await scrollBelow(page, '#friends-board-heading', 24);

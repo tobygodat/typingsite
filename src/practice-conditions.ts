@@ -1,6 +1,6 @@
 import type { LearningStore } from './learning-store.js';
 import type { Conditions, InputClass, Minimums } from './typing.js';
-import { CORPUS_VERSION, METRIC_VERSION, standardConditions } from './typing.js';
+import { CORPUS_VERSION, METRIC_VERSION, standardConditions, withWordFlow } from './typing.js';
 import { BOOK_VERSION } from './books.js';
 import { DEFAULT_LAYOUT } from './layouts.js';
 import { LESSONS } from './lessons.js';
@@ -30,7 +30,7 @@ function settingsConditions(inputClass: InputClass = 'physical-keyboard'): Condi
 
   if (learning.preferences.mode === 'book') value.book = learning.preferences.book;
 
-  return Object.assign(value, {
+  return withWordFlow(Object.assign(value, {
     inputClass,
     layout: inputLayout(inputClass),
     correctionPolicy: learning.preferences.correction,
@@ -39,7 +39,7 @@ function settingsConditions(inputClass: InputClass = 'physical-keyboard'): Condi
     language: 'en',
     corpus: learning.preferences.mode === 'book' ? BOOK_VERSION : CORPUS_VERSION,
     metricVersion: METRIC_VERSION,
-  });
+  }), learning.preferences.wordFlow);
 }
 
 function conditions(inputClass: InputClass = 'physical-keyboard'): Conditions {
@@ -49,8 +49,8 @@ function conditions(inputClass: InputClass = 'physical-keyboard'): Conditions {
 function customConditions() {
   const { codeLanguage, book, ...base } = settingsConditions();
 
-  return { ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false, corpus: CORPUS_VERSION,
-    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: learning.preferences.customOrder };
+  return withWordFlow({ ...base, mode: 'custom', duration: null, count: null, punctuation: false, numbers: false, corpus: CORPUS_VERSION,
+    quoteLength: null, difficulty: null, wordList: null, layout: DEFAULT_LAYOUT, strictSpace: false, quickEnd: true, customOrder: learning.preferences.customOrder }, learning.preferences.wordFlow);
 }
 
 function practiceMinimums() {
@@ -77,8 +77,9 @@ function lessonConditions(): Conditions {
 }
 
 function dailyConditions(): Conditions {
-  return { ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
-    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION };
+  // The daily passage is compared between friends, so it keeps one set of rules for everyone.
+  return withWordFlow({ ...settingsConditions(), mode: 'quote', duration: null, count: null, punctuation: true, numbers: false,
+    quoteLength: 'medium', difficulty: 'any', wordList: null, correctionPolicy: 'relaxed', strictSpace: false, quickEnd: true, corpus: CORPUS_VERSION }, 'linear');
 }
 
 return { dailyConditions, settingsConditions, conditions, customConditions, practiceMinimums, inputLayout, lessonConditions };

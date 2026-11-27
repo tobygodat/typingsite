@@ -45,7 +45,8 @@ jobs:
           node-version: 24
       - id: scope
         run: node scripts/e2e-scope.mjs
-      # Bun installs the packages and runs the scripts, which still run on Node 24 (docs/adr/0023-bun.md).
+      # Bun installs the packages and runs the build (docs/adr/0028-bun-runs-the-build.md). The scope step above,
+      # the unit tests and Playwright still run on Node 24 (docs/adr/0023-bun.md).
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
@@ -88,6 +89,106 @@ jobs:
           name: dist
           path: dist/
       - run: bun run test:unit
+
+  # The database and Edge Functions on a local Supabase stack: every migration applied to a fresh database,
+  # every SQL test in supabase/tests, and both functions type-checked and called through the gateway. It
+  # never reaches the production project. A PR runs it only when it changes supabase/ or this workflow;
+  # master and manual runs always do. It isn't one of the master ruleset's required checks.
+  supabase:
+    name: Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: supabase-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A PR's merge commit and both its parents, so the scope can diff it against the base.
+          fetch-depth: 2
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "A $EVENT run checks everything."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif ! changed=$(git diff --name-only --no-renames HEAD^1 HEAD); then
+            echo "Can't list the PR's changes, so this run checks everything."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif grep -qE '^(supabase/|\.github/workflows/ci\.yml$)' <<< "$changed"; then
+            echo "The PR changes supabase/ or this workflow."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "The PR changes nothing in supabase/ or this workflow, so there is nothing to check."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.8
+      # The functions run on Deno, so Deno type-checks them, without the root package.json's packages.
+      - if: steps.scope.outputs.run == 'true'
+        env:
+          DENO_NO_PACKAGE_JSON: "1"
+        run: deno check --no-lock --node-modules-dir=none supabase/functions/*/index.ts
+      - if: steps.scope.outputs.run == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.122.0
+      # Applies every migration in supabase/migrations to a fresh database, and fails on the first that
+      # doesn't apply. Only the services the checks use start.
+      - if: steps.scope.outputs.run == 'true'
+        run: supabase start -x studio,imgproxy,storage-api,realtime,logflare,vector,mailpit,postgres-meta,supavisor
+      - if: steps.scope.outputs.run == 'true'
+        run: bash supabase/tests/run-sql.sh
+      - if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - if: steps.scope.outputs.run == 'true'
+        run: node supabase/tests/edge-functions.mjs
+      - if: failure() && steps.scope.outputs.run == 'true'
+        run: docker ps -a --format '{{.Names}}' | grep '^supabase_' | xargs -I{} sh -c 'echo "::group::{}"; docker logs --tail 200 {} 2>&1; echo "::endgroup::"'
+
+  learner-eval:
+    name: Learner eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: learner-eval-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A PR's merge commit and both its parents, so the scope can diff it against the base.
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "A $EVENT run checks the learner."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            node scripts/learner-eval-scope.mjs
+          fi
+      - if: steps.scope.outputs.run == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - if: steps.scope.outputs.run == 'true'
+        run: bun install --frozen-lockfile
+      - if: steps.scope.outputs.run == 'true'
+        run: |
+          set -o pipefail
+          status=0
+          bun run evaluate:learner -- --rule 0019 --check --workers "$(nproc)" | tee check.txt || status=$?
+          { echo '## Learner eval (ADR 0019 validation)'; echo '```'; cat check.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
 
   deploy:
     name: Deploy to Cloudflare

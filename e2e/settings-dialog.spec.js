@@ -1,4 +1,4 @@
-import { test, expect, openApp, openSettings, closeSettings, chooseSetting, chooseWords, passageText, typeInto, signInWithEmail } from './fixtures.js';
+import { test, expect, openApp, openSettings, closeSettings, chooseSetting, chooseWords, passageText, typeInto, signInWithEmail, phone } from './fixtures.js';
 
 const dialog = (page) => page.getByRole('dialog', { name: 'Settings', exact: true });
 
@@ -38,7 +38,7 @@ test('categories preserve shortcut edits and Escape cancels recording before clo
     await openSettings(page, category);
     await expect(page.locator(`#settings-${category}`)).toBeVisible();
     await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveAttribute('aria-current', 'true');
-    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(143, 209, 138)');
+    await expect(page.locator(`[data-settings-category="${category}"]`)).toHaveCSS('color', 'rgb(45, 212, 160)');
     await expect(page.locator('#settings-dialog .settings-category:visible')).toHaveCount(1);
   }
 
@@ -107,7 +107,7 @@ test('native radio arrows apply preferences, retain focus, and update the live s
   await chooseSetting(page, 'tape-toggle', true);
   await expect(page.locator('#settings-preview-passage')).toHaveCSS('white-space', 'nowrap');
   await chooseSetting(page, 'theme-select', 'light');
-  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(251, 249, 245)');
+  await expect(dialog(page)).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   expect(await passageText(page)).toBe(text);
   await expect(page.locator('#typing-input')).toHaveValue('');
 });
@@ -164,6 +164,10 @@ test('glide speed adjusts the running caret and is saved for Smooth', { tag: '@c
   await typeInto(page, text.slice(0, 1));
   await openSettings(page, 'appearance');
   const slider = page.getByRole('slider', { name: /glide speed/i });
+  // Spring is the default motion, and the glide speed is Smooth's alone.
+  await expect(slider).toBeDisabled();
+  await chooseSetting(page, 'typing-motion', 'smooth');
+  await expect(slider).toBeEnabled();
   await expect(slider).toHaveValue('80');
   await slider.fill('120');
   await slider.press('ArrowRight');
@@ -374,3 +378,30 @@ for (const [width, height, theme] of [[1440, 912, 'dark'], [1440, 912, 'light'],
     await closeSettings(page);
   });
 }
+
+test.describe('short phone', () => {
+  test.use({ viewport: { width: 375, height: 553 }, ...phone });
+
+  test('short-phone settings keep every category reachable and scroll only the content', async ({ page }, testInfo) => {
+    await openApp(page);
+
+    for (const category of ['appearance', 'practice', 'keyboard', 'sound', 'shortcuts']) {
+      await openSettings(page, category);
+      const panel = page.locator(`#settings-${category}`);
+      await expect(panel).toBeVisible();
+      const controls = panel.locator('input:not(:disabled), button');
+
+      for (const control of await controls.all()) {
+        if (!(await control.isVisible())) continue;
+        await control.scrollIntoViewIfNeeded();
+        await expect(control).toBeInViewport();
+      }
+
+      await expect(page.locator('#settings-done')).toBeInViewport();
+      expect(await page.locator('#settings-dialog').evaluate((dialog) => dialog.scrollHeight - dialog.clientHeight)).toBe(0);
+    }
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    await page.screenshot({ path: testInfo.outputPath('short-phone-settings.png') });
+  });
+});

@@ -55,7 +55,7 @@ test('a guest exports the tab’s runs from the palette', async ({ page }) => {
 test('the exported file is what the learner evaluation reads', async ({ page, supabase }) => {
   const { data } = await readDownload(await exportFromMenu(page, supabase));
   const { evaluateProfile } = await import('../scripts/evaluate-learner.mjs');
-  const result = evaluateProfile(data, {});
+  const result = await evaluateProfile(data, {});
   expect(typeof result.runs).toBe('number');
   expect(result.keyboard === undefined || typeof result.keyboard === 'string').toBe(true);
 });

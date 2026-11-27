@@ -3,6 +3,7 @@
 // stores and scores (supabase/migrations/20261009100000_ghost_challenges.sql). The ghost is
 // presentational; a challenge run is its own kind and never a best, a trend or training evidence.
 import { recordedField as rawField } from './recorded-text.js';
+import { skippedText } from './word-flow.js';
 import { request, freshSession, loadSession, AuthError } from './account.js';
 import { Schema } from 'effect';
 import { accountLifetime } from './async-runtime.js';
@@ -107,9 +108,15 @@ export function encodeTrace(attempt: TraceSource | null | undefined) {
     if (!event) continue;
 
     if (event.type === 'focus-lost' || event.type === 'composition') return null;
+
     let chars;
 
-    if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));
+    // Fluid word flow (ADR 0027), replayed as keys in order: a skip is a wrong key at each letter it
+    // skipped, then its space, so the caret walks the same path and the same letters count. Letters past
+    // a word's end never move the caret, so they are left out with their deletes.
+    if (event.type === 'skip') chars = skippedText(Number(rawField(text, 'length')), Number(event.position), Number(event.count));
+    else if (event.type === 'extra' || event.type === 'delete-extra') continue;
+    else if (event.type === 'delete') chars = DELETE.repeat(Math.max(1, Number(event.count || 1)));
     else if (event.type === 'insert') {
       // The compact form has no way to say "counted but not kept", so such a run is not encoded.
       if (event.accepted === false || typeof event.text !== 'string' || !event.text || /[\r\n]/.test(event.text) || ASTRAL.test(event.text)) return null;
@@ -282,6 +289,8 @@ function furthestTyped(attempt: TraceSource, text: unknown) {
 
     if (event.type === 'delete') typed = Math.max(0, typed - Math.max(1, Number(event.count || 1)));
     else if (event.type === 'insert' && event.accepted !== false) typed = Math.min(Number(rawField(text, 'length')), insertedLength(typed, event.text));
+    // A skip moves the caret past the letters it skipped and onto the next word, as encodeTrace replays it.
+    else if (event.type === 'skip') typed = Math.min(Number(rawField(text, 'length')), typed + skippedText(Number(rawField(text, 'length')), Number(event.position), Number(event.count)).length);
     furthest = Math.max(furthest, typed);
   }
 
@@ -326,6 +335,9 @@ export function challengePayload(attempt: ChallengePayloadSource | null | undefi
   if ('quickEnd' in source && source.quickEnd === true) delete source.quickEnd;
 
   if ('layout' in source && source.layout === 'qwerty') delete source.layout;
+
+  // A ghost race is a race, typed under linear word flow whatever the sender's run used.
+  if ('wordFlow' in source) delete source.wordFlow;
   const conditions = challengeConditions(source, duration);
 
   if (!conditions) return null;

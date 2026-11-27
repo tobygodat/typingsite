@@ -1,6 +1,6 @@
 // Responsive layout, self-hosted fonts and exactly what the server hands out.
 import { appEntry, appStyles } from './built-assets.js';
-import { test, expect, openApp, openView, chooseWords, chooseMore, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
+import { test, expect, openApp, openView, chooseWords, chooseMore, chooseNavigation, passageText, typeInto, freshTextCheck, phone } from './fixtures.js';
 
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
@@ -250,6 +250,7 @@ test.describe('lesson on a 320x568 phone', () => {
 
 test('desktop sets the side bar beside the page and the passage at three lines', async ({ page }) => {
   await openApp(page);
+  await chooseNavigation(page, 'side');
   const bar = await page.locator('.dock-zone').boundingBox();
   const viewport = page.viewportSize();
   expect(bar.x).toBe(0);
@@ -260,13 +261,13 @@ test('desktop sets the side bar beside the page and the passage at three lines',
   expect(Math.round(wrap.height)).toBe(Math.round(lineHeight * 3));
 });
 
-test('Literata and Geist Mono load from this origin', async ({ page }) => {
+test('Inter and Geist Mono load from this origin', async ({ page }) => {
   const fonts = [];
   page.on('response', (response) => { if (/\/(?:src\/fonts|assets)\/.*\.(?:ttf|woff2)$/.test(response.url())) fonts.push([new URL(response.url()).pathname, response.status()]); });
   await openApp(page);
   const loaded = await page.evaluate(() => [...document.fonts].flatMap((face) => (face.status === 'loaded' ? [face.family.replaceAll('"', '')] : [])));
-  expect(loaded).toEqual(expect.arrayContaining(['Literata', 'Geist Mono']));
-  await expect(page.locator('#text-display')).toHaveCSS('font-family', /^"?Literata/);
+  expect(loaded).toEqual(expect.arrayContaining(['Inter', 'Geist Mono']));
+  await expect(page.locator('#text-display')).toHaveCSS('font-family', /^"?Inter/);
   expect(fonts.length).toBeGreaterThan(0);
 
   for (const [path, status] of fonts) expect(status, path).toBe(200);

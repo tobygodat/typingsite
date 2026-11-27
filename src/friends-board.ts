@@ -230,7 +230,7 @@ export function shapeOf(key: unknown): Conditions | null {
   const layoutPart = suffix.at(-1)?.startsWith('layout-') ? suffix.pop() : null;
   const layout = layoutPart?.startsWith('layout-') ? layoutPart.slice(7) : null;
 
-  if (suffix.some((part) => !['strict-space', 'quick-end-off'].includes(part))) return null;
+  if (suffix.some((part) => !['strict-space', 'quick-end-off', 'word-flow'].includes(part))) return null;
 
   if (parts.length !== 11 || (layoutPart && (!layoutIds.includes(layout ?? '') || isDefaultLayout(layout)))) return null;
   const [mode = '', duration = '', count = '', text = '', quoteLength = '', difficulty = '', wordList = '', inputClass = '', correctionPolicy = '', corpus = '', metricVersion = ''] = parts;
@@ -254,6 +254,8 @@ export function shapeOf(key: unknown): Conditions | null {
   if (suffix.includes('strict-space')) conditions.strictSpace = true;
 
   if (suffix.includes('quick-end-off')) conditions.quickEnd = false;
+
+  if (suffix.includes('word-flow')) conditions.wordFlow = 'fluid';
 
   const quote = mode === 'quote';
 

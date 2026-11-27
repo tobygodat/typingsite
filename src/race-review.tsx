@@ -47,7 +47,7 @@ export function createRaceReview() {
   let lit = 0;
 
   function drawGraph(animate: boolean) {
-    if (host && race && view === 'graph') renderDuelGraph(host.graph, race.attempts, { animate });
+    if (host && race && view === 'graph') renderDuelGraph(host.graph, race.attempts, { animate, name: race.name });
   }
 
   // Letters either racer has reached read in the text colour, the rest stay muted. Your caret springs to
@@ -150,6 +150,8 @@ export function createRaceReview() {
  if (host === next) host = null; };
     },
     select,
+    // The speed unit changed: the open graph reads in the new one, at the point it was reading.
+    redraw() { drawGraph(false); },
     toggle() { if (playing) pause(); else play(); },
     speed() { speed = speed === 1 ? 2 : 1; flushSync(() => snapshot.publish({ ...snapshot.getSnapshot(), speed })); },
     restart() { position = 0; play(); },
@@ -180,7 +182,7 @@ export function RaceReview({ controller }: { controller: RaceReviewController })
 
   return <div id="online-review" className="duel-review" hidden={!view.visible}>
     <div className="segmented duel-toggle" role="group" aria-label="Race view"><button id="online-show-graph" type="button" aria-pressed={view.view === 'graph'} onClick={() => controller.select('graph')}>Graph</button><button id="online-show-replay" type="button" aria-pressed={view.view === 'replay'} onClick={() => controller.select('replay')}>Replay</button></div>
-    <div ref={graph} id="online-duel-graph" className="duel-graph speed-graph" role="img" hidden={view.view !== 'graph'} aria-label={`Speed over time, you and ${view.name}`}></div>
+    <div ref={graph} id="online-duel-graph" className="duel-graph speed-graph" role="slider" tabIndex={0} hidden={view.view !== 'graph'} aria-label={`Speed over time, you and ${view.name}`}></div>
     <div id="online-duel-replay" className="duel-replay" hidden={view.view !== 'replay'}><div ref={wrap} className="duel-replay-wrap"><div ref={display} id="online-replay-display" aria-hidden="true"></div></div><div className="duel-replay-controls"><button id="online-replay-toggle" className="btn btn-secondary" type="button" onClick={() => controller.toggle()}>{view.playing ? 'Pause' : 'Play'}</button><button id="online-replay-speed" className="btn btn-ghost" type="button" aria-label={`Playback speed ${view.speed}×`} onClick={() => controller.speed()}>{view.speed}×</button><button id="online-replay-restart" className="btn btn-ghost" type="button" onClick={() => controller.restart()}>Restart</button></div></div>
   </div>;
 }

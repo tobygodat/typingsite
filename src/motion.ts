@@ -11,6 +11,7 @@ interface Ghost { cps: number; points: [number, number][] | null; cursor: number
 // Everything here is presentational; scoring never reads from it.
 
 import { tapeOffset } from './tape.js';
+import { CARET_SPRING, springSettled, springStep } from './caret-glide.js';
 
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const IDLE_AFTER_MS = 800;
@@ -105,6 +106,8 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
   let position = 0;
   let caretRow = 0;
   let frame = 0;
+  // moved: when the target last changed, so a spring that has not settled by maxSettleMs is placed.
+  const spring = { x: 0, v: 0, target: 0, frame: 0, last: 0, moved: 0 };
   let snapNext = true;
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   // Tape mode (one line): the scroll, and what the caret was doing at the last measure.
@@ -159,7 +162,16 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
     let x = 0;
     let top = 0;
 
-    if (current) {
+    // At a word's end with letters typed past it, the caret follows the last of them: a word that
+    // long wraps inside itself, and its space would otherwise sit at the line's right edge.
+    const word = current ? current.previousElementSibling : last?.parentElement;
+    const tail = word?.classList.contains('word') ? word.lastElementChild : null;
+    const extra = tail instanceof HTMLElement && tail.classList.contains('extra') ? tail : null;
+
+    if (extra) {
+      ({ left: x, top } = offsetIn(extra, display));
+      x += extra.offsetWidth;
+    } else if (current) {
       ({ left: x, top } = offsetIn(current, display));
     } else if (last) {
       ({ left: x, top } = offsetIn(last, display));
@@ -193,10 +205,42 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
     }
 
     placeGlide(snapNext);
-    caret.classList.toggle('is-snapping', snapNext || row !== caretRow);
-    caret.style.transform = `translate3d(${x}px, ${row}px, 0)`;
+    placeCaret(x, row, snapNext || row !== caretRow);
     caretRow = row;
     snapNext = false;
+  }
+
+  function stopSpring() {
+    cancelAnimationFrame(spring.frame);
+    spring.frame = 0;
+  }
+
+  // A move to another line, a restart or a re-layout jumps, so the caret never sweeps across lines.
+  function placeCaret(x: number, row: number, snap: boolean) {
+    const springing = document.body.dataset.typingMotion === 'spring' && !reducedMotion.matches;
+
+    if (!springing || snap) {
+      stopSpring();
+      Object.assign(spring, { x, v: 0, target: x });
+      caret.classList.toggle('is-snapping', snap);
+      caret.style.transform = `translate3d(${x}px, ${row}px, 0)`;
+
+      return;
+    }
+
+    if (spring.target !== x) spring.moved = performance.now();
+    spring.target = x;
+
+    if (spring.frame) return;
+    spring.last = performance.now();
+    spring.frame = requestAnimationFrame(stepSpring);
+  }
+
+  function stepSpring(now: number) {
+    const next = springStep(spring, spring.target, (now - spring.last) / 1000);
+    const settled = springSettled(next, spring.target) || now - spring.moved >= CARET_SPRING.maxSettleMs;
+    Object.assign(spring, settled ? { x: spring.target, v: 0, frame: 0 } : { ...next, frame: requestAnimationFrame(stepSpring) }, { last: now });
+    caret.style.transform = `translate3d(${spring.x}px, ${caretRow}px, 0)`;
   }
 
   // The word the highlight is on (body[data-word-highlight]), measured only when it changes.
@@ -331,6 +375,7 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
 
     finish() {
       stopGhost();
+      stopSpring();
       ghostCaret.classList.add('is-hidden');
       clearTimeout(idleTimer);
       setState('done');
@@ -399,6 +444,7 @@ export function createTypingFx(wrap: HTMLElement, display: HTMLElement, options:
 
     dispose() {
       stopGhost();
+      stopSpring();
       cancelAnimationFrame(frame);
       clearTimeout(idleTimer);
       caret.remove();

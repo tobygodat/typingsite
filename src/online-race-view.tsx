@@ -122,7 +122,7 @@ export function OnlineRaceSetup({ controller }: Props) {
       <div ref={lengths} className="segmented compact glide" role="group" aria-label="Race length" data-race-lengths="" hidden={!spec} data-glide="pressed"><span className="glide-pill" aria-hidden="true"></span>{spec?.presets.map((length) => <button key={length} type="button" data-length={length} className={setup[spec.key] === length ? 'is-active' : undefined} aria-label={`${length} ${spec.unit}`} aria-pressed={setup[spec.key] === length} onClick={() => controller.setLength(length)}>{length}</button>)}</div>
       <label className="compact-switch" data-race-punctuation="" hidden={setup.mode === 'quote'}><input className="switch" type="checkbox" checked={Boolean(setup.punctuation)} onChange={(event) => controller.setPunctuation(event.target.checked)} /><span>punctuation</span></label>
     </div>
-    <div className="online-actions"><button id="online-setup-done" className="btn btn-primary" type="button" onClick={() => controller.show('people', { focus: true })}>Done</button><button id="online-customize-reset" className="btn btn-ghost" type="button" hidden={!view.resetSetup} onClick={controller.matchPractice}>Match practice</button></div>
+    <div className="online-actions"><button id="online-setup-done" className="btn btn-primary" type="button" onClick={() => controller.show('people', { focus: true })}>Done</button><button id="online-customize-reset" className="btn btn-ghost" type="button" hidden={!view.resetSetup} onClick={controller.matchPractice}>Use practice setup</button></div>
     </div>
   </section>;
 }
@@ -137,7 +137,7 @@ function PlayerRow({ room, slot }: { room: RaceRoom; slot: number }) {
   const state = !player ? 'not joined' : player.left ? 'left' : player.finished ? 'finished' : room.status === 'waiting'
     ? player.ready ? 'ready' : room.rematchOf && !player.connected && slot !== room.selfSlot ? 'invited' : 'not ready' : `${Math.round(player.progress || 0)}% complete`;
 
-  return <div className="online-player-row" data-player-slot={slot}><strong>{player ? `${player.name}${slot === room.selfSlot ? ' (you)' : ''}` : 'Waiting for a player'}</strong><span>{state}</span><div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} aria-label={`${player?.name || `Player ${slot}`} race progress`}><span style={style}></span></div></div>;
+  return <div className="online-player-row" data-player-slot={slot} data-self={slot === room.selfSlot ? '' : undefined}><strong>{player ? `${player.name}${slot === room.selfSlot ? ' (you)' : ''}` : 'Waiting for a player'}</strong><span>{state}</span><div className="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(progress)} aria-label={`${player?.name || `Player ${slot}`} race progress`}><span style={style}></span></div></div>;
 }
 
 function Score({ player, outcome, mine, children }: { player: RacePlayer; outcome: string; mine?: boolean; children: React.ReactNode }) {
@@ -199,7 +199,7 @@ export function OnlineRaceRoom({ controller }: Props) {
       <p id="online-rating-change" className={`online-copy${carded ? ' sr-only' : ''}`} role="status" hidden={!result}>{result?.sentence || ''}</p>
       {view.controllers && <RankCard controller={view.controllers.rankCard} />}
       <p id="online-connection" className="online-copy" role="status">{view.connection}</p><p id="online-account-invite-status" className="online-copy" role="status" hidden={!view.accountInvite}>{view.accountInvite}</p>
-      <div id="online-share" className="online-share" hidden={!view.shareLink}><label htmlFor="online-guest-link">Guest invitation link</label><div className="online-link-row"><input id="online-guest-link" className="input" type="text" readOnly value={view.shareLink} /><button id="copy-race-link" className="btn btn-secondary" type="button" onClick={() => { void controller.copyLink(); }}>Copy link</button></div><p id="online-invite-sent" className="online-copy">{view.inviteSent}</p></div>
+      <div id="online-share" className="online-share" hidden={!view.shareLink}><label htmlFor="online-guest-link">Race link</label><div className="online-link-row"><input id="online-guest-link" className="input" type="text" readOnly value={view.shareLink} /><button id="copy-race-link" className="btn btn-secondary" type="button" onClick={() => { void controller.copyLink(); }}>Copy link</button></div><p id="online-invite-sent" className="online-copy">{view.inviteSent}</p></div>
       <div id="online-players" className="online-players" hidden={room?.status === 'finished'}>{room && [1, 2].map((slot) => <PlayerRow key={slot} room={room} slot={slot} />)}</div>
       <button id="online-ready" className="btn btn-primary" type="button" hidden={room?.status !== 'waiting'} aria-disabled={view.busy || undefined} onClick={controller.ready}>{me?.ready ? 'Not ready' : 'Ready to race'}</button>
       <div id="online-stage" hidden={room?.status !== 'countdown' && room?.status !== 'racing'}><p id="online-countdown" className="online-countdown num" role="status">{view.countdown}</p><p id="online-timer" className="panel-label num">{view.timer}</p>

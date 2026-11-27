@@ -33,7 +33,10 @@ test('system mode with the default picks unless chosen; a pick from the other fa
   assert.deepEqual([fresh.theme, fresh.darkTheme, fresh.lightTheme], ['system', 'dark', 'light']);
   const bad = preferencesInUse({ darkTheme: 'paper', lightTheme: 'nord' });
   assert.deepEqual([bad.darkTheme, bad.lightTheme], ['dark', 'light']);
+  assert.equal(preferencesInUse({ darkTheme: 'slate' }).darkTheme, 'slate');
+  assert.equal(preferencesInUse({ lightTheme: 'slate' }).lightTheme, 'light');
   // A stored copy keeps only what was chosen: picks stay absent until one is made.
   assert.deepEqual(normalizeProfile({ version: 2, preferences: { theme: 'nord' } }).preferences, { theme: 'nord' });
   assert.deepEqual(normalizeProfile({ version: 2, preferences: { theme: 'system', darkTheme: 'terminal' } }).preferences, { theme: 'system', darkTheme: 'terminal' });
+  assert.deepEqual(normalizeProfile({ version: 2, preferences: { theme: 'slate' } }).preferences, { theme: 'slate' });
 });

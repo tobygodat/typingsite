@@ -15,6 +15,7 @@ import { AccountMenu, AccountDialog, AccountGuestNote, AccountToast } from './ac
 import { ReplayDialog } from './replay-view.js';
 import { ComposeSurface } from './compose-view.js';
 import { Palette } from './palette.js';
+import { RankPill } from './rank-pill.js';
 import { TrainScreen } from './train-screen.js';
 import { LearnScreen } from './learn-screen.js';
 import { ProgressScreen } from './progress-screen.js';
@@ -81,6 +82,7 @@ export function App({ practice, learning, palette, settings, compose, quoteFilte
       </nav>
 
       <div className="corner">
+        <RankPill controller={challenge.quick} onChallenge={() => { navigation.go('compete'); document.getElementById('quick-match-heading')?.focus(); }} />
         <Inbox controller={inbox} />
         <AccountMenu controller={accounts} />
       </div>

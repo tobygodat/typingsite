@@ -30,7 +30,7 @@ export function createPaceControls() {
     const replace = document.activeElement !== field || current.value === current.shown;
     const unit = replace ? presentation.unit : current.unit;
     const value = String(speedValue(presentation.valueWpm, unit));
-    const note: CopyPart[] = presentation.on && !presentation.custom ? [presentation.fallback ? 'no runs yet — ' : '', { kind: 'speed', wpm: presentation.wpm }] : [];
+    const note: CopyPart[] = presentation.on && !presentation.custom ? [presentation.fallback ? 'no runs yet · ' : '', { kind: 'speed', wpm: presentation.wpm }] : [];
 
     const next: Partial<PaceView> = {
       unit, min: String(speedValue(PACE_MIN_WPM, unit)), max: String(speedValue(PACE_MAX_WPM, unit)), step: String(speedValue(1, unit)),

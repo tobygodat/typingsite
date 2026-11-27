@@ -1,12 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { DECAY_TIMING_POLICY, FIXED_OBSERVATIONS, FIXED_RUNS, FOCUSES, basisOf, LEARNER_VARIANTS, LET_GO, LET_GO_MISSES_POLICY, LET_GO_POLICY, drillSplit, drilledTargets, englishFrequency,
   fitLearner, keyboardOf, learnerEvidence, letGo, letGoIndex, recommendFor } from '../src/learner.js';
 import * as trainPathModule from '../src/train-path.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
-import { seasonTask } from '../scripts/evaluate-let-go.mjs';
+import { check0019, seasonTask } from '../scripts/evaluate-let-go.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -284,4 +287,46 @@ test('over a simulated season, a target the drill left weak is never let go, and
   assert.ok(released.length >= fixedWorld.length / 2, `${released.length} of ${fixedWorld.length} let go in the season`);
 
   assert.ok(targets.filter((t) => t.world === 'unchanged').every((t) => !t.results['let-go'].letGo.includes(true)), 'a still-weak target let go');
+});
+
+test("CI's let-go gate enforces the false let-go ceilings and recorded false-return limits", () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+  const failed = (validation) => check0019(validation, recorded).filter((row) => !row.ok).map((row) => row.label);
+  assert.deepEqual(failed(recorded), []);
+
+  const looserR = structuredClone(recorded);
+  looserR.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = 0.011;
+  assert.deepEqual(failed(looserR), ['R false let-go']);
+
+  const otherQ0 = structuredClone(recorded);
+  otherQ0.slowShare.chosen = 0.85;
+  assert.deepEqual(failed(otherQ0), ['q0 chosen', 'q0 false let-go']);
+
+  for (const kind of ['errors', 'slow']) {
+    const regressed = structuredClone(recorded);
+    regressed.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn[kind] += 0.0001;
+    assert.deepEqual(failed(regressed), [`H false return (${kind})`]);
+  }
+
+  const missingLimit = structuredClone(recorded);
+  missingLimit.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn.slow = null;
+  assert.equal(check0019(recorded, missingLimit).find((row) => row.label === 'H false return (slow)').ok, false);
+});
+
+test("CI's let-go gate fails when there are no observations for a measure", () => {
+  const recorded = JSON.parse(readFileSync(new URL('../docs/adr/0019-evaluation.json', import.meta.url), 'utf8')).validation;
+  const empty = structuredClone(recorded);
+  empty.weakRatio.rows.find((row) => row.value === LET_GO.weakRatio).falseLetGo = null;
+  empty.slowShare.rows.find((row) => row.value === LET_GO.slowShare).falseLetGo = null;
+  empty.returnOdds.rows.find((row) => row.returnOdds === LET_GO.returnOdds).falseReturn = { errors: null, slow: null };
+  const failures = check0019(empty, recorded).filter((row) => !row.ok);
+  assert.deepEqual(failures.map((row) => row.label), ['R false let-go', 'q0 false let-go', 'H false return (errors)', 'H false return (slow)']);
+  assert.ok(failures.every((row) => row.detail.includes('no observations')));
+});
+
+test("the learner CLI rejects a check with zero workers", () => {
+  const script = fileURLToPath(new URL('../scripts/evaluate-learner.mjs', import.meta.url));
+  const result = spawnSync(process.execPath, ['--import', 'tsx', script, '--rule', '0019', '--check', '--workers', '0'], { encoding: 'utf8' });
+  assert.equal(result.status, 2, result.stdout + result.stderr);
+  assert.match(result.stderr, /--workers must be a positive integer/);
 });

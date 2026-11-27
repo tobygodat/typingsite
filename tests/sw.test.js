@@ -8,7 +8,7 @@ test('the built worker precaches the emitted app and leaves optional fonts on de
   const shell = JSON.parse(source.match(/const SHELL = (\[[^;]+\]);/)[1]);
 
   const expected = ['/', ...manifest.files.filter((file) => file !== 'index.html' && file !== 'sw.js'
-    && (!/\.(?:ttf|woff2|txt)$/.test(file) || /\/(?:literata|geist-mono)-/.test(file))).map((file) => `/${file}`)];
+    && (!/\.(?:ttf|woff2|txt)$/.test(file) || /\/(?:inter|geist-mono)-/.test(file))).map((file) => `/${file}`)];
 
   assert.deepEqual([...shell].sort(), [...expected].sort());
   assert.equal(new Set(shell).size, shell.length);

@@ -14,11 +14,12 @@ export type { Preferences, Profile, TrainingLoop, Best } from './profile-types.j
 
 // The stored profile's shape: the settings' defaults, and how a stored copy (this device's cache, another
 // tab's, the account row) is read before anything uses or merges it (normalizeProfile).
-import { CARET_GLIDE, normalizeCaretGlide } from './caret-glide.js';
+import { CARET_GLIDE, normalizeCaretGlide, normalizeTypingMotion } from './caret-glide.js';
 import { DEFAULT_SOUND_MODE, DEFAULT_SOUND_VOLUME, normalizeSoundMode, normalizeSoundVolume } from './sound.js';
 import { DEFAULT_SPEED_UNIT, normalizeSpeedUnit } from './units.js';
 import { normalizeLengthPreferences } from './lengths.js';
 import { DRILL_SECONDS, createAttempt, correctionPreference, customTextProblem, normalizeCustomText, replayAttempt } from './typing.js';
+import type { WordFlow } from './typing.js';
 import { normalizeKeybindings } from './keybindings.js';
 import { DEFAULT_LAYOUT, normalizeLayout } from './layouts.js';
 import { DEFAULT_WORD_LIST, wordListIds } from './words.js';
@@ -62,17 +63,20 @@ export const defaultPreferences: Preferences = {
   // Display only, like the text size: never a test condition.
   wordHighlight: DEFAULT_WORD_HIGHLIGHT,
   wordHighlightSlide: false,
-  typingMotion: 'smooth',
+  typingMotion: 'spring',
   caretGlide: CARET_GLIDE.default,
   tape: false,
-  // Where the screens are listed: a side bar, or a bar across the top. Display only.
-  navigation: 'side',
+  // Where the screens are listed: a quiet bar across the top, or a side bar. Display only.
+  navigation: 'top',
   liveMetrics: false,
   keyboard: false,
   stopOnError: false,
   correction: 'relaxed',
   strictSpace: false,
   quickEnd: true,
+  // How a practice run takes a space typed mid-word and letters past a word's end (ADR 0027). A test
+  // condition: fluid runs key apart from linear ones.
+  wordFlow: 'fluid',
   focusMode: false,
   sound: DEFAULT_SOUND_MODE,
   soundVolume: DEFAULT_SOUND_VOLUME,
@@ -100,7 +104,7 @@ export const defaultPreferences: Preferences = {
 };
 
 // Each theme by its ground's luminance (src/styles.css): dark grounds sit below 0.05, light above 0.85.
-export const DARK_THEMES = ['dark', 'terminal', 'midnight', 'nord'];
+export const DARK_THEMES = ['dark', 'slate', 'terminal', 'midnight', 'nord'];
 export const LIGHT_THEMES = ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'];
 
 export const CUSTOM_ORDERS = ['as-written', 'shuffled', 'random'];
@@ -139,6 +143,7 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
   const normalized = {
     strictSpace: value.strictSpace === true,
     quickEnd: value.quickEnd !== false,
+    wordFlow: value.wordFlow === 'linear' ? 'linear' as const : 'fluid' as const,
     correction,
     stopOnError: correction === 'mandatory',
     dailyGoal: includes(DAILY_GOALS, value.dailyGoal) ? value.dailyGoal : 0,
@@ -152,12 +157,12 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
     book: includes(bookIds, value.book) ? value.book : DEFAULT_BOOK,
     wordHighlight: normalizeWordHighlight(value.wordHighlight),
     wordHighlightSlide: value.wordHighlightSlide === true,
-    typingMotion: value.typingMotion === 'instant' ? 'instant' as const : 'smooth' as const,
+    typingMotion: normalizeTypingMotion(value.typingMotion),
     caretGlide: normalizeCaretGlide(value.caretGlide),
     typingFont: normalizeFont(value.typingFont, TYPING_FONTS),
     appFont: normalizeFont(value.appFont, APP_FONTS),
     tape: value.tape === true,
-    navigation: value.navigation === 'top' ? 'top' as const : 'side' as const,
+    navigation: value.navigation === 'side' ? 'side' as const : 'top' as const,
     adaptive: value.adaptive === true,
     repeatQuotes: value.repeatQuotes === true,
     layout: normalizeLayout(value.layout),
@@ -187,7 +192,24 @@ export function validPreferences(value: HistoricalRecord): PreferencesInUse {
 }
 
 // Every setting as used: the stored ones, and the default for each one the profile doesn't store.
-export const preferencesInUse = (stored: Partial<Preferences> | HistoricalRecord = {}) => validPreferences({ ...defaultPreferences, ...stored, correction: correctionPreference(stored) });
+// The word flow a profile that never chose one types under (ADR 0027): linear when it has saved runs or
+// bests and none of them fluid, so an account's bests, averages and Train baselines carry on at the keys
+// they were typed under; fluid for a new profile or a guest. Read, never stored.
+export function historyWordFlow(profile: HistoricalRecord | null = null): WordFlow {
+  const runs = Array.isArray(profile?.runs) ? profile.runs : [];
+  const bests = isRecord(profile?.bests) ? Object.keys(profile.bests) : [];
+
+  if (!runs.length && !bests.length) return 'fluid';
+
+  const fluid = runs.some((run: unknown) => isRecord(run) && isRecord(run.conditions) && run.conditions.wordFlow === 'fluid')
+    || bests.some((key) => key.split(':').includes('word-flow'));
+
+  return fluid ? 'fluid' : 'linear';
+}
+
+export const profileDefaults = (profile: HistoricalRecord | null = null) => ({ ...defaultPreferences, wordFlow: historyWordFlow(profile) });
+
+export const preferencesInUse = (stored: Partial<Preferences> | HistoricalRecord = {}, profile: HistoricalRecord | null = null) => validPreferences({ ...profileDefaults(profile), ...stored, correction: correctionPreference(stored) });
 
 // The settings a stored copy holds, each made one this build can use, and no others. A setting the copy
 // lacks (its build didn't have it, or it was never chosen) stays absent rather than filled in with its

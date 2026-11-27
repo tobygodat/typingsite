@@ -447,25 +447,27 @@ export const THEME_COPY = {
 
 const THEME_ERRORS = ['vibe', 'limit', 'refused', 'timeout', 'failed', 'config', 'session'];
 
-export async function generateTheme(session: Session | null, vibe: string) {
+export async function generateTheme(session: Session | null, vibe: string, { signal }: { signal?: AbortSignal } = {}) {
   const lifetime = accountLifetime();
   let current;
 
   try {
-    current = await freshSession(session);
+    current = await freshSession(session, { signal });
   } catch {
+    if (signal?.aborted) throw signal.reason;
     throw new AuthError(THEME_COPY.session);
   }
 
   if (!current) throw new AuthError(THEME_COPY.session);
 
   try {
-    const data = decodeReply(Schema.Struct({ theme: Schema.optional(GeneratedThemeSchema) }), await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe }, lifetime }));
+    const data = decodeReply(Schema.Struct({ theme: Schema.optional(GeneratedThemeSchema) }), await request(GENERATE_THEME_PATH, { method: 'POST', token: current.access_token, body: { vibe }, lifetime, signal }));
 
     if (!data?.theme) throw new AuthError(THEME_COPY.failed);
 
     return data.theme;
   } catch (cause) {
+    if (signal?.aborted) throw signal.reason;
     const error = errorDetails(cause);
 
     // The function's own errors are already one short line; a gateway's or no reply aren't.

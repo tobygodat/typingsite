@@ -2,7 +2,7 @@
 // settings → appearance in its mode, a shot of the path. Run with --delay 40.
 import { history } from './train-path.mjs';
 
-const MODES = { dark: ['dark', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
+const MODES = { dark: ['dark', 'slate', 'terminal', 'midnight', 'nord'], light: ['light', 'paper', 'shadcn', 'soft', 'swiss', 'e-ink'] };
 
 export default async ({ page, h, shot, check, fake }) => {
   const user = fake.addUser('path-themes@stilltype.test');

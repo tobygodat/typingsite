@@ -2,7 +2,7 @@ import { PROGRESS_DETAILS } from './progress-navigation.js';
 import { useSyncExternalStore } from 'react';
 import { ProgressFilters, ProgressPeriodControl } from './progress-filters.js';
 import { PracticeCalendarPanel, ProgressPracticeFigures } from './progress-calendar.js';
-import { ProgressRunRows, ProgressCompositions, ProgressCells, ProgressMovers, ProgressRunsPanel, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
+import { ProgressRunRows, ProgressCompositions, ProgressCells, ProgressMovers, ProgressPairs, ProgressRunsPanel, ProgressTrendFigures, ProgressTrendNote } from './progress-sections.js';
 import type { LearningStore } from './learning-store.js';
 import { HistoryLoops } from './history-loops.js';
 import { unitText } from './units.js';
@@ -49,6 +49,8 @@ export function ProgressScreen({ learning, visible = false }: { learning: Learni
               <div id="week-accuracy" className="week-chart-slot"></div>
             </section>
           </div>
+
+          <ProgressPairs progress={progress} />
 
           <PracticeCalendarPanel controller={progress.calendar} onOpen={(opener) => navigation.open('calendar', { opener })} />
 

@@ -45,7 +45,7 @@ async function goOffline(page) {
 
 test('the app installs, reloads offline and still types', async ({ page }) => {
   const manifest = await (await page.request.get('/manifest.webmanifest')).json();
-  expect(manifest).toMatchObject({ name: 'Stilltype', start_url: '/', display: 'standalone', background_color: '#0f0f0e' });
+  expect(manifest).toMatchObject({ name: 'Stilltype', start_url: '/', display: 'standalone', background_color: '#0b0b0d' });
   await goOffline(page);
   expect(await page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
   const text = await passageText(page);

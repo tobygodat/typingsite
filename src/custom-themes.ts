@@ -29,6 +29,7 @@ export const THEME_TOKENS = [
   { name: 'raised', label: 'raised', derived: true },
   { name: 'card-top', label: 'card top', derived: true },
   { name: 'card-bottom', label: 'card bottom', derived: true },
+  { name: 'untyped', label: 'untyped text', derived: true },
   { name: 'outline', label: 'outline', derived: true },
   { name: 'selection', label: 'selection', derived: true },
   { name: 'raised-2', label: 'hover', derived: true },
@@ -88,28 +89,49 @@ export const mix = (top: string, under: string, alpha: number) => toHex(channels
 // the two are equal).
 export const themeMode = <Colors extends Pick<ThemeColors, 'ground'>>(colors: Colors) => (luminance(colors.ground) > 0.179 ? 'light' : 'dark');
 
-// What has to stay readable on the background: passage text (typed and untyped) and the coral of a
-// mistyped letter on its tint need 4.5:1 (WCAG AA for text), the caret 3:1 (AA for non-text).
-// The tint's share matches the stylesheet's derived --danger-soft.
+// The share of muted text in the derived --untyped, as `:root[data-theme][data-custom]` in src/styles.css mixes
+// it. At 70% any muted that holds 4.5:1 on the background gives untyped letters at least 2.2:1, on dark, light and
+// mid-grey backgrounds alike (tests/custom-themes.test.js checks).
+export const UNTYPED_SHARE = 0.7;
+
+// What has to stay readable on the background (DESIGN.md): text, muted labels, the accent (the selected setup
+// choices and the running clock are set in it, and it is the caret) and the coral of a mistyped letter on its tint
+// need 4.5:1, WCAG AA for text. Passage letters not yet typed are softer on purpose and need 2.2:1. The tint's
+// share matches the stylesheet's derived --danger-soft, and untyped's its derived --untyped.
 export const READABLE = [
   { name: 'text', min: 4.5 },
   { name: 'muted', min: 4.5 },
-  { name: 'accent', min: 3 },
+  { name: 'untyped', min: 2.2 },
+  { name: 'accent', min: 4.5 },
   { name: 'danger', min: 4.5 },
 ];
 
 export function contrastIssues(colors: ThemeColors) {
   const issues: Record<string, number> = {};
   const tint = colors['danger-soft'] || mix(colors.danger, colors.ground, themeMode(colors) === 'light' ? 0.12 : 0.16);
+  const untyped = colors.untyped || mix(colors.muted ?? '', colors.ground, UNTYPED_SHARE);
 
   for (const { name, min } of READABLE) {
     const under = name === 'danger' ? tint : colors.ground;
-    const ratio = contrast(colors[name] ?? '', under);
+    const ratio = contrast(name === 'untyped' ? untyped : colors[name] ?? '', under);
 
     if (ratio < min) issues[name] = Math.floor(ratio * 10) / 10;
   }
 
   return issues;
+}
+
+export function generatedColors(received: Record<string, string>): ThemeColors | null {
+  const colors: Record<string, string> = {};
+
+  for (const token of BASE_TOKENS) {
+    const hex = normalizeHex(received[token]);
+
+    if (!hex) return null;
+    colors[token] = hex;
+  }
+
+  return validColors(colors) ? colors : null;
 }
 
 export const cleanThemeName = (value: unknown) => (typeof value === 'string' ? value.replaceAll(/\s+/g, ' ').trim().slice(0, MAX_THEME_NAME) : '');

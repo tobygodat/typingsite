@@ -30,7 +30,7 @@ export function FriendsBoard({ controller }: { controller: FriendsBoardControlle
       <button id="refresh-friends-board" className="btn btn-ghost btn-sm" type="button" hidden={!view.signedIn} aria-disabled={view.loading ? 'true' : undefined} onClick={() => { if (!view.loading) void controller.refresh({ manual: true }); }}>Refresh</button>
     </div>
     <div id="friends-board-guest" className="friends-board-guest" hidden={view.signedIn}>
-      <button id="friends-board-signin" className="btn btn-secondary" type="button" onClick={() => controller.signIn()}>Sign in</button>
+      <button id="friends-board-signin" className="btn btn-secondary" type="button" onClick={() => controller.signIn()}>Sign in to compare with friends</button>
     </div>
     <div id="friends-board-share" className="friends-board-share" hidden={!view.signedIn}>
       <label className="compact-switch" htmlFor="share-board"><input id="share-board" className="switch" type="checkbox" checked={view.switchedOn} onChange={(event) => { void controller.setShare(event.currentTarget.checked); }} /><span>share on friends board</span></label>
@@ -60,7 +60,7 @@ export function FriendsBoard({ controller }: { controller: FriendsBoardControlle
         <p id="board-bests-meta" className="condition-copy" hidden={!view.shapeDescription}>{view.shapeDescription}</p>
         <ol id="board-bests" className="board-list" role="list" hidden={!view.shapes.length}>{bests.map((entry, index) => entry.best
           ? <BoardItem key={rowKey(entry, index)} entry={entry} value={speed(entry.best.wpm)} unit={unit()} detail={`${entry.best.accuracy}% accuracy · ${entry.best.date}`} />
-          : <BoardItem key={rowKey(entry, index)} entry={entry} value="—" detail={entry.otherVersion ? 'another version of this shape · not compared' : 'no best on this shape yet'} />)}</ol>
+          : <BoardItem key={rowKey(entry, index)} entry={entry} value="—" detail={entry.otherVersion ? 'another version of these conditions · not compared' : 'no best at these conditions yet'} />)}</ol>
         <p id="board-bests-none" className="friends-board-note" hidden={view.shapes.length > 0}>No bests yet.</p>
       </section>
     </div>

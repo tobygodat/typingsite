@@ -1,5 +1,5 @@
 // Afterimage chrome: theme, settings, command palette, ghost pacer, the still-run fade and reduced motion.
-import { test, expect, openApp, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys, chooseSetting, closeSettings } from './fixtures.js';
+import { test, expect, openApp, openView, passageText, typeInto, chooseWords, completePassage, openSettings, storageKeys, chooseSetting, closeSettings, phone } from './fixtures.js';
 
 const html = (page) => page.locator('html');
 
@@ -17,13 +17,13 @@ test.describe('theme', () => {
     await page.emulateMedia({ colorScheme: 'light' });
     await openApp(page);
     await expect(html(page)).toHaveAttribute('data-theme', 'light');
-    await expect(themeColor(page)).toHaveAttribute('content', '#f4f1eb');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(244, 241, 235)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#f6f6f4');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(246, 246, 244)');
 
     await page.emulateMedia({ colorScheme: 'dark' });
     await expect(html(page)).toHaveAttribute('data-theme', 'dark');
-    await expect(themeColor(page)).toHaveAttribute('content', '#0f0f0e');
-    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(15, 15, 14)');
+    await expect(themeColor(page)).toHaveAttribute('content', '#0b0b0d');
+    await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(11, 11, 13)');
 
     await openSettings(page);
     await chooseSetting(page, 'theme-select', 'light');
@@ -93,7 +93,7 @@ test('settings apply their display preferences', async ({ page }) => {
   await openApp(page);
   await openSettings(page);
 
-  for (const [size, px] of [['22', '29px'], ['36', '44px'], ['28', '36px']]) {
+  for (const [size, px] of [['22', '22px'], ['36', '34px'], ['28', '26px']]) {
     await chooseSetting(page, 'font-size', size);
     await expect(page.locator('#text-display')).toHaveCSS('font-size', px);
   }
@@ -274,28 +274,26 @@ test.describe('reduced motion', () => {
   });
 });
 
-// ⌘K pressed while the palette fades out after Escape opens it again (TOB-448). The fade once counted as open, so the
-// press closed it a second time and the palette was gone. The page's clock holds the fade still, so this is the
-// same on any machine.
-test('the commands binding reopens the palette while it fades out', async ({ page }) => {
+// The palette closes on Escape's own frame, with no fade, so ⌘K pressed straight after opens it again (TOB-448: a
+// fade once counted as open, and that press closed it a second time). The page's clock stands still, so nothing
+// here waits on a timer.
+test('Escape closes the palette at once, and the commands binding reopens it straight after', async ({ page }) => {
   await page.clock.install();
   await openApp(page);
   await page.keyboard.press('Control+k');
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.keyboard.press('Escape');
-  await expect(page.locator('#palette')).toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
+  await expect(page.locator('#typing-input')).toBeFocused();
   await page.keyboard.press('Control+k');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).toHaveAttribute('open', '');
-  await expect(page.locator('#palette')).not.toHaveClass(/is-closing/);
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(true);
   await expect(page.locator('#palette-input')).toBeFocused();
   await page.locator('#palette-input').fill('practice c');
   await expect(page.locator('#palette-list [aria-selected="true"] .opt-text')).toHaveText('practice calendar');
 
   // Escape still closes it, and focus goes back where it was before the first press.
   await page.keyboard.press('Escape');
-  await page.clock.runFor(1000);
-  await expect(page.locator('#palette')).not.toHaveAttribute('open', '');
+  expect(await page.locator('#palette').evaluate((dialog) => dialog.open)).toBe(false);
   await expect(page.locator('#typing-input')).toBeFocused();
 });
 
@@ -330,4 +328,155 @@ test('a palette jump puts focus on the new screen’s heading, or in the passage
     await page.keyboard.press('Enter');
     await expect(page.locator(target)).toBeFocused();
   }
+});
+
+async function holdJustInside(page, locator, edge) {
+  const box = await locator.boundingBox();
+  const x = { left: box.x + 0.5, right: box.x + box.width - 0.5 }[edge] ?? box.x + box.width / 2;
+  const y = { top: box.y + 0.5, bottom: box.y + box.height - 0.5 }[edge] ?? box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+}
+
+// A press scales its control to 97%. Held just inside an edge, the release must still land on the control the press
+// began on, not on the neighbour or the group around both. Engines hit-test a little past a box's edge, so the check
+// compares the two targets instead of naming one.
+test('a press held just inside a control’s edge clicks the control it began on', { tag: '@compat' }, async ({ page }) => {
+  await openApp(page);
+
+  for (const edge of ['left', 'right', 'top', 'bottom']) {
+    await page.locator('#mode-time').click();
+    await expect(page.locator('#mode-time')).toHaveCSS('transform', 'none');
+    await expect(page.locator('#mode-words')).toHaveCSS('transform', 'none');
+
+    const targets = page.evaluate(() => new Promise((resolve) => {
+      let down;
+
+      document.addEventListener('pointerdown', (event) => { down = event.target.id; }, { once: true, capture: true });
+      document.addEventListener('click', (event) => resolve({ down, click: event.target.id }), { once: true, capture: true });
+    }));
+
+    await holdJustInside(page, page.locator('#mode-words'), edge);
+    const { down, click } = await targets;
+    expect(down, edge).toMatch(/^mode-/);
+    expect(click, edge).toBe(down);
+    await expect(page.locator(`#${down}`), edge).toHaveAttribute('aria-pressed', 'true');
+  }
+});
+
+// Audit TYP-97 P1-1 to P1-3: one challenge tab looks selected, the dock's visible words are in its
+// accessible names at every width, and key hints stay off touch-only devices.
+
+// The foot links of Challenge's people list each open one view, with Back to the list and focus back on the link.
+const VIEWS = [['open-daily', 'challenge-daily-view', 'daily-heading'], ['open-local', 'challenge-local-view', 'local-heading']];
+
+async function startLocalRace(page) {
+  await page.locator('#open-local').click();
+  await page.locator('#player-one-name').fill('Ada');
+  await page.locator('#player-two-name').fill('Bo');
+  await page.locator('#start-local-race').click();
+  await expect(page.locator('#race-stage')).toBeVisible();
+}
+
+test.describe('challenge views', () => {
+  for (const scheme of ['dark', 'light']) {
+    test(`each foot link opens its view, and Back returns to the list, ${scheme}`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      await openApp(page);
+      await openView(page, 'Challenge');
+
+      for (const [link, view, heading] of VIEWS) {
+        await page.locator(`#${link}`).click();
+        await expect(page.locator(`#${view}`)).toBeVisible();
+        await expect(page.locator(`#${heading}`)).toBeFocused();
+        await expect(page.locator('#challenge-people')).toBeHidden();
+        await page.locator(`#${view} [data-challenge-back]`).click();
+        await expect(page.locator('#challenge-people')).toBeVisible();
+        await expect(page.locator(`#${link}`)).toBeFocused();
+      }
+
+      // Leaving Challenge and coming back opens the list again, wherever it was left.
+      await startLocalRace(page);
+      await openView(page, 'Progress');
+      await openView(page, 'Challenge');
+      await expect(page.locator('#challenge-people')).toBeVisible();
+      await expect(page.locator('#challenge-local-view')).toBeHidden();
+    });
+  }
+});
+
+test.describe('dock labels at 320px', () => {
+  test.use({ viewport: { width: 320, height: 568 }, ...phone });
+
+  test('each visible word is in its accessible name, and none clips', async ({ page }) => {
+    await openApp(page);
+    const items = page.getByRole('navigation', { name: 'Main navigation' }).locator('.nav-item');
+
+    const visible = await items.evaluateAll((buttons) => buttons.map((button) => [...button.childNodes]
+      .flatMap((node) => (node.nodeType === Node.TEXT_NODE || node.getBoundingClientRect().width > 1 ? [node.textContent] : []))
+      .join('').trim()));
+
+    expect(visible).toEqual(['type', 'train', 'track', 'race']);
+    const names = ['type practice', 'train', 'track progress', 'race challenge'];
+
+    for (const [index, name] of names.entries()) {
+      await expect(items.nth(index)).toHaveAccessibleName(name);
+      expect(name.startsWith(visible[index])).toBe(true);
+    }
+
+    for (const overflow of await items.evaluateAll((buttons) => buttons.map((button) => button.scrollWidth - button.clientWidth))) {
+      expect(overflow).toBeLessThanOrEqual(0);
+    }
+
+    // The full word stays in the name, so the specs' openView(page, 'Progress') still finds it.
+    await openView(page, 'Progress');
+    await expect(page.locator('body')).toHaveAttribute('data-view', 'progress');
+  });
+});
+
+test('dock names are the visible words at 1280px', async ({ page }) => {
+  await openApp(page);
+  const items = page.getByRole('navigation', { name: 'Main navigation' }).locator('.nav-item');
+
+  for (const [index, name] of ['practice', 'train', 'progress', 'challenge'].entries()) {
+    await expect(items.nth(index)).toHaveAccessibleName(name);
+    await expect(items.nth(index)).toHaveText(name, { useInnerText: true });
+  }
+});
+
+test.describe('key hints on a touch-only phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, ...phone });
+
+  test('no esc hints in the one-keyboard race or on settings close', async ({ page }) => {
+    await openApp(page);
+    expect(await page.evaluate(() => [matchMedia('(any-pointer: coarse)').matches, matchMedia('(any-pointer: fine)').matches])).toEqual([true, false]);
+    await openView(page, 'Challenge');
+    await startLocalRace(page);
+    await expect(page.locator('#race-help')).toHaveText('', { useInnerText: true });
+    await expect(page.locator('#race-input')).not.toHaveAccessibleDescription(/restart/i);
+
+    await openSettings(page);
+    const close = page.locator('#settings-close');
+    await expect(close).toHaveText('×', { useInnerText: true });
+    await expect(close).toHaveAccessibleName('Close settings');
+    const box = await close.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    await page.keyboard.press('Escape');
+    await page.locator('#palette-trigger').click();
+    await expect(page.locator('#palette .palette-search kbd')).toBeHidden();
+  });
+});
+
+test('a fine pointer keeps the esc hints', async ({ page }) => {
+  await openApp(page);
+  await openView(page, 'Challenge');
+  await startLocalRace(page);
+  await expect(page.locator('#race-help')).toHaveText('esc restarts.', { useInnerText: true });
+  await expect(page.locator('#race-input')).toHaveAccessibleDescription(/esc restarts\./);
+  await page.keyboard.press('Escape');
+  await openSettings(page);
+  await expect(page.locator('#settings-close')).toHaveText(/esc\s*×/, { useInnerText: true });
 });
