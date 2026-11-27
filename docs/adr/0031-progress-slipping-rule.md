@@ -131,7 +131,7 @@ If any clause fails, `src/week-change.ts` remains slipping-free and the failure 
 
 ## Results
 
-The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write ADR 0028 slipping decision rule before running test seeds (TOB-511)") before any held-out test seed ran. Held-out test seeds `601..630` ran once (`node --import tsx scripts/evaluate-slipping.mjs --test --json docs/adr/0031-evaluation.json --workers 12`, 5,940 cells, 11,880 simulated weeks: 5,400 null weeks and 6,480 alternative weeks, 84.3 s), and the full record is saved in [`0028-evaluation.json`](0028-evaluation.json).
+The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write ADR 0028 slipping decision rule before running test seeds (TOB-511)") before any held-out test seed ran. Held-out test seeds `601..630` ran once (`node --import tsx scripts/evaluate-slipping.mjs --test --json docs/adr/0031-evaluation.json --workers 12`, 5,940 cells, 11,880 simulated weeks: 5,400 null weeks and 6,480 alternative weeks, 84.3 s), and the full record is saved in [`0031-evaluation.json`](0031-evaluation.json).
 
 **`day-level-0031` passes every pre-registered clause.**
 
