@@ -195,7 +195,7 @@ export function OnlineRaceRoom({ controller }: Props) {
     </form>
     <section id="online-room" className="panel online-room" aria-labelledby="online-room-heading" hidden={!room}>
       <div className="panel-head"><h2 id="online-room-heading" className="panel-title">your race</h2><button id="online-leave" className="btn btn-ghost btn-sm" type="button" aria-disabled={view.busy || undefined} onClick={controller.close}>{closed ? 'Close race' : 'Leave race'}</button></div>
-      <p id="online-room-conditions" className="condition-copy">{room?.conditions?.mode ? raceSetupText(room.conditions) : ''}</p><p id="online-room-status" className="online-copy" role="status">{room ? roomStatus(room, view.finishRequested) : ''}</p>
+      <p id="online-room-conditions" className="condition-copy">{room?.conditions?.mode ? raceSetupText(room.conditions) : ''}</p><p id="online-room-status" className="online-copy" role="status">{room ? roomStatus(room, view.finishRequested, view.uncounted) : ''}</p>
       <p id="online-rating-change" className={`online-copy${carded ? ' sr-only' : ''}`} role="status" hidden={!result}>{result?.sentence || ''}</p>
       {view.controllers && <RankCard controller={view.controllers.rankCard} />}
       <p id="online-connection" className="online-copy" role="status">{view.connection}</p><p id="online-account-invite-status" className="online-copy" role="status" hidden={!view.accountInvite}>{view.accountInvite}</p>
