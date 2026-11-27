@@ -15,7 +15,7 @@ npm test
 
 The runner starts the local build on port 4273 and writes a report under `.e2e/`. Set `E2E_PILOT_PORT` if 4273 is taken, and `E2E_PILOT_BROWSERS` to `chromium` (the default), `firefox`, `webkit` or a comma-separated list. Pass `--repeat-each`, `--retries` or a file name after `npm test --`.
 
-The tests use the Playwright suite's fake Supabase (`e2e/fake-supabase.js`), which imports app sources by their `.js` names, so `npm test` loads tsx (from the root `node_modules`) to resolve them. Every test refuses requests to other origins and fails on a page error or `console.error`.
+The tests use the Playwright suite's fake Supabase (`e2e/fake-supabase.js`), which imports app sources by their `.js` names, so `npm test` loads tsx (from the root `node_modules`) to resolve them. Every test refuses requests to other origins. The ported tests also fail on a page error or `console.error` the page itself raises; unlike the Playwright fixture, they miss errors the browser logs on its own.
 
 | Test | Ports |
 | --- | --- |

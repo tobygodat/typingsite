@@ -64,7 +64,7 @@ for (const leave of ['edit', 'escape']) {
     expect(outcome).not.toBe('still open');
     expect(outcome).toBeTruthy();
     await expect(browser.locator('#palette-theme')).toHaveAttribute('data-status', 'idle');
-    expect(await browser.evaluate(() => document.querySelector<HTMLDialogElement>('#palette')!.open)).toBe(true);
+    await expect.poll(() => browser.evaluate(() => document.querySelector<HTMLDialogElement>('#palette')!.open)).toBe(true);
     await tearDown(browser, supabase);
   });
 }
