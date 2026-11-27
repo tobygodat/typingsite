@@ -9,7 +9,7 @@ import { appendFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const ENTRIES = ['scripts/evaluate-let-go.mjs', 'scripts/evaluate-learner.mjs'];
+const ENTRIES = ['scripts/evaluate-let-go.mjs', 'scripts/evaluate-let-go-v3.mjs', 'scripts/evaluate-learner.mjs'];
 
 // Read at run time, or decide how the job runs, so outside the import graph.
 const ALWAYS = [/^scripts\/evaluate-[^/]*\.mjs$/, /^scripts\/learner-eval-scope\.mjs$/, /^docs\/adr\/0019-evaluation\.json$/,

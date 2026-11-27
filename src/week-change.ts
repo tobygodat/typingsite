@@ -28,7 +28,7 @@ export type Mover = { unit: string; split: 'drill' | 'week'; weight: number } & 
 // The lead compares fresh-text runs at one condition key, a week against the week before (weeklyChange). The movers
 // read every measured run on that key's keyboard, as Train does, in the train focus.
 
-import { MAX_PATTERN_RUNS, comparableKind, dayKey, evidenceRun, filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, runDay, trendRun, weeklyChange } from './insights.js';
+import { MAX_PATTERN_RUNS, comparableKind, dayKey, evidenceRun, filterRuns, minutesByDay, periodDays, periodWindow, practiceStreak, retainRuns, runDay, trendRun, weeklyChange } from './insights.js';
 import { DEFAULT_POLICY, HALF_LIFE_DAYS, LEARNER_VARIANTS, SLOW_FLOOR_MS, UNCERTAINTY_Z, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, paceShift } from './learner.js';
 import { FIXED_OBSERVATIONS, evidenceSince, isFixed, sinceDrilled } from './train-path.js';
 
@@ -151,10 +151,12 @@ function preWeekWeights(earlier: LearnerEvidence[], trimmed: { id: string; at: n
 // Ranked by what each saved in the learner's terms: the change in its gain, the time it loses per letter typed,
 // between the two fits. Largest first, then by unit.
 export function weekMovers({ runs, loops: rawLoops = [], keyboard, focus, now, began }: { runs: readonly unknown[]; loops?: readonly unknown[]; keyboard: string; focus: string; now: number; began: number }) {
-  const parsedRuns = analysisRuns(runs);
   const loops = analysisLoops(rawLoops);
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
-  const records = learnerEvidence(runs, keyboard);
+  // Match recommendFor: DEFAULT_POLICY reads the newest 120 pattern-carrying runs, even when retainRuns keeps older
+  // post-drill runs for learner-let-go@3 (ADR 0029). trimmedBefore reads the same view, so it sees what the fit lost.
+  const parsedRuns = variant.letGoVersion === 3 ? analysisRuns(runs) : retainRuns(analysisRuns(runs), { drills: false });
+  const records = learnerEvidence(parsedRuns, keyboard);
   const earlier = records.filter((record) => record.at === null || record.at < began);
   const [modelNow, modelThen] = [fitLearner(records, now, variant, focus), fitLearner(earlier, began, variant, focus)];
   const queuedNow = new Set(learnerRecommendation(modelNow).queue.map((item) => item.unit));
@@ -702,7 +704,8 @@ export function detectSlips(records: LearnerEvidence[], began: number, queuedNow
 // (ADR 0031). Pure engine exported for UI hookup once Progress's visible presentation is reviewed (DESIGN.md).
 export function weekSlips({ runs, keyboard, focus, now, began }: { runs: readonly unknown[]; keyboard: string; focus: string; now: number; began: number }): Slip[] {
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
-  const records = learnerEvidence(runs, keyboard);
+  const read = variant.letGoVersion === 3 ? runs : retainRuns(analysisRuns(runs), { drills: false });
+  const records = learnerEvidence(read, keyboard);
   const earlier = records.filter((record) => record.at === null || record.at < began);
   const [modelNow, modelThen] = [fitLearner(records, now, variant, focus), fitLearner(earlier, began, variant, focus)];
   const queuedNow = new Set(learnerRecommendation(modelNow).queue.map((item) => item.unit));

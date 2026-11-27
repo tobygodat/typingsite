@@ -47,10 +47,10 @@ export function createHistorySelection(learning: LearningStore, practice: Practi
     }) || null;
   }
 
-  function recommendation(source: ConditionLabelSource | undefined, current: HistoricalTrace | null = null) {
+  function recommendation(source: ConditionLabelSource | undefined, current: HistoricalTrace | null = null, { adaptive = false } = {}) {
     const traces = current && !learning.profile.attempts.includes(current) ? [...learning.profile.attempts, current] : learning.profile.attempts;
 
-    return recommendFor(DEFAULT_POLICY, { runs: learning.profile.runs, loops: learning.profile.loops, traces, source, now: Date.now(), focus: learning.preferences.trainFocus });
+    return recommendFor(DEFAULT_POLICY, { runs: learning.profile.runs, loops: learning.profile.loops, traces, source, now: Date.now(), focus: learning.preferences.trainFocus, adaptive });
   }
 
   function forgetCleared() {

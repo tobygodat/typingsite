@@ -4,7 +4,7 @@ import type { PatternAttempt } from './domain-history.js';
 import type { AnalysisRun, ScoredRun, HistoricalRecord } from './profile-types.js';
 import { at as indexed, entry, isRecord } from './domain-values.js';
 
-interface RetentionRun { kind?: string; status?: string; interrupted?: boolean; fresh?: boolean; patterns?: unknown[]; keys?: unknown[]; corrections?: unknown; missedWords?: unknown }
+interface RetentionRun { kind?: string; status?: string; interrupted?: boolean; fresh?: boolean; patterns?: unknown[]; keys?: unknown[]; corrections?: unknown; missedWords?: unknown; adaptivePatterns?: unknown[] }
 
 export interface PracticeRecord extends RetentionRun { id?: unknown; at?: string | null; day?: string | null; elapsedMs?: number }
 
@@ -19,7 +19,7 @@ interface Shape { id: string; mode: unknown; size: string; variants: Map<string,
 interface RecurringPair { pair: string; observations: number; errors: number; runs: number; errorRuns: number; slowRuns: number; lastAt: string | null }
 
 import type { Attempt, Conditions, Replay } from './typing.js';
-import type { RunRecord, KeyCounts } from './profile-types.js';
+import type { RunRecord, KeyCounts, PatternCounts } from './profile-types.js';
 import { skippedText } from './word-flow.js';
 
 export type { RunRecord, KeyCounts, PatternCounts } from './profile-types.js';
@@ -32,6 +32,17 @@ import { CORPUS_VERSION, METRIC_VERSION, conditionKey, inputRules, printable, re
 
 export const MAX_RUN_SUMMARIES = 1000;
 export const MAX_PATTERN_RUNS = 120;
+
+// ADR 0029. Pattern evidence is also kept for the runs since each kept drill, so the let-go walk never restarts when
+// a retest leaves the newest 120: from TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest on, at most
+// MAX_DRILL_WINDOW pattern-carrying runs. The typical rate of a drill is read from the TYPICAL_RUNS before it.
+export const TYPICAL_RUNS = 40;
+export const KEPT_RETESTS = 8;
+export const MAX_DRILL_WINDOW = 240;
+
+// An adaptive run keeps the rows of at most ADAPTIVE_ROWS pairs it typed at least ADAPTIVE_MIN_TRIES first tries of.
+export const ADAPTIVE_ROWS = 8;
+export const ADAPTIVE_MIN_TRIES = 5;
 export const MAX_TRACES = 24;
 
 // Characters of JSON for the full traces together. One 600 s trace at 130 wpm is about 1.5 million,
@@ -180,6 +191,13 @@ export function runRecord(attempt: Attempt, at = attempt.at || null) {
   // A drill's length, from the drill length setting. Drills saved without it ran 30 seconds.
   if (attempt.drillSeconds) record.drillSeconds = attempt.drillSeconds;
 
+  // An adaptive run's rows for the pairs it leaned on: evidence for letting a drilled target go, never for the fit.
+  if (attempt.adaptive) {
+    const rows = adaptiveRows(attempt);
+
+    if (rows.length) record.adaptivePatterns = rows;
+  }
+
   // Pattern counts only feed recurring targets, which never read custom text or missed-word practice.
   if (!comparableKind(attempt.kind)) return record;
   const evidence = summarizePatterns([attempt]);
@@ -199,6 +217,15 @@ export function runRecord(attempt: Attempt, at = attempt.at || null) {
   return record;
 }
 
+// The pattern rows of the pairs an adaptive attempt typed most (see ADAPTIVE_ROWS), as `patterns` holds them.
+function adaptiveRows(attempt: Attempt) {
+  if (attempt.status !== 'complete' || attempt.interrupted || attempt.unsupportedInput) return [];
+
+  return summarizePatterns([{ ...attempt, kind: 'test' }]).pairs.filter((p) => p.observations >= ADAPTIVE_MIN_TRIES)
+    .sort((a, b) => b.observations - a.observations || (a.pair < b.pair ? -1 : 1)).slice(0, ADAPTIVE_ROWS)
+    .map((p): PatternCounts => [p.pair, p.observations, p.errors, p.timings.length, p.medianMs, p.slowdownMs]);
+}
+
 // Pattern counts, key counts or correction times on a summary: what the pattern window keeps or removes.
 const carriesCounts = (run: RetentionRun) => Boolean(run.patterns?.length || run.keys?.length || 'corrections' in run);
 
@@ -209,19 +236,27 @@ const carriesCounts = (run: RetentionRun) => Boolean(run.patterns?.length || run
 // Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
 // from the end means drills between them never push counted runs out of the list's window (word practice and
 // custom text are on their own budget anyway).
-export function retainRuns<T extends RetentionRun>(runs: T[]) {
+export function retainRuns<T extends RetentionRun>(runs: T[], { drills = false } = {}) {
   const comparable = runs.filter((run) => comparableKind(run.kind));
   const other = runs.filter((run) => !comparableKind(run.kind));
   const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
-  const withPatterns = new Set(comparable.filter((run) => kept.has(run) && carriesCounts(run)).slice(-MAX_PATTERN_RUNS));
+  const carrying = comparable.filter((run) => kept.has(run) && carriesCounts(run));
+  // ADR 0029: with `drills`, the window reaches back TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest. Only its
+  // evaluation asks for it; the app keeps the newest 120, since no shipped variant reads further back.
+  const retests = carrying.flatMap((run, at) => (run.kind === 'retest' ? [at] : []));
+  const anchor = drills && retests.length ? Math.max(0, (retests[Math.max(0, retests.length - KEPT_RETESTS)] ?? 0) - TYPICAL_RUNS) : carrying.length;
+  const start = Math.max(carrying.length - MAX_DRILL_WINDOW, Math.min(carrying.length - MAX_PATTERN_RUNS, anchor), 0);
+  const withPatterns = new Set(carrying.slice(start));
   const withWords = new Set(comparable.filter((run) => kept.has(run) && missedWordsRun(run)).slice(-MAX_PATTERN_RUNS));
+  const first = runs.findIndex((run) => withPatterns.has(run));
 
-  return runs.flatMap((run) => {
+  return runs.flatMap((run, position) => {
     if (!kept.has(run)) return [];
     const trimPatterns = comparableKind(run.kind) && carriesCounts(run) && !withPatterns.has(run);
     const trimWords = 'missedWords' in run && !withWords.has(run);
+    const trimAdaptive = 'adaptivePatterns' in run && (first < 0 || position < first);
 
-    if (!trimPatterns && !trimWords) return [run];
+    if (!trimPatterns && !trimWords && !trimAdaptive) return [run];
     // Drop missed words rather than empty them: an empty list would read as a run with no misses.
     const { missedWords, ...rest } = run;
 
@@ -231,6 +266,8 @@ export function retainRuns<T extends RetentionRun>(runs: T[]) {
       Object.assign(trimmed, { patterns: [], keys: [] });
       delete trimmed.corrections;
     }
+
+    if (trimAdaptive) delete trimmed.adaptivePatterns;
 
     return [trimmed];
   });

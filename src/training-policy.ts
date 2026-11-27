@@ -18,7 +18,7 @@ interface TrainingPolicyPorts {
   conditions(): Conditions;
   inputLayout(input: InputClass): string;
   retainedBaseline(source?: ConditionLabelSource | null): HistoricalTrace | null;
-  recommendation(source: ConditionLabelSource): Recommendation;
+  recommendation(source: ConditionLabelSource, current?: HistoricalTrace | null, options?: { adaptive?: boolean }): Recommendation;
   reset(kind: SessionKind, options?: { focus?: boolean }): void;
   controls(): void; applyPreferences(): void; manual(open: boolean): void;
   unavailable(reason: string): void; description(text: string): void;
@@ -40,7 +40,7 @@ function adaptivePassage() {
   }
 
   if (!learning.preferences.adaptive || !['time', 'words'].some((mode) => mode === learning.preferences.mode)) return null;
-  const { lean, runs } = ports.recommendation(ports.conditions());
+  const { lean, runs } = ports.recommendation(ports.conditions(), null, { adaptive: true });
 
   return runs && lean.length ? { ...makeAdaptive(lean, { mode: learning.preferences.mode, count: learning.preferences.count, duration: learning.preferences.duration, punctuation: learning.preferences.punctuation,
     numbers: Boolean(learning.preferences.numbers), wordList: learning.preferences.wordList }), trainFocus: learning.preferences.trainFocus } : null;

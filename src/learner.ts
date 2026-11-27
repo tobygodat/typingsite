@@ -40,7 +40,7 @@ export interface ReleaseIndex { typical: number; dates: Map<string, number | nul
 
 import { normalizeLayout } from './layouts.js';
 import { wordList } from './words.js';
-import { KEY_COUNTS_VERSION, MIN_PATTERN_SAMPLES, evidenceRun, recurringTargets } from './insights.js';
+import { KEY_COUNTS_VERSION, MAX_PATTERN_RUNS, MIN_PATTERN_SAMPLES, TYPICAL_RUNS, evidenceRun, recurringTargets, retainRuns } from './insights.js';
 import { recommendTarget } from './typing.js';
 import { START_RATE, START_TABLE } from './learner-start.js';
 
@@ -51,6 +51,8 @@ export const DECAY_TIMING_POLICY = 'learner-decay-timing@1';
 export const OWN_COST_POLICY = 'learner-own-cost@2';
 export const LET_GO_POLICY = 'learner-let-go@2';
 export const LET_GO_MISSES_POLICY = 'learner-let-go-misses@2';
+export const LET_GO_3_POLICY = 'learner-let-go@3';
+export const LET_GO_MISSES_3_POLICY = 'learner-let-go-misses@3';
 export const START_POLICY = 'learner-start@3';
 export const START_RATE_POLICY = 'learner-start-rate@3';
 export const START_MISSES_POLICY = 'learner-start-misses@3';
@@ -68,8 +70,11 @@ export const BASELINE_POLICY = 'counting@1';
 // intervals: the person's own measured miss cost (OWN_COST_POLICY) and a 20-run half-life were each really
 // worse on a guard. ADR 0019 kept it again: letting a drilled target go on the evidence since its drill
 // (LET_GO_POLICY) harmed nothing, but on simulated seasons took a median of 100 runs at 25 words to let a fixed target
-// go, and let 2.3% of still-weak targets go. It is provisional until a learning study can run, and says nothing
-// about learning.
+// go, and let 2.3% of still-weak targets go. ADR 0029 kept it again: fixing the typical rate at the drill,
+// keeping pattern evidence across the drill window, counting same-kind returns only and adding adaptive evidence
+// (LET_GO_3_POLICY) cut same-kind false returns to 0.0–3.1% and brought adaptive 25-word misses to 18 runs,
+// harming no guard, but failed false let-go (2.3–3.6%, ceiling 2% Wilson upper) and normal 25-word misses (69
+// runs, target 60). It is provisional until a learning study can run, and says nothing about learning.
 export const DEFAULT_POLICY = DECAY_TIMING_POLICY;
 
 // A unit's prior is the person's pooled rate over its kind, worth this many first tries. Chosen from
@@ -108,6 +113,15 @@ export const WEAK_RATIO = 3;
 export const SLOW_SHARE = 0.75;
 export const RETURN_ODDS = 100_000;
 
+// ADR 0029, learner-let-go@3: the same test with its typical rate fixed at the drill (from the TYPICAL_RUNS records
+// before it), evidence kept since each drill, adaptive runs counted, and a return read only for the kind drilled. Its
+// constants were chosen on validation typists (ADR 0029), the same way ADR 0019 chose its own.
+export const LET_GO_3 = { letGoOdds: LET_GO_ODDS, weakRatio: 3, slowShare: 0.75, returnOdds: 1e3 };
+
+// Adaptive text only: the newest LEAN_DRILLED drilled targets not yet let go share this part of the lean's weight.
+export const DRILL_LEAN_SHARE = 0.5;
+export const LEAN_DRILLED = 2;
+
 // A let-go claim needs at least this much evidence since the drill, of the kind drilled: the floors of Train's "fixed"
 // (FIXED_RUNS and FIXED_OBSERVATIONS in train-path.js, which a test holds equal).
 export const FIXED_RUNS = 2;
@@ -132,7 +146,7 @@ export const LET_GO = { letGoOdds: LET_GO_ODDS, weakRatio: WEAK_RATIO, slowShare
 // log odds of their pooled rate sit from `rate.pair`]. A unit with no entry is pulled as every unit was before.
 export interface StartingView { rate: { pair: number; key: number }; rateTries: number; missTries: number; paceTries: number; units: Record<string, { miss?: readonly number[]; pace?: readonly number[] }> }
 
-export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[]; start?: StartingView } & Partial<typeof LET_GO>;
+export type LearnerVariant = typeof constants & { policy: string; decay: boolean; timing: boolean; ownCost: boolean; letGo?: Basis[]; letGoVersion?: number; drillLeanShare?: number; start?: StartingView } & Partial<typeof LET_GO>;
 
 // The starting views ADR 0030 judges, from the table fitted on the public dataset's training participants
 // (src/learner-start.ts). Each constant was chosen on its validation participants: a person's pooled rate is pulled
@@ -171,6 +185,8 @@ export const LEARNER_VARIANTS: LearnerVariants = {
   [OWN_COST_POLICY]: { policy: OWN_COST_POLICY, decay: true, timing: true, ownCost: true, ...constants },
   [LET_GO_POLICY]: { policy: LET_GO_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors', 'slow'], ...constants, ...LET_GO },
   [LET_GO_MISSES_POLICY]: { policy: LET_GO_MISSES_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors'], ...constants, ...LET_GO },
+  [LET_GO_3_POLICY]: { policy: LET_GO_3_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors', 'slow'], letGoVersion: 3, drillLeanShare: DRILL_LEAN_SHARE, ...constants, ...LET_GO_3 },
+  [LET_GO_MISSES_3_POLICY]: { policy: LET_GO_MISSES_3_POLICY, decay: true, timing: true, ownCost: false, letGo: ['errors'], letGoVersion: 3, drillLeanShare: DRILL_LEAN_SHARE, ...constants, ...LET_GO_3 },
   [START_POLICY]: { ...shipped, policy: START_POLICY, start: startingView(START_MISS_TRIES, true, true) },
   [START_RATE_POLICY]: { ...shipped, policy: START_RATE_POLICY, start: startingView(POOLED_TRIES, false, false) },
   [START_MISSES_POLICY]: { ...shipped, policy: START_MISSES_POLICY, start: startingView(START_MISS_TRIES, true, false) },
@@ -360,20 +376,24 @@ export function letGoIndex(evidence: LearnerEvidence[]) {
 }
 
 // Where a drill splits the evidence: its retest's date, else the loop's own. NaN splits nothing.
-export const drillSplit = (loop: AnalysisLoop, index: ReleaseIndex) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at ?? '');
+export const drillSplit = (loop: AnalysisLoop, index: Pick<ReleaseIndex, 'dates'>) => index.dates.get(String(loop.afterAttemptId)) ?? Date.parse(loop.at ?? '');
 
 // The one rule for letting go of a drilled target (ADR 0019), of one kind, at one split: the let-go variants drop that
 // part of the target's gain. It failed ADR 0019's rule, so no default reads it and Train keeps its own "fixed"; a
 // variant that passes would have Train read it too, as "let go and not queued". Every run since the split that
 // holds an observation of the kind steps the walk; see LET_GO_ODDS. True when it is let go after the newest run.
 export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, split: number, k = LET_GO) {
+  return walkLetGo(index.rows.get(unit ?? '') || [], index.typical, basis, split, k);
+}
+
+function walkLetGo(unitRows: ReleaseRow[], p: number, basis: Basis, split: number, k: typeof LET_GO) {
   if (!Number.isFinite(split)) return false;
-  const [p, ceiling, back] = [index.typical, Math.log(k.letGoOdds), Math.log(k.returnOdds)];
+  const [ceiling, back] = [Math.log(k.letGoOdds), Math.log(k.returnOdds)];
   const weak = Math.min(0.5, k.weakRatio * p);
   const [miss, clean, slower, faster] = [Math.log(p / weak), Math.log((1 - p) / (1 - weak)), Math.log(0.5 / k.slowShare), Math.log(0.5 / (1 - k.slowShare))];
   let [walk, against, runs, observed, released] = [0, 0, 0, 0, false];
 
-  for (const row of index.rows.get(unit ?? '') || []) {
+  for (const row of unitRows) {
     const held = basis === 'slow' ? row.slow !== null : row.seen > 0;
 
     if (row.at < split || !held) continue;
@@ -395,9 +415,79 @@ export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, sp
   return released;
 }
 
+// Evidence from adaptive runs (ADR 0029): one record per completed adaptive run on the keyboard, holding the rows of the
+// pairs it leaned on. It enters the let-go walk only, never the fit, a best, a trend or a baseline.
+export function adaptiveEvidence(runs: readonly unknown[], keyboard: string): LearnerEvidence[] {
+  return analysisRuns(runs).flatMap((run) => {
+    if (!run.adaptive || run.status !== 'complete' || run.interrupted || !run.adaptivePatterns?.length || keyboardOf(run.conditions) !== keyboard) return [];
+    const record = evidenceRecord({ ...run, patterns: run.adaptivePatterns, keys: undefined, keysVersion: undefined, corrections: undefined });
+    const units = record.units.filter((unit) => unit.unit.length === 2);
+
+    return units.length ? [{ ...record, units }] : [];
+  });
+}
+
+export interface LetGoIndexV3 { dated: { at: number; seen: number; errors: number }[]; oldest: number | null; held: number; dates: Map<string, number | null>; rows: Map<string, ReleaseRow[]> }
+
+// What learner-let-go@3 reads: the normal records' dates and pair totals (for the typical rate at a drill) and every
+// unit's dated rows, normal and adaptive, oldest first.
+export function letGoIndexV3(evidence: LearnerEvidence[], adaptive: LearnerEvidence[] = []): LetGoIndexV3 {
+  const normal = orderedEvidence(evidence);
+  const rows = new Map<string, ReleaseRow[]>();
+  const dated: LetGoIndexV3['dated'] = [];
+
+  for (const record of normal) {
+    if (record.at === null) continue;
+    let [seen, errors] = [0, 0];
+
+    for (const unit of record.units) if (unit.unit.length === 2) [seen, errors] = [seen + unit.seen, errors + unit.errors];
+    dated.push({ at: record.at, seen, errors });
+  }
+
+  for (const record of orderedEvidence([...normal, ...adaptive])) {
+    if (record.at === null) continue;
+
+    for (const unit of record.units) {
+      if (!rows.has(unit.unit)) rows.set(unit.unit, []);
+      entry(rows, unit.unit).push({ at: record.at, seen: unit.seen, errors: unit.errors, timed: unit.timed, slow: unit.slow });
+    }
+  }
+
+  return { dated, oldest: dated.length ? dated[0]?.at ?? null : null, held: normal.length, dates: new Map(normal.map((record) => [record.id, record.at])), rows };
+}
+
+// The typical first-try miss rate at a drill: the raw rate over every pair in the TYPICAL_RUNS dated records before the
+// split, floored. Nothing from the split on enters it, so no later run moves a crossing.
+export function typicalAt(index: LetGoIndexV3, split: number) {
+  let [seen, errors, taken] = [0, 0, 0];
+
+  for (let i = index.dated.length - 1; i >= 0 && taken < TYPICAL_RUNS; i -= 1) {
+    const record = index.dated[i];
+
+    if (!record || record.at >= split) continue;
+    [seen, errors, taken] = [seen + record.seen, errors + record.errors, taken + 1];
+  }
+
+  return Math.max(TYPICAL_FLOOR, seen ? errors / seen : 0);
+}
+
+// ADR 0029's let-go: the walk of `letGo` with the typical rate fixed at the drill. A walk whose evidence no longer
+// reaches back to its split (the window is full and its oldest run is newer than the split) reads not let go.
+export function letGoV3(index: LetGoIndexV3, unit: string | null, basis: Basis, split: number, k: typeof LET_GO = LET_GO_3) {
+  if (!Number.isFinite(split) || (index.oldest !== null && index.oldest > split && index.held >= MAX_PATTERN_RUNS)) return false;
+
+  return walkLetGo(index.rows.get(unit ?? '') || [], typicalAt(index, split), basis, split, k);
+}
+
+// Whether the queue holds the unit for this kind: a pace item for 'slow', a misses item otherwise. A target let go
+// for one kind and queued for the other is a new step on Train (ADR 0029), not a return.
+export const queuedFor = (queue: readonly { unit: string; was: TargetEvidence | null }[], unit: string | null, basis: Basis) =>
+  queue.some((item) => item.unit === unit && (item.was?.basis === 'slow') === (basis === 'slow'));
+
 // The model: a fold over evidence records at time `now` (ms), under one of LEARNER_VARIANTS (the evaluation
 // also passes its own constants), ranked for one of FOCUSES.
-// `drills` is drilledTargets' loops for the keyboard; only the let-go variants read them.
+// `drills` is drilledTargets' loops for the keyboard, and `adaptive` adaptiveEvidence's records; only the let-go variants read them
+// (the first three read adaptive only).
 //   { policy, focus, runs, errorRate, missCost, units: Estimate[] }
 //   Estimate = { unit, kind: 'pair' | 'key', frequency, gain, basis: 'errors' | 'slow', error: { mean, sd },
 //     slowdown: number | null (timing variants, pairs: the pooled log ratio to the person's pace),
@@ -408,7 +498,7 @@ export function letGo(index: ReleaseIndex, unit: string | null, basis: Basis, sp
 // of its gain when balanced, its misses for accuracy, its slowness for speed. `missCost` is what a miss costs in
 // clean intervals. `observed` holds raw, undecayed counts, the only numbers a person is shown; `slowMs` is the
 // mean of the runs' slowdowns over the person's pace, weighted by clean intervals.
-export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: AnalysisLoop[] = []) {
+export function fitLearner(evidence: LearnerEvidence[], now: number, variant = LEARNER_VARIANTS[DEFAULT_POLICY], focus = DEFAULT_FOCUS, drills: AnalysisLoop[] = [], adaptive: LearnerEvidence[] = []) {
   const settings = { ...LEARNER_VARIANTS[DEFAULT_POLICY], ...variant };
   const { policy, decay, timing, ownCost, halfLifeRuns, pooledTries, timingTries, costCorrections, start } = settings;
   const records = orderedEvidence(evidence);
@@ -530,12 +620,18 @@ export function fitLearner(evidence: LearnerEvidence[], now: number, variant = L
   const released = new Map<string | null, Basis[]>();
 
   if (settings.letGo && drills.length) {
-    const index = letGoIndex(records);
+    const three = settings.letGoVersion === 3;
+    const k = { ...(three ? LET_GO_3 : LET_GO), ...settings };
+    const indexV3 = three ? letGoIndexV3(records, adaptive) : null;
+    let legacy: ReleaseIndex | undefined;
 
     for (const loop of drills) {
       const basis = basisOf(loop);
 
-      if (settings.letGo.includes(basis) && letGo(index, loop.target ?? null, basis, drillSplit(loop, index), { ...LET_GO, ...settings })) released.set(loop.target ?? null, [basis]);
+      if (!settings.letGo.includes(basis)) continue;
+      const gone = indexV3 ? letGoV3(indexV3, loop.target ?? null, basis, drillSplit(loop, indexV3), k) : letGo(legacy ??= letGoIndex(records), loop.target ?? null, basis, drillSplit(loop, legacy), k);
+
+      if (gone) released.set(loop.target ?? null, [basis]);
     }
   }
 
@@ -666,17 +762,37 @@ export function countingEvidence(runs: readonly unknown[], loops: readonly unkno
   return recurring ? { errors: recurring.errors, observations: recurring.observations, runs: recurring.runs, slowRuns: recurring.slowRuns } : null;
 }
 
+// Adaptive text only (ADR 0029): the recommendation's lean with the newest LEAN_DRILLED drilled targets not yet let go
+// for the kind drilled sharing `share` of its weight, equally, and the learner's own lean units the rest, in their own
+// proportions. With no such target the lean is returned as it was.
+export function adaptiveLean(model: LearnerModel, lean: WeightedUnit[], drills: readonly AnalysisLoop[], share = DRILL_LEAN_SHARE): WeightedUnit[] {
+  const open = [...drills].sort(loopOrder).filter((loop) => loop.target && !model.units.find((e) => e.unit === loop.target)?.letGo?.includes(basisOf(loop))).slice(-LEAN_DRILLED);
+  const total = lean.reduce((sum, item) => sum + item.weight, 0) || 1;
+
+  if (!open.length) return lean;
+  const weights = new Map<string, number>(lean.map((item) => [item.unit, (item.weight / total) * (1 - share)]));
+
+  for (const loop of open) weights.set(loop.target ?? '', (weights.get(loop.target ?? '') ?? 0) + share / open.length);
+
+  return [...weights].sort((a, b) => b[1] - a[1] || compare(a[0], b[0])).map(([unit, weight]) => ({ unit, weight: weight * total }));
+}
+
 // The recommendation for `source` conditions under a policy. The learner reads every measured run on the
 // keyboard `source` is typed on, and the let-go variants its drilled targets there; the counting rule reads only runs
-// at its exact conditions.
-export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS }: { runs: readonly unknown[]; loops?: readonly unknown[]; traces: readonly unknown[]; source?: Conditions | HistoricalRecord; now: number; focus?: string }) {
+// at its exact conditions. `adaptive` asks for the lean an adaptive passage draws on: only the @3 let-go variants change
+// it, so no other policy's lean, and no other practice's text, is touched.
+export function recommendFor(policy: string, { runs, loops = [], traces, source, now, focus = DEFAULT_FOCUS, adaptive = false }: { runs: readonly unknown[]; loops?: readonly unknown[]; traces: readonly unknown[]; source?: Conditions | HistoricalRecord; now: number; focus?: string; adaptive?: boolean }) {
   if (policy === BASELINE_POLICY) return countingRecommendation(runs, loops, traces, source);
 
   const keyboard = keyboardOf(source);
   const variant = LEARNER_VARIANTS[policy];
+  const three = variant?.letGoVersion === 3;
   // Only a let-go variant reads loops, so no other policy can be changed, or broken, by what a stored loop holds.
   const drills = variant?.letGo ? [...drilledTargets(loops, keyboard).values()] : [];
+  // The profile now keeps pattern evidence on more than 120 runs (ADR 0029); the other variants read the newest 120, as before.
+  const read = three ? runs : retainRuns(analysisRuns(runs), { drills: false });
+  const model = fitLearner(learnerEvidence(read, keyboard), now, variant, focus, drills, three ? adaptiveEvidence(runs, keyboard) : []);
+  const recommendation = learnerRecommendation(model);
 
-  return learnerRecommendation(fitLearner(learnerEvidence(runs, keyboard), now, variant, focus, drills));
+  return three && adaptive ? { ...recommendation, lean: adaptiveLean(model, recommendation.lean, drills, variant?.drillLeanShare) } : recommendation;
 }
-

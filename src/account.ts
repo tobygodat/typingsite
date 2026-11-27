@@ -802,7 +802,7 @@ function mergePreferences(local: MergeProfile, cloud: MergeProfile) {
 // copy of a record wins, on either, whichever side merges (the caps trim it again where they should). A
 // daily attempt either copy labels a repeat stays one: the copy that says first may be from before its
 // device held the earlier try, which a clear can since have taken from every copy.
-const fullness = (record: HistoryRecord): [unknown, number] => [lengthOf(record.patterns) || 0, Array.isArray(record.missedWords) ? 1 : 0];
+const fullness = (record: HistoryRecord): [unknown, number] => [lengthOf(record.patterns) || lengthOf(record.adaptivePatterns) || 0, Array.isArray(record.missedWords) ? 1 : 0];
 
 const fuller = (held: HistoryRecord, other: HistoryRecord) => {
   const [heldPatterns, heldWords] = fullness(held);

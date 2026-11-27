@@ -17,7 +17,7 @@ export interface RunRecord {
   day?: string | null; fresh?: boolean; interrupted: boolean; score: Score; elapsedMs: number; errors: number;
   target: string | null; challengeDate?: string | null; firstDailyAttempt?: boolean; adaptive?: boolean; drillSeconds?: number;
   minimums?: unknown; stopped?: NonNullable<ReturnType<typeof import('./typing.js').minimumStop>>; patterns?: PatternCounts[]; keys?: KeyCounts[]; keysVersion?: number;
-  corrections?: [number, number | null]; missedWords?: string[];
+  corrections?: [number, number | null]; missedWords?: string[]; adaptivePatterns?: PatternCounts[];
 }
 
 export interface Preferences {
