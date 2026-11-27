@@ -86,12 +86,12 @@ test('composing reports free-typing speed and backspace rate, never a best', asy
   await expect(page.locator('#duration-options')).toBeHidden();
   await expect(page.locator('#punctuation-switch')).toBeHidden();
   await expect(page.locator('#best')).toHaveCSS('visibility', 'hidden');
-  await expect(page.locator('#compose-conditions')).toHaveText('composing · up to 60 s · physical keyboard');
+  await expect(page.locator('#compose-conditions')).toHaveText('compose · up to 60 s · physical keyboard');
   await expect(page.locator('#compose-privacy')).toHaveText('Your words are never saved. Only the numbers are kept, for this tab.');
   await expect(page.locator('#compose-timer')).toHaveText('60');
   await expect(page.locator('#compose-done')).toBeDisabled();
 
-  // Another prompt swaps the prompt and keeps you in the field.
+  // Change prompt swaps the prompt and keeps you in the field.
   const first = await page.locator('#compose-prompt').textContent();
   await page.locator('#compose-another').click();
   await expect(page.locator('#compose-prompt')).not.toHaveText(first);
@@ -1033,7 +1033,7 @@ test.describe('touchscreen laptop', () => {
     await openCompose(page);
     const conditions = page.locator('#compose-conditions');
 
-    // Another prompt by touch, then typed on the keyboard: a physical-keyboard session.
+    // Change prompt by touch, then typed on the keyboard: a physical-keyboard session.
     await page.locator('#compose-another').tap();
     await expect(page.locator('#compose-input')).toBeFocused();
     await expect(conditions).toContainText('physical keyboard');

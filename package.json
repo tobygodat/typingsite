@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "bun run build && node server.mjs",
     "start": "node server.mjs",
-    "build": "node scripts/build-static.mjs",
-    "build:dist": "node scripts/build-static.mjs",
+    "build": "bun scripts/build-static.mjs",
+    "build:dist": "bun scripts/build-static.mjs",
     "evaluate:learner": "node --import tsx scripts/evaluate-learner.mjs",
+    "keystrokes:runs": "node --import tsx scripts/keystrokes-to-runs.mjs",
+    "evaluate:start": "node --import tsx scripts/evaluate-start.mjs",
     "lint": "oxlint --deny-warnings",
     "test": "node --import tsx --test",
     "test:unit": "node --import tsx --test",
@@ -20,7 +22,7 @@
     "test:e2e:changed": "playwright test --only-changed=origin/master --pass-with-no-tests",
     "test:e2e:quick": "playwright test e2e/typing.spec.js e2e/layout.spec.js e2e/chrome.spec.js e2e/practice-more.spec.js e2e/touch-targets.spec.js e2e/learning-loop.spec.js e2e/quick-restart.spec.js e2e/light-contrast.spec.js e2e/code-mode.spec.js",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
-    "verify": "node scripts/verify.mjs",
+    "verify": "bun scripts/verify.mjs",
     "pretest": "bun run build",
     "prebuild": "bun run typecheck"
   },

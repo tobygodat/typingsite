@@ -735,7 +735,7 @@ test('passing every lesson hands off to the training loop', async ({ page, supab
   await typeLesson(page, process.env.SCREENSHOTS ? { delay: 190 } : {});
   await expect(page.locator('#lesson-status')).toHaveText('passed');
   await expect(page.locator('#lesson-current-heading')).toHaveText('Lesson 14 passed. Every letter is in.');
-  await expect(page.locator('#lesson-current-copy')).toContainText('the training loop takes over');
+  await expect(page.locator('#lesson-current-copy')).toContainText('From here Train takes over');
   await expect(page.locator('#lesson-list .lesson-row[data-state="passed"]')).toHaveCount(LESSONS.length);
   await expect(page.locator('#lesson-primary')).toHaveText('Take a practice run');
   await expect(page.locator('#lesson-keyboard .key.target')).toHaveCount(0);

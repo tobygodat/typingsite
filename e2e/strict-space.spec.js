@@ -509,7 +509,7 @@ test('a one-keyboard race takes quick end whatever the practice shape, and keeps
   await closeSettings(page);
   await page.locator('#start-next-player').click();
   // The passage is revealed before the second turn takes keys.
-  await expect(page.locator('#race-player')).toHaveText('Player two');
+  await expect(page.locator('#race-player')).toHaveText('Player 2');
   await expect(page.locator('#race-input')).toBeFocused();
   await typeInto(page, typed, '#race-input');
   await expect(page.locator('#race-help')).toHaveText(SUBMIT_NOTICE);
@@ -560,4 +560,32 @@ test('settings rows fit a 390 px phone', async ({ page }, testInfo) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBe(0);
   await page.screenshot({ path: shot(testInfo, 'settings-mobile.png') });
+});
+
+// Strict space alongside the other input rules: fail on any error, and the standard test's fixed recipe.
+test('a space refused by strict space still fails fail-on-any-error', async ({ page }) => {
+  await openApp(page);
+  await chooseWords(page, 10);
+  await openSettings(page);
+  await chooseSetting(page, 'correction-select', 'fail-any');
+  await chooseSetting(page, 'strict-space-toggle', true);
+  await closeSettings(page);
+  const text = await passageText(page);
+  await typeInto(page, text[0] + ' ');
+  await expect(page.locator('#result-delta')).toHaveText('failed · wrong key');
+  await expect(page.locator('#best')).toHaveText('No best yet');
+});
+
+test('standard keeps its recipe while a strict-space choice waits for ordinary practice', async ({ page }) => {
+  await openApp(page);
+  await chooseMore(page, 'mode-standard');
+  const standard = await passageText(page);
+  await openSettings(page);
+  await chooseSetting(page, 'strict-space-toggle', true);
+  await expect(page.locator('#rules-note')).toHaveText('the standard test keeps its own rules');
+  await closeSettings(page);
+  expect(await passageText(page)).toBe(standard);
+  await expect(page.locator('#condition-line')).not.toContainText('strict space');
+  await page.locator('#mode-words').click();
+  await expect(page.locator('#condition-line')).toContainText('strict space');
 });

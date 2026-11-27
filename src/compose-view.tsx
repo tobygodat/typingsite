@@ -98,7 +98,7 @@ export function createCompose() {
     publish({ prompt: promptText(promptId) ?? '' });
   }
 
-  function renderConditions() { publish({ conditions: 'composing · up to ' + LIMIT_S + ' s · ' + inputLabel() }); }
+  function renderConditions() { publish({ conditions: 'compose · up to ' + LIMIT_S + ' s · ' + inputLabel() }); }
 
   function renderPrivacy() { publish({ privacy: options.signedIn() ? 'Your words are never saved. Only the numbers go to your history.' : 'Your words are never saved. Only the numbers are kept, for this tab.' }); }
 
@@ -320,7 +320,7 @@ export function createCompose() {
   }, { signal });
 
   // Only a touch on the writing field before the first key marks the session as touch input, as on
-  // the practice field; a tap on a button (Another prompt, Write another) types nothing.
+  // the practice field; a tap on a button (Change prompt, Write another) types nothing.
   input.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'touch' || state !== 'ready') return;
     inputClass = 'touch';
@@ -410,7 +410,7 @@ export function ComposeSurface({ compose, visible = false }: { compose: ComposeC
               <p id="compose-conditions" className="condition-copy">{view.conditions}</p>
             </div>
             <div className="compose-side">
-              <button onClick={() => compose.another()} id="compose-another" className="btn btn-ghost btn-sm compose-another" type="button">Another prompt</button>
+              <button onClick={() => compose.another()} id="compose-another" className="btn btn-ghost btn-sm compose-another" type="button">Change prompt</button>
               <div className="live-stat timer-stat">
                 <strong id="compose-timer" className="num">{view.seconds}</strong><span>s</span>
                 <small className="sr-only">remaining</small>
@@ -421,7 +421,7 @@ export function ComposeSurface({ compose, visible = false }: { compose: ComposeC
           <div className="compose-wrap">
             <label className="sr-only" htmlFor="compose-input">Your answer to the prompt</label>
             <textarea ref={input} id="compose-input" aria-describedby="compose-prompt compose-hint compose-privacy" maxLength={2000} spellCheck={false} autoCapitalize="sentences" autoComplete="off" autoCorrect="off" placeholder="Start typing. The minute starts with your first key."></textarea>
-            <span id="compose-hint" className="sr-only">Up to 60 seconds from your first key. Press Control+Enter or Done to finish. Escape starts over.</span>
+            <span id="compose-hint" className="sr-only">Up to 60 seconds from your first key. Press Control+Enter or Finish to finish. Escape starts over.</span>
           </div>
 
           <div id="compose-progress" className="progress-line" role="progressbar" aria-label="Composing time used" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(view.progress * 100)} aria-valuetext={view.progressLabel}>
@@ -435,7 +435,7 @@ export function ComposeSurface({ compose, visible = false }: { compose: ComposeC
             </div>
             
             <div className="typing-actions">
-              <button onClick={() => compose.finish('done')} id="compose-done" className="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled={view.doneDisabled}>Done</button>
+              <button onClick={() => compose.finish('done')} id="compose-done" className="btn btn-primary" type="button" aria-keyshortcuts="Control+Enter Meta+Enter" disabled={view.doneDisabled}>Finish</button>
               <button onClick={() => compose.restart()} id="compose-restart" className="icon-control" type="button" title="Start over (Escape)" aria-label="Start over">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" /></svg>
               </button>

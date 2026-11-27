@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // One local proof for a branch: typecheck, lint, build, unit tests, then browser tests. It stops at the first step
 // that fails and exits with that step's code.
 import { spawnSync } from 'node:child_process';

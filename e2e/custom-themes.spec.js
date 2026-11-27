@@ -37,7 +37,7 @@ test('the editor previews live, notes low contrast at the token, and Escape puts
 
   // Guests can't generate: the field waits, and the button signs in.
   await expect(page.locator('#theme-vibe')).toBeDisabled();
-  await expect(page.locator('#theme-generate')).toHaveText('sign in');
+  await expect(page.locator('#theme-generate')).toHaveText('Sign in');
 
   await hex(page, 'text').press('Escape');
   await expect(page.locator('#theme-editor')).toBeHidden();

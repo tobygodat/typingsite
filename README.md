@@ -4,7 +4,7 @@ Focused typing, explained practice, and friendly online and local competition. T
 
 ## Run locally
 
-Bun 1.4.2 and Node.js 20 or newer. Bun installs the packages and runs the scripts; Node runs the server, the build and the tests. `bun install --frozen-lockfile` installs React, Effect, Vite, TypeScript, Playwright and the linter.
+Bun 1.4.2 and Node.js 20 or newer. Bun installs the packages, runs the scripts and runs the build; Node runs the server and the tests. `bun install --frozen-lockfile` installs React, Effect, Vite, TypeScript, Playwright and the linter.
 
 ```sh
 bun run dev        # http://localhost:5173

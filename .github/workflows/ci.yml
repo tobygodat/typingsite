@@ -45,7 +45,8 @@ jobs:
           node-version: 24
       - id: scope
         run: node scripts/e2e-scope.mjs
-      # Bun installs the packages and runs the scripts, which still run on Node 24 (docs/adr/0023-bun.md).
+      # Bun installs the packages and runs the build (docs/adr/0028-bun-runs-the-build.md). The scope step above,
+      # the unit tests and Playwright still run on Node 24 (docs/adr/0023-bun.md).
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2

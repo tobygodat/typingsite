@@ -36,7 +36,7 @@ Preconditions:
   selection through every row with ArrowDown and checks the highlight sits on the row, the label, dot and hint are
   centred in it within 1px, the search icon, group labels and dots share one left edge, the search text and labels
   the next, the hints end at the esc key, and no group label repeats. `PALETTE_ALL=1` repeats it in all eleven themes
-  and the three app fonts. `e2e/palette-alignment.spec.js` asserts the same in the suite.
+  and the three app fonts. `e2e/palette.spec.js` asserts the same in the suite.
 - **Dock entry.** In a flow file, click
   `page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Commands' })` and
   wait for `#palette-input`. Shoot the open dialog.

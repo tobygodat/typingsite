@@ -12,8 +12,8 @@ export function HistoryLoops({ learning }: { learning: LearningStore }) {
       {loops.map((loop, index) => <details key={loop.id ?? index} className="history-row">
         <summary className="history-summary">
           <div className="history-main"><span className="history-date">{loop.date}</span><strong className="history-target">{loop.title}</strong><small className="history-conditions">{loop.conditions}</small></div>
-          <div className="history-measure"><span>Accuracy</span><strong className="history-accuracy num">{loop.accuracy}</strong></div>
-          <div className="history-measure"><span><span data-speed-unit="Corrected {unit}">{unitText('Corrected {unit}')}</span></span><strong className="history-timing num"><data value={loop.delta === null || loop.delta === undefined ? '' : String(loop.delta)} data-wpm={loop.delta === null || loop.delta === undefined ? undefined : String(loop.delta)} data-signed="">{loop.delta === null || loop.delta === undefined ? '—' : formatSpeed(Number(loop.delta), { signed: true })}</data></strong></div>
+          <div className="history-measure"><span>accuracy</span><strong className="history-accuracy num">{loop.accuracy}</strong></div>
+          <div className="history-measure"><span><span data-speed-unit="corrected {unit}">{unitText('corrected {unit}')}</span></span><strong className="history-timing num"><data value={loop.delta === null || loop.delta === undefined ? '' : String(loop.delta)} data-wpm={loop.delta === null || loop.delta === undefined ? undefined : String(loop.delta)} data-signed="">{loop.delta === null || loop.delta === undefined ? '—' : formatSpeed(Number(loop.delta), { signed: true })}</data></strong></div>
           <span className={`history-status badge ${`badge-${loop.tone}`}`}>{loop.state}</span>
         </summary>
         <div className="history-detail">
