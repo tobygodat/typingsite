@@ -17,7 +17,7 @@
 // improves after a drill only as the simulator says it does.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, makePassage } from '../src/typing.js';
 import { MIN_PATTERN_SAMPLES, evidenceRun, runRecord } from '../src/insights.js';
@@ -255,7 +255,7 @@ export const VARIANTS = [
 ];
 
 // A run's timing for a pair: the log of its median clean interval over the run's median, and the intervals behind it.
-function timingRows(run) {
+export function timingRows(run) {
   return (run.patterns || []).flatMap(([pair, , , timed, pairMs, slowdownMs]) => {
     const runMs = pairMs !== null && slowdownMs !== null ? pairMs - slowdownMs : null;
 
@@ -319,7 +319,7 @@ function replay(history, policy, loops = []) {
 }
 
 // Expected calibration error over ten equal-count bins of predicted probability, weighted by tries.
-function calibration(predictions) {
+export function calibration(predictions) {
   const sorted = [...predictions].sort((a, b) => a.p - b.p);
   const total = sorted.reduce((s, item) => s + item.n, 0);
   let error = 0;
@@ -671,14 +671,19 @@ export function report0015(record) {
   ].join('\n');
 }
 
-// A stored profile, replayed the same way on its own measured runs (the keyboard with the most of them).
-export function evaluateProfile(stored, constants) {
+// A stored profile, replayed the same way on its own measured runs (the keyboard with the most of them), oldest first.
+// `policies` is the older constants-tuned pair scored on log loss and calibration; `versions` scores the default and
+// ADR 0030's starting-view versions on those same runs with the measures scripts/evaluate-start.mjs reads
+// (log loss, calibration error, pace error, captured share), overall and by runs seen. The profile stays in this process.
+export async function evaluateProfile(stored, constants, scoreRuns = null) {
   const profile = normalizeProfile(stored);
   const counts = new Map();
 
   for (const run of profile.runs.filter(evidenceRun)) counts.set(keyboardOf(run.conditions), (counts.get(keyboardOf(run.conditions)) || 0) + 1);
   const keyboard = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const runs = profile.runs.filter((run) => evidenceRun(run) && keyboardOf(run.conditions) === keyboard && run.patterns?.length && run.at);
+  const eligible = profile.runs.filter((run) => evidenceRun(run) && keyboardOf(run.conditions) === keyboard && run.patterns?.length && run.at);
+
+  const runs = eligible.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
   const scored = (policy) => {
     const losses = [];
@@ -703,7 +708,10 @@ export function evaluateProfile(stored, constants) {
     return { logLoss: mean(losses), calibration: calibration(predictions) };
   };
 
-  return { keyboard, runs: runs.length, policies: Object.fromEntries(VARIANTS.map((v) => [v.policy, scored(v.policy)])) };
+  // scripts/evaluate-start.mjs imports this module, so it passes its own scorer when it is the entry point.
+  const evaluateRuns = scoreRuns ?? (await import('./evaluate-start.mjs')).evaluateRuns;
+
+  return { keyboard, runs: runs.length, policies: Object.fromEntries(VARIANTS.map((v) => [v.policy, scored(v.policy)])), versions: runs.length ? evaluateRuns(runs, keyboard) : [] };
 }
 
 // A 120-run history (the most pattern evidence a profile keeps), fitted repeatedly with the default.
@@ -877,6 +885,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(0);
   }
 
+  // A profile is scored in scripts/evaluate-start.mjs, which imports this module, so it runs in its own process.
+  if (option('profile', null)) {
+    const child = spawnSync(process.execPath, [...process.execArgv, fileURLToPath(new URL('./evaluate-start.mjs', import.meta.url)), '--profile', option('profile', null)], { stdio: 'inherit' });
+    process.exit(child.status ?? 1);
+  }
+
   const sensitivity = Object.keys(world).length > 0;
   const options = { typists: Number(option('typists', 8)), runs: Number(option('runs', 40)) };
 
@@ -908,12 +922,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   console.log(`\n${DEFAULT_POLICY}, fit on a 120-run history: median ${timing.median.toFixed(1)} ms, slowest ${timing.max.toFixed(1)} ms (of 30)`);
   const shipped = LEARNER_VARIANTS[DEFAULT_POLICY];
   console.log(`constants as shipped: pooledTries ${shipped.pooledTries}, halfLifeRuns ${shipped.halfLifeRuns}, timingTries ${shipped.timingTries}`);
-  const path = option('profile', null);
-
-  if (path) {
-    const profile = evaluateProfile(JSON.parse(readFileSync(path, 'utf8')), constants);
-    console.log(`\nprofile ${path}: ${profile.runs} runs on ${profile.keyboard}`);
-
-    for (const [policy, scores] of Object.entries(profile.policies)) console.log(`  ${policy.padEnd(24)} log loss ${fixed(4)(scores.logLoss)}  calibration ${fixed(4)(scores.calibration)}`);
-  }
 }

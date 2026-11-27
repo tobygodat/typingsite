@@ -1,4 +1,4 @@
-import { test, expect, openApp, openView, signInWithEmail, typeInto, setRaceName, openRaceLink } from './fixtures.js';
+import { test, expect, openApp, openView, signInWithEmail, typeInto, insertPlainText, setRaceName, openRaceLink } from './fixtures.js';
 
 test.setTimeout(120000);
 
@@ -107,7 +107,7 @@ test('a ranked account reads its rank on the rating line, and a win that crosses
     await expect(ends(page)).toHaveText(['Gust I', '5 to Gale III']);
     await expect(ends(page)).toHaveText(['Gale III', '95 to Gale II']);
     await expect(card(page, 'rank')).toHaveText('Gale III');
-    await expect(card(page, 'from')).toHaveText('promoted from Gust I');
+    await expect(card(page, 'from')).toHaveText('up from Gust I');
     await expect(card(page, 'rating')).toHaveText('1805');
     await expect(card(page, 'delta')).toHaveText('+10');
     // The dark card on a dark theme, its gain in green; the screen reader hears the sentence, not the card.
@@ -332,4 +332,244 @@ test('a pairing that lands after Stop never opens the race, and the other racer 
   } finally {
     await context.close();
   }
+});
+
+// How a quick match settles, seen from both racers: a slow link, a run that can't be checked, a racer who closes
+// the page or leaves, and a pair racing too often. Each racer's winner mark, tally and rating line must agree.
+const pause = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+async function racer(browser, supabase, email, name) {
+  supabase.addUser(email);
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await supabase.attach(page);
+  await openApp(page);
+  await signInWithEmail(page, email);
+  await openView(page, 'Challenge');
+  await setRaceName(page, name);
+
+  return { context, page };
+}
+
+// Two racers matched and in the race, the passage read off the first's page.
+async function matched(browser, supabase, { seconds = 5 } = {}) {
+  supabase.races.quick.duration = seconds;
+  supabase.races.quick.countdownMs = 2000;
+  const ada = await racer(browser, supabase, 'ada@stilltype.test', 'Ada');
+  const lin = await racer(browser, supabase, 'lin@stilltype.test', 'Lin');
+  await quick(ada.page).click();
+  await quick(lin.page).click();
+  await expect(ada.page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+  await expect(lin.page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+
+  return { ada, lin, passage: await ada.page.locator('#online-accessible-passage').textContent() };
+}
+
+// Types a key at a time until the race clock closes the input, as a person keeps typing to the end.
+async function typeUntilClosed(page, text, delay) {
+  const input = page.locator('#online-input');
+  await input.focus();
+
+  for (const char of text) {
+    if (await input.isDisabled()) return;
+    await page.keyboard.type(char);
+    await pause(delay);
+  }
+}
+
+// Every key of `text` in one task, as a script pasting key by key would: each is a plain one-letter insert the race
+// scores as a key, and none is a moment after the one before.
+const pasteKeys = (page, text) => page.locator('#online-input').evaluate((field, keys) => {
+  for (const data of keys) field.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }));
+}, text);
+
+// What one racer's results say: both cards' winner marks, the tally and the rating line.
+async function results(page) {
+  await expect(page.locator('#online-results')).toBeVisible({ timeout: 25000 });
+  await expect(page.locator('#online-rating-change')).toBeVisible();
+
+  return {
+    mine: await page.locator('#online-duel-mine').getAttribute('data-outcome'),
+    theirs: await page.locator('#online-duel-theirs').getAttribute('data-outcome'),
+    tally: await page.locator('#online-tally').getAttribute('aria-label'),
+    line: (await page.locator('#online-rating-change').textContent()).replaceAll(' ', ' '),
+  };
+}
+
+for (const latency of [0, 300]) {
+  test(`on a ${latency} ms link both honest runs are checked, and the faster racer wins, rated`, async ({ browser, supabase }) => {
+    const { ada, lin, passage } = await matched(browser, supabase);
+
+    try {
+      // Only Ada's race requests arrive late, so her progress lands after the clock and her finish after that.
+      await ada.page.route('**/rest/v1/rpc/race_action', async (route) => { await pause(latency); await route.fallback(); });
+      await Promise.all([typeUntilClosed(ada.page, passage, 110), typeUntilClosed(lin.page, passage, 170)]);
+      expect(await results(ada.page)).toEqual({ mine: 'won', theirs: 'lost', tally: 'You 1, Lin 0', line: 'Rated win. Race rating 1520 · 1 rated race · provisional (+20)' });
+      expect(await results(lin.page)).toEqual({ mine: 'lost', theirs: 'won', tally: 'You 0, Ada 1', line: 'Rated loss. Race rating 1480 · 1 rated race · provisional (−20)' });
+      expect([...supabase.races.rooms.values()].at(-1).players.map((p) => p.verdict)).toEqual(['ok', 'ok']);
+    } finally {
+      await ada.context.close();
+      await lin.context.close();
+    }
+  });
+}
+
+test('a pasted run is never the winner: both racers see the checked run win, in the cards, the tally and the rating', async ({ browser, supabase }) => {
+  const { ada, lin, passage } = await matched(browser, supabase);
+
+  try {
+    // Ada's keys all arrive at once, further than Lin types honestly. They go in one task, so no time passes between
+    // them on any engine: typed by Playwright, a loaded WebKit spaced them out enough to pass the interval check and
+    // fail only the speed cap, or to pass both.
+    await ada.page.locator('#online-input').focus();
+    await Promise.all([pasteKeys(ada.page, passage.slice(0, 150)), typeUntilClosed(lin.page, passage.slice(0, 40), 100)]);
+    expect(await results(ada.page)).toEqual({ mine: 'unchecked', theirs: 'won', tally: 'You 0, Lin 1',
+      line: 'Rated loss: your run couldn’t be checked. It had keys closer together than the check allows. Race rating 1480 · 1 rated race · provisional (−20)' });
+    await expect(ada.page.locator('#online-duel-mine .duel-accuracy')).toHaveText('not checked');
+    expect(await results(lin.page)).toEqual({ mine: 'won', theirs: 'unchecked', tally: 'You 1, Ada 0',
+      line: 'Rated win: Ada’s run couldn’t be checked. Race rating 1520 · 1 rated race · provisional (+20)' });
+  } finally {
+    await ada.context.close();
+    await lin.context.close();
+  }
+});
+
+test('a racer who closes the page is never the winner; the one who stayed sees it in the cards, the tally and the rating', async ({ browser, supabase }) => {
+  const { ada, lin, passage } = await matched(browser, supabase);
+
+  try {
+    await lin.page.locator('#online-input').focus();
+    await lin.page.keyboard.type(passage.slice(0, 10), { delay: 70 });
+    await lin.page.close();
+    await typeUntilClosed(ada.page, passage, 120);
+    expect(await results(ada.page)).toEqual({ mine: 'won', theirs: 'unchecked', tally: 'You 1, Lin 0',
+      line: 'Rated win: Lin didn’t finish. Race rating 1520 · 1 rated race · provisional (+20)' });
+    const back = await lin.context.newPage();
+    await supabase.attach(back);
+    await openApp(back);
+    await openView(back, 'Challenge');
+    await expect(status(back)).toHaveText('Rated loss: your finish didn’t arrive before the race closed. Race rating 1480 · 1 rated race · provisional (−20)');
+  } finally {
+    await ada.context.close();
+    await lin.context.close();
+  }
+});
+
+test('a forfeit right after the start: the racer who stays finishes alone and wins rated; if they leave too, only the leaver loses', async ({ browser, supabase }) => {
+  const { ada, lin, passage } = await matched(browser, supabase);
+
+  try {
+    await lin.page.locator('#online-leave').click();
+    await expect(status(lin.page)).toHaveText('Rated loss: you left the race. Race rating 1480 · 1 rated race · provisional (−20)');
+    await expect(ada.page.locator('#online-room-status')).toHaveText('Lin left the race. Finish your run to win.');
+    await typeUntilClosed(ada.page, passage, 120);
+    expect(await results(ada.page)).toEqual({ mine: 'won', theirs: 'unchecked', tally: 'You 1, Lin 0',
+      line: 'Rated win: Lin left the race. Race rating 1520 · 1 rated race · provisional (+20)' });
+    await expect(ada.page.locator('#online-duel-theirs .duel-accuracy')).toHaveText('left');
+    await ada.page.locator('#online-leave').click();
+
+    // Again, and this time Ada leaves too: Lin's loss stands, and Ada's race isn't rated.
+    await quick(ada.page).click();
+    await quick(lin.page).click();
+    await expect(ada.page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+    await expect(lin.page.locator('#online-input')).toBeEnabled();
+    await lin.page.locator('#online-leave').click();
+    await expect(status(lin.page)).toHaveText('Rated loss: you left the race. Race rating 1462 · 2 rated races · provisional (−18)');
+    await expect(ada.page.locator('#online-room-status')).toHaveText('Lin left the race. Finish your run to win.');
+    await ada.page.locator('#online-leave').click();
+    await expect(status(ada.page)).toHaveText('Not rated: neither racer finished with a run that could be checked. You left the race.');
+    await expect(ada.page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1520 · 1 rated race · provisional');
+  } finally {
+    await ada.context.close();
+    await lin.context.close();
+  }
+});
+
+test('past a pair’s rated races for the day the race still runs and shows its result, and both are told it didn’t count', async ({ browser, supabase }) => {
+  const { ada, lin, passage } = await matched(browser, supabase, { seconds: 3 });
+  // Their first race is the pair's last rated one today (the fake's limit lowered from three to one).
+  supabase.races.quick.repeatLimit = 1;
+
+  try {
+    await Promise.all([typeUntilClosed(ada.page, passage, 110), typeUntilClosed(lin.page, passage, 170)]);
+    expect((await results(ada.page)).line).toBe('Rated win. Race rating 1520 · 1 rated race · provisional (+20)');
+    await expect(lin.page.locator('#online-results')).toBeVisible({ timeout: 10000 });
+
+    for (const page of [ada.page, lin.page]) await page.locator('#online-leave').click();
+    await quick(ada.page).click();
+    await quick(lin.page).click();
+    await expect(ada.page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+    await expect(lin.page.locator('#online-input')).toBeEnabled({ timeout: 10000 });
+    const next = await ada.page.locator('#online-accessible-passage').textContent();
+    await Promise.all([typeUntilClosed(ada.page, next, 110), typeUntilClosed(lin.page, next, 170)]);
+    expect(await results(ada.page)).toEqual({ mine: 'won', theirs: 'lost', tally: 'You 2, Lin 0', line: 'Not rated: you and Lin have raced each other too often today.' });
+    expect(await results(lin.page)).toEqual({ mine: 'lost', theirs: 'won', tally: 'You 0, Ada 2', line: 'Not rated: you and Ada have raced each other too often today.' });
+    await ada.page.locator('#online-leave').click();
+    await expect(ada.page.locator('#quick-match [data-quick-part="rating"]')).toHaveText('Race rating 1520 · 1 rated race · provisional');
+  } finally {
+    await ada.context.close();
+    await lin.context.close();
+  }
+});
+
+// Racing your own best run (quick match with nobody waiting): it goes to nobody, so a run that can't be scored
+// against it says it isn't compared, never that it wasn't sent.
+
+// A 30-second run on the default setup, recorded on this device, then quick match with nobody waiting and
+// Race your best run.
+async function raceOwnBest(page, supabase) {
+  supabase.addUser('ada@stilltype.test');
+  await page.clock.install();
+  await openApp(page);
+  await signInWithEmail(page, 'ada@stilltype.test');
+  const passage = await page.locator('#accessible-passage').textContent();
+  await typeInto(page, passage.slice(0, 120), '#typing-input', { delay: 60 });
+  await page.clock.fastForward(31000);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
+  await openView(page, 'Challenge');
+  await page.locator('#quick-match [data-quick="toggle"]').click();
+  await expect.poll(() => supabase.requests.filter((entry) => entry.includes('quick_match')).length).toBeGreaterThan(3);
+  await page.clock.fastForward(21000);
+  await page.locator('#quick-match [data-quick="best"]').click();
+  await expect(page.locator('#session-title')).toHaveText('Race your best run');
+
+  return page.locator('#accessible-passage').textContent();
+}
+
+test('a touch run against your own best says it is not compared, and how to compare', async ({ page, supabase }) => {
+  const text = await raceOwnBest(page, supabase);
+  await page.locator('#typing-input').dispatchEvent('pointerdown', { pointerType: 'touch' });
+  await expect(page.locator('#condition-line')).toContainText('touch input');
+  await page.keyboard.type(text.slice(0, 40), { delay: 60 });
+  await page.clock.fastForward(31000);
+  await expect(page.locator('#ghost-result-heading')).toHaveText('A different kind of input, so not compared.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Race again on a physical keyboard to compare.');
+  await expect(page.locator('#ghost-result-action')).toHaveText('Race again');
+});
+
+test('a character a ghost race can’t replay, against your own best, is not compared', async ({ page, supabase }) => {
+  const text = await raceOwnBest(page, supabase);
+  await typeInto(page, text.slice(0, 10), '#typing-input', { delay: 60 });
+  await insertPlainText(page, '😀');
+  await page.keyboard.type(text.slice(10, 30), { delay: 60 });
+  await page.clock.fastForward(31000);
+  await expect(page.locator('#ghost-result-heading')).toHaveText('A character a ghost race can’t replay, so not compared.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Race again without emoji.');
+});
+
+test('a run with more keys than a ghost race replays, against your own best, is too long to replay', async ({ page, supabase }) => {
+  test.setTimeout(240000);
+  await raceOwnBest(page, supabase);
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1000));
+  await page.locator('#typing-input').focus();
+
+  // 6002 keys, past the 6000 a trace holds, all within the 30-second clock.
+  for (let index = 0; index < 3001; index += 1) {
+    await page.keyboard.press('x');
+    await page.keyboard.press('Backspace');
+  }
+
+  await page.clock.runFor(31000);
+  await expect(page.locator('#ghost-result-heading')).toHaveText('Too long to replay.');
+  await expect(page.locator('#ghost-result-status')).toHaveText('Race again with fewer corrections.');
 });

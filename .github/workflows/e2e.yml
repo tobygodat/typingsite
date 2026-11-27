@@ -129,7 +129,7 @@ jobs:
       # tests=0 when a PR selects fewer tests than there are shards.
       - if: env.E2E_SCOPE != 'none'
         id: shard
-        run: node scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
+        run: bun scripts/e2e-shards.mjs ${{ matrix.shard }}/${{ matrix.total }} e2e-timings/shard-tests.txt
       # WebKit's timing specs fail at 3 workers on a 4-core runner and pass at 1 (docs/adr/0018-ci-on-hosted-runners.md).
       - if: env.E2E_SCOPE != 'none' && steps.shard.outputs.tests != '0'
         run: bunx playwright test --test-list e2e-timings/shard-tests.txt${{ matrix.engine == 'webkit' && ' --workers=1' || '' }}

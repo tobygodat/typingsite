@@ -4,7 +4,7 @@ import { DECAY_TIMING_POLICY, LEARNER_VARIANTS, LET_GO_3, LET_GO_3_POLICY, LET_G
   drilledTargets, englishFrequency, fitLearner, keyboardOf, learnerEvidence, learnerRecommendation, letGoIndex, letGoIndexV3, letGoV3, queuedFor, recommendFor, typicalAt } from '../src/learner.js';
 import { ADAPTIVE_MIN_TRIES, KEPT_RETESTS, MAX_DRILL_WINDOW, MAX_PATTERN_RUNS, TYPICAL_RUNS, retainRuns, runRecord } from '../src/insights.js';
 import { mergeSynced } from '../src/account.js';
-import { weekMovers } from '../src/week-change.js';
+import { weekMovers, weekSlips } from '../src/week-change.js';
 import { CORPUS_VERSION, METRIC_VERSION, makeAdaptive } from '../src/typing.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
 
@@ -269,4 +269,30 @@ test('weekMovers reads the same 120-run pattern window as DEFAULT_POLICY even wh
   assert.deepEqual(moversKept, movers120);
   assert.ok(!moversKept.some((m) => m.unit === 'qu'), 'runs older than the 120-run window do not leak into weekMovers');
   assert.deepEqual(recommend(DECAY_TIMING_POLICY, kept, []), recommend(DECAY_TIMING_POLICY, trimmed120, []));
+});
+
+test('weekMovers and weekSlips read the 120-run window when retainRuns keeps post-drill runs beyond it', () => {
+  const began = NOW - 6 * 86_400_000;
+  const differing = { movers: 0, slips: 0 };
+
+  for (let seed = 1; seed <= 20; seed++) {
+    const random = seeded(seed);
+
+    const history = Array.from({ length: 220 }, (_, n) => {
+      const th = n < 205 ? (random() < 0.5 ? 2 : 1) : random() < 0.2 ? 1 : 0;
+      const qu = n > 200 ? (random() < 0.6 ? 3 : 1) : random() < 0.1 ? 1 : 0;
+
+      return run(n, [['th', 10, th, 10, 200, 0], ['qu', 10, qu, 10, 200, 0]], { at: new Date(began - (200 - n) * 5 * 3_600_000).toISOString(), kind: n % 37 === 30 ? 'retest' : 'test' });
+    });
+
+    const kept = retainRuns(history, { drills: true });
+    const short = retainRuns(history, { drills: false });
+    const view = { keyboard: KEYBOARD, focus: 'balanced', now: NOW, began };
+
+    assert.ok(kept.filter((r) => r.patterns.length).length > MAX_PATTERN_RUNS, 'post-drill retention keeps more than 120 runs');
+    differing.movers += Number(JSON.stringify(weekMovers({ ...view, runs: kept })) !== JSON.stringify(weekMovers({ ...view, runs: short })));
+    differing.slips += Number(JSON.stringify(weekSlips({ ...view, runs: kept })) !== JSON.stringify(weekSlips({ ...view, runs: short })));
+  }
+
+  assert.deepEqual(differing, { movers: 0, slips: 0 });
 });

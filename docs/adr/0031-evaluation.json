@@ -1,0 +1,1839 @@
+{
+  "mode": "test",
+  "seeds": [
+    601,
+    602,
+    603,
+    604,
+    605,
+    606,
+    607,
+    608,
+    609,
+    610,
+    611,
+    612,
+    613,
+    614,
+    615,
+    616,
+    617,
+    618,
+    619,
+    620,
+    621,
+    622,
+    623,
+    624,
+    625,
+    626,
+    627,
+    628,
+    629,
+    630
+  ],
+  "weeksPerCell": 2,
+  "params": {
+    "alpha": 0.02,
+    "priorDf": 16,
+    "lodoZ": 1.8,
+    "minDays": 2
+  },
+  "overallNull": {
+    "pooled-7b07": {
+      "weeks": 5400,
+      "falseSlipWeeks": 140,
+      "plantedDetected": 0,
+      "plantedTotal": 0,
+      "readablePlantedDetected": 0,
+      "readablePlantedTotal": 0,
+      "extraFalseWeeks": 0,
+      "wilson": {
+        "share": 0.025925925925925925,
+        "low": 0.022012471728183977,
+        "high": 0.03051342022246091,
+        "k": 140,
+        "n": 5400
+      }
+    },
+    "day-level-0031": {
+      "weeks": 5400,
+      "falseSlipWeeks": 1,
+      "plantedDetected": 0,
+      "plantedTotal": 0,
+      "readablePlantedDetected": 0,
+      "readablePlantedTotal": 0,
+      "extraFalseWeeks": 0,
+      "wilson": {
+        "share": 0.00018518518518518518,
+        "low": 0.00003268963948712506,
+        "high": 0.0010483191006654359,
+        "k": 1,
+        "n": 5400
+      }
+    }
+  },
+  "byRegime": {
+    "null-stationary": {
+      "kind": "null",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 1,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        }
+      }
+    },
+    "null-uneven-bad-days": {
+      "kind": "null",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 2,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        }
+      }
+    },
+    "null-overdispersed": {
+      "kind": "null",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 61,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 1,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        }
+      }
+    },
+    "null-single-day-hiccup": {
+      "kind": "null",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 50,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        }
+      }
+    },
+    "null-global-bad-week": {
+      "kind": "null",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 26,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 0,
+          "plantedTotal": 0,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 0
+        }
+      }
+    },
+    "alt-1pair-strong": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 384,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 35
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 260,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 260,
+          "readablePlantedTotal": 588,
+          "extraFalseWeeks": 8
+        }
+      }
+    },
+    "alt-1pair-moderate": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 241,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 28
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 160,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 160,
+          "readablePlantedTotal": 598,
+          "extraFalseWeeks": 1
+        }
+      }
+    },
+    "alt-coslip-2": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 616,
+          "plantedTotal": 2160,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 42
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 431,
+          "plantedTotal": 2160,
+          "readablePlantedDetected": 431,
+          "readablePlantedTotal": 1125,
+          "extraFalseWeeks": 5
+        }
+      }
+    },
+    "alt-coslip-4": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 1163,
+          "plantedTotal": 4320,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 35
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 822,
+          "plantedTotal": 4320,
+          "readablePlantedDetected": 822,
+          "readablePlantedTotal": 2181,
+          "extraFalseWeeks": 11
+        }
+      }
+    },
+    "alt-4day-slip": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 214,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 19
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 125,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 125,
+          "readablePlantedTotal": 610,
+          "extraFalseWeeks": 1
+        }
+      }
+    },
+    "alt-key-slip": {
+      "kind": "alt",
+      "dets": {
+        "pooled-7b07": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 515,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 0,
+          "readablePlantedTotal": 0,
+          "extraFalseWeeks": 4
+        },
+        "day-level-0031": {
+          "weeks": 1080,
+          "falseSlipWeeks": 0,
+          "plantedDetected": 383,
+          "plantedTotal": 1080,
+          "readablePlantedDetected": 383,
+          "readablePlantedTotal": 889,
+          "extraFalseWeeks": 0
+        }
+      }
+    }
+  },
+  "byVolNull": {
+    "light-10": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "light-25": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "medium": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 2,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 2,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 133,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "bursty-week": {
+      "pooled-7b07": {
+        "weeks": 900,
+        "falseSlipWeeks": 2,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 900,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    }
+  },
+  "bySkillNull": {
+    "careful": {
+      "pooled-7b07": {
+        "weeks": 1800,
+        "falseSlipWeeks": 20,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 1800,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "average": {
+      "pooled-7b07": {
+        "weeks": 1800,
+        "falseSlipWeeks": 45,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 1800,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "learning": {
+      "pooled-7b07": {
+        "weeks": 1800,
+        "falseSlipWeeks": 75,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 1800,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    }
+  },
+  "byRegimeVolNull": {
+    "null-stationary::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-stationary::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-stationary::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-stationary::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-stationary::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 2,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 59,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 48,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 24,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-stationary::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-uneven-bad-days::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-overdispersed::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-single-day-hiccup::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 1,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "null-global-bad-week::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 0,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    }
+  },
+  "byRegimeVolAlt": {
+    "alt-1pair-strong::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-moderate::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-2::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-4::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-4day-slip::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-key-slip::light-10": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 4,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 7,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 7,
+        "readablePlantedTotal": 94,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-strong::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 1,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-moderate::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 4,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-2::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-4::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 1,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 1,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 1,
+        "readablePlantedTotal": 5,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-4day-slip::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 0,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 4,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-key-slip::light-25": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 17,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 15,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 15,
+        "readablePlantedTotal": 161,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-strong::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 44,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 31,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 31,
+        "readablePlantedTotal": 137,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-moderate::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 10,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 5,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 5,
+        "readablePlantedTotal": 130,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-2::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 38,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 32,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 32,
+        "readablePlantedTotal": 237,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-4::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 69,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 1
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 47,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 47,
+        "readablePlantedTotal": 415,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-4day-slip::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 8,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 5,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 5,
+        "readablePlantedTotal": 139,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-key-slip::medium": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 67,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 52,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 52,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-strong::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 90,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 4
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 34,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 34,
+        "readablePlantedTotal": 90,
+        "extraFalseWeeks": 1
+      }
+    },
+    "alt-1pair-moderate::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 36,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 3
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 11,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 11,
+        "readablePlantedTotal": 104,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-2::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 131,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 1
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 41,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 41,
+        "readablePlantedTotal": 172,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-4::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 210,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 4
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 80,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 80,
+        "readablePlantedTotal": 340,
+        "extraFalseWeeks": 2
+      }
+    },
+    "alt-4day-slip::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 23,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 7,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 7,
+        "readablePlantedTotal": 108,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-key-slip::heavy-15x100": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 128,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 64,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 64,
+        "readablePlantedTotal": 94,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-strong::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 180,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 30
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 170,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 170,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 7
+      }
+    },
+    "alt-1pair-moderate::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 172,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 24
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 138,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 138,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 1
+      }
+    },
+    "alt-coslip-2::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 357,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 41
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 325,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 325,
+        "readablePlantedTotal": 360,
+        "extraFalseWeeks": 5
+      }
+    },
+    "alt-coslip-4::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 710,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 30
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 617,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 617,
+        "readablePlantedTotal": 720,
+        "extraFalseWeeks": 9
+      }
+    },
+    "alt-4day-slip::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 168,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 19
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 111,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 111,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 1
+      }
+    },
+    "alt-key-slip::heavy-30k": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 180,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 4
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 176,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 176,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-strong::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 70,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 1
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 25,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 25,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-1pair-moderate::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 23,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 1
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 6,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 6,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-2::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 90,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 33,
+        "plantedTotal": 360,
+        "readablePlantedDetected": 33,
+        "readablePlantedTotal": 356,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-coslip-4::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 173,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 77,
+        "plantedTotal": 720,
+        "readablePlantedDetected": 77,
+        "readablePlantedTotal": 701,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-4day-slip::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 15,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 2,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 2,
+        "readablePlantedTotal": 179,
+        "extraFalseWeeks": 0
+      }
+    },
+    "alt-key-slip::bursty-week": {
+      "pooled-7b07": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 119,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 0,
+        "readablePlantedTotal": 0,
+        "extraFalseWeeks": 0
+      },
+      "day-level-0031": {
+        "weeks": 180,
+        "falseSlipWeeks": 0,
+        "plantedDetected": 69,
+        "plantedTotal": 180,
+        "readablePlantedDetected": 69,
+        "readablePlantedTotal": 180,
+        "extraFalseWeeks": 0
+      }
+    }
+  }
+}

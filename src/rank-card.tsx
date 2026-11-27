@@ -359,7 +359,7 @@ export function RankCard({ controller }: { controller: RankCardController }) {
         </svg>
       </div>
       <p className="rc-rank" data-rc="rank" data-rc-clear="" data-rc-text="" hidden={!ranked}>{model.rank?.label}</p>
-      <p className="rc-from" data-rc="from" data-rc-clear="" data-rc-text="" hidden={!model.moved}>{model.moved ? `${model.moved === 'promoted' ? 'promoted' : 'down'} from ${model.was?.label}` : ''}</p>
+      <p className="rc-from" data-rc="from" data-rc-clear="" data-rc-text="" hidden={!model.moved}>{model.moved ? `${model.moved === 'promoted' ? 'up' : 'down'} from ${model.was?.label}` : ''}</p>
       <p className="rc-nums" data-rc-clear="" data-rc-text=""><span className="rc-rating num" data-rc="rating">{model.rating.from}</span><span className="rc-delta num" data-rc="delta">{signed(model.delta)}</span></p>
       <p className="rc-count" data-rc="count" data-rc-clear="" data-rc-text="" hidden={Boolean(ranked)}>{model.races} rated {model.races === 1 ? 'race' : 'races'} · provisional</p>
       <div className="rc-bar" data-rc="bar" data-rc-clear="" hidden={!ranked}><span className="rc-fill"></span><span className="rc-change"></span></div>
