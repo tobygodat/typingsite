@@ -42,8 +42,10 @@ and stratum, in the JSON.
 ## Reading
 
 Weighing the two worlds equally, every floor costs more real reads than the false ones it removes. A floor of 3
-removes 0.4 points of false reads after 80 runs and 5.9 points of real ones; a floor of 5 removes 1.2 and 18.7. The rule as written is about 19 real reads to
-one false; a floor of 3 is about 20 to one, at a fifth fewer real reads. So the floor isn't adopted.
+removes 0.4 points of false reads after 80 runs and 5.9 points of real ones; a floor of 5 removes 1.3 and 18.6. These
+differences, and the ratios after them, come from the unrounded shares in the JSON, not from the table's rounded
+figures. The rule as written is about 19 real reads to one false; a floor of 3 is about 21 to one, at a fifth fewer
+real reads. So the floor isn't adopted.
 
 What the conclusion assumes and leaves out:
 

@@ -150,6 +150,14 @@ test('a pair drilled for its pace and now at it is fixed by pace, read since its
   assert.equal(path.behind.find((step) => step.unit === 'ol').state, 'fixed');
 });
 
+test('a loop whose drill was skipped is no drill, so Progress never reads its target as fixed since a drill', () => {
+  const slow = Array.from({ length: 5 }, (_, i) => run(`s${i}`, daysAgo(12 - i), { patterns: withBackground([['ol', 12, 0, 12, 300, 100]]) }));
+  const retest = run('t', daysAgo(5), { patterns: withBackground([['ol', 12, 0, 12, 200, 0]]) });
+  const since = Array.from({ length: 4 }, (_, i) => run(`u${i}`, daysAgo(4 - i), { patterns: withBackground([['ol', 12, 0, 12, 195, -5]]) }));
+  const skipped = { ...loop('l', 'ol', retest, 'slow'), drillCompleted: false };
+  assert.notEqual(overview([...slow, retest, ...since], [skipped]).movers.find((item) => item.unit === 'ol')?.split, 'drill');
+});
+
 test('a unit fixed since a drill it had no evidence before is left out: there is no before to show', () => {
   const retest = run('t', daysAgo(5), { patterns: withBackground([['zq', 12, 0, 12, 200, 0]]) });
   const since = Array.from({ length: 3 }, (_, i) => run(`u${i}`, daysAgo(4 - i), { patterns: withBackground([['zq', 12, 0, 12, 200, 0]]) }));

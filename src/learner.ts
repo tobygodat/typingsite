@@ -1,4 +1,4 @@
-import { analysisRuns, analysisLoops } from './domain-history.js';
+import { analysisRuns, analysisLoops, drilledLoop } from './domain-history.js';
 import type { AnalysisRun, AnalysisLoop, HistoricalRecord } from './profile-types.js';
 import { entry } from './domain-values.js';
 import type { Conditions, WeightedUnit } from './typing.js';
@@ -344,7 +344,7 @@ const loopOrder = (a: AnalysisLoop, b: AnalysisLoop) => compare(Date.parse(a.at 
 export function drilledTargets(loops: readonly unknown[], keyboard: string) {
   const newest = new Map<string | null | undefined, AnalysisLoop>();
 
-  for (const loop of analysisLoops(loops).filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
+  for (const loop of analysisLoops(loops).filter((item) => item.target && drilledLoop(item) && keyboardOf(item.conditions) === keyboard).sort(loopOrder)) newest.set(loop.target, loop);
 
   return newest;
 }

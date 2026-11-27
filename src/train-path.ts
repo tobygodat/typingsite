@@ -1,4 +1,4 @@
-import { analysisRuns, analysisLoops } from './domain-history.js';
+import { analysisRuns, analysisLoops, drilledLoop } from './domain-history.js';
 import type { AnalysisLoop } from './profile-types.js';
 import { at as indexed, entry } from './domain-values.js';
 import type { TargetCounts } from './profile-types.js';
@@ -156,7 +156,7 @@ export function trainPath({ recommendation, loops: rawLoops = [], runs: rawRuns 
   // Each drilled target once, by its newest loop on this keyboard, newest nearest the open step.
   const newest = new Map<string | null | undefined, AnalysisLoop>();
 
-  for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
+  for (const loop of loops.filter((item) => item.target && drilledLoop(item) && keyboardOf(item.conditions) === keyboard).sort(byDate)) newest.set(loop.target, loop);
 
   // The open step's "since you drilled it" line reads the kind of evidence the step is drawn for, whatever its drill was for.
   if (current.unit && newest.has(current.unit)) current.since = since(newest.get(current.unit) ?? indexed(loops, 0), current.was?.basis === 'slow' ? 'slow' : 'errors');
