@@ -146,7 +146,7 @@ function season(seed, cell, i, world, arm, k, withShipped) {
   const tries = targets.map(() => []);
 
   for (let t = drill + 1; t <= total; t += 1) {
-    const kept = retainRuns(runs);
+    const kept = retainRuns(runs, { drills: true });
     const records = learnerEvidence(kept, KEYBOARD);
     const now = nowOf(runs);
 

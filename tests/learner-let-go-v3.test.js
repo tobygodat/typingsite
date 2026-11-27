@@ -61,33 +61,34 @@ test('a let-go crossing does not move when a later run changes the person’s ov
 test('retention keeps pattern evidence on the runs since each kept drill, beyond the newest 120', () => {
   const runs = Array.from({ length: 260 }, (_, n) => run(n, [['th', 9, 0, 9, 200, 0]], n === 30 ? { kind: 'retest' } : {}));
   const patterned = (list) => list.filter((r) => r.patterns.length).length;
-  const kept = retainRuns(runs);
+  const kept = retainRuns(runs, { drills: true });
   assert.equal(patterned(retainRuns(runs, { drills: false })), MAX_PATTERN_RUNS);
+  assert.deepEqual(retainRuns(runs), retainRuns(runs, { drills: false }), 'the app keeps the newest 120');
   assert.equal(patterned(kept), MAX_DRILL_WINDOW, 'the drill window is bounded');
   assert.equal(kept.length, 260, 'no summary is lost');
   assert.equal(kept.at(-1).patterns.length > 0, true);
 
   // A retest inside the newest 120 asks for nothing more; the window begins TYPICAL_RUNS runs before it, at most.
   const recent = Array.from({ length: 260 }, (_, n) => run(n, [['th', 9, 0, 9, 200, 0]], n === 200 ? { kind: 'retest' } : {}));
-  assert.equal(patterned(retainRuns(recent)), 260 - 200 + TYPICAL_RUNS > MAX_PATTERN_RUNS ? 260 - 200 + TYPICAL_RUNS : MAX_PATTERN_RUNS);
+  assert.equal(patterned(retainRuns(recent, { drills: true })), 260 - 200 + TYPICAL_RUNS > MAX_PATTERN_RUNS ? 260 - 200 + TYPICAL_RUNS : MAX_PATTERN_RUNS);
 
   // Without any retest it keeps what it kept before; only the KEPT_RETESTS newest retests anchor the window.
   const noRetest = Array.from({ length: 200 }, (_, n) => run(n, []));
-  assert.equal(patterned(retainRuns(noRetest)), MAX_PATTERN_RUNS);
+  assert.equal(patterned(retainRuns(noRetest, { drills: true })), MAX_PATTERN_RUNS);
   const many = Array.from({ length: 260 }, (_, n) => run(n, [], n % 20 === 5 ? { kind: 'retest' } : {}));
   const eighth = many.map((r, n) => (r.kind === 'retest' ? n : -1)).filter((n) => n >= 0).at(-KEPT_RETESTS);
-  assert.equal(patterned(retainRuns(many)), Math.min(MAX_DRILL_WINDOW, 260 - Math.max(0, eighth - TYPICAL_RUNS)));
+  assert.equal(patterned(retainRuns(many, { drills: true })), Math.min(MAX_DRILL_WINDOW, 260 - Math.max(0, eighth - TYPICAL_RUNS)));
 
   // Merge-safe and idempotent: it reads only the runs, so the order two copies arrive in changes nothing.
-  assert.deepEqual(retainRuns(kept), kept);
-  assert.deepEqual(retainRuns([...runs].reverse().sort((a, b) => (a.at < b.at ? -1 : 1))), kept);
+  assert.deepEqual(retainRuns(kept, { drills: true }), kept);
+  assert.deepEqual(retainRuns([...runs].reverse().sort((a, b) => (a.at < b.at ? -1 : 1)), { drills: true }), kept);
 });
 
 test('a walk survives its retest leaving the newest 120 runs', () => {
   // 20 missed runs, the retest, then 130 clean runs: the retest is 130 runs old, outside the newest 120.
   const runs = Array.from({ length: 151 }, (_, n) => (n < 20 ? run(n, [['th', 9, 2, 9, 200, 0]]) : run(n, [['th', 9, 0, 9, 200, 0]], n === 20 ? { kind: 'retest' } : {})));
   const loops = [loop('l', 'th', runs[20])];
-  const kept = retainRuns(runs);
+  const kept = retainRuns(runs, { drills: true });
   assert.ok(kept.find((r) => r.id === 'r20').patterns.length, 'the retest still holds its counts');
   assert.ok(!queued(recommend(LET_GO_3_POLICY, kept, loops), 'th'), 'let go, and still let go');
   // Under the old window the same profile loses the retest and reads from the next run: only the shipped 120 are read.
@@ -227,7 +228,7 @@ test('property: over random histories, in every focus, a target let go for its k
   assert.ok(letGoSeen > 0, 'the histories let some targets go, so the property is exercised');
 });
 
-test('profile merges keep the longer window the same on both sides', () => {
+test('profile merges keep the same window on both sides', () => {
   const runs = Array.from({ length: 200 }, (_, n) => run(n, [['th', 9, 0, 9, 200, 0]], n === 30 ? { kind: 'retest' } : {}));
   const half = (from, to) => ({ runs: runs.slice(from, to), loops: [], attempts: [], compositions: [], practiceDays: {} });
   const merged = mergeSynced(half(0, 120), half(80, 200));
@@ -258,7 +259,7 @@ test('weekMovers reads the same 120-run pattern window as DEFAULT_POLICY even wh
     return run(n, rows, n === 30 ? { at: stamp, kind: 'retest' } : { at: stamp });
   });
 
-  const kept = retainRuns(history);
+  const kept = retainRuns(history, { drills: true });
   const trimmed120 = retainRuns(history, { drills: false });
   assert.ok(kept.filter((r) => r.patterns.length).length > MAX_PATTERN_RUNS, 'post-drill retention keeps >120 runs');
   assert.equal(trimmed120.filter((r) => r.patterns.length).length, MAX_PATTERN_RUNS);

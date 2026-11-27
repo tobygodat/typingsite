@@ -236,12 +236,13 @@ const carriesCounts = (run: RetentionRun) => Boolean(run.patterns?.length || run
 // Missed words stay only on the newest 120 runs the list counts, so the profile stays small. Counting those
 // from the end means drills between them never push counted runs out of the list's window (word practice and
 // custom text are on their own budget anyway).
-export function retainRuns<T extends RetentionRun>(runs: T[], { drills = true } = {}) {
+export function retainRuns<T extends RetentionRun>(runs: T[], { drills = false } = {}) {
   const comparable = runs.filter((run) => comparableKind(run.kind));
   const other = runs.filter((run) => !comparableKind(run.kind));
   const kept = new Set([...comparable.slice(-MAX_RUN_SUMMARIES), ...other.slice(-MAX_NON_COMPARABLE_RUNS)]);
   const carrying = comparable.filter((run) => kept.has(run) && carriesCounts(run));
-  // ADR 0029: with `drills`, the window reaches back TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest.
+  // ADR 0029: with `drills`, the window reaches back TYPICAL_RUNS runs before the KEPT_RETESTS-th newest retest. Only its
+  // evaluation asks for it; the app keeps the newest 120, since no shipped variant reads further back.
   const retests = carrying.flatMap((run, at) => (run.kind === 'retest' ? [at] : []));
   const anchor = drills && retests.length ? Math.max(0, (retests[Math.max(0, retests.length - KEPT_RETESTS)] ?? 0) - TYPICAL_RUNS) : carrying.length;
   const start = Math.max(carrying.length - MAX_DRILL_WINDOW, Math.min(carrying.length - MAX_PATTERN_RUNS, anchor), 0);
