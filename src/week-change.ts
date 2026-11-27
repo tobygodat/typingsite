@@ -202,7 +202,7 @@ export function weekMovers({ runs, loops: rawLoops = [], keyboard, focus, now, b
         const trimmedAfterPrev = Number.isFinite(prevSplit) && trimmed.some((run) => run.at !== null && run.at >= prevSplit);
 
         if (trimmedAfterPrev) {
-          const prevDisprovesFixed = previousSince?.basis === 'errors' && (previousSince.after?.errors ?? 0) > 0;
+          const prevDisprovesFixed = previousSince?.basis === 'slow' ? Math.round(previousSince.after?.ms ?? 0) > SLOW_FLOOR_MS : (previousSince?.after?.errors ?? 0) > 0;
           const beforeClean = since.basis === 'errors' ? since.before.errors === 0 : Math.round(since.before.ms) <= SLOW_FLOOR_MS;
 
           if (!prevDisprovesFixed && beforeClean) continue;

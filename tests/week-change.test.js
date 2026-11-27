@@ -507,6 +507,29 @@ test('trimmed pre-week counts suppress broken pre-week re-drill artifacts per un
   assert.deepEqual(weekMovers({ runs: [...runs].reverse(), loops: [...loops].reverse(), keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }).map((m) => m.unit).sort(), ['ck', 'qu']);
 });
 
+// TOB-511: a pace drill before the week left the pair slow in its surviving pre-week runs, so it wasn't fixed then.
+// A drill this week that brought it to pace is a real mover, even when older counts were trimmed.
+test('surviving pre-week runs that are still slow keep a real pace fix listed after trimming', () => {
+  const hour = 3_600_000;
+  const day = 24 * hour;
+  const pairs = BACKGROUND.filter((pair) => pair !== 'th').slice(0, 25);
+
+  const series = (count, start, step, label, ms, kind = 'test') => Array.from({ length: count }, (_, i) => run(`${label}${i}`, new Date(THEN + start + i * step),
+    { kind, patterns: [...pairs.map((pair, j) => [pair, 4, j % 5 ? 0 : 1, 4, 200, 0]), ['th', 10, 0, 10, 200 + ms, ms]] }));
+
+  const [oldRetest] = series(1, -8 * day, hour, 'old-r', 75, 'retest');
+  const [newRetest] = series(1, 2.5 * day, hour, 'new-r', 0, 'retest');
+
+  const history = [...series(14, -9 * day, hour, 'old-b', 105), oldRetest, ...series(20, -7 * day, hour, 'old-a', 75), ...series(3, -12 * hour, hour, 'carry-a', 65),
+    ...series(24, day, hour, 'new-b', 0), newRetest, ...series(92, 3 * day, hour / 2, 'new-a', 0)];
+
+  const runs = retainRuns(history);
+  const loops = [loop('old', 'th', oldRetest, 'slow'), loop('new', 'th', newRetest, 'slow')];
+
+  assert.ok(runs.some((item) => !item.patterns?.length), 'older pattern counts were trimmed');
+  assert.deepEqual(weekMovers({ runs, loops, keyboard: KEYBOARD, focus: 'speed', now: NOW, began: THEN }).map((mover) => `${mover.unit}:${mover.split}`), ['th:drill']);
+});
+
 // TOB-511: across light (untrimmed), medium, heavy and burst-week histories, the per-unit fix matches master on
 // untrimmed histories, hides no more true movers than master, and removes false trimming artifacts.
 test('the per-unit trimming fix hides no more true movers than master while cutting false trimming artifacts', () => {
