@@ -1,9 +1,9 @@
-// Simulation and evaluation harness for ADR 0028: Progress's "slipping" rule from day-level variation (TOB-511).
-// Deterministic from its seeds. Validation seeds (9101, 9102) choose design and thresholds before ADR 0028 is
+// Simulation and evaluation harness for ADR 0031: Progress's "slipping" rule from day-level variation (TOB-511).
+// Deterministic from its seeds. Validation seeds (9101, 9102) choose design and thresholds before ADR 0031 is
 // committed; held-out test seeds (601..630) run once after the rule is committed.
 //
 //   node --import tsx scripts/evaluate-slipping.mjs --validation-only [--workers 8]
-//   node --import tsx scripts/evaluate-slipping.mjs --test [--json docs/adr/0028-evaluation.json] [--workers 8]
+//   node --import tsx scripts/evaluate-slipping.mjs --test [--json docs/adr/0031-evaluation.json] [--workers 8]
 
 import { Worker, isMainThread, parentPort } from 'node:worker_threads';
 import { writeFileSync } from 'node:fs';
@@ -665,12 +665,12 @@ export const VALIDATION_CANDIDATES = [
   { name: 'day-a01-d16-l18', kind: 'day', params: { alpha: 0.01, priorDf: 16, lodoZ: 1.8, minDays: 2 } },
 ];
 
-// Chosen on validation seeds 9101, 9102 before running held-out test seeds 601..630 (ADR 0028).
-export const ADR_0028_PARAMS = { alpha: 0.02, priorDf: 16, lodoZ: 1.8, minDays: 2 };
+// Chosen on validation seeds 9101, 9102 before running held-out test seeds 601..630 (ADR 0031).
+export const ADR_0031_PARAMS = { alpha: 0.02, priorDf: 16, lodoZ: 1.8, minDays: 2 };
 
 export const TEST_DETECTORS = [
   { name: 'pooled-7b07', kind: '7b07' },
-  { name: 'day-level-0028', kind: 'day', params: ADR_0028_PARAMS },
+  { name: 'day-level-0031', kind: 'day', params: ADR_0031_PARAMS },
 ];
 
 async function main() {
@@ -795,7 +795,7 @@ async function main() {
       mode: validationOnly ? 'validation' : 'test',
       seeds,
       weeksPerCell,
-      params: ADR_0028_PARAMS,
+      params: ADR_0031_PARAMS,
       overallNull: Object.fromEntries(Object.entries(overallNull).map(([k, v]) => [k, { ...v, wilson: wilson(v.falseSlipWeeks, v.weeks) }])),
       byRegime,
       byVolNull,

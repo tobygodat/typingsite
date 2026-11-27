@@ -290,7 +290,7 @@ export function moverSample({ before, after, split }: Mover) {
   return `${counted(before)} in ${plural(before.runs, 'run')} ${was}, ${counted(after)} in ${plural(after.runs, 'run')} ${since}`;
 }
 
-// --- Slipping from day-level variation (ADR 0028, TOB-511) ---
+// --- Slipping from day-level variation (ADR 0031, TOB-511) ---
 // Chosen on validation seeds 9101–9102 and verified on held-out seeds 601–630 before shipping.
 export const SLIP_RULE = { alpha: 0.02, priorDf: 16, lodoZ: 1.8, minDays: 2 } as const;
 
@@ -448,7 +448,7 @@ export interface SlipDetectionResult {
   family: number;
 }
 
-// Pure day-level variation slip detector (ADR 0028). Deduplicates records by id as fitLearner does, groups dated
+// Pure day-level variation slip detector (ADR 0031). Deduplicates records by id as fitLearner does, groups dated
 // records by local calendar day, cancels uneven bad days via within-day leave-one-out background log-odds shifts
 // (clamped so a good week never makes a slip easier to call), estimates pre-week day-level overdispersion (keyboard
 // prior moderated per unit), applies Bonferroni control over all readable units, and guards against single-day spikes
@@ -699,7 +699,7 @@ export function detectSlips(records: LearnerEvidence[], began: number, queuedNow
 }
 
 // Units slipping since `began` on one keyboard in one focus, ranked by the rise in learner gain since `began`
-// (ADR 0028). Pure engine exported for UI hookup once Progress's visible presentation is reviewed (DESIGN.md).
+// (ADR 0031). Pure engine exported for UI hookup once Progress's visible presentation is reviewed (DESIGN.md).
 export function weekSlips({ runs, keyboard, focus, now, began }: { runs: readonly unknown[]; keyboard: string; focus: string; now: number; began: number }): Slip[] {
   const variant = LEARNER_VARIANTS[DEFAULT_POLICY];
   const records = learnerEvidence(runs, keyboard);

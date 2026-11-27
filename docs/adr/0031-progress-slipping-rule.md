@@ -1,6 +1,8 @@
-# 0028. Calling a pair or key "slipping" on Progress from day-level variation
+# 0031. Calling a pair or key "slipping" on Progress from day-level variation
 
 Status: Accepted, 2026-11-26. TOB-511. Passed every pre-registered clause on held-out test seeds `601..630`.
+
+Written and accepted as ADR 0028; renumbered 0031 because [ADR 0028](0028-bun-runs-the-build.md) landed on master first and 0029–0030 were taken. Nothing in the rule or verdict changed.
 
 ## Context
 
@@ -114,7 +116,7 @@ Thirty fresh seeds never used in design or validation: **`601..630`**, 2 weeks p
 
 ### Decision ceilings
 
-The candidate (`day-level-0028`) passes and is implemented as an exported pure function in `src/week-change.ts` iff ALL of these hold on the single held-out test run (`seeds 601..630`):
+The candidate (`day-level-0031`) passes and is implemented as an exported pure function in `src/week-change.ts` iff ALL of these hold on the single held-out test run (`seeds 601..630`):
 
 - **(a) Overall null ceiling:** Pooled over all 5,400 null weeks, the upper end of the 95% Wilson interval for false-slip weeks is **≤ 1.0%**.
 - **(b) Every null slice ceiling:** Across EVERY null regime (`n = 1,080`), EVERY volume (`n = 900`), and EVERY skill tier (`n = 1,800`), the point estimate of false-slip weeks is **≤ 1.5%** and the upper end of the 95% Wilson interval is **≤ 2.0%**.
@@ -129,20 +131,20 @@ If any clause fails, `src/week-change.ts` remains slipping-free and the failure 
 
 ## Results
 
-The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write ADR 0028 slipping decision rule before running test seeds (TOB-511)") before any held-out test seed ran. Held-out test seeds `601..630` ran once (`node --import tsx scripts/evaluate-slipping.mjs --test --json docs/adr/0028-evaluation.json --workers 12`, 5,940 cells, 11,880 simulated weeks: 5,400 null weeks and 6,480 alternative weeks, 84.3 s), and the full record is saved in [`0028-evaluation.json`](0028-evaluation.json).
+The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write ADR 0028 slipping decision rule before running test seeds (TOB-511)") before any held-out test seed ran. Held-out test seeds `601..630` ran once (`node --import tsx scripts/evaluate-slipping.mjs --test --json docs/adr/0031-evaluation.json --workers 12`, 5,940 cells, 11,880 simulated weeks: 5,400 null weeks and 6,480 alternative weeks, 84.3 s), and the full record is saved in [`0028-evaluation.json`](0028-evaluation.json).
 
-**`day-level-0028` passes every pre-registered clause.**
+**`day-level-0031` passes every pre-registered clause.**
 
 ### Overall null false-slip rate (5,400 null weeks, 95% Wilson intervals)
 
 | Detector | False-slip weeks | 95% Wilson interval |
 | --- | --- | --- |
 | `pooled-7b07` (prior pooled Fisher) | 2.59% (140 / 5,400) | [2.20%, 3.05%] |
-| **`day-level-0028`** | **0.02% (1 / 5,400)** | **[0.00%, 0.10%]** |
+| **`day-level-0031`** | **0.02% (1 / 5,400)** | **[0.00%, 0.10%]** |
 
 ### Null false-slip rate by regime, volume, and skill
 
-| Slice | `n` | `pooled-7b07` | `day-level-0028` | `day-level-0028` 95% Wilson |
+| Slice | `n` | `pooled-7b07` | `day-level-0031` | `day-level-0031` 95% Wilson |
 | --- | --- | --- | --- | --- |
 | `null-stationary` | 1,080 | 0.09% (1) | 0.00% (0) | [0.00%, 0.35%] |
 | `null-uneven-bad-days` | 1,080 | 0.19% (2) | 0.00% (0) | [0.00%, 0.35%] |
@@ -161,7 +163,7 @@ The rule above was committed (`dccca014db77d6d30bb4eceb336aaf5199056035`, "Write
 
 ### Alternative regimes: detection of real multi-day slips (1,080 weeks per regime)
 
-| Regime | `day-level-0028` readable planted | `day-level-0028` on `heavy-30k` | `day-level-0028` all planted | `day-level-0028` extra-false weeks [95% Wilson] | `pooled-7b07` extra-false weeks |
+| Regime | `day-level-0031` readable planted | `day-level-0031` on `heavy-30k` | `day-level-0031` all planted | `day-level-0031` extra-false weeks [95% Wilson] | `pooled-7b07` extra-false weeks |
 | --- | --- | --- | --- | --- | --- |
 | `alt-1pair-strong` | **44.22% (260/588)** | **94.4% (170/180)** | 24.07% (260/1,080) | 0.74% (8/1,080) [0.38%, 1.45%] | 3.24% (35/1,080) |
 | `alt-1pair-moderate` | 26.76% (160/598) | — | 14.81% (160/1,080) | 0.09% (1/1,080) [0.02%, 0.52%] | 2.59% (28/1,080) |

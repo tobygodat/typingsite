@@ -8,7 +8,7 @@ import { MAX_PATTERN_RUNS, dayKey, retainRuns } from '../src/insights.js';
 import { weekChange as weekChangeBefore } from './week-change-reference.js';
 import { mergeSynced } from '../src/account.js';
 import { seeded } from '../scripts/evaluate-learner.mjs';
-import { ADR_0028_PARAMS, detectSlipsDayLevel } from '../scripts/evaluate-slipping.mjs';
+import { ADR_0031_PARAMS, detectSlipsDayLevel } from '../scripts/evaluate-slipping.mjs';
 
 const conditions = { mode: 'words', count: 25, punctuation: false, wordList: '200', inputClass: 'physical-keyboard', correctionPolicy: 'relaxed',
   corpus: CORPUS_VERSION, metricVersion: METRIC_VERSION, layout: 'qwerty' };
@@ -606,7 +606,7 @@ test('the per-unit trimming fix hides no more true movers than master while cutt
   assert.ok(fixFalse < masterFalse, `fix must cut false trimming artifacts (${fixFalse} vs ${masterFalse})`);
 });
 
-// ADR 0028 (TOB-511): day-level variation slip detection catches real multi-day slips (including co-slipping pairs),
+// ADR 0031 (TOB-511): day-level variation slip detection catches real multi-day slips (including co-slipping pairs),
 // while rejecting single-day spikes, global bad weeks, good weeks, and pace-only slowdowns, and matching the evaluator.
 test('weekSlips catches real multi-day slips and co-slipping pairs while ignoring single-day spikes, global bad weeks, good weeks and pace', () => {
   const bg = (rate, rows = []) => {
@@ -634,15 +634,15 @@ test('weekSlips catches real multi-day slips and co-slipping pairs while ignorin
   // Order invariance and merge commutativity.
   assert.deepEqual(weekSlips({ runs: [...multiRuns].reverse(), keyboard: KEYBOARD, focus: 'balanced', now: NOW, began: THEN }), multi);
 
-  // Parity with the ADR 0028 evaluator implementation.
+  // Parity with the ADR 0031 evaluator implementation.
   const recs = multiRuns.map((r) => ({
     id: r.id, at: Date.parse(r.at), correction: null,
     units: r.patterns.map(([unit, seen, errors]) => ({ unit, seen, errors, timed: 0, slow: null, ratio: null, slowMs: null })),
   }));
 
   const queued = new Set(recommend(multiRuns, [], 'balanced').queue.map((item) => item.unit));
-  assert.deepEqual(SLIP_RULE, ADR_0028_PARAMS);
-  assert.deepEqual(detectSlips(recs, THEN, queued).slipped.map((s) => s.unit), detectSlipsDayLevel(recs, THEN, queued, ADR_0028_PARAMS).slipped);
+  assert.deepEqual(SLIP_RULE, ADR_0031_PARAMS);
+  assert.deepEqual(detectSlips(recs, THEN, queued).slipped.map((s) => s.unit), detectSlipsDayLevel(recs, THEN, queued, ADR_0031_PARAMS).slipped);
 
   // 2) Single-day spike (35 misses concentrated on ONE day, 0 on the other 4 days): never a slip (LODO guard).
   const afterOneDaySpike = Array.from({ length: 5 }, (_, i) => run(`sp${i}`, daysAgo(5 - i), {
