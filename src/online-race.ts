@@ -858,15 +858,20 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     }
 
     if (delta >= 0 && remaining === 0 && !finishRequested && attempt && !pending) {
-      finishRequested = true;
       attempt.endedAt = (room.duration || 60) * 1000;
       dirty = true;
-
-      if (document.body.dataset.view === 'compete') setRunning(false);
-
-      paint({ help: 'Time’s up. Sending your result…' });
+      endOnTime();
       poll();
     }
+  }
+
+  // The race clock ran out: this tab's, or the service's first, when it finished the seat (sendSettledTrace).
+  function endOnTime() {
+    finishRequested = true;
+
+    if (document.body.dataset.view === 'compete') setRunning(false);
+
+    paint({ help: 'Time’s up. Sending your result…' });
   }
 
   // A closed race with two players keeps a watch, so each sees the other's Rematch pick and both move to
@@ -956,7 +961,8 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     const trace = encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
 
     if (!trace) return;
-    finishRequested = true;
+
+    if (!finishRequested) endOnTime();
     const from = credentials;
     const { typed, keystrokes, errors } = settled;
 
