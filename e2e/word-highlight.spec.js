@@ -333,9 +333,15 @@ test('slide glides one tint behind the letters, and snaps to a word on the next 
 
   const words = (await passageText(page)).split(' ');
   await typeInto(page, words[0], '#typing-input', { delay: 60 });
+  // The glide takes --dur-quick, which a slow read can outlast, so the page counts the moves it starts; a snap starts none.
+  await page.locator('#text-display .word-glide').evaluate((node) => {
+    window.glideMoves = 0;
+    node.addEventListener('transitionrun', () => { window.glideMoves += 1; });
+  });
   await page.keyboard.press(' ');
-  expect(await glide(page)).toMatchObject({ index: 1, moving: true });
+  await expect.poll(() => page.evaluate(() => window.glideMoves)).toBeGreaterThan(0);
   await expect.poll(async () => (await glide(page)).moving).toBe(false);
+  expect(await glide(page)).toMatchObject({ index: 1 });
   expect((await glide(page)).off).toBeLessThan(1);
 
   // A miss keeps its coral letter and tint, painted over the glide.
