@@ -199,6 +199,30 @@ for (const kind of ['drill', 'retest']) {
     expect(await passageText(page)).toBe(text);
   });
 
+  test(`with a ${kind} waiting on Practice, focus mode turned on there keeps it`, async ({ page, supabase }) => {
+    await ownClock(page);
+    await withHistory(page, supabase, `focus-here-${kind}@stilltype.test`);
+    await waiting(page, kind);
+    await openView(page, 'Practice');
+    const text = await passageText(page);
+
+    await test.step('from Settings', async () => {
+      await chooseSetting(page, 'focus-toggle', true);
+      await closeSettings(page);
+      await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+      await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', kind);
+      expect(await passageText(page)).toBe(text);
+      await page.locator('#exit-focus').click();
+    });
+
+    await test.step('from the palette', async () => {
+      await runPalette(page, 'focus mode');
+      await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+      await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', kind);
+      expect(await passageText(page)).toBe(text);
+    });
+  });
+
   test(`with a ${kind} waiting, signing out and signing in start from a practice test`, async ({ page, supabase }) => {
     await ownClock(page);
     await withHistory(page, supabase, `account-${kind}@stilltype.test`);
@@ -257,6 +281,20 @@ test('a clear here leaves a waiting drill to stand alone, with no retest after i
   await typeIntoDrill(page);
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+});
+
+test('Progress’s Take a test after a clear shows the drill left waiting, as the dock does', async ({ page, supabase }) => {
+  await ownClock(page);
+  await withHistory(page, supabase, 'clear-take-test@stilltype.test');
+  await waiting(page, 'drill');
+  await clearFrom(page);
+  const text = await passageText(page);
+  await page.locator('#progress-empty [data-action="go-practice"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'practice');
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+  await expect(page.locator('#session-description')).toHaveText('Standalone drill.');
+  expect(await passageText(page)).toBe(text);
+  await expect(page.locator('#typing-input')).toBeFocused();
 });
 
 async function typeIntoDrill(page) {
