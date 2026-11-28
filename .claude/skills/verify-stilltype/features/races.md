@@ -49,7 +49,6 @@ Preconditions:
 
 ## Gotchas
 
-- The fake's checks read real keystroke timings. A heavily loaded machine stretches key intervals, so a flow that
-  types a paste-speed run can see it pass the check; rerun once on a quieter machine before calling it a product
-  failure.
+- The trace check reads real keystroke timings. Under heavy load a paste-speed run can arrive spread out enough to
+  pass it (seen once in `quick-match-unchecked.mjs`); rerun that flow once before calling it a product failure.
 - The fake is not the real race service or its database rules (`supabase/tests/race-service.mjs` covers those).
