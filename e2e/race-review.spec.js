@@ -336,23 +336,32 @@ test('progress that reaches the service after a timed race’s clock still leave
   } finally { await context.close(); }
 });
 
-// Every reply reaching Ada's tab 2 s after the service sent it puts her race clock 2 s behind the service's. A key she types
-// once the service's clock is out still goes in on hers, and its progress makes the service finish her: her tab says so.
-test('a racer the service finishes before her tab’s own clock runs out is told the time is up', async ({ page, browser, supabase }) => {
-  const snapshot = supabase.races.snapshot.bind(supabase.races);
-  supabase.races.snapshot = (room, slot) => ({ ...snapshot(room, slot), serverNow: new Date(Date.now() - 2000).toISOString() });
-  const { context, passage, room, clockOut } = await twentyKeysEach(page, browser, supabase);
+// Every reply reaching Ada's tab 5 s after the service sent it puts her race clock 5 s behind the service's. A key she types
+// once the service's clock is out still goes in on hers, and its progress makes the service finish her: her tab says so at
+// once, not when its own clock runs out, also when she reloaded mid-race and has no trace of the keys before it.
+for (const reload of [false, true]) {
+  test(`a racer the service finishes before her tab’s own clock runs out is told the time is up${reload ? ', after a reload' : ''}`, async ({ page, browser, supabase }) => {
+    const snapshot = supabase.races.snapshot.bind(supabase.races);
+    supabase.races.snapshot = (room, slot) => ({ ...snapshot(room, slot), serverNow: new Date(Date.now() - 5000).toISOString() });
+    const { context, passage, room, clockOut } = await twentyKeysEach(page, browser, supabase);
 
-  try {
-    await expect.poll(() => Date.now() > clockOut + 200, { timeout: 20000 }).toBe(true);
-    await page.keyboard.type(passage[20]);
-    await expect.poll(() => room.players[0].finished).toBe(true);
-    expect(room.players[0].typed).toBe(passage.slice(0, 21));
-    await expect(page.locator('#online-input')).toBeDisabled();
-    await expect(page.locator('#online-help')).toHaveText('Time’s up. Sending your result…');
-    await expect(page.locator('body')).toHaveAttribute('data-running', 'false');
-  } finally { await context.close(); }
-});
+    try {
+      if (reload) {
+        await page.reload();
+        await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 20));
+        await page.locator('#online-input').focus();
+      }
+
+      await expect.poll(() => Date.now() > clockOut + 200, { timeout: 20000 }).toBe(true);
+      await page.keyboard.type(passage[20]);
+      await expect.poll(() => room.players[0].finished).toBe(true);
+      expect(room.players[0].typed).toBe(passage.slice(0, 21));
+      await expect(page.locator('#online-input')).toBeDisabled();
+      await expect(page.locator('#online-help')).toHaveText('Time’s up. Sending your result…', { timeout: 2000 });
+      await expect(page.locator('body')).toHaveAttribute('data-running', 'false', { timeout: 2000 });
+    } finally { await context.close(); }
+  });
+}
 
 // The same late progress, but this time Ada's tab never hears the answer: the service applied it, finishing her on its
 // keys, and her request failed (as one does after 15 s, or when the connection drops). The tab then sends its own

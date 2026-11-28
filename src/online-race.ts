@@ -728,6 +728,9 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     startIfDue();
 
     if (room.status === 'countdown' || room.status === 'racing') prepareAttempt();
+
+    // Progress that reached the service after its clock ran out finished this seat before this tab's clock did.
+    if (room.status === 'racing' && attempt && !finishRequested && self()?.finished) endOnTime();
     sendSettledTrace();
     renderRoom();
     updateClock();
@@ -865,7 +868,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     }
   }
 
-  // The race clock ran out: this tab's, or the service's first, when it finished the seat (sendSettledTrace).
+  // The race clock ran out: this tab's, or the service's first, when it finished the seat (applyRoom).
   function endOnTime() {
     finishRequested = true;
 
@@ -961,8 +964,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     const trace = encodeTrace({ ...attempt, events: attempt.events.slice(0, settled.events), endedAt: settled.at });
 
     if (!trace) return;
-
-    if (!finishRequested) endOnTime();
+    finishRequested = true;
     const from = credentials;
     const { typed, keystrokes, errors } = settled;
 
