@@ -1,6 +1,6 @@
 import type { OnlineTypingSurface, OnlineTypingLease } from './typing-host.js';
 import { flushSync } from 'react-dom';
-import { AsyncLifetime, accountLifetime, abortable, WorkCancelled } from './async-runtime.js';
+import { AsyncLifetime, accountLifetime, abortable, anySignal, WorkCancelled } from './async-runtime.js';
 import { sameSignIn } from './account.js';
 import { errorDetails } from './network.js';
 import type { Session } from './network.js';
@@ -259,7 +259,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     if (changed) refreshLinks();
   },
-    { load: (signal) => request((scopeSignal) => multiplayer.listFriends(getSession(), AbortSignal.any([signal, scopeSignal])), work, false) }); }
+    { load: (signal) => request((scopeSignal) => multiplayer.listFriends(getSession(), anySignal(signal, scopeSignal)), work, false) }); }
 
   let friendRequests = createFriendRequests();
 
@@ -595,7 +595,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     error();
 
     try {
-      await friendRequests.change((signal) => request((scopeSignal) => send(AbortSignal.any([signal, scopeSignal])), work, false));
+      await friendRequests.change((signal) => request((scopeSignal) => send(anySignal(signal, scopeSignal)), work, false));
       channel?.postMessage({ user: getSession()?.user.id, friends: true });
       refreshLinks();
 

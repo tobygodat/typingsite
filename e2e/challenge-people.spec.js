@@ -215,7 +215,10 @@ test.describe('on a phone', () => {
       await expect(page.locator('#people-list [data-state="ghost"]')).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
 
-      // Every row action, Dismiss, the friends panel's head controls and the tiles are at least 44px each way on a coarse pointer.
+      // Every row action, Dismiss, the friends panel's head controls and the tiles are at least 44px each way on a coarse pointer,
+      // once the rows have eased in: measured on the way, a control is still short of its size.
+      await page.locator('#challenge-people').evaluate((node) => Promise.all(node.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => {}))));
+
       const small = await page.locator('#challenge-people button:visible').evaluateAll((buttons) => buttons
         .map((button) => ({ name: button.textContent.trim(), ...button.getBoundingClientRect().toJSON() }))
         .filter((box) => box.width < 44 || box.height < 44).map((box) => `${box.name} ${Math.round(box.width)}×${Math.round(box.height)}`));

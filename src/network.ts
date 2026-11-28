@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect';
-import { abortable, accountLifetime, within, WorkCancelled } from './async-runtime.js';
+import { abortable, accountLifetime, anySignal, within, WorkCancelled } from './async-runtime.js';
 import type { AsyncLifetime } from './async-runtime.js';
 
 export const SUPABASE_URL = 'https://bicbyljexprkaedakofa.supabase.co';
@@ -40,7 +40,7 @@ export function requestEffect(path: string, { method = 'GET', body, token, heade
 
   return within(abortable(async (signal) => {
     const response = await fetch(`${SUPABASE_URL}${path}`, {
-      method, signal: callerSignal ? AbortSignal.any([signal, callerSignal]) : signal, headers: Object.assign(sentHeaders, headers), body: body ? JSON.stringify(body) : undefined,
+      method, signal: callerSignal ? anySignal(signal, callerSignal) : signal, headers: Object.assign(sentHeaders, headers), body: body ? JSON.stringify(body) : undefined,
     });
 
     const text = await response.text();

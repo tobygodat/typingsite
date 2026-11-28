@@ -397,6 +397,7 @@ test('a timed fluid run full of skipped words goes out as a ghost with every wor
   const ada = supabase.addUser('ada@stilltype.test');
   const lin = supabase.addUser('lin@stilltype.test');
   supabase.races.friends.set(ada.id, [{ id: 'f-ada-lin', friendId: lin.id, name: 'Lin' }]);
+  await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
   await openApp(page);
   await signInWithEmail(page, 'ada@stilltype.test');
   await page.locator('#mode-time').click();
@@ -404,19 +405,24 @@ test('a timed fluid run full of skipped words goes out as a ghost with every wor
   await expect(page.locator('#condition-line')).toContainText('15 s');
   const words = (await passageText(page)).split(' ');
 
-  // Every third word: its first letter, then Space skips the rest, to about 700 characters, well inside
-  // 15 s. Then the clock ends the run (a key after it would press the focused Run again).
+  // Every third word: its first letter, then Space skips the rest, to about 700 characters. The clock is paused
+  // and moves 20 ms a key after each word, so the run reaches them in about 10 s however slow the machine is.
+  // Then the clock ends the run (a key after it would press the focused Run again).
+  await page.clock.pauseAt(new Date('2026-10-01T12:10:00Z'));
   await page.locator('#typing-input').focus();
-  const began = Date.now();
   let reached = 0;
 
-  for (let index = 0; reached < 700 && Date.now() - began < 12_000; index += 1) {
+  for (let index = 0; reached < 700; index += 1) {
     const word = words[index];
-    await page.keyboard.type(index % 3 === 2 ? `${word[0]} ` : `${word} `, { delay: 15 });
+    const keys = index % 3 === 2 ? `${word[0]} ` : `${word} `;
+    await page.keyboard.type(keys);
+    await page.clock.fastForward(20 * keys.length);
     reached += word.length + 1;
   }
 
-  await expect(page.locator('body')).toHaveAttribute('data-view', 'results', { timeout: 20000 });
+  await page.clock.fastForward(15_000);
+  await page.clock.resume();
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
   await expect(page.locator('#result-time')).toHaveText('15.0 s');
   expect(reached, 'the caret passed the 500-character allowance').toBeGreaterThan(560);
   const cardWpm = Number(await page.locator('#result-wpm').textContent());
