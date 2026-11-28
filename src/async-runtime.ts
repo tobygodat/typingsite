@@ -77,6 +77,24 @@ export function within<A, E>(program: Effect.Effect<A, E>, milliseconds: number,
   return Effect.timeoutOrElse(program, { duration: milliseconds, orElse: () => Effect.fail(failure()) });
 }
 
+/** Aborts when any of `signals` does, with its reason. WebKit can collect the signal `AbortSignal.any` returns while a
+ * fetch still waits on it, and then the abort never reaches the request; a listener on each source keeps this one alive. */
+export function anySignal(...signals: AbortSignal[]): AbortSignal {
+  const merged = new AbortController();
+
+  for (const signal of signals) {
+    if (signal.aborted) {
+      merged.abort(signal.reason);
+
+      break;
+    }
+
+    signal.addEventListener('abort', () => merged.abort(signal.reason), { once: true, signal: merged.signal });
+  }
+
+  return merged.signal;
+}
+
 export function abortable<A, E>(send: (signal: AbortSignal) => PromiseLike<A>, failure: (cause: unknown) => E): Effect.Effect<A, E> {
   return Effect.tryPromise({ try: send, catch: failure });
 }

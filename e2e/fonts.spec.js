@@ -88,8 +88,7 @@ test('the palette lists both fonts like theme and marks the current one', async 
 
 for (const font of ['inter', 'fira-code']) {
   for (const tape of [false, true]) {
-    test(`${font}${tape ? ' on the tape' : ''}: the caret stays on the letter and the baseline past the line scroll`, { tag: font === 'inter' && !tape ? '@compat' : [] }, async ({ page, browserName }) => {
-      test.fail(font === 'fira-code' && browserName === 'webkit' && !process.env.CI, 'TOB-22: WebKit on the Arch desktop sets the Fira Code caret 1.32 px off the baseline, and Ubuntu\'s WebKit on CI does not');
+    test(`${font}${tape ? ' on the tape' : ''}: the caret stays on the letter and the baseline past the line scroll`, { tag: font === 'inter' && !tape ? '@compat' : [] }, async ({ page }) => {
       await openApp(page);
       await openSettings(page, 'appearance');
       await typingFont(page).selectOption(font);

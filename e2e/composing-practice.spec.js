@@ -723,6 +723,13 @@ async function expectWholeCaret(page) {
 }
 
 // Where the field wraps a line: a character on a lower line than the one before it.
+// macOS gives Home and End to the whole field, as Safari and Chrome there do; a line's ends are Cmd+Left and Cmd+Right.
+const mac = process.platform === 'darwin';
+const LINE_START = mac ? 'Meta+ArrowLeft' : 'Home';
+const LINE_END = mac ? 'Meta+ArrowRight' : 'End';
+const FIELD_START = mac ? 'Meta+ArrowUp' : 'Control+Home';
+const FIELD_END = mac ? 'Meta+ArrowDown' : 'Control+End';
+
 const wrapsBefore = async (page, index) => (await charRect(page, index)).top > (await charRect(page, index - 1)).top + 1;
 
 const caretMotion = (page) => page.locator('.compose-caret').evaluate((node) => ({
@@ -915,16 +922,16 @@ test.describe('without caret-animation', () => {
 
     // End on the first line stops at its last space, which is also where the second line starts:
     // the caret shows at the end of the first.
-    await page.keyboard.press('Control+Home');
-    await page.keyboard.press('End');
+    await page.keyboard.press(FIELD_START);
+    await page.keyboard.press(LINE_END);
     const second = await at();
     expect(await wrapsBefore(page, second)).toBe(true);
     expect(second).toBeLessThan(third - 5);
     await expectCaretAt(page, second - 1, 'right');
-    await page.keyboard.press('Home');
+    await page.keyboard.press(LINE_START);
     await expect.poll(at).toBe(0);
     await expectCaretAt(page, 0, 'left');
-    await page.keyboard.press('End');
+    await page.keyboard.press(LINE_END);
     await expectCaretAt(page, second - 1, 'right');
 
     // Right and back again, or Home, keep it at the start of the next line. Firefox's Right first
@@ -958,13 +965,13 @@ test.describe('without caret-animation', () => {
 
     // Down from the end of the first line lands past the end of the short second one, and stays on
     // it; Up from the start of the third keeps to the start of the second.
-    await page.keyboard.press('Control+Home');
-    await page.keyboard.press('End');
+    await page.keyboard.press(FIELD_START);
+    await page.keyboard.press(LINE_END);
     await page.keyboard.press('ArrowDown');
     await expect.poll(at).toBe(third);
     await expectCaretAt(page, third - 1, 'right');
-    await page.keyboard.press('Control+End');
-    await page.keyboard.press('Home');
+    await page.keyboard.press(FIELD_END);
+    await page.keyboard.press(LINE_START);
     await expect.poll(at).toBe(third);
     await expectCaretAt(page, third, 'left');
     await page.keyboard.press('ArrowUp');
