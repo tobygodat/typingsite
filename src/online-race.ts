@@ -710,6 +710,14 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     finishRequested = Boolean(me?.finished);
   }
 
+  // Progress that reached the service after its clock ran out finished this seat there. A seat finished early (its passage
+  // done, in another tab) is not out of time, and a quick match seat finishes only with its own finishing packet (ADR 0014).
+  function outOfTime() {
+    const me = self();
+
+    return Boolean(room && !room.quick && me?.finished && (me.elapsed ?? 0) >= (room.duration || 60));
+  }
+
   function opponentOf(value: RaceRoom | null) { return value?.players?.find((player) => player.slot !== value.selfSlot); }
 
   function applyRoom(next: RaceRoom, { entering = false } = {}) {
@@ -733,13 +741,8 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     if (room.status === 'countdown' || room.status === 'racing') prepareAttempt();
 
-    // Progress that reached the service after its clock ran out finished this seat before this tab's clock did. A seat
-    // finished early (its passage done, in another tab) is not out of time, and a quick match seat finishes only with its
-    // own finishing packet (ADR 0014).
-    const me = self();
-
-    if (room.status === 'racing' && !room.quick && attempt && !finishRequested && me?.finished
-      && (me.elapsed ?? 0) >= (room.duration || 60)) endOnTime();
+    // The service's clock can run out on this seat before this tab's does.
+    if (room.status === 'racing' && attempt && !finishRequested && outOfTime()) endOnTime();
     sendSettledTrace();
     noteUncounted();
     renderRoom();
@@ -848,7 +851,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     if (!room || startPerf === null || terminal(room)) return;
     const delta = performance.now() - startPerf;
-    const remaining = Math.max(0, (room.duration || 60) * 1000 - delta);
+    const remaining = outOfTime() ? 0 : Math.max(0, (room.duration || 60) * 1000 - delta);
     const countdown = delta < 0 ? `Starting in ${Math.ceil(-delta / 1000)}` : '';
 
     if (countdown !== lastClock) { paint({ countdown }); lastClock = countdown; }

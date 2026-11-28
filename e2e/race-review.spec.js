@@ -359,6 +359,7 @@ for (const reload of [false, true]) {
       await expect(page.locator('#online-input')).toBeDisabled();
       await expect(page.locator('#online-help')).toHaveText('Time’s up. Sending your result…', { timeout: 2000 });
       await expect(page.locator('body')).toHaveAttribute('data-running', 'false', { timeout: 2000 });
+      await expect(page.locator('#online-timer')).toHaveText('0 s remaining', { timeout: 2000 });
     } finally { await context.close(); }
   });
 }
