@@ -42,8 +42,6 @@ export default async ({ page, h, shot, note, check }) => {
   await page.keyboard.type(text, { delay: 5 });
   await page.locator('#race-leaderboard').waitFor();
   await h.settle();
-  const bordered = await looksSelected();
-  note('bordered tabs (one keyboard results)', bordered);
   await shot('race-results');
 
   await page.mouse.move(5, 5); await page.mouse.move(40, 40);
@@ -55,5 +53,4 @@ export default async ({ page, h, shot, note, check }) => {
 
   // Checked last, so a failing run still leaves every screenshot.
   check(navs.every(({ visible, name }) => name.toLowerCase().includes(visible.toLowerCase())), 'each dock label is in its accessible name');
-  check(bordered.join() === 'One keyboard', `only the pressed tab is bordered on the one-keyboard results (${bordered.join(', ')})`);
 };

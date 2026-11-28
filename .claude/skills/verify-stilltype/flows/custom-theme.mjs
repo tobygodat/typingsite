@@ -2,7 +2,7 @@
 // after the editor, since only an account keeps a theme past the tab and can generate one).
 // Shots: theme-row, editor, contrast-note, more-colours, saved, generated, generate-limit, reloaded.
 // Checks: live preview, Escape reverts and keeps settings open, save adds a radio to the dark or light theme row
-// by its background and wears it over that mode, the pre-paint script wears it on reload without app.js, generate fills the editor unsaved.
+// by its background and wears it over that mode, the pre-paint script wears it on reload without the app bundle, generate fills the editor unsaved.
 const GENERATED = {
   name: 'Rainy Tokyo',
   mode: 'dark',
@@ -27,7 +27,7 @@ export default async ({ page, h, shot, check, note }) => {
   check(await page.locator('#theme-editor').isVisible(), 'new opens the editor');
   check(await hex('ground').inputValue() === before, 'the editor starts from the current theme');
   check(await page.locator('#theme-vibe').isDisabled() === !signedIn, `the vibe field is ${signedIn ? 'enabled' : 'disabled'}`);
-  check((await page.locator('#theme-generate').textContent()) === (signedIn ? 'generate' : 'sign in'), 'generate offers sign-in to guests');
+  check((await page.locator('#theme-generate').textContent()) === (signedIn ? 'Generate' : 'Sign in'), 'generate offers sign-in to guests');
   await h.settle();
   await shot('editor');
 
@@ -87,15 +87,15 @@ export default async ({ page, h, shot, check, note }) => {
   await page.locator('#theme-cancel').click();
   check(await plum.isChecked(), 'cancel keeps the saved theme');
 
-  // The pre-paint script alone (app.js blocked) wears the saved theme: no flash on load.
+  // The pre-paint script alone (the app bundle blocked) wears the saved theme: no flash on load.
   await page.waitForTimeout(2000);
-  await page.route('**/src/app.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
+  await page.route('**/assets/index-*.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   await page.reload();
-  check(await page.locator('[data-custom-option]').count() === 0, 'app.js did not run');
+  check(await page.locator('[data-custom-option]').count() === 0, 'the app bundle did not run');
   check(await page.locator('html').getAttribute('data-custom') !== null, 'pre-paint wears the custom theme');
   check(await token('accent') === '#7b3fa0', 'with its colours');
   check(await page.locator('html').getAttribute('data-theme') === 'light', 'over light');
-  await page.unroute('**/src/app.js');
+  await page.unroute('**/assets/index-*.js');
   await h.openApp();
   await h.settle();
   await shot('reloaded');

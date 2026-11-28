@@ -118,7 +118,7 @@ Preconditions:
 - **Custom themes.** Run `$V drive .claude/skills/verify-stilltype/flows/custom-theme.mjs --signed-in`. Shots:
   `theme-row`, `editor`, `contrast-note`, `more-colours`, `saved`, `generated`, `generate-limit`, `reloaded`.
   It checks the live preview, Escape reverting with settings left open, save, the generate reply (routed, so
-  nothing reaches Anthropic) and its limit line, and that the inline script alone (app.js stubbed out) wears
+  nothing reaches Anthropic) and its limit line, and that the inline script alone (the app bundle stubbed out) wears
   the saved theme on reload. Without `--signed-in` it stops after Escape and checks the guest's disabled vibe.
 - **Signed-in persistence.** Run `$V shot settings --signed-in`. The flow signs in first (shot `signed-in`),
   then switches the theme. To prove persistence, write a flow that does the same and then `page.reload()`,
