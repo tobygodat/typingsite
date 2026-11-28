@@ -336,6 +336,54 @@ test('progress that reaches the service after a timed race’s clock still leave
   } finally { await context.close(); }
 });
 
+// Every reply reaching Ada's tab 5 s after the service sent it puts her race clock 5 s behind the service's. A key she types
+// once the service's clock is out still goes in on hers, and its progress makes the service finish her: her tab says so at
+// once, not when its own clock runs out, also when she reloaded mid-race and has no trace of the keys before it.
+for (const reload of [false, true]) {
+  test(`a racer the service finishes before her tab’s own clock runs out is told the time is up${reload ? ', after a reload' : ''}`, async ({ page, browser, supabase }) => {
+    const snapshot = supabase.races.snapshot.bind(supabase.races);
+    supabase.races.snapshot = (room, slot) => ({ ...snapshot(room, slot), serverNow: new Date(Date.now() - 5000).toISOString() });
+    const { context, passage, room, clockOut } = await twentyKeysEach(page, browser, supabase);
+
+    try {
+      if (reload) {
+        await page.reload();
+        await expect(page.locator('#online-input')).toHaveValue(passage.slice(0, 20));
+        await page.locator('#online-input').focus();
+      }
+
+      await expect.poll(() => Date.now() > clockOut + 200, { timeout: 20000 }).toBe(true);
+      await page.keyboard.type(passage[20]);
+      await expect.poll(() => room.players[0].finished).toBe(true);
+      expect(room.players[0].typed).toBe(passage.slice(0, 21));
+      await expect(page.locator('#online-input')).toBeDisabled();
+      await expect(page.locator('#online-help')).toHaveText('Time’s up. Sending your result…', { timeout: 2000 });
+      await expect(page.locator('body')).toHaveAttribute('data-running', 'false', { timeout: 2000 });
+      await expect(page.locator('#online-timer')).toHaveText('0 s remaining', { timeout: 2000 });
+    } finally { await context.close(); }
+  });
+}
+
+// A racer who finished early in one tab has a second tab on the same race. It stops taking keys, but her time isn't up.
+test('a second tab on a seat finished early doesn’t say the time is up', async ({ page, browser, supabase }) => {
+  const { context, passage } = await pairInRace(page, browser, supabase);
+
+  try {
+    const room = [...supabase.races.rooms.values()].at(-1);
+    const popup = page.waitForEvent('popup');
+    await page.evaluate(() => { window.open('about:blank'); });
+    const copy = await popup;
+    await supabase.attach(copy);
+    await copy.goto(page.url());
+    await expect(copy.locator('#online-input')).toBeEnabled();
+    await typeInto(page, passage, '#online-input', { delay: 6 });
+    await expect.poll(() => room.players[0].finished).toBe(true);
+    await expect(copy.locator('#online-input')).toBeDisabled();
+    await expect(copy.locator('#online-room-status')).toHaveText('Waiting for the other player.');
+    await expect(copy.locator('#online-help')).not.toHaveText('Time’s up. Sending your result…');
+  } finally { await context.close(); }
+});
+
 // The service finishes a racer on the first progress that reaches it after its clock, on the keys that progress carried,
 // so a key typed while it was on its way, before the tab's own clock ran out, is never counted. Once the tab hears that,
 // it stops taking keys and says so: under the passage while the other racer is still racing, and above the results.

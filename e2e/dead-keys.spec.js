@@ -1472,31 +1472,60 @@ test('an online race scores accent keys as practice does, in the Chromium, Firef
 
 test('an online race scores a mark typed before its limit with the key that comes after it (Windows)', async ({ page, browser, supabase }) => {
   test.setTimeout(60_000);
-  const { room, host, context, guest } = await onlineRace(page, browser, supabase, 8);
+  // The host's page runs on Playwright's clock, so its keys land at set times on the race clock however busy the machine is.
+  await page.clock.install();
+  const { room, host, context, guest } = await onlineRace(page, browser, supabase);
 
   try {
     const at = RACE_TEXT.indexOf('"');
     await typeInto(page, RACE_TEXT.slice(0, at), '#online-input');
     // The guest stops asking, so the service's room stays open for the host's last progress.
     await guest.close();
-    // The accent key and the C's keydown, the mark 30 ms before the limit and the C's own input 30 ms after
-    // it: the race clock waits for the C, which is scored with the mark, at the mark's time.
+    await expect.poll(() => host().typed).toBe(RACE_TEXT.slice(0, at));
+    // The room's polls wait while the host's clock stands still: an answer stamped by the running service and read on
+    // the stopped clock would move the race's start. Polls go one at a time, so once one waits, none is on its way.
+    const held = [];
+    let holding = true;
+    await page.route('**/rest/v1/rpc/race_action', async (route) => {
+      if (holding && ['get', 'progress'].includes(route.request().postDataJSON()?.p_action)) await new Promise((release) => { held.push(release); });
+      await route.fallback();
+    });
+    await expect.poll(() => held.length).toBe(1);
+    // One answer, stamped a second before the race's limit and read on the stopped clock, moves the host's race clock on
+    // (it keeps the earliest start any answer gives): the race has exactly a second left on the page.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 2000);
     const limit = Date.parse(room.startAt) + room.duration * 1000;
-    await page.evaluate(async (end) => {
-      const input = document.querySelector('#online-input');
-      const key = (type, value) => input.dispatchEvent(new KeyboardEvent(type, { bubbles: true, cancelable: true, key: value }));
-      const type = (data) => input.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data }));
-      const until = async (time) => { while (Date.now() < time) await new Promise((resolve) => { setTimeout(resolve, 2); }); };
+    const snapshot = supabase.races.snapshot.bind(supabase.races);
+    supabase.races.snapshot = (...args) => ({ ...snapshot(...args), serverNow: new Date(limit - 1000).toISOString() });
+    held.shift()();
+    await expect(page.locator('#online-timer')).toHaveText('1 s remaining');
+    supabase.races.snapshot = snapshot;
 
-      await until(end - 30);
-      key('keydown', 'Dead');
-      key('keyup', 'Dead');
-      key('keydown', 'C');
-      type('"');
-      await until(end + 30);
-      type('C');
-      key('keyup', 'C');
-    }, limit);
+    // The accent key and the C's keydown, the mark 30 ms before the limit and the C's own input 30 ms after it. The race
+    // clock's tick on the limit (its ticks run from where the clock stopped) waits for the C, which is scored with the
+    // mark, at the mark's time.
+    const dispatch = (steps) => page.evaluate((list) => {
+      const input = document.querySelector('#online-input');
+
+      for (const [kind, value] of list) {
+        input.dispatchEvent(kind === 'beforeinput'
+          ? new InputEvent(kind, { bubbles: true, cancelable: true, inputType: 'insertText', data: value })
+          : new KeyboardEvent(kind, { bubbles: true, cancelable: true, key: value }));
+      }
+    }, steps);
+
+    await page.clock.runFor(970);
+    await dispatch([['keydown', 'Dead'], ['keyup', 'Dead'], ['keydown', 'C'], ['beforeinput', '"']]);
+    await page.clock.runFor(60);
+    await expect(page.locator('#online-timer')).toHaveText('0 s remaining');
+    await expect(page.locator('#online-input')).toBeEnabled();
+    await dispatch([['beforeinput', 'C'], ['keyup', 'C']]);
+    // The service's clock runs out too, before the polls go on, so the progress they carry finishes the host's seat there.
+    room.startAt = new Date(Date.now() - room.duration * 1000 - 500).toISOString();
+    holding = false;
+
+    for (const release of held.splice(0)) release();
+    await page.clock.resume();
     await expect.poll(() => host().finished).toBe(true);
     expect([host().typed, host().keystrokes, host().errors]).toEqual([RACE_TEXT.slice(0, at + 2), at + 2, 0]);
     await expect(page.locator('#online-input')).toBeDisabled();
