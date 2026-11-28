@@ -27,7 +27,7 @@ export default async ({ page, h, shot, check }) => {
     let slip = 6;
     while (!/[a-z]/i.test(text[slip])) slip += 1;
     await h.type(`${text.slice(0, slip)}${text[slip] === 'x' ? 'z' : 'x'}${text.slice(slip + 1, half)}`);
-    check(await page.locator('body').getAttribute('data-running') !== null, `${theme} run is under way`);
+    check(await page.locator('body').getAttribute('data-running') === 'true', `${theme} run is under way`);
     await h.settle();
     await shot(`${theme}-mid-run`);
     if (phone) continue;

@@ -7,7 +7,7 @@ on the same results with a running tally.
 
 ## Sub-features
 
-- `qm-search`: Find a race (`#quick-match [data-quick="toggle"]`) searches; a guest is asked to sign in; with nobody waiting after 20 s it offers to race your own best run as a ghost.
+- `qm-search`: Find a race (`#quick-match [data-quick="toggle"]`) searches; a guest is asked to sign in; with nobody waiting after 20 s, an account with a recorded 30-second run on this device is offered that run as a ghost.
 - `qm-rated`: a finished rated race states the win or loss in `#online-rating-change` and shows `#online-rank-card` with the rank, the change and the steps to the next rank; a provisional rating has no rank.
 - `qm-unrated`: a run whose keys can't be checked, a pasted run, a fourth race in a day between one pair, or a forfeit each read as unrated or rated with the reason, accusing nobody.
 - `qm-leave`: a racer who closes the page loses after a ten-second grace; the one who stays wins, and the leaver is told on return.
@@ -28,16 +28,17 @@ Preconditions:
 
 - `$V doctor` exits 0.
 - Each flow signs in its own accounts in separate browser contexts on one fake Supabase, which plays the race
-  service; most shorten the race clock through `fake.races.quick`.
-- `QUICK_MATCH_OTHER=<dir>` saves the second racer's shots too.
+  service.
+- In the `quick-match*` flows other than `-ranked` and `-alone`, `QUICK_MATCH_OTHER=<dir>` also saves the second
+  racer's shots.
 
 - **Matched and raced.** `$V drive .claude/skills/verify-stilltype/flows/quick-match.mjs`: searching, matched,
   both results with the rating change, Add to friends.
 - **Rank card.** `$V drive .claude/skills/verify-stilltype/flows/quick-match-ranked.mjs`: a promotion mid-way and
   settled, a win and a loss inside a step, a provisional win. `run.json` notes each card's text.
 - **How races settle.** `$V drive .claude/skills/verify-stilltype/flows/quick-match-settle.mjs`: rated, pasted,
-  forfeit, both leave, a fourth race in a day, typed to the end (`QUICK_MATCH_CASES` picks some, about two minutes
-  for all). `quick-match-unchecked.mjs` is both runs unchecked; `quick-match-abandon.mjs` one racer closing the page.
+  forfeit, both leave, a fourth race in a day, typed to the end (`QUICK_MATCH_CASES` takes a comma-separated subset of
+  `rated,paster,forfeit,both-leave,repeat,to-the-end`; all take about two minutes). `quick-match-unchecked.mjs` is both runs unchecked; `quick-match-abandon.mjs` one racer closing the page.
 - **Nobody waiting.** `$V drive .claude/skills/verify-stilltype/flows/quick-match-alone.mjs`.
 - **Slow link.** `$V drive .claude/skills/verify-stilltype/flows/quick-match-latency.mjs` (`QUICK_MATCH_LATENCIES`,
   `QUICK_MATCH_RUNS` and `QUICK_MATCH_SECONDS` size the sweep; the default takes several minutes).

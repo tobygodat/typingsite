@@ -53,7 +53,7 @@ Built-in flows:
 | Command | What it does and what it checks |
 | --- | --- |
 | `$V shot idle` | Practice page at rest. Notes the condition line. |
-| `$V shot results` | words → 10, types half the passage (checks `body[data-running]`), finishes, waits for `body[data-view=results]`. Shots ready, mid-run and results. Checks wpm is a number and accuracy is 100. |
+| `$V shot results` | words → 10, types half the passage (checks `body[data-running="true"]`), finishes, waits for `body[data-view=results]`. Shots ready, mid-run and results. Checks wpm is a number and accuracy is 100. |
 | `$V shot more` | Practice rail, then the "more" menu open. Checks the menu fits the viewport and nothing scrolls sideways. |
 | `$V shot settings` | Settings on appearance, clicks the other theme in `#theme-select`, checks `html[data-theme]` follows, closes with Escape and checks focus returns to `#settings-trigger`. |
 | `$V shot signin` | Guest → account dialog → Sign in with email (fake user `verify@stilltype.test`). Checks member/synced and that the fake stored a profile row. Shots the account menu. |
@@ -96,7 +96,7 @@ fades during a run), `openSettings(category?)` (appearance, practice, keyboard, 
 
 Stable handles: the dock is `getByRole('navigation', { name: 'Main navigation' })` with buttons Practice, Train,
 Progress, Challenge and Commands (the full word matches at every width); the view is `body[data-view]`, and a run
-in progress sets `body[data-running]`; the passage is `#accessible-passage` and the input `#typing-input`; the rail
+in progress sets `body[data-running="true"]` (`"false"` otherwise); the passage is `#accessible-passage` and the input `#typing-input`; the rail
 is `.practice-rail` with `#mode-time`, `#mode-words`, `#mode-quote`, `#mode-more` / `#mode-more-label` and
 `#duration-options [data-length="N"]`; theme is `html[data-theme]`; account is `#account[data-state]` (guest,
 member) and `[data-sync]`; the palette is `#palette` / `#palette-input` / `#palette-list [role=option]`; settings
@@ -119,7 +119,7 @@ Every `shot` and `drive` writes one folder that survives reboots and worktree re
   <flow>…failure.png                                only when a run failed
 ```
 
-`latest` links to the newest run, and `$V list` shows recent ones with pass/fail. The command prints every
+Without `--out`, `latest` links to the newest run; `$V list` shows recent ones with pass/fail. The command prints every
 screenshot path; open them with Read, and cite them by absolute path. `STILLTYPE_EVIDENCE_DIR` moves the root and
 `--out DIR` names one run's folder.
 
@@ -150,7 +150,7 @@ log) lives in `~/.local/state/stilltype-verify/<checkout>-<branch>/`.
 ## Feature map
 
 `features/README.md` indexes the user-facing features. Read the matching file before verifying a change, and
-cover every entry point it lists.
+cover every entry point it lists for the behaviour you changed.
 
 ## Gotchas
 
