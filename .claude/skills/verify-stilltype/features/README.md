@@ -55,6 +55,7 @@ proof.
 - [Command palette](./command-palette.md): Ctrl+K, filtering, and running a command such as `theme · light`.
 - [Accounts](./accounts.md): guest mode, signing in with email against the fake Supabase, and the account menu.
 - [Challenge: the people you race](./challenge-people.md): quick match, one row per person with its line, tally and action, an invitation arriving, the empty and guest pages, and the foot links' views.
+- [Races](./races.md): quick match, rated and unrated results, the rank card, Rematch, and a race's late or missing keystrokes.
 - [Challenge views, dock labels and key hints](./challenge-and-chrome-labels.md): the daily and One keyboard views and Back, label-in-name for the dock's short verbs at 320px, and key hints hidden on touch-only devices.
 - [Train](./train-path.md): the queue with what each step costs, the drilled steps folded under it, the chosen step's detail, and the comparison after a retest.
 - [Progress: what changed](./progress-week.md): the lead figure, what moved it, the small charts, the conditions control, each view one step away, and Clear history and Undo.

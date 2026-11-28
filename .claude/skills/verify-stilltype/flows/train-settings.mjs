@@ -91,7 +91,9 @@ export default async ({ page, h, shot, note, check }) => {
   await choose('retest-toggle', 'false');
   await h.openView('Train');
   await h.settle();
-  check((await h.text('#start-drill')) === 'Drill', 'the button says Drill');
+  const startLabel = await h.text('#start-drill');
+  note('start label, retest off', startLabel);
+  check(/^Drill( “[^”]+”)?$/.test(startLabel), `the button says Drill, with no retest (${startLabel})`);
   await shot('train-retest-off');
   await page.locator('#start-drill').click();
   await drillFor(15);

@@ -10,7 +10,7 @@ runs, a speed-over-time trace, the words typed, the actions and the conditions l
 - `run-idle` shows the passage, the countdown or word count, and the rail before any key.
 - `run-shape` picks the test shape (time 15/30/60/120, words 10/25/50/100, quote) before typing.
 - `run-typing` starts on the first key; correct letters fill, mistyped letters turn coral with a tint.
-- `run-chrome-fade` fades the dock and rail while `body[data-running]` is set; pointer movement brings them back.
+- `run-chrome-fade` fades the dock and rail while `body[data-running="true"]`; pointer movement brings them back.
 - `run-results` switches to `body[data-view=results]`: one run card holding the score, the speed trace, the typed words and, under a hairline, `Run again` / `Drill “<pair>”` / `Watch replay` with the conditions line, renders on Practice in place of the passage (`#practice-result`). A retest's result is the comparison on Train instead (`body[data-view=train]`, `#comparison-panel`).
 - `run-instrument` is the Instrument layout (TOB-470): `flows/practice-instrument.mjs` shoots idle as a guest and with history, the "more" menu, mid-run with live metrics off and on, the first card, a card with history, a drill and the tape (`NAV=top` for the top bar); `flows/practice-surfaces.mjs` shoots custom text and length, quote and book filters, the keyboard, focus, compose, Learn and a lesson.
 - `run-card-motion` is the card's arrival, its scrubbable trace and Inspect words, Progress's pairs and a race's lanes and duel graph: `flows/results-race-progress.mjs` checks Run again is live from the first frame, pointer and keyboard scrubbing with its handler cost, the words closing and opening, friction and flow pairs that share none with a friction pair drilled, the countdown, both lanes mid-race and the duel graph scrubbed. Run it at 1280×900 and again with `--width 320 --height 568 --mobile --scheme light --reduced-motion`.
@@ -34,9 +34,9 @@ Preconditions:
   pressed, "30 s" in green and three lines of passage; `run.json` notes `conditions` starting
   `english 200 · 30 s`.
 - **Full run.** Pick words · 10 and type the passage. Run `$V shot results`. Three shots: `ready` (words 10
-  pressed), `mid-run` (half the letters filled, dock and rail faded, check `body[data-running]` passed),
+  pressed), `mid-run` (half the letters filled, dock and rail faded, check `body[data-running="true"]` passed),
   `results` (run card). `run.json` notes the result: wpm about 120 at the default `--delay 100`, accuracy
-  100, `counts` (accuracy's tooltip) `0 first-try errors · final c/i/e/m 46/0/0/0` for the seeded passage, consistency a number.
+  100, `counts` (accuracy's tooltip) `0 first-try errors · final c/i/e/m 64/0/0/0` for the seeded passage, consistency a number.
 - **Light theme run.** Run `$V shot results --scheme light`. Same checks; the run card sits on warm paper.
 - **Phone run.** Run `$V shot results --width 390 --height 844 --mobile`. The dock sits at the bottom, the run card
   fills the width, and the trace, words and actions follow below the fold (add `--full-page` to capture it).
@@ -50,6 +50,9 @@ Preconditions:
   (`--signed-in --delay 0`) types twenty runs missing "th" and sixty more, the last fifteen missing "he", and
   checks Train lets go of "th". `flows/learner-slow.mjs` (`--signed-in --delay 40`) types "th" slowly but
   cleanly, then checks Train names it on its timing and the comparison and Progress read its pace back.
+  `flows/learner-faster.mjs` (`--signed-in --seed 4242 --width 1440 --height 900`) checks Train never calls a
+  pair "slower" when its printed figure is faster; `flows/learner-thin.mjs` (`--signed-in --seed 11 --width 1440
+  --height 900`) checks a pair with too few clean intervals is not named over a missed one.
 - **Training settings.** `flows/train-settings.mjs` (`--signed-in --delay 40`, about two minutes) shoots the
   settings dialog's train focus, drill length and retest rows, types three 50-word passages slow at "th" and
   missing "an" and "in", then shoots Train in each focus and checks that
@@ -63,9 +66,14 @@ Preconditions:
   results card and Train here follow it once this page hears (an `online` event).
 - **Restart.** Drive it: in a flow file, type a few letters with `h.type('ab')`, press
   `page.keyboard.press('Escape')`, then `check` that `#accessible-passage` text changed and
-  `body[data-running]` is gone.
+  `body[data-running]` is `"false"`.
 - Words 10 typed, the results card, then Run again on a fresh passage:
   `$V drive .claude/skills/verify-stilltype/flows/practice-run-again.mjs`.
+- **Word flow and the caret.** `$V drive .claude/skills/verify-stilltype/flows/word-flow-and-spring.mjs`: a space
+  mid-word, letters past a word's end, Backspace and word delete at word boundaries, the spring caret's frames, the
+  three typing motions, a fluid run's replay and code mode's operators.
+- **What's new.** `$V drive .claude/skills/verify-stilltype/flows/release-panel.mjs`: the footer version opens
+  the release dialog with that version and its bullets.
 
 ## Gotchas
 

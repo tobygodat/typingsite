@@ -62,6 +62,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
   note('saved loop', JSON.stringify({ policy: loop.policy, target: loop.target, targetPace: loop.targetPace }));
   check(loop.targetPace?.target === 'th', 'the loop saves the pace before and after');
   await h.openView('Progress');
+  await page.locator('[data-progress-open="runs"]').click();
   await h.settle();
   await page.locator('.history-conditions').first().scrollIntoViewIfNeeded();
   note('progress row', await page.locator('.history-conditions').first().innerText());

@@ -41,7 +41,15 @@ Preconditions:
 - **Other states.** Run `$V drive .claude/skills/verify-stilltype/flows/challenge-people-states.mjs`:
   `guest.png`, `empty.png`, `quick-searching.png`, `add-friend.png`, `one-friend.png`, the daily and
   One keyboard views, `race-link-room.png` and `guest-joined.png` after a guest joins by the link.
-- **Race setup.** `$V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs`.
+- **Race setup.** `$V drive .claude/skills/verify-stilltype/flows/challenge-options.mjs`: the practice setup, then a
+  words race with "Use practice setup" offered.
+- **Dismiss.** `$V drive .claude/skills/verify-stilltype/flows/challenge-people-dismiss.mjs`: a quick double Enter on
+  Dismiss lands focus on a row and never on an action; with no row left, on Quick match's heading.
+- **Rating and themes.** `challenge-people-rank.mjs` shoots the rating line as a guest, provisional and ranked;
+  `challenge-people-themes.mjs` shoots the list in every built-in theme. `challenge-instrument.mjs` shoots every
+  panel state, the four foot-link views and a race room before the start (`NAV=top` for the top bar, `SIDE=hidden`
+  with the side bar hidden).
+- Quick match and the race itself: [Races](./races.md).
 
 ## Gotchas
 

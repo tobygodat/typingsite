@@ -66,19 +66,15 @@ const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// A worktree has no node_modules of its own; the main checkout's are the same packages (as desktop-test does).
+// Playwright and tsx from this checkout's own node_modules; Node would otherwise accept a parent directory's.
 function loadPlaywright() {
-  const commonDir = git('rev-parse', '--path-format=absolute', '--git-common-dir');
-  const candidates = [root, commonDir && path.dirname(commonDir)].filter(Boolean);
-  for (const dir of candidates) {
-    try {
-      const require = createRequire(path.join(dir, 'package.json'));
-      const entry = require.resolve('@playwright/test');
-      const version = readJson(path.join(path.dirname(entry), 'package.json'))?.version;
-      return { entry, version, from: dir };
-    } catch { /* next */ }
-  }
-  return null;
+  try {
+    const require = createRequire(path.join(root, 'package.json'));
+    const local = path.join(root, 'node_modules') + path.sep;
+    const entry = require.resolve('@playwright/test');
+    if (!entry.startsWith(local) || !require.resolve('tsx/esm/api').startsWith(local)) return null;
+    return { entry, version: readJson(path.join(path.dirname(entry), 'package.json'))?.version, from: root };
+  } catch { return null; }
 }
 
 async function chromiumApi(pw) {
@@ -236,7 +232,7 @@ async function doctor(opts) {
   const [major, minor] = process.versions.node.split('.').map(Number);
   line((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22, 'node', process.version);
   const pw = loadPlaywright();
-  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run bun install --frozen-lockfile');
+  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : '@playwright/test or tsx not installed in this checkout; run bun install --frozen-lockfile');
   const browser = await findChromium(pw);
   const skipped = browser.skipped.length ? `; skipped ${browser.skipped.join(', ')}` : '';
   line(Boolean(browser.path), 'chromium', browser.path
@@ -344,7 +340,7 @@ const FLOW_IMPL = {
     const text = await h.passage();
     const half = Math.ceil(text.length / 2);
     await h.type(text.slice(0, half));
-    check(await page.locator('body').getAttribute('data-running') !== null, 'body[data-running] is set mid-run (chrome fades)');
+    check(await page.locator('body').getAttribute('data-running') === 'true', 'body[data-running="true"] mid-run (chrome fades)');
     await shot('mid-run');
     await h.type(text.slice(half));
     await h.attr('body', 'data-view', 'results');
@@ -429,7 +425,7 @@ function plan(names, opts) {
 
 async function run(items, opts, label) {
   const pw = loadPlaywright();
-  if (!pw) fail('playwright not found; run bun install --frozen-lockfile in this checkout (or the main checkout)');
+  if (!pw) fail('playwright not found; run bun install --frozen-lockfile in this checkout');
   const chromium = await chromiumApi(pw);
   const browserPath = (await findChromium(pw)).path;
   if (!browserPath) fail('no Chromium runs; set CHROMIUM or run bunx playwright install chromium. Run doctor.');
@@ -493,7 +489,7 @@ async function run(items, opts, label) {
         // The ARIA snapshot shows <details> as a bare group, so the account state is recorded here.
         const state = await page.evaluate(() => ({
           view: document.body.dataset.view, theme: document.documentElement.dataset.theme,
-          running: document.body.hasAttribute('data-running'), account: document.querySelector('#account')?.dataset.state,
+          running: document.body.dataset.running === 'true', account: document.querySelector('#account')?.dataset.state,
         }));
         entry.steps.push({ name, screenshot: file, aria, ...state, at: new Date().toISOString() });
         console.log(`  ${tag}  ${name}  ${path.join(outDir, file)}`);

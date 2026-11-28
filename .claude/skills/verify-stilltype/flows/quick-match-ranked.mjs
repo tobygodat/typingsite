@@ -6,7 +6,7 @@
 const SCENARIOS = [
   { name: 'promotion', rival: 'mara', start: { rating: 1795, races: 20 }, wins: true,
     sentence: 'Rated win. Gale III · 1805 · 21 rated races (+10), up from Gust I.', theirs: 'Rated loss. Gust I · 1785 · 21 rated races (−10)',
-    card: { label: 'Rank up', rank: 'Gale III', from: 'promoted from Gust I', rating: '1805', delta: '+10', ends: ['Gale III', '95 to Gale II'] } },
+    card: { label: 'Rank up', rank: 'Gale III', from: 'up from Gust I', rating: '1805', delta: '+10', ends: ['Gale III', '95 to Gale II'] } },
   { name: 'win-in-step', rival: 'iris', start: { rating: 1720, races: 30 }, wins: true, sentence: 'Rated win. Gust I · 1730 · 31 rated races (+10)',
     card: { label: 'Rated win', rank: 'Gust I', from: '', rating: '1730', delta: '+10', ends: ['Gust I', '70 to Gale III'] } },
   { name: 'loss-in-step', rival: 'noor', start: { rating: 1760, races: 30 }, wins: false, sentence: 'Rated loss. Gust I · 1750 · 31 rated races (−10)',

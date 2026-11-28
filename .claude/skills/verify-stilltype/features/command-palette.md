@@ -18,7 +18,7 @@ read out, Enter saves it as a custom theme and Escape puts the old theme back; a
 
 ## How to get to it (user POV)
 
-- Press Ctrl+K anywhere (the binding is configurable under settings → keybindings).
+- Press Mod+K (Ctrl+K, ⌘K on macOS) outside a text field; the binding is configurable under settings → shortcuts.
 - Click the search icon at the end of the dock (ARIA name "Commands").
 
 ## Driving it with verify.mjs

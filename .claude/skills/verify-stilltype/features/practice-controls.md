@@ -33,7 +33,7 @@ Preconditions:
 
 - **Menu open, desktop.** Click "more". Run `$V shot more`. `rail.png` shows "more" with a chevron;
   `more-open.png` shows the menu below it. `run.json` notes the menu as
-  `["code","standard","book","compose","custom","learn to type"]` and checks it stays on screen.
+  `["code","standard","book","compose","custom","drill","learn to type"]` and checks it stays on screen.
 - **Menu open, phones.** Run `$V shot phone`. Four runs (idle and more at 390×844 and 320×568, touch); every
   `more` run passes "menu stays on screen" and "no horizontal scroll".
 - **Choose a mode from more.** Run `$V drive .claude/skills/verify-stilltype/flows/code-run.mjs`. Checks
