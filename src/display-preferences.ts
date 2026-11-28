@@ -118,14 +118,24 @@ export function createDisplayPreferences({ learning, practice, sync, settings, t
     ports.typingRelayout();
   }
 
-  function measureTypingBaseline() {
+  const typingFontSpec = () => `1000px ${getComputedStyle(document.documentElement).getPropertyValue('--font-typing')}`;
+
+  function writeTypingBaseline(font: string) {
     const probe = document.createElement('canvas').getContext('2d');
 
     if (!probe) throw new TypeError('The typing font needs a canvas context');
-    probe.font = `1000px ${getComputedStyle(document.documentElement).getPropertyValue('--font-typing')}`;
+    probe.font = font;
     const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = probe.measureText('H');
 
     if (ascent) document.documentElement.style.setProperty('--typing-baseline', `${(ascent - descent) / 2000}em`);
+  }
+
+  // Until the font arrives the canvas measures its fallback. WebKit fires no `loadingdone` for a face the page's text
+  // loads, so the font's own load is what measures it again.
+  function measureTypingBaseline() {
+    const font = typingFontSpec();
+    writeTypingBaseline(font);
+    void document.fonts?.load(font).then(() => { if (typingFontSpec() === font) writeTypingBaseline(font); }, () => {});
   }
 
   function applyFonts() {
