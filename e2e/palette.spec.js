@@ -36,6 +36,26 @@ test('closing the palette from its backdrop leaves a caret in the typing input',
   await expectTyping(page);
 });
 
+// Opened from the dock, the palette hands focus back to the dock unless its command puts it somewhere (TOB-448).
+test('a word list picked from the dock’s commands puts focus in the passage, the current one too', async ({ page }) => {
+  await openApp(page);
+
+  for (const step of ['another word list', 'the current word list']) {
+    await test.step(step, async () => {
+      await page.mouse.move(5, 5);
+      await page.mouse.move(40, 40);
+      await page.locator('#palette-trigger').click();
+      await page.locator('#palette-input').fill('word list · top 1k');
+      await expect(page.locator('#palette-list [aria-selected="true"] .opt-label')).toHaveText('word list · top 1k');
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#palette')).toBeHidden();
+      await expect(page.locator('#typing-input')).toBeFocused();
+    });
+  }
+
+  await expectTyping(page);
+});
+
 test.describe('touch', () => {
   test.use({ hasTouch: true });
 

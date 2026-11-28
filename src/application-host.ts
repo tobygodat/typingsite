@@ -1154,6 +1154,10 @@ export async function attachApplication({ practice, learning, palette, settings:
     if (view === 'learn') renderLessons();
   }
 
+  function trainingWaiting() {
+    return practice.attempt?.status === 'ready' && (practice.sessionKind === 'drill' || practice.sessionKind === 'retest');
+  }
+
   function navigate(view: AppView, { keep = false } = {}) {
     // A screen opened from the navigation starts at its top. The last screen's offset can lie past the end of a
     // shorter one, and WebKit on a phone leaves it there, painting the page past its end and the bottom bar off its taps.
@@ -1161,7 +1165,7 @@ export async function attachApplication({ practice, learning, palette, settings:
 
     if (view === 'practice') {
 
-      const waitingTraining = keep && document.body.dataset.view !== 'practice' && practice.attempt?.status === 'ready' && (practice.sessionKind === 'drill' || practice.sessionKind === 'retest');
+      const waitingTraining = keep && document.body.dataset.view !== 'practice' && trainingWaiting();
       const active = practice.attempt;
       const current = active && (practice.sessionKind === 'practice' || practice.sessionKind === 'custom' || waitingTraining) && !['complete', 'interrupted'].includes(active.status);
     
@@ -1566,7 +1570,13 @@ export async function attachApplication({ practice, learning, palette, settings:
       exitFocus() { learning.preferences.focusMode = false; applyPreferences(); saveProfile(); focusPractice(); },
       toggleSideBar,
     });
-    learning.commands.practice = () => { editors.customOpen = false; setModeControls(); resetSession('practice', { focus: true, leaveCompose: true }); };
+    learning.commands.practice = () => {
+      editors.customOpen = false;
+      setModeControls();
+
+      if (trainingWaiting()) jumpTo('practice');
+      else resetSession('practice', { focus: true, leaveCompose: true });
+    };
 
     learning.commands.openLessons = openLessons;
     Object.assign(practice.choices, {
@@ -2136,6 +2146,7 @@ export async function attachApplication({ practice, learning, palette, settings:
     const kind = restartKind();
     navigate('practice');
     change(kind);
+    focusPractice();
   }
 
   function customLengthCommand(mode: 'time' | 'words') {
@@ -2259,7 +2270,10 @@ export async function attachApplication({ practice, learning, palette, settings:
       { group: 'display', label: 'live metrics', keywords: 'wpm accuracy while typing', hint: onOff(Boolean(learning.preferences.liveMetrics)), on: Boolean(learning.preferences.liveMetrics), run: () => togglePreference('liveMetrics') },
       { group: 'display', label: 'keyboard', keywords: 'keys layout', hint: onOff(Boolean(learning.preferences.keyboard)), on: Boolean(learning.preferences.keyboard), run: () => togglePreference('keyboard') },
       { group: 'display', label: 'finger map', keywords: 'keyboard fingers touch typing hands which finger', hint: onOff(Boolean(learning.preferences.keyboard && learning.preferences.fingerMap)), on: Boolean(learning.preferences.keyboard && learning.preferences.fingerMap), run: toggleFingerMap },
-      { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(Boolean(learning.preferences.focusMode)), on: Boolean(learning.preferences.focusMode), run: () => { navigate('practice', { keep: true }); togglePreference('focusMode'); } },
+      { group: 'display', label: 'focus mode', keywords: 'zen hide distraction', hint: onOff(Boolean(learning.preferences.focusMode)), on: Boolean(learning.preferences.focusMode), run: () => {
+        if (document.body.dataset.view !== 'practice') navigate('practice', { keep: true });
+        togglePreference('focusMode');
+      } },
       { group: 'display', label: 'import Monkeytype settings…', keywords: 'monkeytype import settings config json migrate', run: openImport },
       ...SOUND_MODES.map((mode) => ({ group: 'sound', label: `sound · ${lookup(SOUND_LABELS, mode)}`, keywords: 'audio typing key clicks error tick mute volume', hint: learning.preferences.sound === mode ? 'current' : '', on: learning.preferences.sound === mode, run: () => setSound(mode) })),
       ...[25, 50, 75, 100].map((volume) => ({ group: 'sound', label: `sound volume · ${volume}%`, keywords: 'audio loud quiet louder quieter', hint: learning.preferences.soundVolume === volume ? 'current' : '', on: learning.preferences.soundVolume === volume, disabled: learning.preferences.sound === 'off', run: () => setSoundVolume(volume) })),

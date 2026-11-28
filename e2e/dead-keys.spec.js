@@ -1474,7 +1474,7 @@ test('an online race scores a mark typed before its limit with the key that come
   test.setTimeout(60_000);
   // The host's page runs on Playwright's clock, so its keys land at set times on the race clock however busy the machine is.
   await page.clock.install();
-  const { room, host, context, guest } = await onlineRace(page, browser, supabase, 8);
+  const { room, host, context, guest } = await onlineRace(page, browser, supabase);
 
   try {
     const at = RACE_TEXT.indexOf('"');
@@ -1491,10 +1491,10 @@ test('an online race scores a mark typed before its limit with the key that come
       await route.fallback();
     });
     await expect.poll(() => held.length).toBe(1);
-    // One answer, stamped at the stopped clock's time, starts the host's race clock exactly on the service's start, so the
-    // race's limit on the page is the service's: it has a second left.
+    // One answer, stamped a second before the race's limit and read on the stopped clock, moves the host's race clock on
+    // (it keeps the earliest start any answer gives): the race has exactly a second left on the page.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 2000);
     const limit = Date.parse(room.startAt) + room.duration * 1000;
-    await page.clock.pauseAt(limit - 1000);
     const snapshot = supabase.races.snapshot.bind(supabase.races);
     supabase.races.snapshot = (...args) => ({ ...snapshot(...args), serverNow: new Date(limit - 1000).toISOString() });
     held.shift()();
@@ -1520,8 +1520,8 @@ test('an online race scores a mark typed before its limit with the key that come
     await expect(page.locator('#online-timer')).toHaveText('0 s remaining');
     await expect(page.locator('#online-input')).toBeEnabled();
     await dispatch([['beforeinput', 'C'], ['keyup', 'C']]);
-    // The service's clock runs out before the polls go on, so the progress they carry finishes the host's seat there.
-    await expect.poll(() => Date.now() > limit + 100, { timeout: 10_000 }).toBe(true);
+    // The service's clock runs out too, before the polls go on, so the progress they carry finishes the host's seat there.
+    room.startAt = new Date(Date.now() - room.duration * 1000 - 500).toISOString();
     holding = false;
 
     for (const release of held.splice(0)) release();

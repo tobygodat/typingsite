@@ -177,6 +177,10 @@ export function analysisLoops(values: readonly unknown[]) {
   return values.filter(isAnalysisLoop);
 }
 
+// Skip to retest (until d7e7d56) saved a loop with drillCompleted false and no drill: its target was retested, never
+// drilled. Train, Progress and the learner read every other loop on a target as a drill of it (TOB-448).
+export const drilledLoop = (loop: { drillCompleted?: unknown; drill?: unknown }) => loop.drillCompleted !== false || Boolean(loop.drill);
+
 export interface PatternAttempt {
   text: string; events?: AttemptEvent[]; startedAt?: number | null; endedAt?: number | null;
   status?: string; kind?: string; interrupted?: boolean; fresh?: boolean; conditions?: Conditions | HistoricalRecord; summary?: Replay;

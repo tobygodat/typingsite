@@ -1,7 +1,7 @@
 import { useCorpusFixture } from './corpus-fixture.js';
 import { CORPUS_VERSION, METRIC_VERSION, completeAttempt, createAttempt, quoteCorpus } from '../src/typing.js';
 import { runRecord } from '../src/insights.js';
-import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere } from './fixtures.js';
+import { test, expect, openProgressDetail, openApp, passageText, typeInto, chooseWords, completePassage, finishDrill, freshTextCheck, openView, signInWithEmail, chooseMore, chooseQuoteFilter, recordedHere, chooseSetting, closeSettings } from './fixtures.js';
 
 const translateY = (page) => page.locator('#text-display').evaluate((node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m42);
 
@@ -419,6 +419,37 @@ test('a waiting drill and a waiting retest are kept through Train, Progress and 
 
   await openView(page, 'Practice');
   await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'practice');
+});
+
+// Focus mode hides what isn't the passage while someone types on Practice (TOB-448). A drill and its retest still say
+// what they are, and the comparison the retest ends on shows on Train with the navigation, not stranded without it.
+async function drillInFocusMode(page) {
+  await page.clock.install();
+  await openApp(page);
+  await chooseWords(page, 10);
+  await completePassage(page);
+  await chooseSetting(page, 'focus-toggle', true);
+  await closeSettings(page);
+  await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+  await page.locator('#result-drill').click();
+  await expect(page.locator('#typing-screen')).toHaveAttribute('data-session', 'drill');
+}
+
+test('in focus mode a drill and its retest keep their titles', async ({ page }) => {
+  await drillInFocusMode(page);
+  await expect(page.locator('#session-title')).toBeVisible();
+  await finishDrill(page);
+  await expect(page.locator('#session-title')).toBeVisible();
+});
+
+test('a retest typed in focus mode ends on Train’s comparison with the navigation', async ({ page }) => {
+  await drillInFocusMode(page);
+  await finishDrill(page);
+  await completePassage(page);
+  await expect(page.locator('body')).toHaveAttribute('data-view', 'train');
+  await expect(page.locator('#comparison-panel')).toBeVisible();
+  await expect(page.locator('body')).toHaveAttribute('data-focus-mode', 'true');
+  await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
 });
 
 // A drill interrupted part way (the window lost focus) still goes on to its retest, and the loop it saves is one

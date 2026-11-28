@@ -1231,7 +1231,7 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
   :root[data-navigation="side"] .side-toggle:hover { color: var(--text); background: var(--raised-2); }
   :root[data-navigation="side"] .side-toggle svg { width: var(--frame-glyph); height: var(--frame-glyph); fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
   :root[data-navigation="side"][data-side-bar="hidden"] .side-toggle { transform: translateX(calc(var(--side-toggle) + 2 * var(--space-3))); }
-  :root[data-navigation="side"][data-side-bar="hidden"] body:not([data-focus-mode="true"]) .side-toggle { visibility: visible; }
+  :root[data-navigation="side"][data-side-bar="hidden"] body:not([data-focus-mode="true"][data-view="practice"]) .side-toggle { visibility: visible; }
 
   :root[data-navigation="side"] :is(.dock, .corner) {
     position: static;
@@ -1711,8 +1711,8 @@ body:has(#settings-dialog[open]) { overflow: hidden; }
 
 /* Focus mode hides the row; the palette's "custom time…" shows it while the field is open, and a
    message left by an invalid entry stays readable until the run starts. */
-body[data-focus-mode="true"] .practice-controls[data-editing],
-body[data-focus-mode="true"] .custom-length-error:not(:empty) { visibility: visible; }
+body[data-focus-mode="true"][data-view="practice"] .practice-controls[data-editing],
+body[data-focus-mode="true"][data-view="practice"] .custom-length-error:not(:empty) { visibility: visible; }
 
 .compact-switch {
   height: 44px;
@@ -2844,15 +2844,10 @@ body[data-compose="true"] .personal-best { visibility: hidden; }
 .finger-thumbs .finger-label { width: 6ch; padding: 0; border: 0; justify-content: flex-start; }
 .finger-map > .finger-legend { grid-column: 1 / -1; }
 
-body[data-focus-mode="true"] .dock-zone,
-body[data-focus-mode="true"] .corner,
-body[data-focus-mode="true"] .practice-controls,
-body[data-focus-mode="true"] .quote-options,
-body[data-focus-mode="true"] .standard-options,
-body[data-focus-mode="true"] .shortcut-row,
-body[data-focus-mode="true"] .site-footer,
-body[data-focus-mode="true"] .session-intro,
-body[data-focus-mode="true"] .compose-another { visibility: hidden; }
+/* Focus mode clears the page only while Practice shows a passage, and the exit sits there; every other screen keeps
+   its navigation. A drill or retest keeps its title, so it still reads as one. */
+body[data-focus-mode="true"][data-view="practice"] :where(.dock-zone, .corner, .practice-controls, .quote-options, .standard-options, .shortcut-row,
+  .site-footer, #session-description, #condition-line, .compose-another) { visibility: hidden; }
 
 .exit-focus {
   position: fixed;
