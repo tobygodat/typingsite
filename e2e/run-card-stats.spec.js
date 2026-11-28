@@ -60,8 +60,17 @@ test('the run card shows consistency, the counts behind accuracy and the words t
 
 test('the words list is one tab stop whose words show their pace by keyboard', async ({ page }) => {
   await page.setViewportSize({ width: 1000, height: 800 });
+  // A seeded passage of 100 words and 559 characters, which runs past the list's four lines in the wide trace.
+  // About one random draw in four is short enough to fit them.
+  await page.addInitScript(() => {
+    let seed = 7;
+    Math.random = () => {
+      seed = (seed * 16807) % 2147483647;
+
+      return (seed - 1) / 2147483646;
+    };
+  });
   await openApp(page);
-  // Enough words to run past the list's four lines in the wide trace.
   await chooseWords(page, 100);
   await typeInto(page, await passageText(page));
   await expect(page.locator('body')).toHaveAttribute('data-view', 'results');
