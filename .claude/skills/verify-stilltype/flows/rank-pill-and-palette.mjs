@@ -137,7 +137,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
   const [x, y] = placed.origin.split(' ').map(Number.parseFloat);
   const from = side ? 'bottom left' : 'top right';
   check(side ? x === 0 && Math.abs(y - (placed.bottom - placed.top)) < 1 : y === 0 && Math.abs(x - placed.width) < 1, `the card grows from its ${from} (${placed.origin})`);
-  check(placed.text.includes('Gale II') && placed.text.includes('80 to Gale I') && placed.text.includes('Challenge'), 'the card shows the rank, the way to the next step and Challenge');
+  check(placed.text.includes('Gale II') && placed.text.includes('80 to Gale I') && placed.text.includes('Open quick match'), 'the card shows the rank, the way to the next step and Open quick match');
 
   if (reduced) check(Number.parseFloat(placed.animation) <= 0.001, `the card appears without motion under reduced motion (${placed.animation})`);
   await shot('rank-card');
@@ -150,7 +150,7 @@ export default async ({ page, h, shot, note, check, fake }) => {
   await pill.click();
   await page.locator('#rank-popover .rank-challenge').click();
   await h.attr('body', 'data-view', 'compete');
-  check(await page.evaluate(() => document.activeElement?.id) === 'quick-match-heading', 'Challenge goes straight to quick match');
+  check(await page.evaluate(() => document.activeElement?.id) === 'quick-match-heading', 'Open quick match goes straight to quick match');
   await h.openView('Practice');
 
   // A member's theme: generated in the palette, worn, its contrast read, Escape puts it back, Enter saves it.

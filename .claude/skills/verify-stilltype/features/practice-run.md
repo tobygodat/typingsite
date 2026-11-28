@@ -36,7 +36,7 @@ Preconditions:
 - **Full run.** Pick words · 10 and type the passage. Run `$V shot results`. Three shots: `ready` (words 10
   pressed), `mid-run` (half the letters filled, dock and rail faded, check `body[data-running]` passed),
   `results` (run card). `run.json` notes the result: wpm about 120 at the default `--delay 100`, accuracy
-  100, `counts` (accuracy's tooltip) `0 first-try errors · final c/i/e/m 46/0/0/0` for the seeded passage, consistency a number.
+  100, `counts` (accuracy's tooltip) `0 first-try errors · final c/i/e/m 64/0/0/0` for the seeded passage, consistency a number.
 - **Light theme run.** Run `$V shot results --scheme light`. Same checks; the run card sits on warm paper.
 - **Phone run.** Run `$V shot results --width 390 --height 844 --mobile`. The dock sits at the bottom, the run card
   fills the width, and the trace, words and actions follow below the fold (add `--full-page` to capture it).
@@ -50,6 +50,9 @@ Preconditions:
   (`--signed-in --delay 0`) types twenty runs missing "th" and sixty more, the last fifteen missing "he", and
   checks Train lets go of "th". `flows/learner-slow.mjs` (`--signed-in --delay 40`) types "th" slowly but
   cleanly, then checks Train names it on its timing and the comparison and Progress read its pace back.
+  `flows/learner-faster.mjs` (`--signed-in --seed 4242 --width 1440 --height 900`) checks Train never calls a
+  pair "slower" when its printed figure is faster; `flows/learner-thin.mjs` (`--signed-in --seed 11 --width 1440
+  --height 900`) checks a pair with too few clean intervals is not named over a missed one.
 - **Training settings.** `flows/train-settings.mjs` (`--signed-in --delay 40`, about two minutes) shoots the
   settings dialog's train focus, drill length and retest rows, types three 50-word passages slow at "th" and
   missing "an" and "in", then shoots Train in each focus and checks that
@@ -66,6 +69,11 @@ Preconditions:
   `body[data-running]` is gone.
 - Words 10 typed, the results card, then Run again on a fresh passage:
   `$V drive .claude/skills/verify-stilltype/flows/practice-run-again.mjs`.
+- **Word flow and the caret.** `$V drive .claude/skills/verify-stilltype/flows/word-flow-and-spring.mjs`: a space
+  mid-word, letters past a word's end, Backspace and word delete at word boundaries, the spring caret's frames, the
+  three typing motions, a fluid run's replay and code mode's operators.
+- **What's new.** `$V drive .claude/skills/verify-stilltype/flows/release-panel.mjs`: the footer version opens
+  the release dialog with that version and its bullets.
 
 ## Gotchas
 

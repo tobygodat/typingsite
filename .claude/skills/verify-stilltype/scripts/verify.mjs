@@ -66,19 +66,12 @@ const readJson = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// A worktree has no node_modules of its own; the main checkout's are the same packages (as desktop-test does).
+// Playwright from this checkout's node_modules, where shot and drive also load tsx.
 function loadPlaywright() {
-  const commonDir = git('rev-parse', '--path-format=absolute', '--git-common-dir');
-  const candidates = [root, commonDir && path.dirname(commonDir)].filter(Boolean);
-  for (const dir of candidates) {
-    try {
-      const require = createRequire(path.join(dir, 'package.json'));
-      const entry = require.resolve('@playwright/test');
-      const version = readJson(path.join(path.dirname(entry), 'package.json'))?.version;
-      return { entry, version, from: dir };
-    } catch { /* next */ }
-  }
-  return null;
+  try {
+    const entry = createRequire(path.join(root, 'package.json')).resolve('@playwright/test');
+    return { entry, version: readJson(path.join(path.dirname(entry), 'package.json'))?.version, from: root };
+  } catch { return null; }
 }
 
 async function chromiumApi(pw) {
@@ -236,7 +229,7 @@ async function doctor(opts) {
   const [major, minor] = process.versions.node.split('.').map(Number);
   line((major === 20 && minor >= 19) || (major === 22 && minor >= 12) || major > 22, 'node', process.version);
   const pw = loadPlaywright();
-  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found here or in the main checkout; run bun install --frozen-lockfile');
+  line(Boolean(pw), 'playwright', pw ? `@playwright/test ${pw.version} from ${pw.from}` : 'not found in this checkout; run bun install --frozen-lockfile');
   const browser = await findChromium(pw);
   const skipped = browser.skipped.length ? `; skipped ${browser.skipped.join(', ')}` : '';
   line(Boolean(browser.path), 'chromium', browser.path
@@ -429,7 +422,7 @@ function plan(names, opts) {
 
 async function run(items, opts, label) {
   const pw = loadPlaywright();
-  if (!pw) fail('playwright not found; run bun install --frozen-lockfile in this checkout (or the main checkout)');
+  if (!pw) fail('playwright not found; run bun install --frozen-lockfile in this checkout');
   const chromium = await chromiumApi(pw);
   const browserPath = (await findChromium(pw)).path;
   if (!browserPath) fail('no Chromium runs; set CHROMIUM or run bunx playwright install chromium. Run doctor.');
