@@ -62,12 +62,14 @@ export interface OnlineRaceSnapshot {
   peopleStatus: string; error: string; name: string; guestName: string; email: string;
   setup: RaceOptions; resetSetup: boolean; setupText: string; shareLink: string; inviteSent: string; accountInvite: string;
   help: string; connection: string; countdown: string; timer: string; passage: string;
-  reviewNote: string; reviewState: 'waiting' | 'none'; finishRequested: boolean; befriended: boolean; controllers: Controllers | null;
+  reviewNote: string; reviewState: 'waiting' | 'none'; finishRequested: boolean; uncounted: boolean; befriended: boolean; controllers: Controllers | null;
 }
 
 type SentProgress = Parameters<typeof multiplayer.updateRaceProgress>[2] & { sequence: number; events: number; at: number };
 
-export function roomStatus(room: RaceRoom, finished: boolean): string {
+export const UNCOUNTED = 'The race clock ran out before your last keys reached the race, so they weren’t counted.';
+
+export function roomStatus(room: RaceRoom, finished: boolean, uncounted = false): string {
   const me = room.players?.find((player) => player.slot === room.selfSlot);
   const opponent = room.players?.find((player) => player.slot !== room.selfSlot);
 
@@ -77,7 +79,7 @@ export function roomStatus(room: RaceRoom, finished: boolean): string {
     case 'countdown': return room.quick ? `Matched with ${opponent?.name || 'another racer'}.` : 'Both players are ready.';
     case 'racing': return room.quick && opponent?.left ? `${opponent.name} left the race. Finish your run to win.`
       : finished || me?.finished ? 'Waiting for the other player.' : room.quick ? 'Leaving now counts as a loss.' : 'The clock keeps running if you leave the passage.';
-    case 'finished': return '';
+    case 'finished': return uncounted ? UNCOUNTED : '';
     case 'cancelled': return room.quick ? 'The race was called off before the start.' : 'This race ended because a player left.';
     case 'expired': return 'This invitation has expired.';
     default: return 'Connecting to the race…';
@@ -155,7 +157,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
     busy: false, changingFriends: false, restoring: false, friends: [], peopleStatus: '', error: '', name: '', guestName: '', email: '',
     setup: raceOptions(), resetSetup: false, setupText: '', shareLink: '', inviteSent: '', accountInvite: '',
     help: 'Type when the countdown ends. Paste and key repeat are off.', connection: '', countdown: '', timer: '', passage: '',
-    reviewNote: '', reviewState: 'waiting', finishRequested: false, befriended: false, controllers: null });
+    reviewNote: '', reviewState: 'waiting', finishRequested: false, uncounted: false, befriended: false, controllers: null });
 
   const getSession = () => options?.getSession() ?? null;
   const navigate = (screen: string) => options?.navigate(screen);
@@ -167,7 +169,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   function publish(patch: Partial<OnlineRaceSnapshot> = {}) {
     if (disposed) return;
     store.publish({ ...current(), mode: view, room, signedIn: Boolean(getSession()), joining: Boolean(joinLink) && !room,
-      busy, changingFriends, restoring, friends, finishRequested, befriended, ...patch });
+      busy, changingFriends, restoring, friends, finishRequested, uncounted, befriended, ...patch });
   }
 
   function paint(patch: Partial<OnlineRaceSnapshot> = {}) { flushSync(() => publish(patch)); }
@@ -204,6 +206,8 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   // The service refused the last progress (a 4xx, not a lost connection): the room is read before more is sent.
   let refused = false;
   let finishRequested = false;
+  // The service finished this seat on progress sent before this tab's last keys, so those keys weren't counted.
+  let uncounted = false;
   // Every progress packet this race sent, each with the keys it covered, and the trace sent for the keys the service
   // settled on when it finished this seat on a packet that carried none (sendSettledTrace).
   let sentProgress: SentProgress[] = [];
@@ -626,7 +630,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
   function resetAttempt() {
     attempt = null; textView = null; startPerf = null;
     baseTyped = ''; baseKeystrokes = 0; baseErrors = 0;
-    dirty = false; refused = false; finishRequested = false;
+    dirty = false; refused = false; finishRequested = false; uncounted = false;
     sentProgress = []; settledTrace = null;
 
     for (const timer of traceTimers) clearTimeout(timer);
@@ -729,6 +733,7 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
     if (room.status === 'countdown' || room.status === 'racing') prepareAttempt();
     sendSettledTrace();
+    noteUncounted();
     renderRoom();
     updateClock();
 
@@ -980,6 +985,22 @@ export function createOnlineRace(initial?: OnlineRaceOptions) {
 
       return false;
     })();
+  }
+
+  // The service finishes a seat on the first progress that reaches it after its clock, on the keys it carried, so keys
+  // typed while that progress was on its way never count. The tab can't know until it hears the seat finished; then
+  // it says so. A quick match seat finishes only with its own finishing packet (ADR 0014), so this never happens there.
+  function noteUncounted() {
+    const me = self();
+
+    if (!room || room.quick || uncounted || !me?.finished || !attempt) return;
+    const settled = sentProgress.find((sent) => sent.sequence === me.sequence);
+
+    if (!settled || settled.events >= attempt.events.length) return;
+    uncounted = true;
+    finishRequested = true;
+    paint({ help: UNCOUNTED });
+    say(UNCOUNTED);
   }
 
   // Leaving the race clears this wait without reviving the old trace reader.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
+import { DEFAULT_POLICY, FOCUSES, SLOW_FLOOR_MS, drilledTargets, englishFrequency, keyboardOf, recommendFor } from '../src/learner.js';
 import { AHEAD_STEPS, FIXED_OBSERVATIONS, FIXED_RUNS, aheadCopy, behindCopy, evidenceCopy, isFixed, readsSince, sinceCopy, sinceDrilled, trainPath } from '../src/train-path.js';
 import { CORPUS_VERSION, METRIC_VERSION } from '../src/typing.js';
 import { mergeSynced } from '../src/account.js';
@@ -73,6 +73,19 @@ test('drilled targets sit behind, newest nearest the open step, each once and ne
   // Another keyboard's loops are another path.
   const dvorak = { ...loop('l5', 'zz', later[2]), conditions: { ...conditions, layout: 'dvorak' } };
   assert.deepEqual(units(pathFor(all, [...loops, dvorak]).behind), ['ck', 'qu']);
+});
+
+// Skip to retest (until d7e7d56) saved a loop with drillCompleted false and no drill: its target was retested, not drilled.
+test('a loop whose drill was skipped is no drill: its target is not behind you, and an earlier drill of it still is', () => {
+  const later = [summary('r1', day(10), withBackground([])), summary('r2', day(11), withBackground([]))];
+  const all = [...history(), ...later];
+  const skipped = { ...loop('s', 'qu', later[1]), drillCompleted: false };
+  const drilled = { ...loop('d', 'qu', later[0]), drillCompleted: true };
+  assert.deepEqual(units(pathFor(all, [skipped]).behind), []);
+  assert.equal(drilledTargets([skipped], KEYBOARD).size, 0);
+  assert.equal(pathFor(all, [drilled, skipped]).behind.find((step) => step.unit === 'qu')?.loopId, 'd');
+  // An interrupted drill still ran, so it is a drill.
+  assert.deepEqual(units(pathFor(all, [{ ...skipped, drill: { target: 'qu', duration: 30 } }]).behind), ['qu']);
 });
 
 test('while the comparison shows, the step just retested is behind you and the next queued one is open, as Next drills', () => {

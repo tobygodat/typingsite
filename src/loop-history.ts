@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom';
+import { drilledLoop } from './domain-history.js';
 import { isRecord } from './domain-values.js';
 import type { AnalysisRun, HistoricalLoop } from './profile-types.js';
 import type { LearningStore, LoopView } from './learning-store.js';
@@ -67,7 +68,7 @@ export function createLoopHistory(learning: LearningStore, ports: LoopPorts) {
     const rows: LoopView[] = loops.map((loop) => {
       const target = loop.target || null;
       const source = loop.conditions;
-      const drilled = loop.drillCompleted || Boolean(field(loop, 'drill'));
+      const drilled = drilledLoop({ drillCompleted: field(loop, 'drillCompleted'), drill: field(loop, 'drill') });
       let conditions = ports.describe(loop.conditions);
       const pace = field(loop, 'targetPace');
       const candidate = field(loop, 'targetTiming');

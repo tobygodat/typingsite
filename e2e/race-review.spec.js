@@ -336,6 +336,51 @@ test('progress that reaches the service after a timed race’s clock still leave
   } finally { await context.close(); }
 });
 
+// The service finishes a racer on the first progress that reaches it after its clock, on the keys that progress carried,
+// so a key typed while it was on its way, before the tab's own clock ran out, is never counted. Once the tab hears that,
+// it stops taking keys and says so: under the passage while the other racer is still racing, and above the results.
+test('keys typed after progress that reaches the service late aren’t counted, and the race says so', async ({ page, browser, supabase }) => {
+  const { context, lin, passage, room, clockOut } = await twentyKeysEach(page, browser, supabase);
+  const uncounted = 'The race clock ran out before your last keys reached the race, so they weren’t counted.';
+
+  try {
+    let open;
+    let openLin;
+    const gate = new Promise((resolve) => { open = resolve; });
+    const linGate = new Promise((resolve) => { openLin = resolve; });
+    await page.route('**/rest/v1/rpc/race_action', async (route) => {
+      if (isProgress(route.request())) await gate;
+      await route.fallback();
+    });
+    // Lin's finish waits too, so the race is still on when Ada's tab hears its answer.
+    await lin.route('**/rest/v1/rpc/race_action', async (route) => {
+      if (isProgress(route.request())) await linGate;
+      await route.fallback();
+    });
+    await expect.poll(() => Date.now() > clockOut - 3000, { timeout: 20000 }).toBe(true);
+    const held = page.waitForRequest(isProgress);
+    await page.keyboard.type(passage[20]);
+    await held;
+    await page.keyboard.type(passage[21]);
+    await expect(page.locator('#online-text-display .char').nth(21)).toHaveClass(/correct/);
+    await expect.poll(() => Date.now() > clockOut + 500, { timeout: 10000 }).toBe(true);
+    open();
+
+    await expect.poll(() => room.players[0].finished).toBe(true);
+    expect(room.status).toBe('racing');
+    expect(room.players[0].typed).toBe(passage.slice(0, 21));
+    await expect(page.locator('#online-help')).toHaveText(uncounted);
+    await expect(page.locator('#online-input')).toBeDisabled();
+    await expect(page.locator('#online-room-status')).toHaveText('Waiting for the other player.');
+
+    openLin();
+    await expect(page.locator('#online-results')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#online-room-status')).toHaveText(uncounted);
+    await expect(lin.locator('#online-results')).toBeVisible({ timeout: 10000 });
+    await expect(lin.locator('#online-room-status')).toHaveText('');
+  } finally { await context.close(); }
+});
+
 // The same late progress, but this time Ada's tab never hears the answer: the service applied it, finishing her on its
 // keys, and her request failed (as one does after 15 s, or when the connection drops). The tab then sends its own
 // finish with every key it holds, more than the service settled on, so the service can't keep that trace. It still

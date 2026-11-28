@@ -1,4 +1,4 @@
-import { analysisRuns, analysisLoops } from './domain-history.js';
+import { analysisRuns, analysisLoops, drilledLoop } from './domain-history.js';
 import type { AnalysisLoop, AnalysisRun, ScoredRun, HistoricalRecord } from './profile-types.js';
 import { at as indexed } from './domain-values.js';
 import type { Conditions } from './typing.js';
@@ -167,7 +167,7 @@ export function weekMovers({ runs, loops: rawLoops = [], keyboard, focus, now, b
   const drilledNow = new Map<string, AnalysisLoop>();
   const drilledThen = new Map<string, AnalysisLoop>();
 
-  for (const loop of loops.filter((item) => item.target && keyboardOf(item.conditions) === keyboard).sort(byDate)) {
+  for (const loop of loops.filter((item) => item.target && drilledLoop(item) && keyboardOf(item.conditions) === keyboard).sort(byDate)) {
     drilledNow.set(loop.target ?? '', loop);
 
     if (Date.parse(loop.at ?? '') < began) drilledThen.set(loop.target ?? '', loop);
