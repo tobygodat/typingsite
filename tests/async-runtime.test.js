@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Effect } from 'effect';
-import { AsyncLifetime, abortable, deadline, within, WorkCancelled } from '../src/async-runtime.js';
+import { readdirSync, readFileSync } from 'node:fs';
+import { AsyncLifetime, abortable, anySignal, deadline, within, WorkCancelled } from '../src/async-runtime.js';
 
 const turn = () => new Promise((resolve) => { setImmediate(resolve); });
 
@@ -95,4 +96,25 @@ test('the Promise boundary preserves an Effect defect instead of reporting it as
   const defect = new Error('unexpected failure');
   await assert.rejects(page.run(Effect.die(defect)), (error) => error === defect);
   await page.close();
+});
+
+test('anySignal aborts with the first source to abort, and an aborted source aborts it at once', () => {
+  const first = new AbortController();
+  const second = new AbortController();
+  const merged = anySignal(first.signal, second.signal);
+  assert.equal(merged.aborted, false);
+  second.abort('left');
+  first.abort('later');
+  assert.equal(merged.aborted, true);
+  assert.equal(merged.reason, 'left');
+
+  const gone = new AbortController();
+  gone.abort('gone');
+  assert.equal(anySignal(new AbortController().signal, gone.signal).reason, 'gone');
+});
+
+// WebKit can collect the signal AbortSignal.any returns while a fetch waits on it, so the abort is lost (TOB-533).
+test('no source merges signals with AbortSignal.any', () => {
+  const sources = readdirSync('src', { recursive: true }).filter((name) => /\.tsx?$/.test(name));
+  assert.deepEqual(sources.filter((name) => readFileSync(`src/${name}`, 'utf8').includes('AbortSignal.any(')), []);
 });
